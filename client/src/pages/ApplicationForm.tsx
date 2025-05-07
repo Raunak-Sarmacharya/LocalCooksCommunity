@@ -109,7 +109,7 @@ export default function ApplicationForm() {
     <ApplicationFormProvider>
       <div className="min-h-screen flex flex-col bg-light-gray">
         <Header />
-        <main className="flex-grow pt-24 pb-16">
+        <main className="flex-grow pt-28 pb-16">
           {isLoading ? (
             <div className="container mx-auto px-4 flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
