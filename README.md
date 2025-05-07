@@ -170,7 +170,7 @@ The application uses a session-based authentication system with Passport.js. Two
 
 ### Demo Applicant
 - Username: `rsarmacharya`
-- Password: `password`
+- Password: `localcooks`
 
 ## 💻 Development Guidelines
 
