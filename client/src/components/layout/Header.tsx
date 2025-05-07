@@ -36,12 +36,9 @@ export default function Header() {
     enabled: !!user && user.role === "applicant",
   });
   
-  // Check if user has active applications to control Apply Now button visibility
-  const activeApplication = hasActiveApplication(applications);
-  
-  // Don't show Apply button for admin users or users with active applications
-  const showApplyButton = !user || 
-    (user.role === "applicant" && !activeApplication && location !== "/apply");
+  // No longer need these for Apply Now button
+  // const activeApplication = hasActiveApplication(applications);
+  // const showApplyButton = !user || (user.role === "applicant" && !activeApplication && location !== "/apply");
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -108,14 +105,14 @@ export default function Header() {
                 About Us
               </a>
             </li>
-            {showApplyButton && (
+            {!user && (
               <li>
                 <Button 
                   asChild
                   variant="outline" 
                   className="border-primary text-primary hover:bg-primary hover:text-white"
                 >
-                  <Link href="/apply">Apply Now</Link>
+                  <Link href="/auth">Login / Register</Link>
                 </Button>
               </li>
             )}
@@ -233,13 +230,13 @@ export default function Header() {
                 About Us
               </a>
             </li>
-            {showApplyButton && (
+            {!user && (
               <li className="pt-2">
                 <Button 
                   asChild
                   className="w-full bg-primary hover:bg-opacity-90 text-white"
                 >
-                  <Link href="/apply" onClick={closeMenu}>Apply Now</Link>
+                  <Link href="/auth" onClick={closeMenu}>Login / Register</Link>
                 </Button>
               </li>
             )}
