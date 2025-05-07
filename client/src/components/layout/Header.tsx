@@ -1,0 +1,251 @@
+import { useState, useCallback } from "react";
+import { Link, useLocation } from "wouter";
+import { Menu, X, User, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { Application } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import Logo from "@/components/ui/logo";
+
+// Helper to check if an application is active (not cancelled, rejected)
+const isApplicationActive = (app: Application) => {
+  return app.status !== 'cancelled' && app.status !== 'rejected';
+};
+
+// Helper to check if user has any active applications
+const hasActiveApplication = (applications?: Application[]) => {
+  if (!applications || applications.length === 0) return false;
+  return applications.some(isApplicationActive);
+};
+
+export default function Header() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [location, setLocation] = useLocation();
+  const { user, logoutMutation } = useAuth();
+  
+  // Fetch applicant's applications if they are logged in
+  const { data: applications } = useQuery<Application[]>({
+    queryKey: ["/api/applications/my-applications"],
+    enabled: !!user && user.role === "applicant",
+  });
+  
+  // Check if user has active applications to control Apply Now button visibility
+  const activeApplication = hasActiveApplication(applications);
+  
+  // Don't show Apply button for admin users or users with active applications
+  const showApplyButton = !user || 
+    (user.role === "applicant" && !activeApplication && location !== "/apply");
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+  };
+  
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
+  
+  const scrollToSection = useCallback((sectionId: string, event?: React.MouseEvent) => {
+    event?.preventDefault();
+    
+    // If not on the homepage, navigate to homepage first with the hash
+    if (location !== "/") {
+      setLocation(`/#${sectionId}`);
+      return;
+    }
+    
+    // If already on homepage, scroll to the section smoothly
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+      closeMenu();
+    }
+  }, [location, setLocation]);
+
+  return (
+    <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50">
+      <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+        <Link href="/" className="flex items-center">
+          <Logo className="h-16 w-auto" />
+        </Link>
+        
+        <nav className="hidden md:block">
+          <ul className="flex space-x-6 items-center">
+            <li>
+              <a 
+                href="#how-it-works" 
+                className="hover:text-primary transition-colors cursor-pointer"
+                onClick={(e) => scrollToSection("how-it-works", e)}
+              >
+                How It Works
+              </a>
+            </li>
+            <li>
+              <a 
+                href="#benefits" 
+                className="hover:text-primary transition-colors cursor-pointer"
+                onClick={(e) => scrollToSection("benefits", e)}
+              >
+                Benefits
+              </a>
+            </li>
+            <li>
+              <a 
+                href="#about" 
+                className="hover:text-primary transition-colors cursor-pointer"
+                onClick={(e) => scrollToSection("about", e)}
+              >
+                About Us
+              </a>
+            </li>
+            {showApplyButton && (
+              <li>
+                <Button 
+                  asChild
+                  variant="outline" 
+                  className="border-primary text-primary hover:bg-primary hover:text-white"
+                >
+                  <Link href="/apply">Apply Now</Link>
+                </Button>
+              </li>
+            )}
+            
+            {user && (
+              <li>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <User className="h-4 w-4" />
+                      {user.username}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {user.role === "admin" ? (
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin">Admin Dashboard</Link>
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard">My Applications</Link>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout} className="gap-2">
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            )}
+          </ul>
+        </nav>
+        
+        <div className="flex items-center gap-2 md:hidden">
+          {user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <User className="h-4 w-4 mr-1" />
+                  {user.username}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {user.role === "admin" ? (
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin">Admin Dashboard</Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard">My Applications</Link>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="gap-2">
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleMenu}
+          >
+            {isMenuOpen ? (
+              <X className="h-6 w-6" />
+            ) : (
+              <Menu className="h-6 w-6" />
+            )}
+          </Button>
+        </div>
+      </div>
+      
+      {/* Mobile menu */}
+      {isMenuOpen && (
+        <div className="md:hidden bg-white p-4 shadow-md">
+          <ul className="space-y-3">
+            <li>
+              <a 
+                href="#how-it-works" 
+                className="block py-2 hover:text-primary transition-colors cursor-pointer"
+                onClick={(e) => {
+                  scrollToSection("how-it-works", e);
+                  closeMenu();
+                }}
+              >
+                How It Works
+              </a>
+            </li>
+            <li>
+              <a 
+                href="#benefits" 
+                className="block py-2 hover:text-primary transition-colors cursor-pointer"
+                onClick={(e) => {
+                  scrollToSection("benefits", e);
+                  closeMenu();
+                }}
+              >
+                Benefits
+              </a>
+            </li>
+            <li>
+              <a 
+                href="#about" 
+                className="block py-2 hover:text-primary transition-colors cursor-pointer"
+                onClick={(e) => {
+                  scrollToSection("about", e);
+                  closeMenu();
+                }}
+              >
+                About Us
+              </a>
+            </li>
+            {showApplyButton && (
+              <li className="pt-2">
+                <Button 
+                  asChild
+                  className="w-full bg-primary hover:bg-opacity-90 text-white"
+                >
+                  <Link href="/apply" onClick={closeMenu}>Apply Now</Link>
+                </Button>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+    </header>
+  );
+}

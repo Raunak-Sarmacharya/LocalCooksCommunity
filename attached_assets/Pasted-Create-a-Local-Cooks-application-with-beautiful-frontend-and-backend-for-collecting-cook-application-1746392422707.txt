@@ -1,0 +1,56 @@
+Create a Local Cooks application with beautiful frontend and backend for collecting cook applications.
+
+BRANDING:
+- Primary color: #F51042 (pinkish-red)
+- Secondary color: #000000 (black)
+- Accent color: #FFFFFF (white)
+- Logo Font: Lobster
+- Body Font: Nunito
+- Brand vision: "bringing communities together through homemade meals"
+- Keywords: Community-driven, Sustainable, Local, Home-cooked, Authentic-Flavors
+
+APPLICATION FLOW:
+
+Page 1 - Information Page:
+Include the following content:
+- Header with Local Cooks logo and name
+- Hero section: "Join Local Cooks - Bringing Communities Together Through Homemade Meals"
+- Why join: "Focus on what you do best—cooking—while we handle orders, delivery, marketing, and customer service"
+- How it works:
+  * Cook on your own schedule using certified commercial kitchens
+  * We handle online orders, delivery, and customer service
+  * Reach more customers in St. John's without restaurant overhead
+- Trial phase benefits: "We're in our pilot phase - be among the first to join with special launch pricing. Get started today!"
+- Who we are: "We're dedicated to supporting St. John's culinary community"
+- CTA button: "Start Your Application" (use brand colors)
+
+Page 2 - Application Form:
+Fields to collect:
+- Full Name (required)
+- Email Address (required, validate)
+- Phone Number (required, validate)
+- Food Safety License: Yes/No/Not sure
+- Food Establishment Certificate: Yes/No/Not sure
+- Kitchen preference: 
+  * Cook from certified commercial kitchen
+  * Cook from home (compliant products only)
+  * Not sure
+- Submit button (use brand colors)
+
+TECHNICAL REQUIREMENTS:
+- Create a clean, responsive frontend design
+- Implement a backend with form processing and storage
+- Include database functionality for storing applications
+- Add form validation and error handling
+- Display success message after submission
+- Build a simple admin view to review applications
+
+STYLING:
+- Use clean typography with Nunito
+- Implement hover states and transitions
+- Mobile-first responsive design  
+- Professional yet warm, inviting atmosphere
+- Clear progress indicator
+- Loading states for submission
+
+No user authentication needed. Focus on a beautiful, intuitive form experience that aligns with the Local Cooks mission of bringing communities together through food.

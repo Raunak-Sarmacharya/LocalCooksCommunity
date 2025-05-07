@@ -1,0 +1,197 @@
+import type { Express, Request, Response } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { insertApplicationSchema, updateApplicationStatusSchema } from "@shared/schema";
+import { fromZodError } from "zod-validation-error";
+import { setupAuth } from "./auth";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Set up authentication routes and middleware
+  setupAuth(app);
+  // Application submission endpoint
+  app.post("/api/applications", async (req: Request, res: Response) => {
+    try {
+      // Require authentication to submit an application
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "You must be logged in to submit an application" });
+      }
+      
+      // Validate the request body using Zod schema
+      const parsedData = insertApplicationSchema.safeParse(req.body);
+      
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: validationError.details 
+        });
+      }
+      
+      // Ensure the application is associated with the current user
+      // Override any userId in the request to prevent spoofing
+      const applicationData = {
+        ...parsedData.data,
+        userId: req.user!.id
+      };
+      
+      // Create the application in storage
+      const application = await storage.createApplication(applicationData);
+      
+      return res.status(201).json(application);
+    } catch (error) {
+      console.error("Error creating application:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get all applications endpoint (for admin view)
+  app.get("/api/applications", async (req: Request, res: Response) => {
+    // Check if user is authenticated and is an admin
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    if (req.user!.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+    
+    try {
+      const applications = await storage.getAllApplications();
+      return res.status(200).json(applications);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get applications for the logged-in user (this specific route needs to come before the /:id route)
+  app.get("/api/applications/my-applications", async (req: Request, res: Response) => {
+    // Check if user is authenticated
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    try {
+      const userId = req.user!.id;
+      const applications = await storage.getApplicationsByUserId(userId);
+      return res.status(200).json(applications);
+    } catch (error) {
+      console.error("Error fetching user applications:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get application by ID endpoint
+  app.get("/api/applications/:id", async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+      
+      const application = await storage.getApplicationById(id);
+      
+      if (!application) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+      
+      return res.status(200).json(application);
+    } catch (error) {
+      console.error("Error fetching application:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update application status endpoint (admin only)
+  app.patch("/api/applications/:id/status", async (req: Request, res: Response) => {
+    // Check if user is authenticated and is an admin
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    if (req.user!.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+    
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+      
+      // Validate the request body using Zod schema
+      const parsedData = updateApplicationStatusSchema.safeParse({
+        id,
+        status: req.body.status
+      });
+      
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: validationError.details 
+        });
+      }
+      
+      const updatedApplication = await storage.updateApplicationStatus(parsedData.data);
+      
+      if (!updatedApplication) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+      
+      return res.status(200).json(updatedApplication);
+    } catch (error) {
+      console.error("Error updating application status:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  // Cancel application endpoint (for applicants)
+  app.patch("/api/applications/:id/cancel", async (req: Request, res: Response) => {
+    // Check if user is authenticated
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+      
+      // First get the application to verify ownership
+      const application = await storage.getApplicationById(id);
+      
+      if (!application) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+      
+      // Check if the application belongs to the logged-in user
+      if (application.userId !== req.user!.id) {
+        return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
+      }
+      
+      const updateData = {
+        id,
+        status: "cancelled" as const
+      };
+      
+      const updatedApplication = await storage.updateApplicationStatus(updateData);
+      
+      if (!updatedApplication) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+      
+      return res.status(200).json(updatedApplication);
+    } catch (error) {
+      console.error("Error cancelling application:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
