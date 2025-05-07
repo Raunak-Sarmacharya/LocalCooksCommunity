@@ -1,85 +1,217 @@
 # Local Cooks Application
 
-A beautifully designed application for Local Cooks to collect cook applications with a responsive frontend and functional backend.
-
 ![Local Cooks Logo](./attached_assets/Logo_LocalCooks.png)
 
-## Features
+A professional web application that connects local cooks with potential customers. This platform enables home chefs to showcase their culinary skills, apply to join the service, and for administrators to manage applications through a secure dashboard.
 
-- 🏠 **Attractive Homepage**: Features a compelling hero section, benefits, how it works, and a call-to-action.
-- 📝 **Multi-step Application Form**: An intuitive three-step application form with validation.
-- 🔐 **Secure Admin Dashboard**: Password-protected admin area for reviewing and managing applications.
-- 📱 **Fully Responsive**: Works beautifully on mobile, tablet, and desktop devices.
-- 🚀 **Modern Tech Stack**: Built with React, Node.js, and PostgreSQL.
+## ✨ Features
 
-## Technology Stack
+- 🏠 **Modern Homepage**: Interactive sections with animations, responsive design, and compelling content
+- 📝 **Multi-step Application Process**: Intuitive three-step form with smart validation
+- 👨‍💼 **Applicant Dashboard**: Personal dashboard for cooks to track application status
+- 🔐 **Authentication System**: Secure login/register functionality for applicants and admins
+- 🛡️ **Admin Dashboard**: Comprehensive tools for reviewing and managing cook applications
+- 📱 **Fully Responsive**: Optimized experience across all devices and screen sizes
+- 🎨 **Premium Design**: Professional UI with modern aesthetics and smooth animations
 
-- **Frontend**: React, TailwindCSS, shadcn/ui components
-- **Backend**: Node.js, Express
-- **Database**: PostgreSQL with Drizzle ORM
-- **Form Handling**: React Hook Form with Zod validation
-- **Routing**: Wouter for lightweight client-side routing
-- **State Management**: React Query for server state
+## 🛠️ Technology Stack
 
-## Getting Started
+### Frontend
+- **React** - Component-based UI development
+- **TypeScript** - Static typing for better code quality
+- **TailwindCSS** - Utility-first CSS framework
+- **shadcn/ui** - High-quality component library
+- **Framer Motion** - Advanced animations
+- **React Hook Form** - Form state management and validation
+- **Zod** - Schema validation with typescript integration
+- **TanStack Query** - Data fetching, caching, and state management
+- **Wouter** - Lightweight client-side routing
+
+### Backend
+- **Express** - Fast, unopinionated web framework
+- **Drizzle ORM** - Type-safe database toolkit
+- **PostgreSQL** - Powerful, open-source relational database
+- **Passport.js** - Authentication middleware
+- **Express Session** - Session management
+
+## 🚀 Getting Started
 
 ### Prerequisites
-
-- Node.js (v16+)
+- Node.js (v18+)
 - npm or yarn
+- PostgreSQL database (or use the included in-memory storage for development)
 
 ### Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/local-cooks.git
-   cd local-cooks
-   ```
-
+1. Clone the repository
 2. Install dependencies:
    ```bash
    npm install
    ```
-
-3. Start the development server:
+3. Set up your environment variables in `.env`:
+   ```
+   DATABASE_URL=postgresql://username:password@localhost:5432/localcooks
+   SESSION_SECRET=yoursessionsecret
+   ```
+4. Run database migrations (if using PostgreSQL):
+   ```bash
+   npm run db:push
+   ```
+5. Start the development server:
    ```bash
    npm run dev
    ```
+6. Access the application at `http://localhost:5000`
 
-4. Open your browser and navigate to `http://localhost:5000`
+## 🗄️ Database Schema
 
-## Project Structure
+The application uses the following main data models:
+
+### Users
+```typescript
+users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(),
+  role: userRoleEnum("role").notNull().default("applicant"),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+```
+
+### Applications
+```typescript
+applications = pgTable("applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
+  foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
+  kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
+  status: applicationStatusEnum("status").notNull().default("new"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+```
+
+## 📂 Project Structure
 
 ```
-├── client/                # Frontend code
+├── client/                       # Frontend code
 │   ├── src/
-│   │   ├── components/    # UI components
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── lib/           # Utility functions and configurations
-│   │   ├── pages/         # Page components
-│   │   └── main.tsx       # Entry point
-├── server/                # Backend code
-│   ├── index.ts           # Server entry point
-│   ├── routes.ts          # API routes
-│   └── storage.ts         # Data storage logic
-├── shared/                # Shared code between client and server
-│   └── schema.ts          # Database schema and types
+│   │   ├── components/
+│   │   │   ├── application/      # Application form components
+│   │   │   ├── auth/             # Authentication components
+│   │   │   ├── home/             # Homepage section components
+│   │   │   ├── layout/           # Layout components (Header, Footer)
+│   │   │   └── ui/               # Reusable UI components
+│   │   ├── hooks/                # Custom React hooks
+│   │   │   ├── use-auth.tsx      # Authentication hook
+│   │   │   └── use-toast.ts      # Toast notifications hook
+│   │   ├── lib/                  # Utility functions
+│   │   │   ├── applicationSchema.ts # Application form schemas
+│   │   │   ├── protected-route.tsx  # Auth protection HOC
+│   │   │   └── queryClient.ts    # API request utilities
+│   │   ├── pages/                # Page components
+│   │   │   ├── Admin.tsx         # Admin dashboard
+│   │   │   ├── AdminLogin.tsx    # Admin login
+│   │   │   ├── ApplicantDashboard.tsx # Cook dashboard
+│   │   │   ├── ApplicationForm.tsx # Application form
+│   │   │   ├── Home.tsx          # Homepage
+│   │   │   └── auth-page.tsx     # User login/register
+│   │   ├── App.tsx               # Main app component
+│   │   └── main.tsx              # Entry point
+├── server/                       # Backend code
+│   ├── auth.ts                   # Authentication setup
+│   ├── db.ts                     # Database connection
+│   ├── index.ts                  # Server entry point
+│   ├── routes.ts                 # API endpoints
+│   ├── storage.ts                # Data access layer
+│   └── vite.ts                   # Vite server integration
+├── shared/                       # Shared code
+│   └── schema.ts                 # Database schema and types
+├── migrations/                   # Database migrations
+└── scripts/                      # Utility scripts
+    ├── create-admin.ts           # Create admin user
+    └── migrate-db.ts             # Database migration script
 ```
 
-## Admin Access
+## 🔒 Authentication System
 
-The admin dashboard is protected with authentication:
+The application uses a session-based authentication system with Passport.js. Two types of users are supported:
 
+### User Roles
+- **Admin**: Can review all applications and update their status
+- **Applicant**: Can submit and track their own applications
+
+### Authentication Endpoints
+- `POST /api/register` - Register a new applicant account
+- `POST /api/login` - Login as admin or applicant
+- `POST /api/logout` - Log out the current user
+- `GET /api/user` - Get the current logged-in user
+
+## 📡 API Endpoints
+
+### Application Endpoints
+- `POST /api/applications` - Submit a new application
+- `GET /api/applications` - Admin only: Get all applications
+- `GET /api/applications/my-applications` - Get current user's applications
+- `GET /api/applications/:id` - Get a specific application
+- `PATCH /api/applications/:id/status` - Admin only: Update application status
+- `PATCH /api/applications/:id/cancel` - Cancel an application
+
+## 🔑 Access Information
+
+### Admin Access
 - URL: `/admin-login`
 - Username: `admin`
 - Password: `localcooks`
 
-## License
+### Demo Applicant
+- Username: `rsarmacharya`
+- Password: `password`
 
-[MIT](LICENSE)
+## 💻 Development Guidelines
 
-## Acknowledgements
+1. **Database Changes**
+   - Add new models in `shared/schema.ts`
+   - Run `npm run db:push` to update the database schema
 
-- [Replit](https://replit.com) - Development platform
-- [shadcn/ui](https://ui.shadcn.com/) - UI component library
+2. **Backend Development**
+   - Add new endpoints in `server/routes.ts`
+   - Update storage interfaces in `server/storage.ts`
+   - Add authentication logic in `server/auth.ts`
+
+3. **Frontend Development**
+   - Use React Query for data fetching
+   - Implement protected routes with `ProtectedRoute` component
+   - Use shadcn/ui components for consistent UI
+   - Use Zod schemas for form validation
+
+4. **Styling**
+   - Use TailwindCSS for styling
+   - Use the `cn` utility for conditional classes
+   - Follow the existing color scheme and design patterns
+
+## 🤝 Contributing
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📜 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgements
+
+- [shadcn/ui](https://ui.shadcn.com/) - Component library
 - [TailwindCSS](https://tailwindcss.com/) - CSS framework
+- [Drizzle ORM](https://orm.drizzle.team/) - Database ORM
+- [React Hook Form](https://react-hook-form.com/) - Form management
+- [TanStack Query](https://tanstack.com/query) - Data fetching library
+- [Framer Motion](https://www.framer.com/motion/) - Animation library
+- [Zod](https://zod.dev/) - Schema validation
