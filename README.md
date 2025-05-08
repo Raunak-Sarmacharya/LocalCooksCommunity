@@ -43,25 +43,48 @@ A professional web application that connects local cooks with potential customer
 
 ### Installation
 
+#### Running on Replit
+On Replit, the environment is already fully configured with the necessary environment variables and database connection.
+
+1. Simply click the "Run" button to start the application
+2. The app will be available at the generated Replit URL
+
+#### Running Locally
+
 1. Clone the repository
 2. Install dependencies:
    ```bash
    npm install
    ```
-3. Set up your environment variables in `.env`:
+3. Create a `.env` file in the root directory with the following variables:
    ```
    DATABASE_URL=postgresql://username:password@localhost:5432/localcooks
    SESSION_SECRET=yoursessionsecret
    ```
-4. Run database migrations (if using PostgreSQL):
+   
+   Note: 
+   - The SESSION_SECRET has a default fallback value for development, so it's optional
+   - To use the in-memory database instead of PostgreSQL (recommended for local development):
+     - Open `server/storage.ts`
+     - Change `export const storage = new DatabaseStorage();` to `export const storage = new MemStorage();`
+     - With this change, you won't need to set up a PostgreSQL database
+
+4. If using PostgreSQL, create the database and run migrations:
    ```bash
    npm run db:push
    ```
-5. Start the development server:
+   
+5. Create an initial admin user (if using PostgreSQL):
+   ```bash
+   npm run create-admin
+   ```
+
+6. Start the development server:
    ```bash
    npm run dev
    ```
-6. Access the application at `http://localhost:5000`
+   
+7. Access the application at `http://localhost:5000`
 
 ## 🗄️ Database Schema
 
@@ -170,7 +193,7 @@ The application uses a session-based authentication system with Passport.js. Two
 
 ### Demo Applicant
 - Username: `rsarmacharya`
-- Password: `localcooks`
+- Password: `password`
 
 ## 💻 Development Guidelines
 
