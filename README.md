@@ -200,6 +200,7 @@ The application uses a session-based authentication system with Passport.js. Two
 1. **Database Changes**
    - Add new models in `shared/schema.ts`
    - Run `npm run db:push` to update the database schema
+   - For production database setup, see [Production Database Guide](docs/production-database-setup.md)
 
 2. **Backend Development**
    - Add new endpoints in `server/routes.ts`
