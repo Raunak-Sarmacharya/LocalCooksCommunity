@@ -10,6 +10,12 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      textShadow: {
+        xs: '0 1px 2px rgba(0, 0, 0, 0.25)',
+        sm: '0 2px 4px rgba(0, 0, 0, 0.3)',
+        md: '0 4px 8px rgba(0, 0, 0, 0.4)',
+        lg: '0 8px 16px rgba(0, 0, 0, 0.5)',
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
@@ -86,5 +92,17 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [
+    require("tailwindcss-animate"), 
+    require("@tailwindcss/typography"),
+    function({ addUtilities, theme }) {
+      const textShadowUtilities = {};
+      Object.entries(theme('textShadow')).forEach(([key, value]) => {
+        textShadowUtilities[`.text-shadow-${key}`] = {
+          textShadow: value,
+        };
+      });
+      addUtilities(textShadowUtilities);
+    }
+  ],
 } satisfies Config;

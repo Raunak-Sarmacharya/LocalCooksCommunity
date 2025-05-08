@@ -104,26 +104,26 @@ export default function ApplicantDashboard() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-grow container max-w-6xl mx-auto px-4 pt-28 pb-8">
-        <div className="mb-8 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-xl">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <main className="flex-grow container max-w-6xl mx-auto px-4 pt-24 pb-8">
+        <div className="mb-6 md:mb-8 p-4 md:p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800 flex items-center">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center">
                 <span className="font-logo text-primary mr-2">My</span> Applications
               </h1>
-              <p className="text-gray-600 mt-2 max-w-lg">
+              <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2 max-w-lg">
                 Track, manage and update your Local Cooks applications. We're excited to have you join our community of talented chefs!
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-0">
               <Button 
                 asChild 
                 variant="default" 
                 size="sm"
-                className="bg-primary/90 hover:bg-primary rounded-full shadow-sm"
+                className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
               >
                 <Link href="/">
-                  <ChefHat className="mr-2 h-4 w-4" />
+                  <ChefHat className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
                   Explore Opportunities
                 </Link>
               </Button>
@@ -131,16 +131,16 @@ export default function ApplicantDashboard() {
                 variant="outline" 
                 size="sm" 
                 onClick={handleLogout}
-                className="rounded-full border-gray-300"
+                className="rounded-full border-gray-300 text-xs md:text-sm py-1 h-auto md:h-10"
               >
                 {logoutMutation.isPending ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4 animate-spin" />
                     Logging out...
                   </>
                 ) : (
                   <>
-                    <LogOut className="mr-2 h-4 w-4" />
+                    <LogOut className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
                     Log out
                   </>
                 )}
@@ -176,21 +176,21 @@ export default function ApplicantDashboard() {
               return (
                 <motion.div
                   key={application.id}
-                  className="bg-white rounded-lg shadow-md border p-6 hover:shadow-lg transition-all duration-300"
+                  className="bg-white rounded-lg shadow-md border p-4 md:p-6 hover:shadow-lg hover-shadow group"
                   variants={itemVariants}
                 >
-                  <div className="flex justify-between items-start">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 md:gap-0">
                     <div>
-                      <h2 className="text-xl font-semibold">{application.fullName}</h2>
-                      <p className="text-muted-foreground">{application.email}</p>
+                      <h2 className="text-lg md:text-xl font-semibold">{application.fullName}</h2>
+                      <p className="text-sm text-muted-foreground">{application.email}</p>
                     </div>
-                    <Badge className={`${getStatusBadgeColor(application.status)} flex items-center gap-1.5 px-3 py-1.5`}>
+                    <Badge className={`${getStatusBadgeColor(application.status)} self-start sm:self-auto flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm mt-1 sm:mt-0`}>
                       {statusIcon()}
                       {formatApplicationStatus(application.status)}
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-4 md:mt-6">
                     <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border border-gray-100 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="bg-green-100 p-1.5 rounded-full">
@@ -236,16 +236,16 @@ export default function ApplicantDashboard() {
                     </div>
                   </div>
 
-                  <div className="mt-6 pt-6 border-t flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                  <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 md:gap-4">
                     <div className="flex items-center text-sm text-muted-foreground">
                       <CalendarDays className="h-4 w-4 mr-2" />
                       Submitted on {new Date(application.createdAt).toLocaleDateString()}
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                       {isApplicationActive(application) && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50">
+                            <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 hover-standard">
                               Cancel Application
                             </Button>
                           </AlertDialogTrigger>
@@ -260,7 +260,7 @@ export default function ApplicantDashboard() {
                               <AlertDialogCancel>No, keep it</AlertDialogCancel>
                               <AlertDialogAction 
                                 onClick={() => cancelMutation.mutate(application.id)}
-                                className="bg-red-500 hover:bg-red-600"
+                                className="bg-red-500 hover:bg-red-600 hover-standard"
                               >
                                 {cancelMutation.isPending ? (
                                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelling...</>
@@ -301,7 +301,7 @@ export default function ApplicantDashboard() {
             <Button 
               asChild
               size="lg"
-              className="bg-primary hover:bg-primary/90 rounded-full px-8"
+              className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
             >
               <Link href="/apply">
                 <ChefHat className="mr-2 h-5 w-5" />

@@ -88,7 +88,7 @@ export default function AboutSection() {
                 <div className="mt-8 flex flex-wrap gap-4">
                   <Button 
                     onClick={() => navigate("/apply")}
-                    className="rounded-full px-6"
+                    className="rounded-full px-6 hover-standard"
                   >
                     Join Our Community
                   </Button>
@@ -147,22 +147,22 @@ export default function AboutSection() {
                 <img 
                   src="https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80" 
                   alt="Home cooking" 
-                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover transition-transform hover:scale-105"
+                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover hover:scale-105 hover-transform"
                 />
                 <img 
                   src="https://images.unsplash.com/photo-1576867757603-05b134ebc379?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80" 
                   alt="Food delivery service" 
-                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover transition-transform hover:scale-105"
+                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover hover:scale-105 hover-transform"
                 />
                 <img 
                   src="https://images.unsplash.com/photo-1593504049359-74330189a345?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80" 
                   alt="Home cooking" 
-                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover transition-transform hover:scale-105"
+                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover hover:scale-105 hover-transform"
                 />
                 <img 
                   src="https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=80" 
                   alt="Local food community" 
-                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover transition-transform hover:scale-105"
+                  className="rounded-lg shadow-md h-24 md:h-32 w-full object-cover hover:scale-105 hover-transform"
                 />
               </div>
             </div>

@@ -73,7 +73,7 @@ export default function CertificationsForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Alert className="mb-6 bg-blue-50 border-blue-200">
+        <Alert className="mb-4 md:mb-6 bg-blue-50 border-blue-200">
           <Info className="h-5 w-5 text-blue-500" />
           <AlertTitle className="text-blue-700">We're here to help!</AlertTitle>
           <AlertDescription className="text-blue-600">
@@ -81,9 +81,9 @@ export default function CertificationsForm() {
           </AlertDescription>
         </Alert>
       
-        <div className="space-y-8">
-          <div className="p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+        <div className="space-y-6 md:space-y-8">
+          <div className="p-4 md:p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center">
                   <Check className="h-5 w-5 mr-2 text-primary" />
@@ -95,34 +95,34 @@ export default function CertificationsForm() {
                 href="https://skillpassnl.ca/en/home/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary text-sm font-medium hover:underline inline-flex items-center"
+                className="text-primary text-sm font-medium hover:underline hover-text inline-flex items-center whitespace-nowrap"
               >
                 Learn more <ExternalLink className="h-3.5 w-3.5 ml-1" />
               </a>
             </div>
             
-            <p className="mb-4 text-gray-600">Do you have a Food Safety License?*</p>
+            <p className="mb-3 md:mb-4 text-gray-600">Do you have a Food Safety License?*</p>
             
             <RadioGroup
               onValueChange={(value) => form.setValue("foodSafetyLicense", value as "yes" | "no" | "notSure")}
               defaultValue={formData.foodSafetyLicense}
-              className="flex flex-col space-y-3"
+              className="flex flex-col space-y-2 md:space-y-3"
             >
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
+              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
                 <RadioGroupItem value="yes" id="fsl-yes" className="mt-1" />
                 <div>
                   <Label htmlFor="fsl-yes" className="font-medium cursor-pointer">Yes, I have a license</Label>
                   <p className="text-sm text-gray-500 mt-1">I've completed the food safety training course</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
+              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
                 <RadioGroupItem value="no" id="fsl-no" className="mt-1" />
                 <div>
                   <Label htmlFor="fsl-no" className="font-medium cursor-pointer">Not yet, but I'd like to learn</Label>
                   <p className="text-sm text-gray-500 mt-1">We'll guide you through the simple process</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
+              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
                 <RadioGroupItem value="notSure" id="fsl-not-sure" className="mt-1" />
                 <div>
                   <Label htmlFor="fsl-not-sure" className="font-medium cursor-pointer">I'd like to learn more</Label>
@@ -144,8 +144,8 @@ export default function CertificationsForm() {
             </div>
           </div>
           
-          <div className="p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+          <div className="p-4 md:p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center">
                   <Check className="h-5 w-5 mr-2 text-primary" />
@@ -157,34 +157,34 @@ export default function CertificationsForm() {
                 href="https://www.gov.nl.ca/dgsnl/licensing/environmental-health/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary text-sm font-medium hover:underline inline-flex items-center"
+                className="text-primary text-sm font-medium hover:underline hover-text inline-flex items-center whitespace-nowrap"
               >
                 Provincial Guidelines <ExternalLink className="h-3.5 w-3.5 ml-1" />
               </a>
             </div>
             
-            <p className="mb-4 text-gray-600">Do you have a Food Establishment Certificate?*</p>
+            <p className="mb-3 md:mb-4 text-gray-600">Do you have a Food Establishment Certificate?*</p>
             
             <RadioGroup
               onValueChange={(value) => form.setValue("foodEstablishmentCert", value as "yes" | "no" | "notSure")}
               defaultValue={formData.foodEstablishmentCert}
-              className="flex flex-col space-y-3"
+              className="flex flex-col space-y-2 md:space-y-3"
             >
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
+              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
                 <RadioGroupItem value="yes" id="fec-yes" className="mt-1" />
                 <div>
                   <Label htmlFor="fec-yes" className="font-medium cursor-pointer">Yes, I have a certificate</Label>
                   <p className="text-sm text-gray-500 mt-1">My kitchen has been inspected and approved</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
+              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
                 <RadioGroupItem value="no" id="fec-no" className="mt-1" />
                 <div>
                   <Label htmlFor="fec-no" className="font-medium cursor-pointer">Not yet, I'm interested</Label>
                   <p className="text-sm text-gray-500 mt-1">We'll connect you with resources to get started</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary transition-colors">
+              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
                 <RadioGroupItem value="notSure" id="fec-not-sure" className="mt-1" />
                 <div>
                   <Label htmlFor="fec-not-sure" className="font-medium cursor-pointer">Tell me more</Label>
@@ -207,19 +207,19 @@ export default function CertificationsForm() {
           </div>
         </div>
         
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center pt-4 md:pt-6">
           <Button 
             type="button" 
             variant="outline"
             onClick={goToPreviousStep}
-            className="border-primary text-primary hover:bg-primary hover:text-white"
+            className="border-primary text-primary hover:bg-primary hover:text-white hover-standard px-4"
           >
             Back
           </Button>
           <Button 
             type="submit"
             disabled={isPending}
-            className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1 flex items-center"
+            className="bg-primary hover:bg-opacity-90 text-white font-bold py-2 md:py-3 px-5 md:px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow flex items-center"
           >
             {isPending ? 
               <>

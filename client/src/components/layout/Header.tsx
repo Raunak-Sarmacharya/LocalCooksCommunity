@@ -81,7 +81,7 @@ export default function Header() {
             <li>
               <a 
                 href="#how-it-works" 
-                className="hover:text-primary transition-colors cursor-pointer"
+                className="hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => scrollToSection("how-it-works", e)}
               >
                 How It Works
@@ -90,7 +90,7 @@ export default function Header() {
             <li>
               <a 
                 href="#benefits" 
-                className="hover:text-primary transition-colors cursor-pointer"
+                className="hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => scrollToSection("benefits", e)}
               >
                 Benefits
@@ -99,7 +99,7 @@ export default function Header() {
             <li>
               <a 
                 href="#about" 
-                className="hover:text-primary transition-colors cursor-pointer"
+                className="hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => scrollToSection("about", e)}
               >
                 About Us
@@ -110,7 +110,7 @@ export default function Header() {
                 <Button 
                   asChild
                   variant="outline" 
-                  className="border-primary text-primary hover:bg-primary hover:text-white"
+                  className="border-primary text-primary hover:bg-primary hover:text-white hover-standard"
                 >
                   <Link href="/auth">Login / Register</Link>
                 </Button>
@@ -197,7 +197,7 @@ export default function Header() {
             <li>
               <a 
                 href="#how-it-works" 
-                className="block py-2 hover:text-primary transition-colors cursor-pointer"
+                className="block py-2 hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => {
                   scrollToSection("how-it-works", e);
                   closeMenu();
@@ -209,7 +209,7 @@ export default function Header() {
             <li>
               <a 
                 href="#benefits" 
-                className="block py-2 hover:text-primary transition-colors cursor-pointer"
+                className="block py-2 hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => {
                   scrollToSection("benefits", e);
                   closeMenu();
@@ -221,7 +221,7 @@ export default function Header() {
             <li>
               <a 
                 href="#about" 
-                className="block py-2 hover:text-primary transition-colors cursor-pointer"
+                className="block py-2 hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => {
                   scrollToSection("about", e);
                   closeMenu();
@@ -234,7 +234,7 @@ export default function Header() {
               <li className="pt-2">
                 <Button 
                   asChild
-                  className="w-full bg-primary hover:bg-opacity-90 text-white"
+                  className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                 >
                   <Link href="/auth" onClick={closeMenu}>Login / Register</Link>
                 </Button>

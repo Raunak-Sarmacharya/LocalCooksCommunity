@@ -64,7 +64,7 @@ export default function KitchenPreferenceForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Alert className="mb-6 bg-blue-50 border-blue-200">
+        <Alert className="mb-4 md:mb-6 bg-blue-50 border-blue-200">
           <Info className="h-5 w-5 text-blue-500" />
           <AlertTitle className="text-blue-700">Kitchen Options</AlertTitle>
           <AlertDescription className="text-blue-600">
@@ -80,16 +80,16 @@ export default function KitchenPreferenceForm() {
             </h3>
           </div>
           
-          <p className="text-gray-600 mb-4">
+          <p className="text-gray-600 mb-3 md:mb-4">
             This helps us understand how to best support your cooking journey. We have options for every cooking situation!
           </p>
           
           <RadioGroup
             onValueChange={(value) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
             defaultValue={formData.kitchenPreference}
-            className="grid grid-cols-1 md:grid-cols-3 gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4"
           >
-            <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary overflow-hidden transition-colors h-full">
+            <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary hover-text h-full">
               <div className="bg-blue-50 py-3 px-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-blue-700">Commercial Kitchen</h4>
@@ -110,7 +110,7 @@ export default function KitchenPreferenceForm() {
               </div>
             </div>
             
-            <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary overflow-hidden transition-colors h-full">
+            <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary hover-text h-full">
               <div className="bg-green-50 py-3 px-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-green-700">Home Kitchen</h4>
@@ -131,7 +131,7 @@ export default function KitchenPreferenceForm() {
               </div>
             </div>
             
-            <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary overflow-hidden transition-colors h-full">
+            <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary hover-text h-full">
               <div className="bg-purple-50 py-3 px-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-purple-700">Not Sure Yet</h4>
@@ -160,19 +160,19 @@ export default function KitchenPreferenceForm() {
           )}
         </div>
         
-        <div className="flex justify-between items-center pt-4">
+        <div className="flex justify-between items-center pt-4 md:pt-6">
           <Button 
             type="button" 
             variant="outline"
             onClick={goToPreviousStep}
-            className="border-primary text-primary hover:bg-primary hover:text-white"
+            className="border-primary text-primary hover:bg-primary hover:text-white hover-standard px-4"
           >
             Back
           </Button>
           <Button 
             type="submit" 
             disabled={isPending}
-            className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1 flex items-center"
+            className="bg-primary hover:bg-opacity-90 text-white font-bold py-2 md:py-3 px-5 md:px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow flex items-center"
           >
             Continue
             <ArrowRight className="ml-2 h-4 w-4" />

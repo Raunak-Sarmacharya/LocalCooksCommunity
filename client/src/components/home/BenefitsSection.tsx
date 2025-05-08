@@ -62,7 +62,7 @@ export default function BenefitsSection() {
   return (
     <section id="benefits" className="py-16 md:py-24 px-4 bg-gradient-to-b from-blue-50 to-white scroll-mt-24">
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-16">
+        <div className="text-center mb-12 md:mb-16">
           <motion.span 
             className="inline-block text-primary font-medium mb-2"
             initial={{ opacity: 0, y: 20 }}
@@ -96,50 +96,50 @@ export default function BenefitsSection() {
           {mainBenefits.map((benefit, index) => (
             <motion.div 
               key={index}
-              className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+              className="bg-white p-4 md:p-6 rounded-xl shadow-lg hover:shadow-xl hover-shadow hover:-translate-y-1 hover-transform group"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: index * 0.1 + 0.3 }}
             >
-              <div className="mb-4 bg-gray-50 w-16 h-16 rounded-2xl flex items-center justify-center">
+              <div className="mb-3 md:mb-4 bg-gray-50 w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center">
                 {benefit.icon}
               </div>
-              <h3 className="text-lg font-bold mb-2">{benefit.title}</h3>
-              <p className="text-gray-600 text-sm">{benefit.description}</p>
+              <h3 className="text-base md:text-lg font-bold mb-1 md:mb-2 group-hover:text-primary hover-text">{benefit.title}</h3>
+              <p className="text-xs md:text-sm text-gray-600 group-hover:text-gray-800 hover-text">{benefit.description}</p>
             </motion.div>
           ))}
         </div>
         
         <motion.div 
-          className="relative bg-gradient-to-br from-primary to-primary-dark rounded-2xl overflow-hidden shadow-xl"
+          className="relative bg-gradient-to-tl from-primary to-primary-dark rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.4)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.2 }}
         >
-          <div className="absolute top-0 right-0 w-1/3 h-full opacity-10">
+          <div className="absolute top-0 right-0 w-[17.5%] h-full opacity-5">
             <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
               <path fill="#FFFFFF" d="M47.7,-51.2C59.1,-34.8,64,-15.5,62.4,2.4C60.9,20.3,52.8,36.9,39.9,47.7C27,58.5,9.2,63.5,-8.9,63.1C-27,62.8,-45.3,57.1,-56.9,44.3C-68.5,31.5,-73.4,11.7,-71.8,-8.2C-70.2,-28.1,-62.1,-48,-47.7,-64.5C-33.3,-80.9,-12.6,-93.9,3.3,-96.8C19.1,-99.8,36.2,-92.7,47.7,-79C59.1,-65.3,64,-34.8,64,-5.7L62.2,0.2L47.7,-51.2Z" transform="translate(100 100)" />
             </svg>
           </div>
           
-          <div className="p-8 md:p-12 flex flex-col md:flex-row items-center relative z-10">
-            <div className="md:w-1/2 mb-8 md:mb-0">
+          <div className="p-6 md:p-10 lg:p-14 flex flex-col md:flex-row items-center relative z-10">
+            <div className="md:w-1/2 mb-6 md:mb-0">
               <img 
                 src="https://images.unsplash.com/photo-1556911220-bff31c812dba?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
                 alt="Professional chef cooking" 
-                className="rounded-xl shadow-lg w-full h-64 object-cover"
+                className="rounded-xl md:rounded-2xl w-full h-48 sm:h-60 md:h-72 object-cover shadow-[0_5px_15px_rgba(0,0,0,0.2)] md:shadow-[0_10px_25px_rgba(0,0,0,0.3)]"
               />
             </div>
             
-            <div className="md:w-1/2 md:pl-10 text-white">
-              <h2 className="text-2xl md:text-3xl font-bold mb-6">Early Bird Advantages</h2>
-              <p className="mb-6 opacity-90">
+            <div className="md:w-1/2 md:pl-8 lg:pl-10 text-white">
+              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4 md:mb-6 text-shadow-lg">Early Bird Advantages</h2>
+              <p className="text-base md:text-lg mb-4 md:mb-6 opacity-95 text-shadow-md">
                 Join during our trial phase and get exclusive benefits that won't be available later.
               </p>
               
-              <ul className="space-y-4 mb-8">
+              <ul className="space-y-3 md:space-y-5 mb-6 md:mb-8">
                 {pilotBenefits.map((benefit, index) => (
                   <motion.li 
                     key={index} 
@@ -149,12 +149,12 @@ export default function BenefitsSection() {
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 + 0.4 }}
                   >
-                    <div className="bg-white rounded-full p-1 mr-3 flex-shrink-0 mt-0.5">
+                    <div className="bg-white/90 rounded-full p-1.5 mr-4 flex-shrink-0 mt-0.5 shadow-sm">
                       {benefit.icon}
                     </div>
                     <div>
-                      <div className="font-medium">{benefit.text}</div>
-                      <div className="text-sm opacity-80">{benefit.description}</div>
+                      <div className="font-medium text-lg text-shadow-sm">{benefit.text}</div>
+                      <div className="text-sm opacity-85 text-shadow-xs">{benefit.description}</div>
                     </div>
                   </motion.li>
                 ))}
@@ -163,7 +163,7 @@ export default function BenefitsSection() {
               <Button 
                 onClick={handleApplicationClick}
                 size="lg"
-                className="bg-white text-primary hover:bg-gray-100 font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1 hover:shadow-xl"
+                className="bg-white/95 text-primary hover:bg-white font-bold py-3 md:py-4 px-6 md:px-10 rounded-full shadow-lg hover:-translate-y-2 hover-transform hover:shadow-xl hover-shadow text-base md:text-lg w-full sm:w-auto"
               >
                 Apply Now
               </Button>

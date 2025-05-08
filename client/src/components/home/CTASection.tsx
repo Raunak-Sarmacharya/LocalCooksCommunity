@@ -21,7 +21,7 @@ export default function CTASection() {
         </p>
         <Button 
           onClick={handleApplicationClick}
-          className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1"
+          className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
         >
           Start Your Application
         </Button>

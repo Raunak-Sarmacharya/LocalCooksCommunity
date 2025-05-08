@@ -18,7 +18,7 @@ export default function Footer() {
             <Button 
               asChild
               variant="outline"
-              className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 text-white"
+              className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white"
             >
               <Link href="/apply">
                 <ChefHat className="mr-2 h-4 w-4" />
@@ -31,15 +31,15 @@ export default function Footer() {
             <div>
               <h3 className="text-lg font-bold mb-4 text-primary">Contact Us</h3>
               <ul className="space-y-3">
-                <li className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors">
+                <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <Mail className="h-4 w-4 text-primary" />
                   <span>info@localcooks.ca</span>
                 </li>
-                <li className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors">
+                <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <Phone className="h-4 w-4 text-primary" />
                   <span>(709) 555-1234</span>
                 </li>
-                <li className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors">
+                <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <MapPin className="h-4 w-4 text-primary" />
                   <span>St. John's, NL, Canada</span>
                 </li>
@@ -50,22 +50,22 @@ export default function Footer() {
               <h3 className="text-lg font-bold mb-4 text-primary">Quick Links</h3>
               <ul className="space-y-2">
                 <li>
-                  <Link href="/#how-it-works" className="text-gray-300 hover:text-white transition-colors">
+                  <Link href="/#how-it-works" className="text-gray-300 hover:text-white hover-text">
                     How It Works
                   </Link>
                 </li>
                 <li>
-                  <Link href="/#benefits" className="text-gray-300 hover:text-white transition-colors">
+                  <Link href="/#benefits" className="text-gray-300 hover:text-white hover-text">
                     Benefits
                   </Link>
                 </li>
                 <li>
-                  <Link href="/#about" className="text-gray-300 hover:text-white transition-colors">
+                  <Link href="/#about" className="text-gray-300 hover:text-white hover-text">
                     About Us
                   </Link>
                 </li>
                 <li>
-                  <Link href="/apply" className="text-gray-300 hover:text-white transition-colors">
+                  <Link href="/apply" className="text-gray-300 hover:text-white hover-text">
                     Apply Now
                   </Link>
                 </li>
@@ -77,21 +77,21 @@ export default function Footer() {
               <div className="flex space-x-4 mb-6">
                 <a 
                   href="#" 
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 transition-colors"
+                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
                   aria-label="Facebook"
                 >
                   <Facebook className="h-5 w-5" />
                 </a>
                 <a 
                   href="#" 
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 transition-colors"
+                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
                   aria-label="Twitter"
                 >
                   <Twitter className="h-5 w-5" />
                 </a>
                 <a 
                   href="#" 
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 transition-colors"
+                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
                   aria-label="Instagram"
                 >
                   <Instagram className="h-5 w-5" />
