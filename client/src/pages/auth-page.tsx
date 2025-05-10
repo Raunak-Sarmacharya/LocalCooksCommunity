@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoginForm from "@/components/auth/LoginForm";
 import RegisterForm from "@/components/auth/RegisterForm";
 import Logo from "@/components/ui/logo";
+import { Button } from "@/components/ui/button";
 
 export default function AuthPage() {
   const [, setLocation] = useLocation();
@@ -55,6 +56,30 @@ export default function AuthPage() {
               <RegisterForm onSuccess={handleSuccess} />
             </TabsContent>
           </Tabs>
+          
+          {/* Social Login Buttons */}
+          <div className="flex flex-col gap-3 mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-muted-foreground/20"></span>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+              </div>
+            </div>
+            <Button asChild variant="outline" className="w-full border-[#4285F4] text-[#4285F4] hover:bg-[#4285F4]/10">
+              <a href="/api/auth/google">
+                <svg width="20" height="20" viewBox="0 0 48 48" className="mr-2"><g><path fill="#4285F4" d="M24 9.5c3.54 0 6.73 1.22 9.24 3.23l6.9-6.9C36.68 2.36 30.7 0 24 0 14.82 0 6.73 5.06 2.69 12.44l8.06 6.26C12.6 13.13 17.88 9.5 24 9.5z"/><path fill="#34A853" d="M46.1 24.5c0-1.64-.15-3.22-.42-4.74H24v9.04h12.4c-.54 2.9-2.18 5.36-4.64 7.04l7.18 5.6C43.98 37.36 46.1 31.36 46.1 24.5z"/><path fill="#FBBC05" d="M10.75 28.7c-1.1-3.2-1.1-6.7 0-9.9l-8.06-6.26C.9 16.36 0 20.06 0 24c0 3.94.9 7.64 2.69 11.46l8.06-6.26z"/><path fill="#EA4335" d="M24 48c6.7 0 12.68-2.22 16.9-6.06l-7.18-5.6c-2.02 1.36-4.6 2.16-7.72 2.16-6.12 0-11.3-3.63-13.25-8.7l-8.06 6.26C6.73 42.94 14.82 48 24 48z"/></g></svg>
+                Continue with Google
+              </a>
+            </Button>
+            <Button asChild variant="outline" className="w-full border-[#1877F3] text-[#1877F3] hover:bg-[#1877F3]/10">
+              <a href="/api/auth/facebook">
+                <svg width="20" height="20" viewBox="0 0 32 32" className="mr-2"><path fill="#1877F3" d="M29 0H3C1.3 0 0 1.3 0 3v26c0 1.7 1.3 3 3 3h13V20h-4v-5h4v-3.6C16 7.7 18.4 6 21.2 6c1.3 0 2.6.1 2.8.1v4h-2c-1.6 0-2 .8-2 2v3h4l-1 5h-3v12h6c1.7 0 3-1.3 3-3V3c0-1.7-1.3-3-3-3z"/></svg>
+                Continue with Facebook
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
 

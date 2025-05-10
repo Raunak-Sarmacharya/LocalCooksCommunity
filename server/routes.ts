@@ -4,10 +4,137 @@ import { storage } from "./storage";
 import { insertApplicationSchema, updateApplicationStatusSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { setupAuth } from "./auth";
+import passport from "passport";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
   setupAuth(app);
+
+  // Google authentication
+  app.get("/api/auth/google", (req, res, next) => {
+    console.log("Starting Google auth flow");
+    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+      passport.authenticate("google", { 
+        scope: ["profile", "email"],
+        failureRedirect: "/login?error=google_auth_failed",
+        state: Date.now().toString() // Add state parameter for security
+      })(req, res, next);
+    } else {
+      console.error("Google OAuth credentials not configured");
+      res.redirect("/login?error=google_not_configured");
+    }
+  });
+
+  app.get(
+    "/api/auth/google/callback",
+    (req, res, next) => {
+      console.log("Google OAuth callback received:", req.query);
+      // Check for error in the callback
+      if (req.query.error) {
+        console.error("Google OAuth error:", req.query.error);
+        return res.redirect(`/login?error=${req.query.error}`);
+      }
+      next();
+    },
+    passport.authenticate("google", { 
+      failureRedirect: "/login?error=google_callback_failed",
+      failWithError: true // This will pass the error to the next middleware
+    }),
+    (req, res) => {
+      // Successful authentication
+      console.log("Google authentication successful");
+      res.redirect("/");
+    },
+    // Error handler
+    (err: any, req: any, res: any, next: any) => {
+      console.error("Google authentication error:", err);
+      res.redirect("/login?error=internal_error");
+    }
+  );
+
+  // Facebook authentication
+  app.get("/api/auth/facebook", (req, res, next) => {
+    console.log("Starting Facebook auth flow");
+    if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
+      passport.authenticate("facebook", { 
+        scope: ["email"],
+        failureRedirect: "/login?error=facebook_auth_failed",
+        state: Date.now().toString() // Add state parameter for security
+      })(req, res, next);
+    } else {
+      console.error("Facebook OAuth credentials not configured");
+      res.redirect("/login?error=facebook_not_configured");
+    }
+  });
+
+  app.get(
+    "/api/auth/facebook/callback",
+    (req, res, next) => {
+      console.log("Facebook OAuth callback received:", req.query);
+      // Check for error in the callback
+      if (req.query.error) {
+        console.error("Facebook OAuth error:", req.query.error);
+        return res.redirect(`/login?error=${req.query.error}`);
+      }
+      next();
+    },
+    passport.authenticate("facebook", { 
+      failureRedirect: "/login?error=facebook_callback_failed",
+      failWithError: true
+    }),
+    (req, res) => {
+      // Successful authentication
+      console.log("Facebook authentication successful");
+      res.redirect("/");
+    },
+    // Error handler
+    (err: any, req: any, res: any, next: any) => {
+      console.error("Facebook authentication error:", err);
+      res.redirect("/login?error=internal_error");
+    }
+  );
+
+  // Instagram authentication
+  app.get("/api/auth/instagram", (req, res, next) => {
+    console.log("Starting Instagram auth flow");
+    if (process.env.INSTAGRAM_CLIENT_ID && process.env.INSTAGRAM_CLIENT_SECRET) {
+      passport.authenticate("instagram", {
+        failureRedirect: "/login?error=instagram_auth_failed",
+        state: Date.now().toString() // Add state parameter for security
+      })(req, res, next);
+    } else {
+      console.error("Instagram OAuth credentials not configured");
+      res.redirect("/login?error=instagram_not_configured");
+    }
+  });
+
+  app.get(
+    "/api/auth/instagram/callback",
+    (req, res, next) => {
+      console.log("Instagram OAuth callback received:", req.query);
+      // Check for error in the callback
+      if (req.query.error) {
+        console.error("Instagram OAuth error:", req.query.error);
+        return res.redirect(`/login?error=${req.query.error}`);
+      }
+      next();
+    },
+    passport.authenticate("instagram", { 
+      failureRedirect: "/login?error=instagram_callback_failed",
+      failWithError: true
+    }),
+    (req, res) => {
+      // Successful authentication
+      console.log("Instagram authentication successful");
+      res.redirect("/");
+    },
+    // Error handler
+    (err: any, req: any, res: any, next: any) => {
+      console.error("Instagram authentication error:", err);
+      res.redirect("/login?error=internal_error");
+    }
+  );
+
   // Application submission endpoint
   app.post("/api/applications", async (req: Request, res: Response) => {
     try {

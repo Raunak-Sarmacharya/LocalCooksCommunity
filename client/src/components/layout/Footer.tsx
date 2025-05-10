@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Facebook, Twitter, Instagram, Phone, Mail, MapPin, Heart, ChefHat, Users } from "lucide-react";
+import { Facebook, Phone, Mail, MapPin, Heart, ChefHat } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 
@@ -81,20 +81,6 @@ export default function Footer() {
                   aria-label="Facebook"
                 >
                   <Facebook className="h-5 w-5" />
-                </a>
-                <a 
-                  href="#" 
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
-                  aria-label="Twitter"
-                >
-                  <Twitter className="h-5 w-5" />
-                </a>
-                <a 
-                  href="#" 
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
-                  aria-label="Instagram"
-                >
-                  <Instagram className="h-5 w-5" />
                 </a>
               </div>
               <p className="text-sm text-gray-400">
