@@ -1,5 +1,7 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { Strategy as FacebookStrategy } from "passport-facebook";
 import { Express, Request } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -70,6 +72,70 @@ export function setupAuth(app: Express) {
         return done(error);
       }
     })
+  );
+
+  // Google OAuth Strategy
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL,
+        scope: ["profile", "email"]
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          // Check if user exists
+          let user = await storage.getUserByOAuthId("google", profile.id);
+          
+          if (!user) {
+            // Create a new user
+            user = await storage.createOAuthUser({
+              oauth_provider: "google",
+              oauth_id: profile.id,
+              username: profile.emails?.[0]?.value || `google_${profile.id}`,
+              role: "applicant",
+              profile_data: JSON.stringify(profile)
+            });
+          }
+          
+          return done(null, user);
+        } catch (error) {
+          return done(error as Error);
+        }
+      }
+    )
+  );
+
+  // Facebook OAuth Strategy
+  passport.use(
+    new FacebookStrategy(
+      {
+        clientID: process.env.FACEBOOK_CLIENT_ID!,
+        clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
+        callbackURL: process.env.FACEBOOK_CALLBACK_URL,
+        profileFields: ["id", "emails", "name"]
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          let user = await storage.getUserByOAuthId("facebook", profile.id);
+          
+          if (!user) {
+            user = await storage.createOAuthUser({
+              oauth_provider: "facebook",
+              oauth_id: profile.id,
+              username: profile.emails?.[0]?.value || `facebook_${profile.id}`,
+              role: "applicant",
+              profile_data: JSON.stringify(profile)
+            });
+          }
+          
+          return done(null, user);
+        } catch (error) {
+          return done(error as Error);
+        }
+      }
+    )
   );
 
   // Serialize/deserialize user
@@ -170,4 +236,31 @@ export function setupAuth(app: Express) {
       role: user.role
     });
   });
+
+  // OAuth routes
+  app.get(
+    "/api/auth/google",
+    passport.authenticate("google", { scope: ["profile", "email"] })
+  );
+
+  app.get(
+    "/api/auth/google/callback",
+    passport.authenticate("google", { failureRedirect: "/login" }),
+    (req, res) => {
+      res.redirect("/");
+    }
+  );
+
+  app.get(
+    "/api/auth/facebook",
+    passport.authenticate("facebook", { scope: ["email"] })
+  );
+
+  app.get(
+    "/api/auth/facebook/callback",
+    passport.authenticate("facebook", { failureRedirect: "/login" }),
+    (req, res) => {
+      res.redirect("/");
+    }
+  );
 }

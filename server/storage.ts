@@ -13,7 +13,13 @@ const MemoryStore = createMemoryStore(session);
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  createOAuthUser(user: Omit<InsertUser, 'password'> & { 
+    oauth_provider: string;
+    oauth_id: string;
+    profile_data?: string;
+  }): Promise<User>;
   
   // Application-related methods
   getAllApplications(): Promise<Application[]>;
@@ -54,21 +60,46 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.userCurrentId++;
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    if (!googleId) return undefined;
+    for (const user of this.users.values()) {
+      if (user.googleId === googleId) return user;
+    }
+    return undefined;
+  }
+
+  async getUserByFacebookId(facebookId: string): Promise<User | undefined> {
+    if (!facebookId) return undefined;
+    for (const user of this.users.values()) {
+      if (user.facebookId === facebookId) return user;
+    }
+    return undefined;
+  }
+
+  async getUserByInstagramId(instagramId: string): Promise<User | undefined> {
+    if (!instagramId) return undefined;
+    for (const user of this.users.values()) {
+      if (user.instagramId === instagramId) return user;
+    }
+    return undefined;
+  }
+
+  async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string }): Promise<User> {
     // Ensure insertUser has the required properties
-    if (!insertUser.username || !insertUser.password) {
+    if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    
-    // Create a complete User object with all required properties
     const user: User = {
-      id,
+      id: this.userCurrentId++,
       username: insertUser.username,
       password: insertUser.password,
       role: insertUser.role || "applicant",
+      twitterId: null,
+      googleId: insertUser.googleId || null,
+      facebookId: insertUser.facebookId || null,
+      instagramId: null,
     };
-    this.users.set(id, user);
+    this.users.set(user.id, user);
     return user;
   }
 
@@ -124,6 +155,44 @@ export class MemStorage implements IStorage {
     this.applications.set(update.id, updatedApplication);
     return updatedApplication;
   }
+
+  async getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined> {
+    if (!oauthId) return undefined;
+    
+    if (provider === 'google') {
+      return this.getUserByGoogleId(oauthId);
+    } else if (provider === 'facebook') {
+      return this.getUserByFacebookId(oauthId);
+    }
+    
+    return undefined;
+  }
+
+  async createOAuthUser(userData: Omit<InsertUser, 'password'> & { 
+    oauth_provider: string;
+    oauth_id: string;
+    profile_data?: string;
+  }): Promise<User> {
+    const { oauth_provider, oauth_id, ...rest } = userData;
+    
+    // Create user with OAuth provider details
+    const insertData: InsertUser & { 
+      googleId?: string, 
+      facebookId?: string 
+    } = {
+      ...rest,
+      password: '', // No password for OAuth users
+    };
+    
+    // Set the appropriate OAuth ID based on provider
+    if (oauth_provider === 'google') {
+      insertData.googleId = oauth_id;
+    } else if (oauth_provider === 'facebook') {
+      insertData.facebookId = oauth_id;
+    }
+    
+    return this.createUser(insertData);
+  }
 }
 
 // PostgreSQL-based database storage implementation
@@ -148,20 +217,40 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    if (!googleId) return undefined;
+    const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
+    return user || undefined;
+  }
+
+  async getUserByFacebookId(facebookId: string): Promise<User | undefined> {
+    if (!facebookId) return undefined;
+    const [user] = await db.select().from(users).where(eq(users.facebookId, facebookId));
+    return user || undefined;
+  }
+
+  async getUserByInstagramId(instagramId: string): Promise<User | undefined> {
+    if (!instagramId) return undefined;
+    const [user] = await db.select().from(users).where(eq(users.instagramId, instagramId));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string }): Promise<User> {
     // Ensure insertUser has the required properties
-    if (!insertUser.username || !insertUser.password) {
+    if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    
-    const [user] = await db
-      .insert(users)
-      .values({
-        username: insertUser.username,
-        password: insertUser.password,
-        role: insertUser.role || "applicant"
-      })
-      .returning();
+    const user: User = {
+      id: this.userCurrentId++,
+      username: insertUser.username,
+      password: insertUser.password,
+      role: insertUser.role || "applicant",
+      twitterId: null,
+      googleId: insertUser.googleId || null,
+      facebookId: insertUser.facebookId || null,
+      instagramId: null,
+    };
+    this.users.set(user.id, user);
     return user;
   }
 
@@ -204,7 +293,50 @@ export class DatabaseStorage implements IStorage {
     
     return updatedApplication || undefined;
   }
+
+  async getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined> {
+    if (!oauthId) return undefined;
+    
+    if (provider === 'google') {
+      return this.getUserByGoogleId(oauthId);
+    } else if (provider === 'facebook') {
+      return this.getUserByFacebookId(oauthId);
+    }
+    
+    return undefined;
+  }
+
+  async createOAuthUser(userData: Omit<InsertUser, 'password'> & { 
+    oauth_provider: string;
+    oauth_id: string;
+    profile_data?: string;
+  }): Promise<User> {
+    const { oauth_provider, oauth_id, ...rest } = userData;
+    
+    // Create user with OAuth provider details
+    const insertData: InsertUser & { 
+      googleId?: string, 
+      facebookId?: string 
+    } = {
+      ...rest,
+      password: '', // No password for OAuth users
+    };
+    
+    // Set the appropriate OAuth ID based on provider
+    if (oauth_provider === 'google') {
+      insertData.googleId = oauth_id;
+    } else if (oauth_provider === 'facebook') {
+      insertData.facebookId = oauth_id;
+    }
+    
+    return this.createUser(insertData);
+  }
 }
 
 // Switch from in-memory to database storage
 export const storage = new MemStorage();
+/* Temporarily disabled DatabaseStorage to avoid database errors
+export const storage = process.env.NODE_ENV === "development" 
+  ? new MemStorage()
+  : new DatabaseStorage();
+*/

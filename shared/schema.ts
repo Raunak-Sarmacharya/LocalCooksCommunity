@@ -20,6 +20,8 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   role: userRoleEnum("role").default("applicant").notNull(),
+  googleId: text("google_id").unique().default(null),
+  facebookId: text("facebook_id").unique().default(null),
 });
 
 // Define the applications table
