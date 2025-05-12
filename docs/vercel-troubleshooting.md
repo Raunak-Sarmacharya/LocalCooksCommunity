@@ -1,98 +1,79 @@
-# Vercel Deployment Troubleshooting Guide
+# Troubleshooting Vercel Deployment Issues
 
-This document addresses specific issues encountered when deploying the Local Cooks application to Vercel and provides solutions.
+If you're experiencing issues with your Vercel deployment, particularly the `FUNCTION_INVOCATION_FAILED` error, here are some troubleshooting steps:
 
-## TypeScript Errors in Authentication System
+## Common Vercel Errors and Solutions
 
-### Problem:
-Typescript errors related to OAuth fields like `instagramId` and `twitterId` that were not defined in the schema.
+### FUNCTION_INVOCATION_FAILED Error
 
-### Solution:
-1. We simplified the user schema to only include necessary fields:
-   - Updated `shared/schema.ts` to use a more explicit Zod schema without fields that cause TypeScript errors
-   - Removed references to unused OAuth providers (Twitter, Instagram)
+This error occurs when your serverless function fails to execute properly. Common causes:
 
-2. For serverless deployment:
-   - Created separate simplified versions of storage and authentication in `/api/storage.js`
-   - Used plain JavaScript for the API functions to avoid TypeScript compilation issues
+1. **Database Connection Issues**
+   - Check if your DATABASE_URL is correctly set in Vercel environment variables
+   - Make sure your Neon database is active and not in "paused" state
+   - Test database connectivity using the `/api/health` endpoint
 
-## Routing Configuration Errors
+2. **Missing Environment Variables**
+   - Make sure you've set `SESSION_SECRET` in your Vercel environment variables
+   - Setting `NODE_ENV=production` can help with certain configurations
 
-### Problem:
-Vercel's routing system was conflicting with the application's routes, resulting in 404 errors.
+3. **Function Timeout**
+   - If your function takes too long to execute, it might time out
+   - Reduce the complexity of your API endpoints
+   - Keep database queries efficient
 
-### Solution:
-1. Updated `vercel.json` to use `rewrites` instead of `routes`:
-   ```json
-   "rewrites": [
-     {
-       "source": "/api/(.*)",
-       "destination": "/api/index.js"
-     },
-     {
-       "source": "/(.*)",
-       "destination": "/index.html"
-     }
-   ]
-   ```
+4. **Memory Limitations**
+   - Vercel has memory limits for serverless functions
+   - Reduce the memory footprint of your functions
+   - Consider using edge functions for memory-intensive operations
 
-2. Made the API handler export as the default function for Vercel serverless:
-   ```javascript
-   export default app;
-   ```
+## Debugging Steps
 
-## Session Management in Serverless Environment
+1. **Check Function Logs**
+   - In Vercel dashboard, navigate to your deployment
+   - Click on "Functions" to see function logs
+   - Look for error messages or timeouts
 
-### Problem:
-Vercel's serverless functions don't maintain state between invocations, causing session data to be lost.
+2. **Test API Endpoints Individually**
+   - Try accessing each API endpoint separately to identify which one is failing
+   - Use `/api/health` to check database connection status
 
-### Solution:
-1. Implemented a simplified in-memory session store for development purposes
-2. For production:
-   - Use database-backed session storage (`connect-pg-simple`)
-   - Set proper cookie settings for secure environments
-   - Ensure `SESSION_SECRET` environment variable is set
+3. **Simplify Problematic Functions**
+   - Temporarily comment out complex operations
+   - Add more error handling and logging
+   - Implement retries for unreliable operations
 
-## Database Connectivity Issues
+4. **Deployment Environment Differences**
+   - Some code that works locally might not work in Vercel's environment
+   - Watch out for file path differences, environmental dependencies, etc.
 
-### Problem:
-Connection pooling issues with PostgreSQL in serverless environments.
+## Optimizing for Vercel Deployment
 
-### Solution:
-1. Used `@neondatabase/serverless` for better serverless compatibility
-2. Configured the database client with proper connection pooling:
-   ```javascript
-   neonConfig.webSocketConstructor = ws;
-   export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-   ```
+1. **Cold Starts**
+   - Serverless functions have "cold starts" when they haven't been used recently
+   - Minimize dependencies to reduce cold start time
+   - Consider keeping functions minimal and focused
 
-3. Set appropriate timeouts and connection limits for serverless functions
+2. **Database Connections**
+   - Use connection pooling with small pool sizes
+   - Always close connections when done
+   - For Neon, use their serverless driver
 
-## Build Process Customization
+3. **Session Management**
+   - Store sessions in the database rather than in-memory
+   - Use short session expiration times
+   - Consider stateless authentication with JWTs
 
-### Problem:
-Vercel's default build process wasn't properly handling the application structure.
+4. **Environment Variables**
+   - Double-check that all required environment variables are set
+   - Make sure URLs include the correct protocol (http/https)
+   - Use the Vercel dashboard to manage environment variables
 
-### Solution:
-1. Created custom build scripts:
-   - `vercel-build.mjs` for the client
-   - `api-build.mjs` for the API functions
+## Getting Additional Help
 
-2. Modified the build output paths to match Vercel's expected structure
+If you're still experiencing issues after trying these solutions:
 
-## OAuth Provider Configuration
-
-### Problem:
-OAuth providers were causing errors when environment variables weren't set.
-
-### Solution:
-1. Made OAuth configuration conditional:
-   ```javascript
-   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-     // Configure Google OAuth
-   } else {
-     console.log("Google OAuth strategy not configured - missing environment variables");
-   }
-   ```
-
-2. Added clear error messages when authentication fails due to missing OAuth configuration
+1. Check Vercel status page for any ongoing incidents
+2. Review Vercel documentation for serverless function limitations
+3. Inspect the network tab in browser dev tools for more detailed error responses
+4. Review recent code changes that might have introduced the issue

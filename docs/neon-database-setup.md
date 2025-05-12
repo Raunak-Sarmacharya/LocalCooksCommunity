@@ -1,126 +1,103 @@
-# Neon Database Setup Guide for Local Cooks
+# Neon Database Setup Guide
 
-This guide will walk you through setting up the database tables in Neon.tech for the Local Cooks application.
+This guide will help you set up your Neon PostgreSQL database for the Local Cooks application.
 
-## Option 1: Manual Table Creation with SQL
+## Create Database Tables
 
-1. Log in to your Neon.tech dashboard
-2. Select your project
-3. Click on "SQL Editor" in the left sidebar
-4. Copy and paste the following SQL code:
+Run the following SQL in your Neon SQL Editor to create all necessary tables:
 
 ```sql
--- Create enum types (if they don't exist)
-DO $$ BEGIN
-  CREATE TYPE kitchen_preference AS ENUM ('commercial', 'home', 'notSure');
-EXCEPTION
-  WHEN duplicate_object THEN null;
-END $$;
+-- Create enum types
+CREATE TYPE user_role AS ENUM ('admin', 'applicant');
+CREATE TYPE kitchen_preference AS ENUM ('commercial', 'home', 'notSure');
+CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
+CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
 
-DO $$ BEGIN
-  CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
-EXCEPTION
-  WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-  CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
-EXCEPTION
-  WHEN duplicate_object THEN null;
-END $$;
-
-DO $$ BEGIN
-  CREATE TYPE user_role AS ENUM ('admin', 'applicant');
-EXCEPTION
-  WHEN duplicate_object THEN null;
-END $$;
-
--- Create users table if it doesn't exist
+-- Create users table
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   password TEXT NOT NULL,
   role user_role NOT NULL DEFAULT 'applicant',
-  google_id TEXT UNIQUE,
-  facebook_id TEXT UNIQUE
+  google_id TEXT,
+  facebook_id TEXT
 );
 
--- Create applications table if it doesn't exist
+-- Create applications table
 CREATE TABLE IF NOT EXISTS applications (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),
-  full_name TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  status application_status NOT NULL DEFAULT 'new',
+  
+  -- Personal information
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL, 
   email TEXT NOT NULL,
   phone TEXT NOT NULL,
-  food_safety_license certification_status NOT NULL,
-  food_establishment_cert certification_status NOT NULL,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  zip TEXT NOT NULL,
+  bio TEXT,
+  
+  -- Kitchen preferences
   kitchen_preference kitchen_preference NOT NULL,
-  status application_status NOT NULL DEFAULT 'new',
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  own_equipment boolean NOT NULL,
+  years_experience INTEGER NOT NULL,
+  specialty TEXT,
+  
+  -- Certifications
+  food_safety_cert certification_status NOT NULL,
+  allergen_awareness certification_status NOT NULL,
+  alcohol_certification certification_status NOT NULL,
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create session table for connect-pg-simple
-CREATE TABLE IF NOT EXISTS "session" (
-  "sid" varchar NOT NULL COLLATE "default",
-  "sess" json NOT NULL,
-  "expire" timestamp(6) NOT NULL,
-  CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
-);
-CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
-
--- Optional: Create a test admin user
+-- Create an admin user (username: admin, password: localcooks)
 INSERT INTO users (username, password, role)
-VALUES ('admin', '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8.salt', 'admin')
-ON CONFLICT (username) DO NOTHING;
+VALUES (
+  'admin',
+  'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668',
+  'admin'
+) ON CONFLICT (username) DO NOTHING;
 ```
 
-5. Click "Run" to execute the SQL statements
+## Environment Variables
 
-## Option 2: Using Drizzle Kit Migration (Local Development)
+Make sure to set these environment variables in your Vercel project:
 
-If you're working with the codebase locally and have the project set up:
-
-1. Make sure your `.env` file has the `DATABASE_URL` set correctly to your Neon database
-2. Run the Drizzle migration command:
-
-```bash
-npm run db:push
+```
+DATABASE_URL=your-neon-database-connection-string
+SESSION_SECRET=your-secure-random-string
 ```
 
-## Verifying Your Setup
+## Verify Database Connection
 
-After setting up the tables, you can verify they were created correctly:
+You can run this SQL to verify that your tables were created correctly:
 
-1. In the Neon dashboard, go to the "Tables" section
-2. You should see the following tables:
-   - `users`
-   - `applications`
-   - `session` (for session management)
+```sql
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_name IN ('users', 'applications')
+ORDER BY table_name, ordinal_position;
+```
 
-3. Test user registration through the application to ensure users can be created
-4. If using the test admin account, you can log in with:
-   - Username: `admin`
-   - Password: `password`
+## Database Connection Troubleshooting
 
-## Troubleshooting
+If you're having trouble connecting to your Neon database from Vercel:
 
-### Error: Relation Does Not Exist
+1. Make sure your DATABASE_URL includes the correct connection parameters
+2. Verify that you've enabled the "Serverless Driver" option in your Neon project settings
+3. Check that your Vercel region is compatible with your Neon region
+4. Add the "ws" package to your dependencies if connecting with WebSockets
 
-If you see errors about relations not existing:
-- Make sure all tables have been created
-- Check that you're connected to the correct database
-- Verify that your `DATABASE_URL` environment variable is correct
+## Setting Up Development Environment
 
-### Connection Issues
+For local development:
 
-If the application can't connect to the database:
-- Ensure your IP address is allowed in Neon.tech's access settings
-- Check that your connection string is in the correct format
-- Verify that your database user has the proper permissions
-
-### Schema Sync Issues
-
-If your application's code schema doesn't match the database schema:
-- Run the SQL statements again to ensure all columns exist
-- Consider dropping and recreating the tables if you're still in development
-- Make sure your Drizzle schema in `shared/schema.ts` matches the database structure
+1. Copy the DATABASE_URL from your Neon dashboard
+2. Create a `.env.local` file in your project root
+3. Add `DATABASE_URL=your-connection-string` to this file
+4. Add `SESSION_SECRET=your-dev-secret` to this file
