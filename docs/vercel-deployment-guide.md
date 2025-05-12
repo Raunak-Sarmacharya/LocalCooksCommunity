@@ -1,86 +1,93 @@
 # Vercel Deployment Guide for Local Cooks
 
-This guide provides step-by-step instructions for deploying your Local Cooks application to Vercel.
+This guide will help you deploy your Local Cooks application to Vercel successfully.
 
-## Prerequisites
+## Pre-Deployment Checklist
 
-1. A Vercel account
-2. PostgreSQL database (we recommend Neon.tech for serverless compatibility)
-3. Local Cooks codebase properly configured for deployment
+Before deploying to Vercel, ensure:
+
+1. You have a Neon PostgreSQL database set up (see `docs/neon-database-setup.md`)
+2. All necessary database tables are created (use the SQL script in the database setup guide)
+3. All code changes are committed to your GitHub repository
+4. You have Vercel account with access to deploy the application
 
 ## Environment Variables
 
-You must set up the following environment variables in your Vercel project settings:
+Set these environment variables in your Vercel project settings:
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | Connection string for your PostgreSQL database | Yes |
-| `SESSION_SECRET` | Secret key for session encryption (generate a secure random string) | Yes |
-| `NODE_ENV` | Set to "production" for deployment | Yes |
-| `GOOGLE_CLIENT_ID` | For Google OAuth authentication | Optional |
-| `GOOGLE_CLIENT_SECRET` | For Google OAuth authentication | Optional |
-| `FACEBOOK_APP_ID` | For Facebook OAuth authentication | Optional |
-| `FACEBOOK_APP_SECRET` | For Facebook OAuth authentication | Optional |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | Your Neon database connection string | `postgresql://user:password@host/database` |
+| `SESSION_SECRET` | A strong random string used to secure sessions | `random-string-at-least-32-characters` |
+| `NODE_ENV` | The application environment | `production` |
 
 ## Deployment Steps
 
-1. **Create a New Project in Vercel**
-   - From the Vercel dashboard, click "Add New" > "Project"
+1. **Connect Your Repository**
+   - Go to Vercel dashboard and click "New Project"
    - Import your GitHub repository
+   - Configure project settings
 
-2. **Configure Environment Variables**
-   - Go to "Settings" > "Environment Variables"
-   - Add all required environment variables listed above
+2. **Configure Build Settings**
+   - Framework Preset: Other
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Install Command: `npm install`
 
-3. **Deploy the Project**
-   - Vercel will automatically build and deploy your project
-   - Build process is defined in `vercel-build.mjs`
-   - API functionality is handled by `/api/index.js`
+3. **Add Environment Variables**
+   - Add the variables listed above in the Environment Variables section
+   - You can set different values for Production, Preview, and Development environments
 
-4. **Verify Deployment**
-   - Check the deployment logs for any errors
-   - Test authentication and user functionality
-   - Test application submission forms
+4. **Deploy**
+   - Click "Deploy" to start the deployment process
+   - Vercel will build and deploy your application
 
-## Database Setup
+## Post-Deployment
 
-Before deploying, make sure your database is properly set up:
+After successful deployment:
 
-1. **Create Database Tables**: 
-   - See the [Neon Database Setup Guide](./neon-database-setup.md) for detailed instructions
-   - You can either run SQL statements directly in Neon.tech's SQL editor
-   - Or use Drizzle migrations locally with `npm run db:push`
+1. **Verify API Endpoints**
+   - Test `/api/health` to verify database connectivity
+   - Test `/api/user` to verify authentication system
 
-2. **Environment Variables**:
-   - Set your `DATABASE_URL` in Vercel's environment variables
-   - Format: `postgres://username:password@hostname:port/database?sslmode=require`
-   - For Neon.tech: Use the connection string provided in their dashboard
-   - Set `SESSION_SECRET` to a secure random string
+2. **Monitor Logs**
+   - Check Vercel logs for any errors
+   - Pay attention to serverless function logs for API issues
 
-## Troubleshooting
+3. **Setting Up Custom Domain (Optional)**
+   - In your Vercel project dashboard, go to "Domains"
+   - Add your custom domain and follow Vercel's instructions to set up DNS
 
-### Issue: API Routes Return 404
-- Make sure your `vercel.json` file has correct rewrites configuration
-- Check that `/api/index.js` exists and is properly formatted
+## Troubleshooting Common Issues
 
-### Issue: Database Connection Errors
-- Verify your `DATABASE_URL` is correct
-- Make sure your IP is whitelisted in your database provider
-- Check that the database schema has been created
-- Running into "FUNCTION_INVOCATION_FAILED" errors? Make sure your database tables are initialized
+If you encounter issues with your deployment:
 
-### Issue: Authentication Problems
-- Ensure `SESSION_SECRET` is properly set
-- Check that cookies are being stored properly
-- Verify OAuth credentials if using social login
+1. **Database Connection Problems**
+   - Ensure your DATABASE_URL is correct
+   - Check that your Neon database is active and accessible
+   - Verify IP restrictions if applicable
 
-### Issue: Build Failures
-- Review build logs for specific errors
-- Make sure dependencies are properly installed
-- Ensure your code adheres to TypeScript standards
+2. **Authentication Issues**
+   - Make sure SESSION_SECRET is properly set
+   - Check that cookies are being set correctly
 
-## Regular Maintenance
+3. **Function Timeouts or Memory Errors**
+   - See `vercel.json` settings for function configuration
+   - Optimize database queries for better performance
 
-- Monitor database connection pooling and serverless function usage
-- Update dependencies regularly
-- Keep backup of production database
+For more detailed troubleshooting, see `docs/vercel-troubleshooting.md`.
+
+## Automating Deployments
+
+For continuous deployment:
+
+1. Configure GitHub integration in Vercel
+2. Vercel will automatically deploy when you push to your main branch
+3. You can set up preview deployments for pull requests
+
+## Resources
+
+- [Vercel Documentation](https://vercel.com/docs)
+- [Neon Serverless Documentation](https://neon.tech/docs/serverless)
+- [Troubleshooting Vercel Deployments](docs/vercel-troubleshooting.md)
+- [Neon Database Setup](docs/neon-database-setup.md)
