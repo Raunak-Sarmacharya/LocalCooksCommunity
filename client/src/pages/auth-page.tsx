@@ -8,18 +8,31 @@ import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 
 export default function AuthPage() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  
+  // Get redirect path from URL if it exists
+  const getRedirectPath = () => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('redirect') || '/';
+    } catch (error) {
+      console.error('Error parsing redirect URL:', error);
+      return '/';
+    }
+  };
 
-  // Redirect to home if already logged in
+  // Redirect to the appropriate page if already logged in
   if (user) {
-    setLocation("/");
+    const redirectPath = getRedirectPath();
+    setLocation(redirectPath);
     return null;
   }
 
   const handleSuccess = () => {
-    setLocation("/");
+    const redirectPath = getRedirectPath();
+    setLocation(redirectPath);
   };
 
   return (
