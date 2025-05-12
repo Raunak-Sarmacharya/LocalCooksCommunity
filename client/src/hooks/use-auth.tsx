@@ -46,11 +46,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return data;
     },
     onSuccess: (user: AuthUser) => {
+      console.log("Login success, user data:", user);
       queryClient.setQueryData(["/api/user"], user);
       toast({
         title: "Login successful",
         description: "Welcome back!",
       });
+      
+      // Verify that the user is stored in the query cache
+      setTimeout(() => {
+        const cachedUser = queryClient.getQueryData(["/api/user"]);
+        console.log("Cached user data after login:", cachedUser);
+      }, 500);
     },
     onError: (error: Error) => {
       toast({
