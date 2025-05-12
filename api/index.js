@@ -334,18 +334,10 @@ app.post('/api/admin-login', async (req, res) => {
     await new Promise(resolve => req.session.save(resolve));
     
     // Remove sensitive info
-        const { password: _, ...adminWithoutPassword } = admin;
-        
-        // Return user and save in localStorage for header auth
-        return res.status(200).json(adminWithoutPassword);
-      } else {
-        console.log('Admin login succeeded but admin user not found in database');
-        return res.status(401).json({ error: 'Admin user not found in database' });
-      }
-    }
+    const { password: _, ...adminWithoutPassword } = admin;
     
-    console.log('Admin credentials did not match');
-    return res.status(401).json({ error: 'Invalid admin credentials' });
+    // Return user and save in localStorage for header auth
+    return res.status(200).json(adminWithoutPassword);
   } catch (error) {
     console.error('Admin login error:', error);
     res.status(500).json({ error: 'Admin login failed', message: error.message });
