@@ -61,11 +61,13 @@ export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type UpdateApplicationStatus = z.infer<typeof updateApplicationStatusSchema>;
 
 // Schema for inserting users
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  role: true,
-}).omit({ id: true });
+export const insertUserSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["admin", "applicant"]).default("applicant"),
+  googleId: z.string().optional(),
+  facebookId: z.string().optional(),
+});
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;

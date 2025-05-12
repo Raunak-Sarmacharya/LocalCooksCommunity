@@ -85,11 +85,8 @@ export class MemStorage implements IStorage {
     return undefined;
   }
 
+  // Instagram authentication was removed
   async getUserByInstagramId(instagramId: string): Promise<User | undefined> {
-    if (!instagramId) return undefined;
-    for (const user of this.users.values()) {
-      if (user.instagramId === instagramId) return user;
-    }
     return undefined;
   }
 
