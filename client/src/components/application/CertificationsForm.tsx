@@ -41,7 +41,27 @@ export default function CertificationsForm() {
   
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: ApplicationFormData) => {
-      const response = await apiRequest("POST", "/api/applications", data);
+      console.log("Submitting application with data:", data);
+      
+      // Include auth header with user ID if available
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (user?.id) {
+        headers["X-User-ID"] = user.id.toString();
+      }
+      
+      // Direct fetch to bypass apiRequest abstraction for debugging
+      const response = await fetch("/api/applications", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+      
       return response.json();
     },
     onSuccess: () => {
