@@ -7,7 +7,7 @@ export default function HeroSection() {
   const [, navigate] = useLocation();
   
   return (
-    <section className="pt-20 pb-8 md:pt-32 md:pb-16 px-4 bg-gradient-to-br from-white via-light-gray to-pink-50">
+    <section className="pt-28 pb-8 md:pt-36 md:pb-16 px-4 bg-gradient-to-br from-white via-light-gray to-pink-50">
       <div className="container mx-auto grid md:grid-cols-2 gap-6 md:gap-8 items-center">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
