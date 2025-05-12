@@ -1,0 +1,19 @@
+server/storage.ts(96,21): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(96,44): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(101,28): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(102,28): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(103,24): error TS2339: Property 'role' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(191,7): error TS2353: Object literal may only specify known properties, and 'password' does not exist in type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(247,21): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(247,44): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(251,16): error TS2339: Property 'userCurrentId' does not exist on type 'DatabaseStorage'.
+server/storage.ts(252,28): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(253,28): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(254,24): error TS2339: Property 'role' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(260,10): error TS2339: Property 'users' does not exist on type 'DatabaseStorage'.
+server/storage.ts(329,7): error TS2353: Object literal may only specify known properties, and 'password' does not exist in type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/auth.ts(110,17): error TS2353: Object literal may only specify known properties, and 'username' does not exist in type 'Omit<{}, "password"> & { oauth_provider: string; oauth_id: string; profile_data?: string | undefined; }'.
+server/auth.ts(146,17): error TS2353: Object literal may only specify known properties, and 'username' does not exist in type 'Omit<{}, "password"> & { oauth_provider: string; oauth_id: string; profile_data?: string | undefined; }'.
+server/auth.ts(192,9): error TS2353: Object literal may only specify known properties, and 'username' does not exist in type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/routes.ts(30,6): error TS7006: Parameter 'req' implicitly has an 'any' type.
+server/routes.ts(30,11): error TS7006: Parameter 'res' implicitly has an 'any' type.

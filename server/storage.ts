@@ -14,11 +14,12 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { 
+  createUser(user: {
+    username: string;
+    password: string;
+    role?: "admin" | "applicant";
     googleId?: string;
     facebookId?: string;
-    instagramId?: string;
-    twitterId?: string;
   }): Promise<User>;
   createOAuthUser(user: { 
     username: string;
