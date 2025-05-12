@@ -110,10 +110,30 @@ async function hashPassword(password) {
 }
 
 async function comparePasswords(supplied, stored) {
-  const [hashed, salt] = stored.split('.');
-  const hashedBuf = Buffer.from(hashed, 'hex');
-  const suppliedBuf = await scryptAsync(supplied, salt, 64);
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  try {
+    const [hashed, salt] = stored.split('.');
+    if (!hashed || !salt) {
+      console.error('Invalid stored password format:', stored);
+      return false;
+    }
+    
+    const hashedBuf = Buffer.from(hashed, 'hex');
+    const suppliedBuf = await scryptAsync(supplied, salt, 64);
+    
+    // Convert the result to Buffer if it's not already (for consistent comparison)
+    const suppliedBufFinal = Buffer.isBuffer(suppliedBuf) ? suppliedBuf : Buffer.from(suppliedBuf);
+    
+    // Make sure both buffers are the same length
+    if (hashedBuf.length !== suppliedBufFinal.length) {
+      console.error('Buffer length mismatch:', hashedBuf.length, suppliedBufFinal.length);
+      return false;
+    }
+    
+    return timingSafeEqual(hashedBuf, suppliedBufFinal);
+  } catch (error) {
+    console.error('Password comparison error:', error);
+    return false;
+  }
 }
 
 async function getUserByUsername(username) {
@@ -563,18 +583,40 @@ app.post('/api/applications', async (req, res) => {
 
 // Admin endpoint to get all applications
 app.get('/api/applications', async (req, res) => {
-  if (!req.session.userId) {
+  console.log('GET /api/applications - Session data:', {
+    sessionId: req.session.id,
+    userId: req.session.userId || null,
+    headers: {
+      'x-user-id': req.headers['x-user-id'] || null
+    }
+  });
+  
+  // Get user ID from session or header
+  const userId = req.session.userId || req.headers['x-user-id'];
+  
+  if (!userId) {
+    console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
   
   try {
     // First check if the user is an admin
-    const user = await getUser(req.session.userId);
+    const user = await getUser(userId);
+    console.log('User from DB:', user ? { id: user.id, username: user.username, role: user.role } : null);
+    
     if (!user || user.role !== 'admin') {
+      console.log('User is not an admin:', user ? user.role : 'user not found');
       return res.status(403).json({ 
         error: 'Forbidden',
         message: 'Only administrators can access this endpoint' 
       });
+    }
+    
+    // Store user ID in session if it's not there
+    if (!req.session.userId && userId) {
+      console.log('Storing userId in session from header:', userId);
+      req.session.userId = userId;
+      await new Promise(resolve => req.session.save(resolve));
     }
     
     // Get from database if available
