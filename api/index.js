@@ -72,17 +72,35 @@ app.use(express.json());
 
 // Session setup
 const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';
+const isProduction = process.env.NODE_ENV === 'production';
+
+console.log('Setting up session with', {
+  production: isProduction,
+  storeType: pool ? 'PostgreSQL' : 'Memory',
+  sessionSecret: sessionSecret ? 'Provided' : 'Missing'
+});
+
 app.use(session({
   secret: sessionSecret,
   resave: true,
   saveUninitialized: true,
   store: sessionStore,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction, // true in production, false in development
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/',
+    sameSite: 'lax'
   }
 }));
+
+// Add middleware to log session info on each request
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    console.log(`${req.method} ${req.path} - Session ID: ${req.session.id}, User ID: ${req.session.userId || 'none'}`);
+  }
+  next();
+});
 
 // Helper functions
 async function hashPassword(password) {
@@ -384,8 +402,13 @@ app.get('/api/health', async (req, res) => {
 // Applications API endpoints
 app.post('/api/applications', async (req, res) => {
   console.log('Application submission attempt');
-  console.log('Session data:', req.session);
-  console.log('Request body:', req.body);
+  console.log('Session ID:', req.session.id);
+  console.log('Cookie:', req.headers.cookie);
+  console.log('Session data:', {
+    userId: req.session.userId,
+    user: req.session.user ? { id: req.session.user.id, username: req.session.user.username } : null
+  });
+  console.log('Request body (first field):', req.body ? req.body.fullName : 'No data');
   
   if (!req.session.userId) {
     console.log('No userId in session, returning 401');

@@ -16,7 +16,9 @@ export default function AuthPage() {
   const getRedirectPath = () => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('redirect') || '/';
+      const redirectPath = urlParams.get('redirect') || '/';
+      console.log('Redirect path from URL:', redirectPath);
+      return redirectPath;
     } catch (error) {
       console.error('Error parsing redirect URL:', error);
       return '/';
@@ -25,14 +27,22 @@ export default function AuthPage() {
 
   // Redirect to the appropriate page if already logged in
   if (user) {
+    console.log('User is already logged in:', user);
     const redirectPath = getRedirectPath();
+    console.log('Redirecting to:', redirectPath);
     setLocation(redirectPath);
     return null;
   }
 
   const handleSuccess = () => {
+    console.log('Authentication successful');
     const redirectPath = getRedirectPath();
-    setLocation(redirectPath);
+    console.log('Redirecting to:', redirectPath);
+    
+    // Delay redirect slightly to ensure session is established
+    setTimeout(() => {
+      setLocation(redirectPath);
+    }, 500);
   };
 
   return (
