@@ -1,5 +1,7 @@
 # Vercel Deployment Guide for Local Cooks
 
+**Updated on May 12, 2025**
+
 This guide provides step-by-step instructions for deploying the Local Cooks application on Vercel.
 
 ## Prerequisites
@@ -22,11 +24,35 @@ Before deploying, ensure you have:
 
 ## Step 2: Deploy on Vercel
 
-1. **Log in to Vercel** and click "Add New Project"
+### Option A: Deploy from GitHub
+
+1. **Log in to Vercel** and click "Add New Project" 
 2. **Import your repository** from GitHub
 3. **Configure project settings**:
-   - Select "Vite" as your Framework Preset
+   - Select "Vite" as your Framework Preset (this is critical)
    - Keep default settings for Build and Output directory
+   - The repository already includes a `vercel.json` configuration file
+
+### Option B: Deploy with Vercel CLI
+
+If you prefer to deploy using the Vercel CLI:
+
+1. **Install Vercel CLI**:
+   ```bash
+   npm install -g vercel
+   ```
+
+2. **Login to Vercel**:
+   ```bash
+   vercel login
+   ```
+
+3. **Deploy from your local project directory**:
+   ```bash
+   vercel
+   ```
+
+4. **Follow the CLI prompts** to set up your project
 
 4. **Add Environment Variables** (click "Environment Variables" and add):
    - `DATABASE_URL`: Your Neon PostgreSQL connection string
