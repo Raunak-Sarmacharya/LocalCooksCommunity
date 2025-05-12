@@ -1,86 +1,70 @@
 # Vercel Deployment Guide for Local Cooks
 
-This guide provides step-by-step instructions for deploying the Local Cooks application to Vercel.
+This guide provides step-by-step instructions for deploying your Local Cooks application to Vercel.
 
 ## Prerequisites
 
 1. A Vercel account
-2. A GitHub repository with your Local Cooks code
-3. A PostgreSQL database (we recommend Neon.tech)
+2. PostgreSQL database (we recommend Neon.tech for serverless compatibility)
+3. Local Cooks codebase properly configured for deployment
 
-## Step 1: Set Up Environment Variables
+## Environment Variables
 
-Before deploying, you'll need to set up the following environment variables in Vercel:
+You must set up the following environment variables in your Vercel project settings:
 
-- `DATABASE_URL` - The connection string to your PostgreSQL database
-- `SESSION_SECRET` - A secure random string to encrypt sessions
-- `NODE_ENV` - Set to `production`
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | Connection string for your PostgreSQL database | Yes |
+| `SESSION_SECRET` | Secret key for session encryption (generate a secure random string) | Yes |
+| `NODE_ENV` | Set to "production" for deployment | Yes |
+| `GOOGLE_CLIENT_ID` | For Google OAuth authentication | Optional |
+| `GOOGLE_CLIENT_SECRET` | For Google OAuth authentication | Optional |
+| `FACEBOOK_APP_ID` | For Facebook OAuth authentication | Optional |
+| `FACEBOOK_APP_SECRET` | For Facebook OAuth authentication | Optional |
 
-Optional OAuth variables (if you're using social login):
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `FACEBOOK_CLIENT_ID`
-- `FACEBOOK_CLIENT_SECRET`
+## Deployment Steps
 
-## Step 2: Configure the Vercel Project
+1. **Create a New Project in Vercel**
+   - From the Vercel dashboard, click "Add New" > "Project"
+   - Import your GitHub repository
 
-1. From your Vercel dashboard, click "Add New..." and select "Project"
-2. Import your GitHub repository
-3. Configure the project with these settings:
-   - **Framework Preset**: Other
-   - **Build Command**: `./vercel-build.sh`
-   - **Output Directory**: `dist/client`
-   - **Install Command**: `npm install`
+2. **Configure Environment Variables**
+   - Go to "Settings" > "Environment Variables"
+   - Add all required environment variables listed above
 
-4. Add your environment variables in the "Environment Variables" section
+3. **Deploy the Project**
+   - Vercel will automatically build and deploy your project
+   - Build process is defined in `vercel-build.mjs`
+   - API functionality is handled by `/api/index.js`
 
-## Step 3: Deploy
-
-1. Click "Deploy"
-2. Vercel will build and deploy your application
-3. Once completed, you can access your application at the provided URL
-
-## Step 4: Configure Custom Domain (Optional)
-
-1. Go to your project settings in Vercel
-2. Navigate to "Domains"
-3. Add your custom domain and follow the verification instructions
+4. **Verify Deployment**
+   - Check the deployment logs for any errors
+   - Test authentication and user functionality
+   - Test application submission forms
 
 ## Troubleshooting
 
-If you encounter any issues with your deployment, refer to the `vercel-troubleshooting.md` document which covers common problems and their solutions.
+### Issue: API Routes Return 404
+- Make sure your `vercel.json` file has correct rewrites configuration
+- Check that `/api/index.js` exists and is properly formatted
 
-### Common Issues
+### Issue: Database Connection Errors
+- Verify your `DATABASE_URL` is correct
+- Make sure your IP is whitelisted in your database provider
+- Check that the database schema has been created
 
-#### Issue: Build fails with "Output Directory is empty"
+### Issue: Authentication Problems
+- Ensure `SESSION_SECRET` is properly set
+- Check that cookies are being stored properly
+- Verify OAuth credentials if using social login
 
-1. Check that the `vercel-build.sh` script is executable (`chmod +x vercel-build.sh`)
-2. Verify that the script is properly creating files in the output directory
-3. Check build logs in Vercel for specific errors
+### Issue: Build Failures
+- Review build logs for specific errors
+- Make sure dependencies are properly installed
+- Ensure your code adheres to TypeScript standards
 
-#### Issue: API Routes Not Working
+## Regular Maintenance
 
-Ensure your vercel.json configuration is correctly routing API requests to the serverless function.
-
-## Deployment Architecture
-
-The Local Cooks application on Vercel uses:
-
-1. **Serverless Function**: The `/api` routes are handled by a serverless function (api/index.js)
-2. **Static Assets**: The React frontend is served as static files
-3. **External Database**: Data is stored in a PostgreSQL database
-
-## Updating Your Deployment
-
-To update your application after making changes:
-
-1. Commit and push your changes to GitHub
-2. Vercel will automatically detect the changes and redeploy
-3. Monitor the deployment logs for any issues
-
-## Best Practices
-
-1. **Environment Variables**: Never commit sensitive information. Always use environment variables.
-2. **Database Migrations**: Run database migrations during the build process or manually before deployment.
-3. **Session Security**: In production, ensure cookies are secure and use a strong session secret.
-4. **Error Logging**: Consider adding error logging services for production monitoring.
+- Monitor database connection pooling and serverless function usage
+- Update dependencies regularly
+- Keep backup of production database

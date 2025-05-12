@@ -4,40 +4,10 @@ import session from 'express-session';
 import { createServer } from 'http';
 import { scrypt, randomBytes, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
+import { storage } from './storage.js';
 
 // Create a simplified version for the serverless function
 const scryptAsync = promisify(scrypt);
-
-// Simple in-memory storage
-const users = new Map();
-const sessions = new Map();
-
-// Create a storage instance directly here for the serverless function
-const storage = {
-  sessionStore: {
-    get: (sid, cb) => cb(null, sessions.get(sid)),
-    set: (sid, sess, cb) => { sessions.set(sid, sess); cb(); },
-    destroy: (sid, cb) => { sessions.delete(sid); cb(); },
-  },
-  
-  getUser: async (id) => users.get(id),
-  
-  getUserByUsername: async (username) => {
-    for (const user of users.values()) {
-      if (user.username === username) return user;
-    }
-    return undefined;
-  },
-  
-  createUser: async (userData) => {
-    const id = Date.now();
-    const user = { id, ...userData };
-    users.set(id, user);
-    return user;
-  },
-  
-  // Other methods will be added as needed
-};
 
 // Initialize Express app
 const app = express();
@@ -56,14 +26,7 @@ async function comparePasswords(supplied, stored) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
-// Add needed methods for auth to storage
-storage.getUserByOAuthId = async () => undefined; // No OAuth in serverless version
-storage.createOAuthUser = async () => undefined;  // No OAuth in serverless version
-storage.getAllApplications = async () => [];
-storage.getApplicationById = async () => undefined;
-storage.getApplicationsByUserId = async () => [];
-storage.createApplication = async (data) => ({...data, id: Date.now(), status: 'new', createdAt: new Date()});
-storage.updateApplicationStatus = async () => undefined;
+// API routes are defined below
 
 // Body parser middleware
 app.use(express.json());
