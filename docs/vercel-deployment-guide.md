@@ -42,6 +42,21 @@ You must set up the following environment variables in your Vercel project setti
    - Test authentication and user functionality
    - Test application submission forms
 
+## Database Setup
+
+Before deploying, make sure your database is properly set up:
+
+1. **Create Database Tables**: 
+   - See the [Neon Database Setup Guide](./neon-database-setup.md) for detailed instructions
+   - You can either run SQL statements directly in Neon.tech's SQL editor
+   - Or use Drizzle migrations locally with `npm run db:push`
+
+2. **Environment Variables**:
+   - Set your `DATABASE_URL` in Vercel's environment variables
+   - Format: `postgres://username:password@hostname:port/database?sslmode=require`
+   - For Neon.tech: Use the connection string provided in their dashboard
+   - Set `SESSION_SECRET` to a secure random string
+
 ## Troubleshooting
 
 ### Issue: API Routes Return 404
@@ -52,6 +67,7 @@ You must set up the following environment variables in your Vercel project setti
 - Verify your `DATABASE_URL` is correct
 - Make sure your IP is whitelisted in your database provider
 - Check that the database schema has been created
+- Running into "FUNCTION_INVOCATION_FAILED" errors? Make sure your database tables are initialized
 
 ### Issue: Authentication Problems
 - Ensure `SESSION_SECRET` is properly set

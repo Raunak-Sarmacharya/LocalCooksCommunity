@@ -2,7 +2,7 @@
 import { query } from './db.js';
 
 // Backup in-memory storage for fallback
-const useDatabase = process.env.DATABASE_URL ? true : false;
+const useInMemory = !process.env.DATABASE_URL;
 
 const users = new Map();
 const applications = new Map();
