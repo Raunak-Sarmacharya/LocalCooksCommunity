@@ -1,8 +1,27 @@
 // Simplified storage implementation for Vercel serverless functions
+import { query } from './db.js';
+
+// Backup in-memory storage for fallback
+const useDatabase = process.env.DATABASE_URL ? true : false;
 
 const users = new Map();
 const applications = new Map();
 const sessions = new Map();
+
+// Helper function to safely execute database queries
+async function executeQuery(sql, params = []) {
+  if (useDatabase) {
+    try {
+      // Use database connection
+      const result = await query(sql, params);
+      return result;
+    } catch (error) {
+      console.error('Database query error:', error);
+      return null;
+    }
+  }
+  return null; // Fallback to in-memory if database not configured
+}
 
 export const storage = {
   // Session store implementation
@@ -13,9 +32,29 @@ export const storage = {
   },
   
   // User-related methods
-  getUser: async (id) => users.get(id),
+  getUser: async (id) => {
+    if (neonClient) {
+      try {
+        const result = await executeQuery('SELECT * FROM users WHERE id = $1', [id]);
+        return result && result.rows && result.rows.length > 0 ? result.rows[0] : undefined;
+      } catch (error) {
+        console.error('Error getting user by ID:', error);
+      }
+    }
+    return users.get(id);
+  },
   
   getUserByUsername: async (username) => {
+    if (neonClient) {
+      try {
+        const result = await executeQuery('SELECT * FROM users WHERE username = $1', [username]);
+        return result && result.rows && result.rows.length > 0 ? result.rows[0] : undefined;
+      } catch (error) {
+        console.error('Error getting user by username:', error);
+      }
+    }
+    
+    // Fallback to in-memory
     for (const user of users.values()) {
       if (user.username === username) return user;
     }
