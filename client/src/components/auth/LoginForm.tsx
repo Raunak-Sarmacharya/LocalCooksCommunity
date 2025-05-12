@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
+import { queryClient } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 
 import {
@@ -30,6 +31,7 @@ interface LoginFormProps {
 export default function LoginForm({ onSuccess }: LoginFormProps) {
   const { loginMutation } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -39,10 +41,53 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
     },
   });
 
-  const onSubmit = (data: LoginFormData) => {
+  const onSubmit = async (data: LoginFormData) => {
     console.log('Attempting login with username:', data.username);
     setError(null);
     
+    if (isAdminMode) {
+      try {
+        console.log('Using admin login endpoint');
+        const response = await fetch('/api/admin-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+          credentials: 'include',
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Admin login failed');
+        }
+        
+        const userData = await response.json();
+        console.log('Admin login successful, user data:', userData);
+        
+        // Store userId in localStorage for persistence
+        if (userData?.id) {
+          localStorage.setItem('userId', userData.id.toString());
+          console.log('Saved userId to localStorage:', userData.id);
+          
+          // Update query client with user data
+          queryClient.setQueryData(["/api/user"], userData);
+          console.log('Updated query client with user data');
+        }
+        
+        // Call success callback
+        if (onSuccess) {
+          console.log('Calling onSuccess callback for redirect');
+          onSuccess();
+        }
+      } catch (error: any) {
+        console.error('Admin login error:', error);
+        setError(error.message || 'Admin login failed');
+      }
+      return;
+    }
+    
+    // Regular login
     loginMutation.mutate(data, {
       onSuccess: (userData) => {
         console.log('Login successful, user data:', userData);
@@ -108,6 +153,26 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
           )}
         />
 
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="admin-mode"
+              checked={isAdminMode}
+              onChange={(e) => setIsAdminMode(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="admin-mode" className="text-sm font-medium">
+              Admin mode
+            </label>
+          </div>
+          {isAdminMode && (
+            <div className="text-xs text-amber-600">
+              Using direct admin login
+            </div>
+          )}
+        </div>
+        
         <Button
           type="submit"
           className="w-full"
@@ -119,7 +184,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
               Logging in...
             </>
           ) : (
-            "Login"
+            isAdminMode ? "Login as Admin" : "Login"
           )}
         </Button>
       </form>

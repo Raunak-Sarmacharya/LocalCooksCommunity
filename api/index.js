@@ -252,6 +252,80 @@ if (pool) {
   initializeDatabase().catch(console.error);
 }
 
+// Utility to ensure admin user exists
+async function ensureAdminUser() {
+  try {
+    console.log('Checking if admin user exists...');
+    const admin = await getUserByUsername('admin');
+    
+    if (admin) {
+      console.log('Admin user exists:', { id: admin.id, role: admin.role });
+      return admin;
+    }
+    
+    console.log('Admin user does not exist, creating...');
+    
+    // Create admin user
+    const hashedPassword = await hashPassword('localcooks');
+    const adminUser = await createUser({
+      username: 'admin',
+      password: hashedPassword,
+      role: 'admin',
+    });
+    
+    console.log('Admin user created:', { id: adminUser.id, role: adminUser.role });
+    return adminUser;
+  } catch (error) {
+    console.error('Error ensuring admin user exists:', error);
+    return null;
+  }
+}
+
+// Ensure admin user on startup
+ensureAdminUser().catch(console.error);
+
+// Admin login endpoint (for debugging)
+app.post('/api/admin-login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    console.log('Admin login attempt for:', username);
+    
+    // For admin login, we'll use hardcoded values for now for debugging
+    if (username === 'admin' && password === 'localcooks') {
+      console.log('Admin credentials match');
+      
+      // Look up admin user in database
+      const admin = await getUserByUsername('admin');
+      
+      if (admin) {
+        console.log('Admin user found in database:', { id: admin.id, role: admin.role });
+        
+        // Set session
+        req.session.userId = admin.id;
+        req.session.user = { id: admin.id, username: admin.username, role: admin.role };
+        
+        await new Promise(resolve => req.session.save(resolve));
+        
+        // Remove sensitive info
+        const { password: _, ...adminWithoutPassword } = admin;
+        
+        // Return user and save in localStorage for header auth
+        return res.status(200).json(adminWithoutPassword);
+      } else {
+        console.log('Admin login succeeded but admin user not found in database');
+        return res.status(401).json({ error: 'Admin user not found in database' });
+      }
+    }
+    
+    console.log('Admin credentials did not match');
+    return res.status(401).json({ error: 'Invalid admin credentials' });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    res.status(500).json({ error: 'Admin login failed', message: error.message });
+  }
+});
+
 // API Routes
 app.post('/api/register', async (req, res) => {
   try {
