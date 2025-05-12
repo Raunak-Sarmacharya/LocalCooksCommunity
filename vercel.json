@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "./vercel-build.sh",
+  "buildCommand": "node vercel-build.mjs",
   "outputDirectory": "dist/client",
   "devCommand": "npm run dev",
   "rewrites": [
