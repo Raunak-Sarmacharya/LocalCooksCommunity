@@ -2,9 +2,15 @@
 import express from 'express';
 import session from 'express-session';
 import { createServer } from 'http';
-import { storage } from '../dist/storage.js';
-import { setupAuth } from '../dist/auth.js';
-import { registerRoutes } from '../dist/routes.js';
+
+// In Vercel Serverless Functions, we need to directly import from the source files
+// since they are bundled together during deployment
+import { MemStorage } from '../server/storage.js';
+import { setupAuth } from '../server/auth.js';
+import { registerRoutes } from '../server/routes.js';
+
+// Create a storage instance directly here for the serverless function
+const storage = new MemStorage();
 
 // Initialize Express app
 const app = express();

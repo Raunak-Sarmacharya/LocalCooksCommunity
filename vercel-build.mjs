@@ -30,6 +30,10 @@ runCommand('npx vite build');
 console.log('Building server files with esbuild...');
 runCommand('npx esbuild server/**/*.ts shared/**/*.ts --platform=node --packages=external --bundle --format=esm --outdir=dist');
 
+// Prepare API files for serverless deployment
+console.log('Preparing API files for serverless deployment...');
+runCommand('node api-build.mjs');
+
 // Make sure the client directory is properly set up
 if (fs.existsSync('dist/public')) {
   console.log('Moving dist/public contents to dist/client...');
@@ -67,5 +71,6 @@ if (fs.existsSync('dist/public')) {
 console.log('Build output structure:');
 runCommand('ls -la dist/');
 runCommand('ls -la dist/client/ || echo "Client directory not found or empty"');
+runCommand('ls -la api/ || echo "API directory not found or empty"');
 
 console.log('Build completed successfully!');
