@@ -31,9 +31,32 @@ function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
   
-  // Fetch all applications
+  const { user } = useAuth();
+
+  // Fetch all applications with user ID in header
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
     queryKey: ["/api/applications"],
+    queryFn: async ({ queryKey }) => {
+      const headers: Record<string, string> = {};
+      
+      // Include user ID in header for authentication
+      if (user?.id) {
+        headers['X-User-ID'] = user.id.toString();
+      }
+      
+      const response = await fetch(queryKey[0] as string, { 
+        credentials: 'include',
+        headers 
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+      
+      return response.json();
+    },
+    enabled: !!user, // Only run query when user is authenticated
   });
 
   // Mutation to update application status

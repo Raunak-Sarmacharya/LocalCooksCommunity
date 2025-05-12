@@ -67,9 +67,30 @@ const itemVariants = {
 export default function ApplicantDashboard() {
   const { user, logoutMutation } = useAuth();
 
-  // Fetch applicant's applications
+  // Fetch applicant's applications with user ID in header
   const { data: applications, isLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
+    queryFn: async ({ queryKey }) => {
+      if (!user?.id) {
+        throw new Error("User not authenticated");
+      }
+      
+      const headers: Record<string, string> = {
+        'X-User-ID': user.id.toString()
+      };
+      
+      const response = await fetch(queryKey[0] as string, { 
+        credentials: 'include',
+        headers 
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+      
+      return response.json();
+    },
     enabled: !!user,
   });
 
