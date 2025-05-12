@@ -91,7 +91,12 @@ export default function Footer() {
         </div>
         
         <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
-          <p>&copy; {new Date().getFullYear()} Local Cooks. All rights reserved.</p>
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            <p>&copy; {new Date().getFullYear()} Local Cooks. All rights reserved.</p>
+            <Link href="/admin/login" className="text-xs text-gray-500 hover:text-gray-400 hover-text transition-colors">
+              Admin Login
+            </Link>
+          </div>
           <div className="flex mt-4 md:mt-0">
             <span className="flex items-center">
               Made with <Heart className="h-3 w-3 mx-1 text-primary" /> in St. John's, NL
