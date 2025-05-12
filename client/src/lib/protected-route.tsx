@@ -23,7 +23,7 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
   if (!user) {
     return (
       <Route path={path}>
-        <Redirect to="/auth" />
+        <Redirect to={`/auth?redirect=${path}`} />
       </Route>
     );
   }

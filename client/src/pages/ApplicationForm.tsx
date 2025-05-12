@@ -81,13 +81,20 @@ function FormStep() {
 }
 
 export default function ApplicationForm() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
   
+  // Redirect to auth page if user is not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/auth?redirect=/apply");
+    }
+  }, [user, authLoading, navigate]);
+  
   // Fetch applicant's applications
-  const { data: applications, isLoading } = useQuery<Application[]>({
+  const { data: applications, isLoading: applicationsLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
-    enabled: !!user,
+    enabled: !!user, // Only run if user is logged in
   });
 
   // Check if user has active applications
@@ -95,7 +102,7 @@ export default function ApplicationForm() {
   
   // Redirect to dashboard if user already has an active application
   useEffect(() => {
-    if (!isLoading && activeApplication) {
+    if (!applicationsLoading && activeApplication) {
       // Set a small timeout to ensure UI renders before redirect
       const timer = setTimeout(() => {
         navigate("/dashboard");
@@ -103,7 +110,10 @@ export default function ApplicationForm() {
       
       return () => clearTimeout(timer);
     }
-  }, [isLoading, activeApplication, navigate]);
+  }, [applicationsLoading, activeApplication, navigate]);
+  
+  // Show loading state while checking authentication
+  const isLoading = authLoading || (user && applicationsLoading);
 
   return (
     <ApplicationFormProvider>
