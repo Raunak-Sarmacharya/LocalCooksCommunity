@@ -5,43 +5,78 @@ import { Pool } from '@neondatabase/serverless';
 import { scrypt, randomBytes, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import createMemoryStore from 'memorystore';
+import connectPgSimple from 'connect-pg-simple';
 
 // Setup
 const app = express();
 const scryptAsync = promisify(scrypt);
 const MemoryStore = createMemoryStore(session);
+const PgStore = connectPgSimple(session);
 
 // Database connection with small pool size for serverless
 let pool;
+let sessionStore;
+
 try {
   if (process.env.DATABASE_URL) {
     pool = new Pool({ 
       connectionString: process.env.DATABASE_URL,
       max: 1 // Small pool for serverless
     });
-    console.log('Connected to database');
+    
+    // Create PG session store
+    sessionStore = new PgStore({
+      pool: pool,
+      createTableIfMissing: true
+    });
+    
+    console.log('Connected to database and initialized session store');
+    
+    // Create session table
+    (async () => {
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS "session" (
+            "sid" varchar NOT NULL COLLATE "default",
+            "sess" json NOT NULL,
+            "expire" timestamp(6) NOT NULL,
+            CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+          );
+          CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+        `);
+        console.log('Session table created or verified');
+      } catch (err) {
+        console.error('Error setting up session table:', err);
+      }
+    })();
+    
   } else {
     console.log('DATABASE_URL not provided, using in-memory storage');
+    sessionStore = new MemoryStore({
+      checkPeriod: 86400000 // prune expired entries every 24h
+    });
   }
 } catch (error) {
   console.error('Database connection error:', error);
+  // Fallback to memory store
+  sessionStore = new MemoryStore({
+    checkPeriod: 86400000 // prune expired entries every 24h
+  });
 }
 
-// In-memory fallback
+// In-memory fallback for users
 const users = new Map();
 
 // Middleware
 app.use(express.json());
 
-// Session setup - using memory store for simplicity in serverless
+// Session setup
 const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';
 app.use(session({
   secret: sessionSecret,
   resave: true,
   saveUninitialized: true,
-  store: new MemoryStore({
-    checkPeriod: 86400000 // prune expired entries every 24h
-  }),
+  store: sessionStore,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
@@ -348,15 +383,23 @@ app.get('/api/health', async (req, res) => {
 
 // Applications API endpoints
 app.post('/api/applications', async (req, res) => {
+  console.log('Application submission attempt');
+  console.log('Session data:', req.session);
+  console.log('Request body:', req.body);
+  
   if (!req.session.userId) {
+    console.log('No userId in session, returning 401');
     return res.status(401).json({ error: 'Authentication required' });
   }
   
   try {
+    console.log('User authenticated, processing application for user ID:', req.session.userId);
+    
     // Validate required fields
     const { fullName, email, phone, foodSafetyLicense, foodEstablishmentCert, kitchenPreference } = req.body;
     
     if (!fullName || !email || !phone || !foodSafetyLicense || !foodEstablishmentCert || !kitchenPreference) {
+      console.log('Missing required fields in request');
       return res.status(400).json({ 
         error: 'Missing required fields',
         message: 'Please provide all required application information'
