@@ -40,12 +40,28 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   });
 
   const onSubmit = (data: LoginFormData) => {
+    console.log('Attempting login with username:', data.username);
     setError(null);
+    
     loginMutation.mutate(data, {
-      onSuccess: () => {
-        if (onSuccess) onSuccess();
+      onSuccess: (userData) => {
+        console.log('Login successful, user data:', userData);
+        
+        // Verify we got valid user data back
+        if (!userData || !userData.id) {
+          console.error('Login succeeded but user data is missing or incomplete');
+          setError('Authentication successful but user data is incomplete. Please try again.');
+          return;
+        }
+        
+        // Call success callback
+        if (onSuccess) {
+          console.log('Calling onSuccess callback for redirect');
+          onSuccess();
+        }
       },
       onError: (error) => {
+        console.error('Login error:', error);
         setError(error.message);
       },
     });
