@@ -1,0 +1,23 @@
+server/storage.ts(82,16): error TS2339: Property 'instagramId' does not exist on type '{ id: number; username: string; password: string; role: "admin" | "applicant"; googleId: string | null; facebookId: string | null; }'.
+server/storage.ts(89,21): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(89,44): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(94,28): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(95,28): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(96,24): error TS2339: Property 'role' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(97,7): error TS2353: Object literal may only specify known properties, and 'twitterId' does not exist in type '{ id: number; username: string; password: string; role: "admin" | "applicant"; googleId: string | null; facebookId: string | null; }'.
+server/storage.ts(184,7): error TS2353: Object literal may only specify known properties, and 'password' does not exist in type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(234,65): error TS2339: Property 'instagramId' does not exist on type 'PgTableWithColumns<{ name: "users"; schema: undefined; columns: { id: PgColumn<{ name: "id"; tableName: "users"; dataType: "number"; columnType: "PgSerial"; data: number; driverParam: number; notNull: true; hasDefault: true; ... 6 more ...; generated: undefined; }, {}, {}>; ... 4 more ...; facebookId: PgColumn<...>;...'.
+server/storage.ts(240,21): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(240,44): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(244,16): error TS2339: Property 'userCurrentId' does not exist on type 'DatabaseStorage'.
+server/storage.ts(245,28): error TS2339: Property 'username' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(246,28): error TS2339: Property 'password' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(247,24): error TS2339: Property 'role' does not exist on type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/storage.ts(248,7): error TS2353: Object literal may only specify known properties, and 'twitterId' does not exist in type '{ id: number; username: string; password: string; role: "admin" | "applicant"; googleId: string | null; facebookId: string | null; }'.
+server/storage.ts(253,10): error TS2339: Property 'users' does not exist on type 'DatabaseStorage'.
+server/storage.ts(322,7): error TS2353: Object literal may only specify known properties, and 'password' does not exist in type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/auth.ts(97,17): error TS2353: Object literal may only specify known properties, and 'username' does not exist in type 'Omit<{}, "password"> & { oauth_provider: string; oauth_id: string; profile_data?: string | undefined; }'.
+server/auth.ts(133,17): error TS2353: Object literal may only specify known properties, and 'username' does not exist in type 'Omit<{}, "password"> & { oauth_provider: string; oauth_id: string; profile_data?: string | undefined; }'.
+server/auth.ts(179,9): error TS2353: Object literal may only specify known properties, and 'username' does not exist in type '{} & { googleId?: string | undefined; facebookId?: string | undefined; }'.
+server/routes.ts(30,6): error TS7006: Parameter 'req' implicitly has an 'any' type.
+server/routes.ts(30,11): error TS7006: Parameter 'res' implicitly has an 'any' type.
