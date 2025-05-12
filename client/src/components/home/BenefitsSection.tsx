@@ -112,7 +112,7 @@ export default function BenefitsSection() {
         </div>
         
         <motion.div 
-          className="relative bg-gradient-to-br from-[#ff4d8f] via-[#ff2d7f] to-[#ff0066] rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.4)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105"
+          className="relative bg-gradient-to-br from-[#3e5d8c] via-[#2c4f7c] to-[#1a3a6c] rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.4)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
