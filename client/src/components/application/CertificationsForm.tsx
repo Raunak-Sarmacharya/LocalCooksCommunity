@@ -47,10 +47,22 @@ export default function CertificationsForm() {
     onSuccess: () => {
       navigate("/success");
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error("Application submission error:", error);
+      let errorMessage = "Please try again later.";
+      
+      // Try to extract detailed error message from response
+      if (error.response) {
+        try {
+          errorMessage = error.response.error || error.message || errorMessage;
+        } catch (e) {
+          console.error("Error parsing error response:", e);
+        }
+      }
+      
       toast({
         title: "Error submitting application",
-        description: error.message || "Please try again later.",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -60,12 +72,27 @@ export default function CertificationsForm() {
     // Update the form data with the certification information
     updateFormData(data);
     
-    // Combine all data and submit the complete form with user ID if logged in
+    // Check if user is authenticated
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to submit your application.",
+        variant: "destructive",
+      });
+      // Redirect to auth page
+      navigate("/auth");
+      return;
+    }
+    
+    // Combine all data and submit the complete form with user ID
     const completeFormData = {
       ...formData,
       ...data,
-      userId: user?.id // Add the user ID if the user is logged in
+      userId: user.id
     } as ApplicationFormData;
+    
+    // Log for debugging
+    console.log("Submitting application:", completeFormData);
     
     mutate(completeFormData);
   };
