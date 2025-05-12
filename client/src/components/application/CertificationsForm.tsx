@@ -50,9 +50,16 @@ export default function CertificationsForm() {
     onError: (error: any) => {
       console.error("Application submission error:", error);
       let errorMessage = "Please try again later.";
+      let title = "Error submitting application";
+      let isAuthError = false;
       
       // Try to extract detailed error message from response
-      if (error.response) {
+      if (error.message === "Authentication required" || 
+          (error.response && error.response.status === 401)) {
+        errorMessage = "You must be logged in to submit an application. Please log in and try again.";
+        title = "Authentication Required";
+        isAuthError = true;
+      } else if (error.response) {
         try {
           errorMessage = error.response.error || error.message || errorMessage;
         } catch (e) {
@@ -61,10 +68,17 @@ export default function CertificationsForm() {
       }
       
       toast({
-        title: "Error submitting application",
+        title: title,
         description: errorMessage,
         variant: "destructive",
       });
+      
+      // If it's an auth error, redirect to login
+      if (isAuthError) {
+        setTimeout(() => {
+          navigate("/auth?redirect=/apply");
+        }, 1500);
+      }
     },
   });
 

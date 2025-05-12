@@ -30,12 +30,28 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  console.log(`Making ${method} request to ${url}`, data);
+  
   const res = await fetch(url, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+
+  console.log(`Response from ${url}:`, {
+    status: res.status,
+    statusText: res.statusText
+  });
+  
+  // Handle authentication error specifically
+  if (res.status === 401) {
+    console.error('Authentication error detected, user is not logged in');
+    const error = new Error('Authentication required');
+    (error as any).response = { error: 'Authentication required' };
+    (error as any).status = 401;
+    throw error;
+  }
 
   await throwIfResNotOk(res);
   return res;
