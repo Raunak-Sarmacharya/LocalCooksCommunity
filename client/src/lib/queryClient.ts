@@ -29,12 +29,18 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  customHeaders?: Record<string, string>
 ): Promise<Response> {
   console.log(`Making ${method} request to ${url}`, data);
   
+  const headers: Record<string, string> = {
+    ...(data ? { "Content-Type": "application/json" } : {}),
+    ...(customHeaders || {})
+  };
+  
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -60,11 +66,24 @@ export async function apiRequest(
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
+  headers?: Record<string, string>;
 }) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
+  ({ on401: unauthorizedBehavior, headers }) =>
   async ({ queryKey }) => {
+    // Add X-User-ID from localStorage if available
+    const userId = localStorage.getItem('userId');
+    const defaultHeaders: Record<string, string> = {};
+    
+    if (userId) {
+      defaultHeaders['X-User-ID'] = userId;
+    }
+    
     const res = await fetch(queryKey[0] as string, {
       credentials: "include",
+      headers: {
+        ...defaultHeaders,
+        ...(headers || {})
+      }
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
@@ -78,7 +97,10 @@ export const getQueryFn: <T>(options: {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
+      queryFn: getQueryFn({ 
+        on401: "throw",
+        headers: {} // Empty default headers
+      }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,

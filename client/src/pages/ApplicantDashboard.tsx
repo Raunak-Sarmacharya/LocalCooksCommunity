@@ -97,7 +97,13 @@ export default function ApplicantDashboard() {
   // Mutation to cancel an application
   const cancelMutation = useMutation({
     mutationFn: async (applicationId: number) => {
-      const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`);
+      // Include user ID in header
+      const headers: Record<string, string> = {};
+      if (user?.id) {
+        headers['X-User-ID'] = user.id.toString();
+      }
+      
+      const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
       return await res.json();
     },
     onSuccess: () => {
