@@ -30,29 +30,19 @@ CREATE TABLE IF NOT EXISTS applications (
   status application_status NOT NULL DEFAULT 'new',
   
   -- Personal information
-  first_name TEXT NOT NULL,
-  last_name TEXT NOT NULL, 
+  full_name TEXT NOT NULL,
   email TEXT NOT NULL,
   phone TEXT NOT NULL,
-  address TEXT NOT NULL,
-  city TEXT NOT NULL,
-  state TEXT NOT NULL,
-  zip TEXT NOT NULL,
-  bio TEXT,
-  
-  -- Kitchen preferences
-  kitchen_preference kitchen_preference NOT NULL,
-  own_equipment boolean NOT NULL,
-  years_experience INTEGER NOT NULL,
-  specialty TEXT,
   
   -- Certifications
-  food_safety_cert certification_status NOT NULL,
-  allergen_awareness certification_status NOT NULL,
-  alcohol_certification certification_status NOT NULL,
+  food_safety_license certification_status NOT NULL,
+  food_establishment_cert certification_status NOT NULL,
   
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  -- Kitchen preference
+  kitchen_preference kitchen_preference NOT NULL,
+  
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create an admin user (username: admin, password: localcooks)
