@@ -48,6 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: AuthUser) => {
       console.log("Login success, user data:", user);
       queryClient.setQueryData(["/api/user"], user);
+      
+      // Store userId in localStorage for persistence
+      if (user?.id) {
+        localStorage.setItem('userId', user.id.toString());
+        console.log('Saved userId to localStorage:', user.id);
+      }
+      
       toast({
         title: "Login successful",
         description: "Welcome back!",
