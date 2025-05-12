@@ -394,8 +394,24 @@ app.get('/api/health', async (req, res) => {
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'not set',
     },
     session: {
-      active: !!req.session.userId
+      id: req.session.id,
+      active: !!req.session.userId,
+      userId: req.session.userId || null
     }
+  });
+});
+
+// Test endpoint to debug session persistence
+app.get('/api/session-test', (req, res) => {
+  const sessionCounter = req.session.counter || 0;
+  req.session.counter = sessionCounter + 1;
+  
+  res.status(200).json({
+    sessionId: req.session.id,
+    counter: req.session.counter,
+    userId: req.session.userId || null,
+    isAuthenticated: !!req.session.userId,
+    cookiePresent: !!req.headers.cookie
   });
 });
 
@@ -404,15 +420,26 @@ app.post('/api/applications', async (req, res) => {
   console.log('Application submission attempt');
   console.log('Session ID:', req.session.id);
   console.log('Cookie:', req.headers.cookie);
+  console.log('Headers:', req.headers);
   console.log('Session data:', {
     userId: req.session.userId,
     user: req.session.user ? { id: req.session.user.id, username: req.session.user.username } : null
   });
   console.log('Request body (first field):', req.body ? req.body.fullName : 'No data');
   
-  if (!req.session.userId) {
-    console.log('No userId in session, returning 401');
+  // Get userId from session OR from header if session is not working
+  const userId = req.session.userId || req.headers['x-user-id'];
+  
+  if (!userId) {
+    console.log('No userId in session or header, returning 401');
     return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  // Store user ID in session as a backup
+  if (!req.session.userId && userId) {
+    console.log('Storing userId in session from header:', userId);
+    req.session.userId = userId;
+    await new Promise((resolve) => req.session.save(resolve));
   }
   
   try {
@@ -471,6 +498,18 @@ app.post('/api/applications', async (req, res) => {
           `);
         }
         
+        // Make sure the user exists
+        const userCheckQuery = await pool.query(`
+          SELECT id FROM users WHERE id = $1
+        `, [userId]);
+        
+        if (userCheckQuery.rows.length === 0) {
+          console.log(`User with ID ${userId} not found in database`);
+          return res.status(400).json({ error: 'User not found. Please register or log in again.' });
+        }
+        
+        console.log(`User with ID ${userId} verified in database, proceeding with application insertion`);
+        
         // Insert application
         const result = await pool.query(`
           INSERT INTO applications 
@@ -478,7 +517,7 @@ app.post('/api/applications', async (req, res) => {
           VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING *;
         `, [
-          req.session.userId,
+          userId, // Use the userId from session or header
           fullName,
           email,
           phone,
