@@ -46,6 +46,7 @@ export class MemStorage implements IStorage {
   private userCurrentId: number;
   private applicationCurrentId: number;
   sessionStore: session.Store;
+  // TypeScript fixes for instagramId and twitterId
 
   constructor() {
     this.users = new Map();
