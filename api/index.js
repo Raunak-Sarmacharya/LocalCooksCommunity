@@ -308,6 +308,392 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// Applications API endpoints
+app.post('/api/applications', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    // Validate required fields
+    const { fullName, email, phone, foodSafetyLicense, foodEstablishmentCert, kitchenPreference } = req.body;
+    
+    if (!fullName || !email || !phone || !foodSafetyLicense || !foodEstablishmentCert || !kitchenPreference) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        message: 'Please provide all required application information'
+      });
+    }
+    
+    // Store in database if available
+    if (pool) {
+      try {
+        // Create application table if it doesn't exist
+        const tableCheck = await pool.query(`
+          SELECT to_regclass('public.applications') as table_exists;
+        `);
+        
+        if (!tableCheck.rows[0].table_exists) {
+          // Create enums if they don't exist
+          await pool.query(`
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'kitchen_preference') THEN
+                CREATE TYPE kitchen_preference AS ENUM ('commercial', 'home', 'notSure');
+              END IF;
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'certification_status') THEN
+                CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
+              END IF;
+              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'application_status') THEN
+                CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
+              END IF;
+            END$$;
+          `);
+          
+          // Create applications table
+          await pool.query(`
+            CREATE TABLE IF NOT EXISTS applications (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL REFERENCES users(id),
+              full_name TEXT NOT NULL,
+              email TEXT NOT NULL,
+              phone TEXT NOT NULL,
+              food_safety_license certification_status NOT NULL,
+              food_establishment_cert certification_status NOT NULL,
+              kitchen_preference kitchen_preference NOT NULL,
+              status application_status NOT NULL DEFAULT 'new',
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+          `);
+        }
+        
+        // Insert application
+        const result = await pool.query(`
+          INSERT INTO applications 
+          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING *;
+        `, [
+          req.session.userId,
+          fullName,
+          email,
+          phone,
+          foodSafetyLicense,
+          foodEstablishmentCert,
+          kitchenPreference
+        ]);
+        
+        // Return the created application
+        return res.status(201).json(result.rows[0]);
+      } catch (error) {
+        console.error('Error storing application:', error);
+        return res.status(500).json({ 
+          error: 'Failed to store application',
+          message: error.message
+        });
+      }
+    }
+    
+    // Fallback to memory storage (simplified)
+    const application = {
+      id: Date.now(),
+      userId: req.session.userId,
+      fullName,
+      email,
+      phone,
+      foodSafetyLicense,
+      foodEstablishmentCert, 
+      kitchenPreference,
+      status: 'new',
+      createdAt: new Date().toISOString()
+    };
+    
+    res.status(201).json(application);
+  } catch (error) {
+    console.error('Create application error:', error);
+    res.status(500).json({ 
+      error: 'Failed to create application',
+      message: error.message
+    });
+  }
+});
+
+// Admin endpoint to get all applications
+app.get('/api/applications', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    // First check if the user is an admin
+    const user = await getUser(req.session.userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Forbidden',
+        message: 'Only administrators can access this endpoint' 
+      });
+    }
+    
+    // Get from database if available
+    if (pool) {
+      // Check if table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.applications') as table_exists;
+      `);
+      
+      if (!tableCheck.rows[0].table_exists) {
+        // No applications table yet
+        return res.status(200).json([]);
+      }
+      
+      const result = await pool.query(`
+        SELECT a.*, u.username as applicant_username
+        FROM applications a
+        JOIN users u ON a.user_id = u.id
+        ORDER BY a.created_at DESC;
+      `);
+      
+      return res.status(200).json(result.rows);
+    }
+    
+    // Fallback empty response
+    res.status(200).json([]);
+  } catch (error) {
+    console.error('Get applications error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get applications',
+      message: error.message
+    });
+  }
+});
+
+// User endpoint to get their own applications
+app.get('/api/applications/my-applications', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    // Get from database if available
+    if (pool) {
+      // Check if table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.applications') as table_exists;
+      `);
+      
+      if (!tableCheck.rows[0].table_exists) {
+        // No applications table yet
+        return res.status(200).json([]);
+      }
+      
+      const result = await pool.query(`
+        SELECT * FROM applications 
+        WHERE user_id = $1 
+        ORDER BY created_at DESC;
+      `, [req.session.userId]);
+      
+      return res.status(200).json(result.rows);
+    }
+    
+    // Fallback empty response
+    res.status(200).json([]);
+  } catch (error) {
+    console.error('Get applications error:', error);
+    res.status(500).json({ 
+      error: 'Failed to get applications',
+      message: error.message
+    });
+  }
+});
+
+// Get a single application by ID
+app.get('/api/applications/:id', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    const { id } = req.params;
+    
+    // Get from database if available
+    if (pool) {
+      // Check if applications table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.applications') as table_exists;
+      `);
+      
+      if (!tableCheck.rows[0].table_exists) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+      
+      // Get user to check if admin
+      const user = await getUser(req.session.userId);
+      if (!user) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+      
+      // If admin, they can see any application
+      // If applicant, they can only see their own applications
+      let query = `SELECT * FROM applications WHERE id = $1`;
+      const params = [id];
+      
+      if (user.role !== 'admin') {
+        query += ` AND user_id = $2`;
+        params.push(req.session.userId);
+      }
+      
+      const result = await pool.query(query, params);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+      
+      return res.status(200).json(result.rows[0]);
+    }
+    
+    // Fallback error for no database
+    res.status(404).json({ error: 'Application not found' });
+  } catch (error) {
+    console.error('Get application error:', error);
+    res.status(500).json({ error: 'Failed to get application' });
+  }
+});
+
+// Cancel application endpoint (applicants can cancel their own applications)
+app.patch('/api/applications/:id/cancel', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    const { id } = req.params;
+    
+    // Get from database if available
+    if (pool) {
+      // Check if applications table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.applications') as table_exists;
+      `);
+      
+      if (!tableCheck.rows[0].table_exists) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+      
+      // Get user for id check
+      const user = await getUser(req.session.userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      // Update the application
+      let result;
+      if (user.role === 'admin') {
+        // Admins can cancel any application
+        result = await pool.query(`
+          UPDATE applications
+          SET status = 'cancelled'
+          WHERE id = $1
+          RETURNING *;
+        `, [id]);
+      } else {
+        // Applicants can only cancel their own applications
+        result = await pool.query(`
+          UPDATE applications
+          SET status = 'cancelled'
+          WHERE id = $1 AND user_id = $2
+          RETURNING *;
+        `, [id, req.session.userId]);
+      }
+      
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: 'Application not found or not owned by you' });
+      }
+      
+      return res.status(200).json(result.rows[0]);
+    }
+    
+    // Fallback error - no storage
+    res.status(500).json({ error: 'No storage available' });
+  } catch (error) {
+    console.error('Cancel application error:', error);
+    res.status(500).json({ error: 'Failed to cancel application' });
+  }
+});
+
+// Update application status endpoint (admin only)
+app.patch('/api/applications/:id/status', async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  try {
+    // First check if the user is an admin
+    const user = await getUser(req.session.userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Forbidden',
+        message: 'Only administrators can update application status' 
+      });
+    }
+    
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    // Validate the status
+    const validStatuses = ['new', 'inReview', 'approved', 'rejected', 'cancelled'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ 
+        error: 'Invalid status',
+        message: `Status must be one of: ${validStatuses.join(', ')}` 
+      });
+    }
+    
+    // Update in database if available
+    if (pool) {
+      // Check if applications table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.applications') as table_exists;
+      `);
+      
+      if (!tableCheck.rows[0].table_exists) {
+        return res.status(404).json({ 
+          error: 'Not found',
+          message: 'Application not found' 
+        });
+      }
+      
+      // Update the application
+      const result = await pool.query(`
+        UPDATE applications
+        SET status = $1
+        WHERE id = $2
+        RETURNING *;
+      `, [status, id]);
+      
+      if (result.rowCount === 0) {
+        return res.status(404).json({ 
+          error: 'Not found',
+          message: 'Application not found' 
+        });
+      }
+      
+      return res.status(200).json(result.rows[0]);
+    }
+    
+    // Fallback error - no storage
+    res.status(500).json({ 
+      error: 'No storage available',
+      message: 'Cannot update application without database' 
+    });
+  } catch (error) {
+    console.error('Update application status error:', error);
+    res.status(500).json({ 
+      error: 'Failed to update application status',
+      message: error.message
+    });
+  }
+});
+
 // Database initialization endpoint
 app.get('/api/init-db', async (req, res) => {
   if (!pool) {
