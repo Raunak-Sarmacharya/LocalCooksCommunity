@@ -1,31 +1,22 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "buildCommand": "./vercel-build.sh",
+  "outputDirectory": "dist/client",
   "devCommand": "npm run dev",
-  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
   "functions": {
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 10
     }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/client/$1"
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|gif|svg|ico))",
-      "dest": "/dist/client/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/client/index.html"
-    }
-  ]
+  }
 }
