@@ -36,7 +36,8 @@ This error occurs when your serverless function fails to execute properly. Commo
 
 2. **Test API Endpoints Individually**
    - Try accessing each API endpoint separately to identify which one is failing
-   - Use `/api/health` to check database connection status
+   - Use `/api/health` to check database connection status and environment variables
+   - Use `/api/init-db` to initialize database tables if they don't exist
 
 3. **Simplify Problematic Functions**
    - Temporarily comment out complex operations

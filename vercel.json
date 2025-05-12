@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/vercel-server.js"
+      "destination": "/api/index.js"
     },
     {
       "source": "/(.*)",
@@ -14,7 +14,7 @@
     }
   ],
   "functions": {
-    "vercel-server.js": {
+    "api/index.js": {
       "memory": 1024,
       "maxDuration": 10
     }

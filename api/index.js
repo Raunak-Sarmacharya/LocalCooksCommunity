@@ -1,21 +1,23 @@
-// Simple, standalone API implementation for Vercel 
+// Minimal Express server for Vercel
 import express from 'express';
 import session from 'express-session';
 import { Pool } from '@neondatabase/serverless';
 import { scrypt, randomBytes, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
+import createMemoryStore from 'memorystore';
 
 // Setup
 const app = express();
 const scryptAsync = promisify(scrypt);
+const MemoryStore = createMemoryStore(session);
 
-// Database connection
+// Database connection with small pool size for serverless
 let pool;
 try {
   if (process.env.DATABASE_URL) {
     pool = new Pool({ 
       connectionString: process.env.DATABASE_URL,
-      max: 1
+      max: 1 // Small pool for serverless
     });
     console.log('Connected to database');
   } else {
@@ -27,17 +29,19 @@ try {
 
 // In-memory fallback
 const users = new Map();
-const sessions = new Map();
 
 // Middleware
 app.use(express.json());
 
-// Session setup
+// Session setup - using memory store for simplicity in serverless
 const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';
 app.use(session({
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
+  store: new MemoryStore({
+    checkPeriod: 86400000 // prune expired entries every 24h
+  }),
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     maxAge: 24 * 60 * 60 * 1000 // 1 day
@@ -88,7 +92,7 @@ async function getUser(id) {
   }
   
   // Fall back to in-memory
-  return users.get(id);
+  return users.get(parseInt(id));
 }
 
 async function createUser(userData) {
@@ -111,6 +115,61 @@ async function createUser(userData) {
   const user = { id, ...userData };
   users.set(id, user);
   return user;
+}
+
+// Initialize database tables if they don't exist
+async function initializeDatabase() {
+  if (!pool) return;
+  
+  try {
+    // Check if users table exists
+    const tableCheck = await pool.query(`
+      SELECT to_regclass('public.users') as table_exists;
+    `);
+    
+    if (!tableCheck.rows[0].table_exists) {
+      console.log('Creating database tables...');
+      
+      // Create role enum if it doesn't exist
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+            CREATE TYPE user_role AS ENUM ('admin', 'applicant');
+          END IF;
+        END$$;
+      `);
+      
+      // Create users table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          role user_role NOT NULL DEFAULT 'applicant',
+          google_id TEXT,
+          facebook_id TEXT
+        );
+      `);
+      
+      // Create an admin user
+      const hashedPassword = 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668'; // localcooks
+      await pool.query(`
+        INSERT INTO users (username, password, role)
+        VALUES ('admin', $1, 'admin')
+        ON CONFLICT (username) DO NOTHING;
+      `, [hashedPassword]);
+      
+      console.log('Database initialized successfully');
+    }
+  } catch (error) {
+    console.error('Database initialization error:', error);
+  }
+}
+
+// Initialize DB tables if needed
+if (pool) {
+  initializeDatabase().catch(console.error);
 }
 
 // API Routes
@@ -145,7 +204,7 @@ app.post('/api/register', async (req, res) => {
     res.status(201).json(userWithoutPassword);
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Registration failed', message: error.message });
   }
 });
 
@@ -176,7 +235,7 @@ app.post('/api/login', async (req, res) => {
     res.status(200).json(userWithoutPassword);
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login failed', message: error.message });
   }
 });
 
@@ -207,18 +266,27 @@ app.get('/api/user', async (req, res) => {
     res.status(200).json(userWithoutPassword);
   } catch (error) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Failed to get user data' });
+    res.status(500).json({ error: 'Failed to get user data', message: error.message });
   }
 });
 
-// Health check endpoint
+// Diagnostic endpoint
 app.get('/api/health', async (req, res) => {
   let dbStatus = 'disconnected';
+  let tables = [];
   
   if (pool) {
     try {
       await pool.query('SELECT 1');
       dbStatus = 'connected';
+      
+      // Check what tables exist
+      const tableResult = await pool.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+      `);
+      tables = tableResult.rows.map(r => r.table_name);
     } catch (error) {
       dbStatus = `error: ${error.message}`;
     }
@@ -227,13 +295,41 @@ app.get('/api/health', async (req, res) => {
   res.status(200).json({ 
     status: 'ok', 
     dbStatus,
+    tables,
     timestamp: new Date().toISOString(),
     env: {
       NODE_ENV: process.env.NODE_ENV || 'not set',
       DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'not set',
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'not set',
+    },
+    session: {
+      active: !!req.session.userId
     }
   });
+});
+
+// Database initialization endpoint
+app.get('/api/init-db', async (req, res) => {
+  if (!pool) {
+    return res.status(400).json({ 
+      error: 'No database connection', 
+      message: 'DATABASE_URL environment variable is not set' 
+    });
+  }
+  
+  try {
+    await initializeDatabase();
+    res.status(200).json({ 
+      message: 'Database initialization attempted',
+      success: true
+    });
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    res.status(500).json({ 
+      error: 'Database initialization failed', 
+      message: error.message 
+    });
+  }
 });
 
 // Error handling middleware
@@ -245,5 +341,4 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Export for serverless use
 export default app;
