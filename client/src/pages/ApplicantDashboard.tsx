@@ -104,7 +104,7 @@ export default function ApplicantDashboard() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-grow container max-w-6xl mx-auto px-4 pt-24 pb-8">
+      <main className="flex-grow container max-w-6xl mx-auto px-4 pt-28 pb-8">
         <div className="mb-6 md:mb-8 p-4 md:p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-xl">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
             <div>
