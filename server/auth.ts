@@ -74,69 +74,79 @@ export function setupAuth(app: Express) {
     })
   );
 
-  // Google OAuth Strategy
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL,
-        scope: ["profile", "email"]
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          // Check if user exists
-          let user = await storage.getUserByOAuthId("google", profile.id);
-          
-          if (!user) {
-            // Create a new user
-            user = await storage.createOAuthUser({
-              oauth_provider: "google",
-              oauth_id: profile.id,
-              username: profile.emails?.[0]?.value || `google_${profile.id}`,
-              role: "applicant",
-              profile_data: JSON.stringify(profile)
-            });
+  // Configure Google OAuth Strategy if credentials are available
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          callbackURL: process.env.GOOGLE_CALLBACK_URL || "/api/auth/google/callback",
+          scope: ["profile", "email"]
+        },
+        async (accessToken, refreshToken, profile, done) => {
+          try {
+            // Check if user exists
+            let user = await storage.getUserByOAuthId("google", profile.id);
+            
+            if (!user) {
+              // Create a new user
+              user = await storage.createOAuthUser({
+                oauth_provider: "google",
+                oauth_id: profile.id,
+                username: profile.emails?.[0]?.value || `google_${profile.id}`,
+                role: "applicant",
+                profile_data: JSON.stringify(profile)
+              });
+            }
+            
+            return done(null, user);
+          } catch (error) {
+            return done(error as Error);
           }
-          
-          return done(null, user);
-        } catch (error) {
-          return done(error as Error);
         }
-      }
-    )
-  );
+      )
+    );
+    console.log("Google OAuth strategy configured");
+  } else {
+    console.log("Google OAuth strategy not configured - missing environment variables");
+  }
 
-  // Facebook OAuth Strategy
-  passport.use(
-    new FacebookStrategy(
-      {
-        clientID: process.env.FACEBOOK_CLIENT_ID!,
-        clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
-        callbackURL: process.env.FACEBOOK_CALLBACK_URL,
-        profileFields: ["id", "emails", "name"]
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          let user = await storage.getUserByOAuthId("facebook", profile.id);
-          
-          if (!user) {
-            user = await storage.createOAuthUser({
-              oauth_provider: "facebook",
-              oauth_id: profile.id,
-              username: profile.emails?.[0]?.value || `facebook_${profile.id}`,
-              role: "applicant",
-              profile_data: JSON.stringify(profile)
-            });
+  // Configure Facebook OAuth Strategy if credentials are available
+  if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
+    passport.use(
+      new FacebookStrategy(
+        {
+          clientID: process.env.FACEBOOK_CLIENT_ID,
+          clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+          callbackURL: process.env.FACEBOOK_CALLBACK_URL || "/api/auth/facebook/callback",
+          profileFields: ["id", "emails", "name"]
+        },
+        async (accessToken, refreshToken, profile, done) => {
+          try {
+            let user = await storage.getUserByOAuthId("facebook", profile.id);
+            
+            if (!user) {
+              user = await storage.createOAuthUser({
+                oauth_provider: "facebook",
+                oauth_id: profile.id,
+                username: profile.emails?.[0]?.value || `facebook_${profile.id}`,
+                role: "applicant",
+                profile_data: JSON.stringify(profile)
+              });
+            }
+            
+            return done(null, user);
+          } catch (error) {
+            return done(error as Error);
           }
-          
-          return done(null, user);
-        } catch (error) {
-          return done(error as Error);
         }
-      }
-    )
-  );
+      )
+    );
+    console.log("Facebook OAuth strategy configured");
+  } else {
+    console.log("Facebook OAuth strategy not configured - missing environment variables");
+  }
 
   // Serialize/deserialize user
   passport.serializeUser((user: Express.User, done) => {
