@@ -765,8 +765,27 @@ app.get('/api/applications/:id', async (req, res) => {
 
 // Cancel application endpoint (applicants can cancel their own applications)
 app.patch('/api/applications/:id/cancel', async (req, res) => {
-  if (!req.session.userId) {
+  console.log('PATCH /api/applications/:id/cancel - Session data:', {
+    sessionId: req.session.id,
+    userId: req.session.userId || null,
+    headers: {
+      'x-user-id': req.headers['x-user-id'] || null
+    }
+  });
+  
+  // Get user ID from session or header
+  const userId = req.session.userId || req.headers['x-user-id'];
+  
+  if (!userId) {
+    console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
+  }
+  
+  // Store user ID in session if it's not there
+  if (!req.session.userId && userId) {
+    console.log('Storing userId in session from header:', userId);
+    req.session.userId = userId;
+    await new Promise(resolve => req.session.save(resolve));
   }
   
   try {
