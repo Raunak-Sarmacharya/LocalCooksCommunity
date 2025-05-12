@@ -37,14 +37,15 @@ app.use(express.json());
 const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';
 app.use(session({
   secret: sessionSecret,
-  resave: false,
-  saveUninitialized: false,
+  resave: true,
+  saveUninitialized: true,
   store: new MemoryStore({
     checkPeriod: 86400000 // prune expired entries every 24h
   }),
   cookie: {
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 1 day
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 }));
 
@@ -212,6 +213,8 @@ app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
+    console.log('Login attempt for user:', username);
+    
     // Validate input
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
@@ -219,11 +222,13 @@ app.post('/api/login', async (req, res) => {
     
     const user = await getUserByUsername(username);
     if (!user) {
+      console.log('Login failed: User not found');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
     const passwordMatch = await comparePasswords(password, user.password);
     if (!passwordMatch) {
+      console.log('Login failed: Password mismatch');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
@@ -232,7 +237,20 @@ app.post('/api/login', async (req, res) => {
     
     // Log in the user
     req.session.userId = user.id;
-    res.status(200).json(userWithoutPassword);
+    req.session.user = userWithoutPassword; // Store full user object (without password)
+    
+    console.log('Login successful, session ID:', req.session.id);
+    console.log('User ID in session:', req.session.userId);
+    
+    // Save session explicitly
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+      } else {
+        console.log('Session saved successfully');
+      }
+      res.status(200).json(userWithoutPassword);
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed', message: error.message });
@@ -250,19 +268,39 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/user', async (req, res) => {
+  // Debug session info
+  console.log('Session ID in /api/user:', req.session.id);
+  console.log('Session data:', req.session);
+  
   if (!req.session.userId) {
+    console.log('No userId in session, returning 401');
     return res.status(401).json({ error: 'Not authenticated' });
   }
   
   try {
+    console.log('Fetching user with ID:', req.session.userId);
+    
+    // If we have the user cached in session, use that
+    if (req.session.user) {
+      console.log('Using cached user from session');
+      return res.status(200).json(req.session.user);
+    }
+    
     const user = await getUser(req.session.userId);
     if (!user) {
+      console.log('User not found in database, destroying session');
       req.session.destroy(() => {});
       return res.status(401).json({ error: 'User not found' });
     }
     
+    console.log('User found in database, returning user data');
+    
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
+    
+    // Cache user in session for future requests
+    req.session.user = userWithoutPassword;
+    
     res.status(200).json(userWithoutPassword);
   } catch (error) {
     console.error('Get user error:', error);
