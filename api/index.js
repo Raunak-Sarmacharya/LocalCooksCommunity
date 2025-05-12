@@ -5,9 +5,17 @@ import { createServer } from 'http';
 import { scrypt, randomBytes, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import { storage } from './storage.js';
+import { initializeDatabase } from './init-db.js';
 
 // Create a simplified version for the serverless function
 const scryptAsync = promisify(scrypt);
+
+// Initialize database if needed (for first run)
+if (process.env.DATABASE_URL) {
+  initializeDatabase().catch(error => {
+    console.error('Database initialization error:', error);
+  });
+}
 
 // Initialize Express app
 const app = express();
