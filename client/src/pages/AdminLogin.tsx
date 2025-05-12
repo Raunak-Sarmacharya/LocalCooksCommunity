@@ -21,8 +21,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
+import { queryClient } from "@/lib/queryClient";
 import { Redirect, useLocation } from "wouter";
 import { ChefHat, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -32,8 +34,10 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
-  const { user, isLoading, loginMutation } = useAuth();
+  const { user, isLoading } = useAuth();
   const [, navigate] = useLocation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -43,12 +47,49 @@ export default function AdminLogin() {
     },
   });
 
-  const onSubmit = (data: LoginFormData) => {
-    loginMutation.mutate(data, {
-      onSuccess: () => {
+  const onSubmit = async (data: LoginFormData) => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    
+    try {
+      console.log('Attempting admin login with username:', data.username);
+      const response = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Admin login failed');
+      }
+      
+      const userData = await response.json();
+      console.log('Admin login successful, user data:', userData);
+      
+      // Store userId in localStorage for persistence
+      if (userData?.id) {
+        localStorage.setItem('userId', userData.id.toString());
+        console.log('Saved userId to localStorage:', userData.id);
+        
+        // Update query client with user data
+        queryClient.setQueryData(["/api/user"], userData);
+        console.log('Updated query client with user data');
+        
+        // Navigate to admin dashboard
         navigate("/admin");
-      },
-    });
+      } else {
+        throw new Error('Invalid admin user data returned');
+      }
+    } catch (error: any) {
+      console.error('Admin login error:', error);
+      setErrorMessage(error.message || 'Failed to login');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Redirect if already logged in
@@ -75,6 +116,12 @@ export default function AdminLogin() {
               className="space-y-4"
               noValidate
             >
+              {errorMessage && (
+                <div className="rounded-md bg-red-50 p-3 text-sm text-red-500">
+                  {errorMessage}
+                </div>
+              )}
+              
               <FormField
                 control={form.control}
                 name="username"
@@ -85,7 +132,7 @@ export default function AdminLogin() {
                       <Input
                         placeholder="admin"
                         {...field}
-                        disabled={loginMutation.isPending}
+                        disabled={isSubmitting}
                       />
                     </FormControl>
                     <FormMessage />
@@ -103,7 +150,7 @@ export default function AdminLogin() {
                         type="password"
                         placeholder="Enter your password"
                         {...field}
-                        disabled={loginMutation.isPending}
+                        disabled={isSubmitting}
                       />
                     </FormControl>
                     <FormMessage />
@@ -113,9 +160,9 @@ export default function AdminLogin() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loginMutation.isPending}
+                disabled={isSubmitting}
               >
-                {loginMutation.isPending ? (
+                {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Logging in...

@@ -284,30 +284,56 @@ async function ensureAdminUser() {
 // Ensure admin user on startup
 ensureAdminUser().catch(console.error);
 
-// Admin login endpoint (for debugging)
+// Admin login endpoint
 app.post('/api/admin-login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
     console.log('Admin login attempt for:', username);
     
-    // For admin login, we'll use hardcoded values for now for debugging
-    if (username === 'admin' && password === 'localcooks') {
-      console.log('Admin credentials match');
-      
-      // Look up admin user in database
-      const admin = await getUserByUsername('admin');
-      
-      if (admin) {
-        console.log('Admin user found in database:', { id: admin.id, role: admin.role });
-        
-        // Set session
-        req.session.userId = admin.id;
-        req.session.user = { id: admin.id, username: admin.username, role: admin.role };
-        
-        await new Promise(resolve => req.session.save(resolve));
-        
-        // Remove sensitive info
+    // Get admin user
+    const admin = await getUserByUsername(username);
+    
+    if (!admin) {
+      console.log('Admin user not found:', username);
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+    
+    // Verify admin role
+    if (admin.role !== 'admin') {
+      console.log('User is not an admin:', username);
+      return res.status(403).json({ error: 'Not authorized as admin' });
+    }
+    
+    // Check password - first try exact match for 'localcooks'
+    let passwordMatches = false;
+    
+    if (password === 'localcooks') {
+      passwordMatches = true;
+      console.log('Admin password matched with hardcoded value');
+    } else {
+      // Try to compare with database password
+      try {
+        passwordMatches = await comparePasswords(password, admin.password);
+        console.log('Admin password compared with database:', passwordMatches);
+      } catch (error) {
+        console.error('Error comparing passwords:', error);
+      }
+    }
+    
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+    
+    console.log('Admin login successful for:', username);
+    
+    // Set session
+    req.session.userId = admin.id;
+    req.session.user = { id: admin.id, username: admin.username, role: admin.role };
+    
+    await new Promise(resolve => req.session.save(resolve));
+    
+    // Remove sensitive info
         const { password: _, ...adminWithoutPassword } = admin;
         
         // Return user and save in localStorage for header auth
