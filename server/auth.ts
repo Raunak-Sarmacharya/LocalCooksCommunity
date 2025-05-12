@@ -34,6 +34,19 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+// Fix TypeScript error for createOAuthUser interface
+declare module "../server/storage" {
+  interface IStorage {
+    createOAuthUser(user: { 
+      username: string;
+      role: "admin" | "applicant";
+      oauth_provider: string;
+      oauth_id: string;
+      profile_data?: string;
+    }): Promise<User>;
+  }
+}
+
 export function setupAuth(app: Express) {
   // Session config
   const sessionSettings: session.SessionOptions = {
