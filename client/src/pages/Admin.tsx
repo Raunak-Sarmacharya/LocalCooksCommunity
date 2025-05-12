@@ -32,6 +32,14 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   
   const { user } = useAuth();
+  
+  // Debug authentication state
+  console.log('Admin Dashboard - Authentication state:', { 
+    isLoggedIn: !!user,
+    userId: user?.id,
+    userRole: user?.role,
+    localStorageUserId: localStorage.getItem('userId')
+  });
 
   // Fetch all applications with user ID in header
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({

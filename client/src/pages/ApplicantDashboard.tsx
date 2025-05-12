@@ -66,6 +66,14 @@ const itemVariants = {
 
 export default function ApplicantDashboard() {
   const { user, logoutMutation } = useAuth();
+  
+  // Debug authentication state
+  console.log('ApplicantDashboard - Authentication state:', { 
+    isLoggedIn: !!user,
+    userId: user?.id,
+    userRole: user?.role,
+    localStorageUserId: localStorage.getItem('userId')
+  });
 
   // Fetch applicant's applications with user ID in header
   const { data: applications, isLoading } = useQuery<Application[]>({
