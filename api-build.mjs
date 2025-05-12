@@ -71,4 +71,10 @@ if (fs.existsSync(schemaFile)) {
   fs.writeFileSync(schemaDestPath, content);
 }
 
+// Copy vercel-server.js file to the dist directory
+if (fs.existsSync('vercel-server.js')) {
+  console.log('Copying vercel-server.js to dist directory...');
+  fs.copyFileSync('vercel-server.js', 'dist/vercel-server.js');
+}
+
 console.log('API file preparation completed!');
