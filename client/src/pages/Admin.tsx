@@ -395,15 +395,15 @@ function AdminDashboard() {
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Full Name</h4>
-                            <p className="font-medium text-sm">{app.fullName}</p>
+                            <p className="font-medium text-sm">{app.fullName || "No name provided"}</p>
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Email</h4>
-                            <p className="font-medium text-sm">{app.email}</p>
+                            <p className="font-medium text-sm">{app.email || "No email provided"}</p>
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Phone</h4>
-                            <p className="font-medium text-sm">{app.phone}</p>
+                            <p className="font-medium text-sm">{app.phone || "No phone provided"}</p>
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Created Date</h4>
