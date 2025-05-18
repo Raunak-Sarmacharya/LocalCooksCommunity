@@ -98,9 +98,7 @@ export default function KitchenPreferenceForm() {
               </div>
               <div className="p-5">
                 <div className="flex items-center space-x-3 mb-4">
-                  <div className="inline-flex items-center justify-center h-6 w-6">
-                    <RadioGroupItem value="commercial" id="kp-commercial" />
-                  </div>
+                  <RadioGroupItem value="commercial" id="kp-commercial" />
                   <Label htmlFor="kp-commercial" className="text-sm font-medium cursor-pointer">I want to cook in a professional setting</Label>
                 </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
@@ -121,9 +119,7 @@ export default function KitchenPreferenceForm() {
               </div>
               <div className="p-5">
                 <div className="flex items-center space-x-3 mb-4">
-                  <div className="inline-flex items-center justify-center h-6 w-6">
-                    <RadioGroupItem value="home" id="kp-home" />
-                  </div>
+                  <RadioGroupItem value="home" id="kp-home" />
                   <Label htmlFor="kp-home" className="text-sm font-medium cursor-pointer">I want to cook from my home</Label>
                 </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
@@ -144,9 +140,7 @@ export default function KitchenPreferenceForm() {
               </div>
               <div className="p-5">
                 <div className="flex items-center space-x-3 mb-4">
-                  <div className="inline-flex items-center justify-center h-6 w-6">
-                    <RadioGroupItem value="notSure" id="kp-not-sure" />
-                  </div>
+                  <RadioGroupItem value="notSure" id="kp-not-sure" />
                   <Label htmlFor="kp-not-sure" className="text-sm font-medium cursor-pointer">I'd like personalized guidance</Label>
                 </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
