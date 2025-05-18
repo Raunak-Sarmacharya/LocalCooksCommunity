@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Check, Camera, Medal, TrendingUp, Megaphone, Wallet, Calendar, CreditCard, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
+import foodDeliveryImage from "../../assets/food-delivery.png";
 
 const pilotBenefits = [
   {
@@ -127,8 +128,8 @@ export default function BenefitsSection() {
           <div className="p-6 md:p-10 lg:p-14 flex flex-col md:flex-row items-center relative z-10">
             <div className="md:w-1/2 mb-6 md:mb-0">
               <img 
-                src="https://images.unsplash.com/photo-1556911220-bff31c812dba?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
-                alt="Professional chef cooking" 
+                src={foodDeliveryImage} 
+                alt="Chef delivering food to customer at doorstep" 
                 className="rounded-xl md:rounded-2xl w-full h-48 sm:h-60 md:h-72 object-cover shadow-[0_5px_15px_rgba(0,0,0,0.2)] md:shadow-[0_10px_25px_rgba(0,0,0,0.3)]"
               />
             </div>
