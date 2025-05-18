@@ -218,8 +218,8 @@ export default function ApplicantDashboard() {
                 >
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 md:gap-0">
                     <div>
-                      <h2 className="text-lg md:text-xl font-semibold">{application.fullName}</h2>
-                      <p className="text-sm text-muted-foreground">{application.email}</p>
+                      <h2 className="text-lg md:text-xl font-semibold">{application.fullName || "No Name Provided"}</h2>
+                      <p className="text-sm text-muted-foreground">{application.email || "No Email Provided"}</p>
                     </div>
                     <Badge className={`${getStatusBadgeColor(application.status)} self-start sm:self-auto flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm mt-1 sm:mt-0`}>
                       {statusIcon()}
