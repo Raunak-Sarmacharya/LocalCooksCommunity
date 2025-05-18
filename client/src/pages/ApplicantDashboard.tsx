@@ -225,7 +225,29 @@ export default function ApplicantDashboard() {
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-4 md:mt-6">
+                  <div className="mt-4 md:mt-6 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <h3 className="text-sm font-medium mb-3 text-gray-700">Application Details</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Full Name</h4>
+                        <p className="font-medium text-gray-900">{application.fullName}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Email</h4>
+                        <p className="font-medium text-gray-900">{application.email}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Phone</h4>
+                        <p className="font-medium text-gray-900">{application.phone}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Application ID</h4>
+                        <p className="font-medium text-gray-900">#{application.id}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-4">
                     <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border border-gray-100 shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="bg-green-100 p-1.5 rounded-full">
