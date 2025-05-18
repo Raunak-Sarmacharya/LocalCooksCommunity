@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ChefHat, ShoppingBag, Users, CreditCard } from "lucide-react";
 import { motion } from "framer-motion";
+import chefCookingImage from "../../assets/chef-cooking.png";
 
 export default function HeroSection() {
   const [, navigate] = useLocation();
@@ -72,8 +73,8 @@ export default function HeroSection() {
           <div className="absolute inset-0 bg-primary/5 rounded-2xl rotate-3 transform hidden md:block"></div>
           <div className="relative overflow-hidden rounded-xl shadow-xl">
             <img 
-              src="https://images.unsplash.com/photo-1556911220-bff31c812dba?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
-              alt="Professional chef cooking" 
+              src={chefCookingImage} 
+              alt="Professional chef cooking in home kitchen" 
               className="w-full h-64 md:h-full object-cover rounded-xl shadow-lg"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
