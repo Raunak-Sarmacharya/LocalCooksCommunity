@@ -22,6 +22,12 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Accordion, 
+  AccordionContent, 
+  AccordionItem, 
+  AccordionTrigger 
+} from "@/components/ui/accordion";
 import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon } from "lucide-react";
 
 function AdminDashboard() {
@@ -382,6 +388,39 @@ function AdminDashboard() {
                         <p className="font-medium text-sm">{formatKitchenPreference(app.kitchenPreference)}</p>
                       </div>
                     </div>
+                    
+                    <Accordion type="single" collapsible className="mt-4 pt-4 border-t w-full">
+                      <AccordionItem value="details" className="border-b-0">
+                        <AccordionTrigger className="text-sm font-medium py-1">
+                          View Application Timeline
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-4 mt-2">
+                            <div className="flex items-center space-x-2">
+                              <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
+                                <CheckCircle className="h-4 w-4 text-primary" />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-medium">Application Submitted</h4>
+                                <p className="text-xs text-muted-foreground">{new Date(app.createdAt).toLocaleString()}</p>
+                              </div>
+                            </div>
+
+                            {app.status !== 'new' && (
+                              <div className="flex items-center space-x-2">
+                                <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                  <Clock className="h-4 w-4 text-blue-500" />
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-medium">Application {formatApplicationStatus(app.status)}</h4>
+                                  <p className="text-xs text-muted-foreground">Status updated</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                     
                     <div className="mt-4 pt-4 border-t flex flex-col md:flex-row justify-between items-center">
                       <div className="flex items-center text-xs text-muted-foreground">
