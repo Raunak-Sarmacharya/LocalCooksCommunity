@@ -389,38 +389,39 @@ function AdminDashboard() {
                       </div>
                     </div>
                     
-                    <Accordion type="single" collapsible className="mt-4 pt-4 border-t w-full">
-                      <AccordionItem value="details" className="border-b-0">
-                        <AccordionTrigger className="text-sm font-medium py-1">
-                          View Application Timeline
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="space-y-4 mt-2">
-                            <div className="flex items-center space-x-2">
-                              <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
-                                <CheckCircle className="h-4 w-4 text-primary" />
-                              </div>
-                              <div>
-                                <h4 className="text-sm font-medium">Application Submitted</h4>
-                                <p className="text-xs text-muted-foreground">{new Date(app.createdAt).toLocaleString()}</p>
-                              </div>
-                            </div>
-
-                            {app.status !== 'new' && (
-                              <div className="flex items-center space-x-2">
-                                <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                  <Clock className="h-4 w-4 text-blue-500" />
-                                </div>
-                                <div>
-                                  <h4 className="text-sm font-medium">Application {formatApplicationStatus(app.status)}</h4>
-                                  <p className="text-xs text-muted-foreground">Status updated</p>
-                                </div>
-                              </div>
-                            )}
+                    <div className="mt-4 pt-4 border-t w-full">
+                      <h3 className="text-sm font-medium mb-3">Application Details</h3>
+                      <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Full Name</h4>
+                            <p className="font-medium text-sm">{app.fullName}</p>
                           </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Email</h4>
+                            <p className="font-medium text-sm">{app.email}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Phone</h4>
+                            <p className="font-medium text-sm">{app.phone}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Created Date</h4>
+                            <p className="font-medium text-sm">{new Date(app.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Status</h4>
+                            <Badge className={`${getStatusBadgeColor(app.status)}`}>
+                              {formatApplicationStatus(app.status)}
+                            </Badge>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Application ID</h4>
+                            <p className="font-medium text-sm">#{app.id}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     
                     <div className="mt-4 pt-4 border-t flex flex-col md:flex-row justify-between items-center">
                       <div className="flex items-center text-xs text-muted-foreground">
