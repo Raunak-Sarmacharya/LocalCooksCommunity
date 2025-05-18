@@ -407,7 +407,15 @@ function AdminDashboard() {
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Created Date</h4>
-                            <p className="font-medium text-sm">{new Date(app.createdAt).toLocaleDateString()}</p>
+                            <p className="font-medium text-sm">{app.createdAt ? new Date(app.createdAt).toLocaleDateString() : "N/A"}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Food Safety License</h4>
+                            <p className="font-medium text-sm">{formatCertificationStatus(app.foodSafetyLicense)}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Food Establishment Cert</h4>
+                            <p className="font-medium text-sm">{formatCertificationStatus(app.foodEstablishmentCert)}</p>
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Status</h4>

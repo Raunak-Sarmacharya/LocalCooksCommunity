@@ -97,7 +97,9 @@ export default function ApplicantDashboard() {
         throw new Error(errorData.error || response.statusText);
       }
       
-      return response.json();
+      const data = await response.json();
+      console.log('Raw application data:', data);
+      return data;
     },
     enabled: !!user,
   });
@@ -230,73 +232,41 @@ export default function ApplicantDashboard() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <h4 className="text-xs font-medium text-gray-500 mb-1">Full Name</h4>
-                        <p className="font-medium text-gray-900">{application.fullName}</p>
+                        <p className="font-medium text-gray-900">{application.fullName || "N/A"}</p>
                       </div>
                       <div>
                         <h4 className="text-xs font-medium text-gray-500 mb-1">Email</h4>
-                        <p className="font-medium text-gray-900">{application.email}</p>
+                        <p className="font-medium text-gray-900">{application.email || "N/A"}</p>
                       </div>
                       <div>
                         <h4 className="text-xs font-medium text-gray-500 mb-1">Phone</h4>
-                        <p className="font-medium text-gray-900">{application.phone}</p>
+                        <p className="font-medium text-gray-900">{application.phone || "N/A"}</p>
                       </div>
                       <div>
                         <h4 className="text-xs font-medium text-gray-500 mb-1">Application ID</h4>
                         <p className="font-medium text-gray-900">#{application.id}</p>
                       </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Food Safety License</h4>
+                        <p className="font-medium text-gray-900">{formatCertificationStatus(application.foodSafetyLicense)}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Food Establishment Cert</h4>
+                        <p className="font-medium text-gray-900">{formatCertificationStatus(application.foodEstablishmentCert)}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Kitchen Preference</h4>
+                        <p className="font-medium text-gray-900">{formatKitchenPreference(application.kitchenPreference)}</p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mt-4">
-                    <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border border-gray-100 shadow-sm">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-green-100 p-1.5 rounded-full">
-                          <BadgeCheck className="h-4 w-4 text-green-600" />
-                        </div>
-                        <h3 className="text-sm font-medium text-gray-700">
-                          Food Safety License
-                        </h3>
-                      </div>
-                      <p className="font-medium text-gray-900 ml-8">{formatCertificationStatus(application.foodSafetyLicense)}</p>
-                    </div>
-                    
-                    <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border border-gray-100 shadow-sm">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-blue-100 p-1.5 rounded-full">
-                          <Award className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <h3 className="text-sm font-medium text-gray-700">
-                          Food Establishment Certificate
-                        </h3>
-                      </div>
-                      <p className="font-medium text-gray-900 ml-8">
-                        {formatCertificationStatus(application.foodEstablishmentCert)}
-                      </p>
-                    </div>
-                    
-                    <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border border-gray-100 shadow-sm">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="bg-purple-100 p-1.5 rounded-full">
-                          {application.kitchenPreference === 'commercial' ? (
-                            <Building className="h-4 w-4 text-purple-600" />
-                          ) : application.kitchenPreference === 'home' ? (
-                            <HomeIcon className="h-4 w-4 text-purple-600" />
-                          ) : (
-                            <UtensilsCrossed className="h-4 w-4 text-purple-600" />
-                          )}
-                        </div>
-                        <h3 className="text-sm font-medium text-gray-700">
-                          Kitchen Preference
-                        </h3>
-                      </div>
-                      <p className="font-medium text-gray-900 ml-8">{formatKitchenPreference(application.kitchenPreference)}</p>
-                    </div>
-                  </div>
+
 
                   <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 md:gap-4">
                     <div className="flex items-center text-sm text-muted-foreground">
                       <CalendarDays className="h-4 w-4 mr-2" />
-                      Submitted on {new Date(application.createdAt).toLocaleDateString()}
+                      Submitted on {application.createdAt ? new Date(application.createdAt).toLocaleDateString() : "N/A"}
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                       {isApplicationActive(application) && (
