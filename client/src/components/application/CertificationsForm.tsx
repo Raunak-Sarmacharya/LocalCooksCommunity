@@ -167,24 +167,30 @@ export default function CertificationsForm() {
             <RadioGroup
               onValueChange={(value) => form.setValue("foodSafetyLicense", value as "yes" | "no" | "notSure")}
               defaultValue={formData.foodSafetyLicense}
-              className="flex flex-col space-y-2 md:space-y-3"
+              className="flex flex-col space-y-3 md:space-y-4"
             >
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
-                <RadioGroupItem value="yes" id="fsl-yes" className="mt-1" />
+              <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
+                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
+                  <RadioGroupItem value="yes" id="fsl-yes" />
+                </div>
                 <div>
                   <Label htmlFor="fsl-yes" className="font-medium cursor-pointer">Yes, I have a license</Label>
                   <p className="text-sm text-gray-500 mt-1">I've completed the food safety training course</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
-                <RadioGroupItem value="no" id="fsl-no" className="mt-1" />
+              <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
+                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
+                  <RadioGroupItem value="no" id="fsl-no" />
+                </div>
                 <div>
                   <Label htmlFor="fsl-no" className="font-medium cursor-pointer">Not yet, but I'd like to learn</Label>
                   <p className="text-sm text-gray-500 mt-1">We'll guide you through the simple process</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
-                <RadioGroupItem value="notSure" id="fsl-not-sure" className="mt-1" />
+              <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
+                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
+                  <RadioGroupItem value="notSure" id="fsl-not-sure" />
+                </div>
                 <div>
                   <Label htmlFor="fsl-not-sure" className="font-medium cursor-pointer">I'd like to learn more</Label>
                   <p className="text-sm text-gray-500 mt-1">I'm exploring my options and need more information</p>
@@ -229,24 +235,30 @@ export default function CertificationsForm() {
             <RadioGroup
               onValueChange={(value) => form.setValue("foodEstablishmentCert", value as "yes" | "no" | "notSure")}
               defaultValue={formData.foodEstablishmentCert}
-              className="flex flex-col space-y-2 md:space-y-3"
+              className="flex flex-col space-y-3 md:space-y-4"
             >
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
-                <RadioGroupItem value="yes" id="fec-yes" className="mt-1" />
+              <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
+                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
+                  <RadioGroupItem value="yes" id="fec-yes" />
+                </div>
                 <div>
                   <Label htmlFor="fec-yes" className="font-medium cursor-pointer">Yes, I have a certificate</Label>
                   <p className="text-sm text-gray-500 mt-1">My kitchen has been inspected and approved</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
-                <RadioGroupItem value="no" id="fec-no" className="mt-1" />
+              <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
+                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
+                  <RadioGroupItem value="no" id="fec-no" />
+                </div>
                 <div>
                   <Label htmlFor="fec-no" className="font-medium cursor-pointer">Not yet, I'm interested</Label>
                   <p className="text-sm text-gray-500 mt-1">We'll connect you with resources to get started</p>
                 </div>
               </div>
-              <div className="flex items-start space-x-3 bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-primary hover-text">
-                <RadioGroupItem value="notSure" id="fec-not-sure" className="mt-1" />
+              <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
+                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
+                  <RadioGroupItem value="notSure" id="fec-not-sure" />
+                </div>
                 <div>
                   <Label htmlFor="fec-not-sure" className="font-medium cursor-pointer">Tell me more</Label>
                   <p className="text-sm text-gray-500 mt-1">I'd like to discuss my specific situation</p>
