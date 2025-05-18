@@ -246,9 +246,7 @@ export default function CertificationsForm() {
                 </div>
               </div>
               <div className="flex items-start space-x-3 bg-gray-50 p-5 rounded-lg border border-gray-200 hover:border-primary transition-all duration-200 hover:shadow-md">
-                <div className="inline-flex items-center justify-center h-6 w-6 mt-0.5">
-                  <RadioGroupItem value="notSure" id="fec-not-sure" />
-                </div>
+                <RadioGroupItem value="notSure" id="fec-not-sure" className="mt-1" />
                 <div>
                   <Label htmlFor="fec-not-sure" className="font-medium cursor-pointer">Tell me more</Label>
                   <p className="text-sm text-gray-500 mt-1">I'd like to discuss my specific situation</p>
