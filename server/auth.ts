@@ -37,7 +37,7 @@ async function comparePasswords(supplied: string, stored: string) {
 // Fix TypeScript error for createOAuthUser interface
 declare module "../server/storage" {
   interface IStorage {
-    createOAuthUser(user: { 
+    createOAuthUser(user: {
       username: string;
       role: "admin" | "applicant";
       oauth_provider: string;
@@ -69,17 +69,17 @@ export function setupAuth(app: Express) {
     new LocalStrategy(async (username, password, done) => {
       try {
         const user = await storage.getUserByUsername(username);
-        
+
         if (!user) {
           return done(null, false, { message: "Incorrect username" });
         }
-        
+
         const isValidPassword = await comparePasswords(password, user.password);
-        
+
         if (!isValidPassword) {
           return done(null, false, { message: "Incorrect password" });
         }
-        
+
         return done(null, user);
       } catch (error) {
         return done(error);
@@ -101,7 +101,7 @@ export function setupAuth(app: Express) {
           try {
             // Check if user exists
             let user = await storage.getUserByOAuthId("google", profile.id);
-            
+
             if (!user) {
               // Create a new user
               user = await storage.createOAuthUser({
@@ -112,7 +112,7 @@ export function setupAuth(app: Express) {
                 profile_data: JSON.stringify(profile)
               });
             }
-            
+
             return done(null, user);
           } catch (error) {
             return done(error as Error);
@@ -138,7 +138,7 @@ export function setupAuth(app: Express) {
         async (accessToken, refreshToken, profile, done) => {
           try {
             let user = await storage.getUserByOAuthId("facebook", profile.id);
-            
+
             if (!user) {
               user = await storage.createOAuthUser({
                 oauth_provider: "facebook",
@@ -148,7 +148,7 @@ export function setupAuth(app: Express) {
                 profile_data: JSON.stringify(profile)
               });
             }
-            
+
             return done(null, user);
           } catch (error) {
             return done(error as Error);
@@ -180,26 +180,26 @@ export function setupAuth(app: Express) {
     try {
       // Check if user already exists
       const existingUser = await storage.getUserByUsername(req.body.username);
-      
+
       if (existingUser) {
         return res.status(400).json({ error: "Username already exists" });
       }
-      
+
       // Hash password and create user
       const hashedPassword = await hashPassword(req.body.password);
-      
+
       const user = await storage.createUser({
         username: req.body.username,
         password: hashedPassword,
         role: req.body.role || "applicant" // Default to applicant if not specified
       });
-      
+
       // Log the user in
       req.login(user, (err) => {
         if (err) {
           return res.status(500).json({ error: "Login failed after registration" });
         }
-        
+
         return res.status(201).json({
           id: user.id,
           username: user.username,
@@ -217,16 +217,16 @@ export function setupAuth(app: Express) {
       if (err) {
         return next(err);
       }
-      
+
       if (!user) {
         return res.status(401).json({ error: info?.message || "Authentication failed" });
       }
-      
+
       req.login(user, (err: Error | null) => {
         if (err) {
           return next(err);
         }
-        
+
         return res.json({
           id: user.id,
           username: user.username,
@@ -241,7 +241,7 @@ export function setupAuth(app: Express) {
       if (err) {
         return res.status(500).json({ error: "Logout failed" });
       }
-      
+
       res.json({ message: "Logged out successfully" });
     });
   });
@@ -250,9 +250,9 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
     }
-    
+
     const user = req.user as User;
-    
+
     res.json({
       id: user.id,
       username: user.username,

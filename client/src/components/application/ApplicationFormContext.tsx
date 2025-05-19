@@ -20,9 +20,12 @@ export const ApplicationFormProvider: React.FC<{ children: React.ReactNode }> = 
     fullName: "",
     email: "",
     phone: "",
+    address: "",
     foodSafetyLicense: undefined,
     foodEstablishmentCert: undefined,
     kitchenPreference: undefined,
+    orderFulfillmentMethod: "preOrder",
+    questions: "",
   });
 
   const updateFormData = (data: Partial<ApplicationFormData>) => {
