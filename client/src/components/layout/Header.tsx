@@ -29,13 +29,50 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const { user, logoutMutation } = useAuth();
-  
+
   // Fetch applicant's applications if they are logged in
   const { data: applications } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
+    queryFn: async ({ queryKey }) => {
+      if (!user?.id) {
+        throw new Error("User not authenticated");
+      }
+
+      const headers: Record<string, string> = {
+        'X-User-ID': user.id.toString()
+      };
+
+      const response = await fetch(queryKey[0] as string, {
+        credentials: 'include',
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+
+      const rawData = await response.json();
+
+      // Convert snake_case to camelCase for database fields
+      const normalizedData = rawData.map((app: any) => ({
+        id: app.id,
+        userId: app.user_id || app.userId,
+        fullName: app.full_name || app.fullName,
+        email: app.email,
+        phone: app.phone,
+        foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
+        foodEstablishmentCert: app.food_establishment_cert || app.foodEstablishmentCert,
+        kitchenPreference: app.kitchen_preference || app.kitchenPreference,
+        status: app.status,
+        createdAt: app.created_at || app.createdAt
+      }));
+
+      return normalizedData;
+    },
     enabled: !!user && user.role === "applicant",
   });
-  
+
   // No longer need these for Apply Now button
   // const activeApplication = hasActiveApplication(applications);
   // const showApplyButton = !user || (user.role === "applicant" && !activeApplication && location !== "/apply");
@@ -47,20 +84,20 @@ export default function Header() {
   const closeMenu = () => {
     setIsMenuOpen(false);
   };
-  
+
   const handleLogout = () => {
     logoutMutation.mutate();
   };
-  
+
   const scrollToSection = useCallback((sectionId: string, event?: React.MouseEvent) => {
     event?.preventDefault();
-    
+
     // If not on the homepage, navigate to homepage first with the hash
     if (location !== "/") {
       setLocation(`/#${sectionId}`);
       return;
     }
-    
+
     // If already on homepage, scroll to the section smoothly
     const element = document.getElementById(sectionId);
     if (element) {
@@ -75,12 +112,12 @@ export default function Header() {
         <Link href="/" className="flex items-center">
           <Logo className="h-16 w-auto" />
         </Link>
-        
+
         <nav className="hidden md:block">
           <ul className="flex space-x-6 items-center">
             <li>
-              <a 
-                href="#how-it-works" 
+              <a
+                href="#how-it-works"
                 className="hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => scrollToSection("how-it-works", e)}
               >
@@ -88,8 +125,8 @@ export default function Header() {
               </a>
             </li>
             <li>
-              <a 
-                href="#benefits" 
+              <a
+                href="#benefits"
                 className="hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => scrollToSection("benefits", e)}
               >
@@ -97,8 +134,8 @@ export default function Header() {
               </a>
             </li>
             <li>
-              <a 
-                href="#about" 
+              <a
+                href="#about"
                 className="hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => scrollToSection("about", e)}
               >
@@ -107,16 +144,16 @@ export default function Header() {
             </li>
             {!user && (
               <li>
-                <Button 
+                <Button
                   asChild
-                  variant="outline" 
+                  variant="outline"
                   className="border-primary text-primary hover:bg-primary hover:text-white hover-standard"
                 >
                   <Link href="/auth">Login / Register</Link>
                 </Button>
               </li>
             )}
-            
+
             {user && (
               <li>
                 <DropdownMenu>
@@ -147,7 +184,7 @@ export default function Header() {
             )}
           </ul>
         </nav>
-        
+
         <div className="flex items-center gap-2 md:hidden">
           {user && (
             <DropdownMenu>
@@ -175,7 +212,7 @@ export default function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          
+
           <Button
             variant="ghost"
             size="icon"
@@ -189,14 +226,14 @@ export default function Header() {
           </Button>
         </div>
       </div>
-      
+
       {/* Mobile menu */}
       {isMenuOpen && (
         <div className="md:hidden bg-white p-4 shadow-md">
           <ul className="space-y-3">
             <li>
-              <a 
-                href="#how-it-works" 
+              <a
+                href="#how-it-works"
                 className="block py-2 hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => {
                   scrollToSection("how-it-works", e);
@@ -207,8 +244,8 @@ export default function Header() {
               </a>
             </li>
             <li>
-              <a 
-                href="#benefits" 
+              <a
+                href="#benefits"
                 className="block py-2 hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => {
                   scrollToSection("benefits", e);
@@ -219,8 +256,8 @@ export default function Header() {
               </a>
             </li>
             <li>
-              <a 
-                href="#about" 
+              <a
+                href="#about"
                 className="block py-2 hover:text-primary hover-text cursor-pointer"
                 onClick={(e) => {
                   scrollToSection("about", e);
@@ -232,7 +269,7 @@ export default function Header() {
             </li>
             {!user && (
               <li className="pt-2">
-                <Button 
+                <Button
                   asChild
                   className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                 >
