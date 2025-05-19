@@ -19,19 +19,19 @@ let sessionStore;
 
 try {
   if (process.env.DATABASE_URL) {
-    pool = new Pool({
+    pool = new Pool({ 
       connectionString: process.env.DATABASE_URL,
       max: 1 // Small pool for serverless
     });
-
+    
     // Create PG session store
     sessionStore = new PgStore({
       pool: pool,
       createTableIfMissing: true
     });
-
+    
     console.log('Connected to database and initialized session store');
-
+    
     // Create session table
     (async () => {
       try {
@@ -49,7 +49,7 @@ try {
         console.error('Error setting up session table:', err);
       }
     })();
-
+    
   } else {
     console.log('DATABASE_URL not provided, using in-memory storage');
     sessionStore = new MemoryStore({
@@ -115,26 +115,26 @@ async function comparePasswords(supplied, stored) {
     console.log('Comparing passwords:');
     console.log('- Supplied password (truncated):', supplied.substring(0, 10) + '...');
     console.log('- Stored password format:', stored.substring(0, 10) + '...');
-
+    
     const [hashed, salt] = stored.split('.');
     if (!hashed || !salt) {
       console.error('Invalid stored password format');
       return false;
     }
-
+    
     // Hash the supplied password with the same salt
     const suppliedBuf = await scryptAsync(supplied, salt, 64);
-
+    
     // Convert both to hex strings and compare them directly
     const suppliedHex = Buffer.from(suppliedBuf).toString('hex');
-
+    
     console.log('- Original hash (truncated):', hashed.substring(0, 10) + '...');
     console.log('- Generated hash (truncated):', suppliedHex.substring(0, 10) + '...');
-
+    
     // Simple string comparison as a fallback in case timing-safe equal fails
     const match = hashed === suppliedHex;
     console.log('- Password match:', match);
-
+    
     return match;
   } catch (error) {
     console.error('Password comparison error:', error);
@@ -152,7 +152,7 @@ async function getUserByUsername(username) {
       console.error('Database query error:', error);
     }
   }
-
+  
   // Fall back to in-memory
   for (const user of users.values()) {
     if (user.username === username) return user;
@@ -170,7 +170,7 @@ async function getUser(id) {
       console.error('Database query error:', error);
     }
   }
-
+  
   // Fall back to in-memory
   return users.get(parseInt(id));
 }
@@ -189,7 +189,7 @@ async function createUser(userData) {
       console.error('Error creating user in database:', error);
     }
   }
-
+  
   // Fall back to in-memory
   const id = Date.now();
   const user = { id, ...userData };
@@ -200,16 +200,16 @@ async function createUser(userData) {
 // Initialize database tables if they don't exist
 async function initializeDatabase() {
   if (!pool) return;
-
+  
   try {
     // Check if users table exists
     const tableCheck = await pool.query(`
       SELECT to_regclass('public.users') as table_exists;
     `);
-
+    
     if (!tableCheck.rows[0].table_exists) {
       console.log('Creating database tables...');
-
+      
       // Create role enum if it doesn't exist
       await pool.query(`
         DO $$
@@ -219,7 +219,7 @@ async function initializeDatabase() {
           END IF;
         END$$;
       `);
-
+      
       // Create users table
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -231,7 +231,7 @@ async function initializeDatabase() {
           facebook_id TEXT
         );
       `);
-
+      
       // Create an admin user
       const hashedPassword = 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668'; // localcooks
       await pool.query(`
@@ -239,7 +239,7 @@ async function initializeDatabase() {
         VALUES ('admin', $1, 'admin')
         ON CONFLICT (username) DO NOTHING;
       `, [hashedPassword]);
-
+      
       console.log('Database initialized successfully');
     }
   } catch (error) {
@@ -257,14 +257,14 @@ async function ensureAdminUser() {
   try {
     console.log('Checking if admin user exists...');
     const admin = await getUserByUsername('admin');
-
+    
     if (admin) {
       console.log('Admin user exists:', { id: admin.id, role: admin.role });
       return admin;
     }
-
+    
     console.log('Admin user does not exist, creating...');
-
+    
     // Create admin user
     const hashedPassword = await hashPassword('localcooks');
     const adminUser = await createUser({
@@ -272,7 +272,7 @@ async function ensureAdminUser() {
       password: hashedPassword,
       role: 'admin',
     });
-
+    
     console.log('Admin user created:', { id: adminUser.id, role: adminUser.role });
     return adminUser;
   } catch (error) {
@@ -288,32 +288,29 @@ ensureAdminUser().catch(console.error);
 app.post('/api/admin-login', async (req, res) => {
   try {
     const { username, password } = req.body;
-
+    
     console.log('Admin login attempt for:', username);
-
+    
     // Get admin user
     const admin = await getUserByUsername(username);
-
+    
     if (!admin) {
       console.log('Admin user not found:', username);
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
-
+    
     // Verify admin role
     if (admin.role !== 'admin') {
       console.log('User is not an admin:', username);
       return res.status(403).json({ error: 'Not authorized as admin' });
     }
-
-    // Check password - accept any of these hardcoded values for simplicity
+    
+    // Check password - first try exact match for 'localcooks'
     let passwordMatches = false;
-
-    // Accept any of these passwords for admin
-    const acceptedPasswords = ['localcooks', 'admin', 'admin123', 'password'];
-
-    if (acceptedPasswords.includes(password)) {
+    
+    if (password === 'localcooks') {
       passwordMatches = true;
-      console.log('Admin password matched with hardcoded value:', password);
+      console.log('Admin password matched with hardcoded value');
     } else {
       // Try to compare with database password
       try {
@@ -323,34 +320,24 @@ app.post('/api/admin-login', async (req, res) => {
         console.error('Error comparing passwords:', error);
       }
     }
-
+    
     if (!passwordMatches) {
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
-
+    
     console.log('Admin login successful for:', username);
-
-    // Instead of destroying the session, just reset it
-    // This avoids issues with session recreation
+    
+    // Set session
     req.session.userId = admin.id;
     req.session.user = { id: admin.id, username: admin.username, role: admin.role };
-    req.session.isAdmin = true; // Add a flag to identify admin sessions
-
+    
+    await new Promise(resolve => req.session.save(resolve));
+    
     // Remove sensitive info
     const { password: _, ...adminWithoutPassword } = admin;
-
-    // Save the session
-    req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-        return res.status(500).json({ error: 'Failed to save session' });
-      }
-
-      console.log('Admin session saved successfully, returning user data');
-
-      // Return user data
-      return res.status(200).json(adminWithoutPassword);
-    });
+    
+    // Return user and save in localStorage for header auth
+    return res.status(200).json(adminWithoutPassword);
   } catch (error) {
     console.error('Admin login error:', error);
     res.status(500).json({ error: 'Admin login failed', message: error.message });
@@ -361,18 +348,18 @@ app.post('/api/admin-login', async (req, res) => {
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password } = req.body;
-
+    
     // Validate input
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-
+    
     // Check if user exists
     const existingUser = await getUserByUsername(username);
     if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' });
     }
-
+    
     // Create user with hashed password
     const hashedPassword = await hashPassword(password);
     const user = await createUser({
@@ -380,10 +367,10 @@ app.post('/api/register', async (req, res) => {
       password: hashedPassword,
       role: req.body.role || 'applicant',
     });
-
+    
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
-
+    
     // Log in the user
     req.session.userId = user.id;
     res.status(201).json(userWithoutPassword);
@@ -396,48 +383,44 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-
+    
     console.log('Login attempt for user:', username);
-
+    
     // Validate input
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-
+    
     const user = await getUserByUsername(username);
     if (!user) {
       console.log('Login failed: User not found');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
+    
     const passwordMatch = await comparePasswords(password, user.password);
     if (!passwordMatch) {
       console.log('Login failed: Password mismatch');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
+    
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
-
-    // Clear any existing session first
-    req.session.destroy(() => {
-      // Create a new session
-      req.session = req.session || {};
-      req.session.userId = user.id;
-      req.session.user = userWithoutPassword; // Store full user object (without password)
-      req.session.isAdmin = false; // Mark as non-admin session
-
-      console.log('Login successful, session ID:', req.session.id);
-      console.log('User ID in session:', req.session.userId);
-
-      // Save session explicitly
-      req.session.save((err) => {
-        if (err) {
-          console.error('Session save error:', err);
-          return res.status(500).json({ error: 'Failed to save session' });
-        }
-        res.status(200).json(userWithoutPassword);
-      });
+    
+    // Log in the user
+    req.session.userId = user.id;
+    req.session.user = userWithoutPassword; // Store full user object (without password)
+    
+    console.log('Login successful, session ID:', req.session.id);
+    console.log('User ID in session:', req.session.userId);
+    
+    // Save session explicitly
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+      } else {
+        console.log('Session saved successfully');
+      }
+      res.status(200).json(userWithoutPassword);
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -446,20 +429,12 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
-  // Check if this is an admin session
-  const isAdminSession = req.session.isAdmin;
-
   req.session.destroy((err) => {
     if (err) {
       console.error('Logout error:', err);
       return res.status(500).json({ error: 'Logout failed' });
     }
-
-    // Return different redirect paths based on session type
-    res.status(200).json({
-      message: 'Logged out successfully',
-      redirectTo: isAdminSession ? '/admin/login' : '/'
-    });
+    res.status(200).json({ message: 'Logged out successfully' });
   });
 });
 
@@ -472,46 +447,46 @@ app.get('/api/user', async (req, res) => {
       'x-user-id': req.headers['x-user-id'] || null
     }
   });
-
+  
   // Get user ID from session or header
   const userId = req.session.userId || req.headers['x-user-id'];
-
+  
   if (!userId) {
     console.log('No userId in session or header, returning 401');
     return res.status(401).json({ error: 'Not authenticated' });
   }
-
+  
   // Store user ID in session if it's not there
   if (!req.session.userId && userId) {
     console.log('Storing userId in session from header:', userId);
     req.session.userId = userId;
     await new Promise(resolve => req.session.save(resolve));
   }
-
+  
   try {
     console.log('Fetching user with ID:', userId);
-
+    
     // If we have the user cached in session, use that
     if (req.session.user) {
       console.log('Using cached user from session');
       return res.status(200).json(req.session.user);
     }
-
+    
     const user = await getUser(userId);
     if (!user) {
       console.log('User not found in database, destroying session');
-      req.session.destroy(() => { });
+      req.session.destroy(() => {});
       return res.status(401).json({ error: 'User not found' });
     }
-
+    
     console.log('User found in database, returning user data');
-
+    
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
-
+    
     // Cache user in session for future requests
     req.session.user = userWithoutPassword;
-
+    
     res.status(200).json(userWithoutPassword);
   } catch (error) {
     console.error('Get user error:', error);
@@ -523,16 +498,16 @@ app.get('/api/user', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   let dbStatus = 'disconnected';
   let tables = [];
-
+  
   if (pool) {
     try {
       await pool.query('SELECT 1');
       dbStatus = 'connected';
-
+      
       // Check what tables exist
       const tableResult = await pool.query(`
-        SELECT table_name
-        FROM information_schema.tables
+        SELECT table_name 
+        FROM information_schema.tables 
         WHERE table_schema = 'public'
       `);
       tables = tableResult.rows.map(r => r.table_name);
@@ -540,9 +515,9 @@ app.get('/api/health', async (req, res) => {
       dbStatus = `error: ${error.message}`;
     }
   }
-
-  res.status(200).json({
-    status: 'ok',
+  
+  res.status(200).json({ 
+    status: 'ok', 
     dbStatus,
     tables,
     timestamp: new Date().toISOString(),
@@ -563,7 +538,7 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/session-test', (req, res) => {
   const sessionCounter = req.session.counter || 0;
   req.session.counter = sessionCounter + 1;
-
+  
   res.status(200).json({
     sessionId: req.session.id,
     counter: req.session.counter,
@@ -584,36 +559,36 @@ app.post('/api/applications', async (req, res) => {
     user: req.session.user ? { id: req.session.user.id, username: req.session.user.username } : null
   });
   console.log('Request body (first field):', req.body ? req.body.fullName : 'No data');
-
+  
   // Get userId from session OR from header if session is not working
   const userId = req.session.userId || req.headers['x-user-id'];
-
+  
   if (!userId) {
     console.log('No userId in session or header, returning 401');
     return res.status(401).json({ error: 'Authentication required' });
   }
-
+  
   // Store user ID in session as a backup
   if (!req.session.userId && userId) {
     console.log('Storing userId in session from header:', userId);
     req.session.userId = userId;
     await new Promise((resolve) => req.session.save(resolve));
   }
-
+  
   try {
     console.log('User authenticated, processing application for user ID:', req.session.userId);
-
+    
     // Validate required fields
-    const { fullName, email, phone, address, foodSafetyLicense, foodEstablishmentCert, kitchenPreference } = req.body;
-
-    if (!fullName || !email || !phone || !address || !foodSafetyLicense || !foodEstablishmentCert || !kitchenPreference) {
+    const { fullName, email, phone, foodSafetyLicense, foodEstablishmentCert, kitchenPreference } = req.body;
+    
+    if (!fullName || !email || !phone || !foodSafetyLicense || !foodEstablishmentCert || !kitchenPreference) {
       console.log('Missing required fields in request');
-      return res.status(400).json({
+      return res.status(400).json({ 
         error: 'Missing required fields',
         message: 'Please provide all required application information'
       });
     }
-
+    
     // Store in database if available
     if (pool) {
       try {
@@ -621,7 +596,7 @@ app.post('/api/applications', async (req, res) => {
         const tableCheck = await pool.query(`
           SELECT to_regclass('public.applications') as table_exists;
         `);
-
+        
         if (!tableCheck.rows[0].table_exists) {
           // Create enums if they don't exist
           await pool.query(`
@@ -638,7 +613,7 @@ app.post('/api/applications', async (req, res) => {
               END IF;
             END$$;
           `);
-
+          
           // Create applications table
           await pool.query(`
             CREATE TABLE IF NOT EXISTS applications (
@@ -647,7 +622,6 @@ app.post('/api/applications', async (req, res) => {
               full_name TEXT NOT NULL,
               email TEXT NOT NULL,
               phone TEXT NOT NULL,
-              address TEXT NOT NULL,
               food_safety_license certification_status NOT NULL,
               food_establishment_cert certification_status NOT NULL,
               kitchen_preference kitchen_preference NOT NULL,
@@ -656,47 +630,46 @@ app.post('/api/applications', async (req, res) => {
             );
           `);
         }
-
+        
         // Make sure the user exists
         const userCheckQuery = await pool.query(`
           SELECT id FROM users WHERE id = $1
         `, [userId]);
-
+        
         if (userCheckQuery.rows.length === 0) {
           console.log(`User with ID ${userId} not found in database`);
           return res.status(400).json({ error: 'User not found. Please register or log in again.' });
         }
-
+        
         console.log(`User with ID ${userId} verified in database, proceeding with application insertion`);
-
+        
         // Insert application
         const result = await pool.query(`
-          INSERT INTO applications
-          (user_id, full_name, email, phone, address, food_safety_license, food_establishment_cert, kitchen_preference)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO applications 
+          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING *;
         `, [
           userId, // Use the userId from session or header
           fullName,
           email,
           phone,
-          address,
           foodSafetyLicense,
           foodEstablishmentCert,
           kitchenPreference
         ]);
-
+        
         // Return the created application
         return res.status(201).json(result.rows[0]);
       } catch (error) {
         console.error('Error storing application:', error);
-        return res.status(500).json({
+        return res.status(500).json({ 
           error: 'Failed to store application',
           message: error.message
         });
       }
     }
-
+    
     // Fallback to memory storage (simplified)
     const application = {
       id: Date.now(),
@@ -704,18 +677,17 @@ app.post('/api/applications', async (req, res) => {
       fullName,
       email,
       phone,
-      address,
       foodSafetyLicense,
-      foodEstablishmentCert,
+      foodEstablishmentCert, 
       kitchenPreference,
       status: 'new',
       createdAt: new Date().toISOString()
     };
-
+    
     res.status(201).json(application);
   } catch (error) {
     console.error('Create application error:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to create application',
       message: error.message
     });
@@ -731,62 +703,62 @@ app.get('/api/applications', async (req, res) => {
       'x-user-id': req.headers['x-user-id'] || null
     }
   });
-
+  
   // Get user ID from session or header
   const userId = req.session.userId || req.headers['x-user-id'];
-
+  
   if (!userId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
-
+  
   try {
     // First check if the user is an admin
     const user = await getUser(userId);
     console.log('User from DB:', user ? { id: user.id, username: user.username, role: user.role } : null);
-
+    
     if (!user || user.role !== 'admin') {
       console.log('User is not an admin:', user ? user.role : 'user not found');
-      return res.status(403).json({
+      return res.status(403).json({ 
         error: 'Forbidden',
-        message: 'Only administrators can access this endpoint'
+        message: 'Only administrators can access this endpoint' 
       });
     }
-
+    
     // Store user ID in session if it's not there
     if (!req.session.userId && userId) {
       console.log('Storing userId in session from header:', userId);
       req.session.userId = userId;
       await new Promise(resolve => req.session.save(resolve));
     }
-
+    
     // Get from database if available
     if (pool) {
       // Check if table exists
       const tableCheck = await pool.query(`
         SELECT to_regclass('public.applications') as table_exists;
       `);
-
+      
       if (!tableCheck.rows[0].table_exists) {
         // No applications table yet
         return res.status(200).json([]);
       }
-
+      
       const result = await pool.query(`
         SELECT a.*, u.username as applicant_username
         FROM applications a
         JOIN users u ON a.user_id = u.id
         ORDER BY a.created_at DESC;
       `);
-
+      
       return res.status(200).json(result.rows);
     }
-
+    
     // Fallback empty response
     res.status(200).json([]);
   } catch (error) {
     console.error('Get applications error:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to get applications',
       message: error.message
     });
@@ -802,10 +774,10 @@ app.get('/api/applications/my-applications', async (req, res) => {
       'x-user-id': req.headers['x-user-id'] || null
     }
   });
-
+  
   // Get user ID from session or header
   const userId = req.session.userId || req.headers['x-user-id'];
-
+  
   if (!userId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
@@ -817,7 +789,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
     req.session.userId = userId;
     await new Promise(resolve => req.session.save(resolve));
   }
-
+  
   try {
     // Get from database if available
     if (pool) {
@@ -825,26 +797,26 @@ app.get('/api/applications/my-applications', async (req, res) => {
       const tableCheck = await pool.query(`
         SELECT to_regclass('public.applications') as table_exists;
       `);
-
+      
       if (!tableCheck.rows[0].table_exists) {
         // No applications table yet
         return res.status(200).json([]);
       }
-
+      
       const result = await pool.query(`
-        SELECT * FROM applications
-        WHERE user_id = $1
+        SELECT * FROM applications 
+        WHERE user_id = $1 
         ORDER BY created_at DESC;
       `, [req.session.userId]);
-
+      
       return res.status(200).json(result.rows);
     }
-
+    
     // Fallback empty response
     res.status(200).json([]);
   } catch (error) {
     console.error('Get applications error:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to get applications',
       message: error.message
     });
@@ -856,46 +828,46 @@ app.get('/api/applications/:id', async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
-
+  
   try {
     const { id } = req.params;
-
+    
     // Get from database if available
     if (pool) {
       // Check if applications table exists
       const tableCheck = await pool.query(`
         SELECT to_regclass('public.applications') as table_exists;
       `);
-
+      
       if (!tableCheck.rows[0].table_exists) {
         return res.status(404).json({ error: 'Application not found' });
       }
-
+      
       // Get user to check if admin
       const user = await getUser(req.session.userId);
       if (!user) {
         return res.status(403).json({ error: 'Unauthorized' });
       }
-
+      
       // If admin, they can see any application
       // If applicant, they can only see their own applications
       let query = `SELECT * FROM applications WHERE id = $1`;
       const params = [id];
-
+      
       if (user.role !== 'admin') {
         query += ` AND user_id = $2`;
         params.push(req.session.userId);
       }
-
+      
       const result = await pool.query(query, params);
-
+      
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Application not found' });
       }
-
+      
       return res.status(200).json(result.rows[0]);
     }
-
+    
     // Fallback error for no database
     res.status(404).json({ error: 'Application not found' });
   } catch (error) {
@@ -913,42 +885,42 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
       'x-user-id': req.headers['x-user-id'] || null
     }
   });
-
+  
   // Get user ID from session or header
   const userId = req.session.userId || req.headers['x-user-id'];
-
+  
   if (!userId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
-
+  
   // Store user ID in session if it's not there
   if (!req.session.userId && userId) {
     console.log('Storing userId in session from header:', userId);
     req.session.userId = userId;
     await new Promise(resolve => req.session.save(resolve));
   }
-
+  
   try {
     const { id } = req.params;
-
+    
     // Get from database if available
     if (pool) {
       // Check if applications table exists
       const tableCheck = await pool.query(`
         SELECT to_regclass('public.applications') as table_exists;
       `);
-
+      
       if (!tableCheck.rows[0].table_exists) {
         return res.status(404).json({ error: 'Application not found' });
       }
-
+      
       // Get user for id check
       const user = await getUser(req.session.userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-
+      
       // Update the application
       let result;
       if (user.role === 'admin') {
@@ -968,14 +940,14 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
           RETURNING *;
         `, [id, req.session.userId]);
       }
-
+      
       if (result.rowCount === 0) {
         return res.status(404).json({ error: 'Application not found or not owned by you' });
       }
-
+      
       return res.status(200).json(result.rows[0]);
     }
-
+    
     // Fallback error - no storage
     res.status(500).json({ error: 'No storage available' });
   } catch (error) {
@@ -989,43 +961,43 @@ app.patch('/api/applications/:id/status', async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
-
+  
   try {
     // First check if the user is an admin
     const user = await getUser(req.session.userId);
     if (!user || user.role !== 'admin') {
-      return res.status(403).json({
+      return res.status(403).json({ 
         error: 'Forbidden',
-        message: 'Only administrators can update application status'
+        message: 'Only administrators can update application status' 
       });
     }
-
+    
     const { id } = req.params;
     const { status } = req.body;
-
+    
     // Validate the status
     const validStatuses = ['new', 'inReview', 'approved', 'rejected', 'cancelled'];
     if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
+      return res.status(400).json({ 
         error: 'Invalid status',
-        message: `Status must be one of: ${validStatuses.join(', ')}`
+        message: `Status must be one of: ${validStatuses.join(', ')}` 
       });
     }
-
+    
     // Update in database if available
     if (pool) {
       // Check if applications table exists
       const tableCheck = await pool.query(`
         SELECT to_regclass('public.applications') as table_exists;
       `);
-
+      
       if (!tableCheck.rows[0].table_exists) {
-        return res.status(404).json({
+        return res.status(404).json({ 
           error: 'Not found',
-          message: 'Application not found'
+          message: 'Application not found' 
         });
       }
-
+      
       // Update the application
       const result = await pool.query(`
         UPDATE applications
@@ -1033,25 +1005,25 @@ app.patch('/api/applications/:id/status', async (req, res) => {
         WHERE id = $2
         RETURNING *;
       `, [status, id]);
-
+      
       if (result.rowCount === 0) {
-        return res.status(404).json({
+        return res.status(404).json({ 
           error: 'Not found',
-          message: 'Application not found'
+          message: 'Application not found' 
         });
       }
-
+      
       return res.status(200).json(result.rows[0]);
     }
-
+    
     // Fallback error - no storage
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'No storage available',
-      message: 'Cannot update application without database'
+      message: 'Cannot update application without database' 
     });
   } catch (error) {
     console.error('Update application status error:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to update application status',
       message: error.message
     });
@@ -1061,23 +1033,23 @@ app.patch('/api/applications/:id/status', async (req, res) => {
 // Database initialization endpoint
 app.get('/api/init-db', async (req, res) => {
   if (!pool) {
-    return res.status(400).json({
-      error: 'No database connection',
-      message: 'DATABASE_URL environment variable is not set'
+    return res.status(400).json({ 
+      error: 'No database connection', 
+      message: 'DATABASE_URL environment variable is not set' 
     });
   }
-
+  
   try {
     await initializeDatabase();
-    res.status(200).json({
+    res.status(200).json({ 
       message: 'Database initialization attempted',
       success: true
     });
   } catch (error) {
     console.error('Database initialization error:', error);
-    res.status(500).json({
-      error: 'Database initialization failed',
-      message: error.message
+    res.status(500).json({ 
+      error: 'Database initialization failed', 
+      message: error.message 
     });
   }
 });
