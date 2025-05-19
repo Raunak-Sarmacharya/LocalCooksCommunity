@@ -13,21 +13,19 @@ const personalInfoSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Please enter a valid email address"),
   phone: z.string().min(10, "Please enter a valid phone number"),
-  address: z.string().min(5, "Address is required"),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
 
 export default function PersonalInfoForm() {
   const { formData, updateFormData, goToNextStep } = useApplicationForm();
-
+  
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(personalInfoSchema),
     defaultValues: {
       fullName: formData.fullName || "",
       email: formData.email || "",
       phone: formData.phone || "",
-      address: formData.address || "",
     },
   });
 
@@ -56,7 +54,7 @@ export default function PersonalInfoForm() {
               </p>
             )}
           </div>
-
+          
           <div>
             <Label htmlFor="email" className="text-gray-700 font-semibold">
               Email Address*
@@ -74,7 +72,7 @@ export default function PersonalInfoForm() {
               </p>
             )}
           </div>
-
+          
           <div>
             <Label htmlFor="phone" className="text-gray-700 font-semibold">
               Phone Number*
@@ -92,21 +90,9 @@ export default function PersonalInfoForm() {
             )}
           </div>
         </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="address">Your Address*</Label>
-          <Input
-            id="address"
-            placeholder="Enter your address"
-            {...form.register("address")}
-          />
-          {form.formState.errors.address && (
-            <p className="text-sm text-red-500">{form.formState.errors.address.message}</p>
-          )}
-        </div>
-
+        
         <div className="text-center">
-          <Button
+          <Button 
             type="submit"
             className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1"
           >

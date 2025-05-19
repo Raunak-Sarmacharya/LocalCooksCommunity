@@ -24,7 +24,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
 import { Redirect, useLocation } from "wouter";
 import { ChefHat, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -34,33 +34,6 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
-  // Clear any existing user data when accessing the admin login page
-  useEffect(() => {
-    const clearUserSession = async () => {
-      try {
-        // First try to logout via the API to clear the server-side session
-        const response = await fetch('/api/logout', {
-          method: 'POST',
-          credentials: 'include',
-        });
-
-        if (!response.ok) {
-          console.error('Error logging out:', await response.text());
-        }
-      } catch (error) {
-        console.error('Error during logout:', error);
-      } finally {
-        // Clear localStorage regardless of server response
-        localStorage.removeItem('userId');
-
-        // Force refresh the auth state
-        queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      }
-    };
-
-    clearUserSession();
-  }, []);
-
   const { user, isLoading } = useAuth();
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,7 +50,7 @@ export default function AdminLogin() {
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
     setErrorMessage(null);
-
+    
     try {
       console.log('Attempting admin login with username:', data.username);
       const response = await fetch('/api/admin-login', {
@@ -88,33 +61,30 @@ export default function AdminLogin() {
         body: JSON.stringify(data),
         credentials: 'include',
       });
-
+      
       if (!response.ok) {
         const errorData = await response.json();
-        console.log("herer is here");
         throw new Error(errorData.error || 'Admin login failed');
       }
-
+      
       const userData = await response.json();
       console.log('Admin login successful, user data:', userData);
-
+      
       // Store userId in localStorage for persistence
       if (userData?.id) {
         localStorage.setItem('userId', userData.id.toString());
         console.log('Saved userId to localStorage:', userData.id);
-
+        
         // Update query client with user data
         queryClient.setQueryData(["/api/user"], userData);
         console.log('Updated query client with user data');
-
+        
         // Navigate to admin dashboard
         navigate("/admin");
       } else {
-
         throw new Error('Invalid admin user data returned');
       }
     } catch (error: any) {
-      console.log("herer is here");
       console.error('Admin login error:', error);
       setErrorMessage(error.message || 'Failed to login');
     } finally {
@@ -151,7 +121,7 @@ export default function AdminLogin() {
                   {errorMessage}
                 </div>
               )}
-
+              
               <FormField
                 control={form.control}
                 name="username"

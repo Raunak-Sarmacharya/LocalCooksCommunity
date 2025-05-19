@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, ReactNode, useContext } from "react";
 import {
   useQuery,
   useMutation,
@@ -7,7 +7,6 @@ import {
 import { User, InsertUser } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { navigate } from "wouter/use-browser-location";
 
 type AuthUser = Pick<User, "id" | "username" | "role">;
 
@@ -31,44 +30,28 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Get saved user ID once on mount
+  
+  // Check for stored userId in localStorage on initial load
   const savedUserId = localStorage.getItem('userId');
-
-  // Create headers object once
-  const headers = useCallback(() => {
-    const headerObj: Record<string, string> = {};
-    if (savedUserId) {
-      headerObj['X-User-ID'] = savedUserId;
-    }
-    return headerObj;
-  }, [savedUserId]);
-
-  // Disable the query until initialization is complete
+  
+  // Custom headers to include userId if available
+  const headers: Record<string, string> = {};
+  if (savedUserId) {
+    headers['X-User-ID'] = savedUserId;
+    console.log('Found userId in localStorage, adding to headers:', savedUserId);
+  }
+  
   const {
     data: user,
     error,
     isLoading,
   } = useQuery<AuthUser | null, Error>({
     queryKey: ["/api/user"],
-    queryFn: getQueryFn({
+    queryFn: getQueryFn({ 
       on401: "returnNull",
-      headers: headers()
+      headers
     }),
-    enabled: isInitialized,
-    retry: false,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    staleTime: 30000, // 30 seconds
   });
-
-  // Initialize auth state
-  useEffect(() => {
-    if (!isInitialized) {
-      setIsInitialized(true);
-    }
-  }, [isInitialized]);
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
@@ -79,18 +62,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: AuthUser) => {
       console.log("Login success, user data:", user);
       queryClient.setQueryData(["/api/user"], user);
-
+      
       // Store userId in localStorage for persistence
       if (user?.id) {
         localStorage.setItem('userId', user.id.toString());
         console.log('Saved userId to localStorage:', user.id);
       }
-
+      
       toast({
         title: "Login successful",
         description: "Welcome back!",
       });
-
+      
       // Verify that the user is stored in the query cache
       setTimeout(() => {
         const cachedUser = queryClient.getQueryData(["/api/user"]);
@@ -114,13 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: AuthUser) => {
       queryClient.setQueryData(["/api/user"], user);
-
+      
       // Store userId in localStorage for persistence
       if (user?.id) {
         localStorage.setItem('userId', user.id.toString());
         console.log('Saved userId to localStorage after registration:', user.id);
       }
-
+      
       toast({
         title: "Registration successful",
         description: "Your account has been created!",
@@ -135,48 +118,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  // Create a stable logout function that won't cause infinite loops
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // Immediately clear local state to prevent loops
+      await apiRequest("POST", "/api/logout");
+    },
+    onSuccess: () => {
+      // Clear user from query cache
+      queryClient.setQueryData(["/api/user"], null);
+      
+      // Clear user ID from localStorage for persistence
       localStorage.removeItem('userId');
-
-      // Set user to null directly instead of invalidating
-      queryClient.setQueryData(['/api/user'], null);
-
-      try {
-        // Then try to logout via the API
-        const response = await fetch('/api/logout', {
-          method: 'POST',
-          credentials: 'include',
-        });
-
-        if (!response.ok) {
-          console.error('Logout request failed but continuing anyway');
-          return { success: true };
-        }
-
-        return await response.json();
-      } catch (error) {
-        console.error('Logout error:', error);
-        // Return success even if the API call fails
-        // This prevents the mutation from going to an error state
-        return { success: true };
-      }
-    },
-    onSuccess: (data) => {
-      // Show success message
+      console.log('Cleared userId from localStorage on logout');
+      
       toast({
-        title: 'Logged out',
-        description: 'You have been logged out successfully.',
+        title: "Logout successful",
+        description: "You have been logged out",
       });
-
-      // Redirect based on the response from the server
-      if (data && data.redirectTo) {
-        navigate(data.redirectTo);
-      }
     },
-    // No onError handler to prevent additional state updates
+    onError: (error: Error) => {
+      toast({
+        title: "Logout failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   return (
