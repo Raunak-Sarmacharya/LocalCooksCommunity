@@ -14,13 +14,12 @@ if (!isInMemoryMode && !process.env.DATABASE_URL) {
     "DATABASE_URL must be set. Did you forget to provision a database?",
   );
 }
-
 // Create a mock pool object for in-memory mode
-export const pool = isInMemoryMode ? 
-  {} as Pool : 
+export const pool = isInMemoryMode ?
+  {} as Pool :
   new Pool({ connectionString: process.env.DATABASE_URL });
 
 // We'll only use this in database mode anyway
-export const db = isInMemoryMode ? 
-  {} as ReturnType<typeof drizzle> : 
+export const db = isInMemoryMode ?
+  {} as ReturnType<typeof drizzle> :
   drizzle(pool, { schema });

@@ -40,33 +40,33 @@ function FormStep() {
       <div className="container mx-auto px-4">
         <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6 md:p-8">
           <h1 className="text-2xl md:text-3xl font-bold mb-6 text-center">Cook Application</h1>
-          
+
           {currentStep === 1 && (
             <div className="fade-in">
               <p className="text-center mb-8">Please provide your personal information</p>
               <PersonalInfoForm />
             </div>
           )}
-          
+
           {currentStep === 2 && (
             <div className="fade-in">
               <p className="text-center mb-8">Select your kitchen preference</p>
               <KitchenPreferenceForm />
             </div>
           )}
-          
+
           {currentStep === 3 && (
             <div className="fade-in">
               <p className="text-center mb-8">Tell us about your food safety certifications</p>
               <CertificationsForm />
             </div>
           )}
-          
+
           {currentStep === 1 && (
             <div className="mt-6 text-center">
-              <Button 
-                type="button" 
-                variant="ghost" 
+              <Button
+                type="button"
+                variant="ghost"
                 onClick={() => navigate("/")}
                 className="text-gray-600 hover:text-primary transition-colors"
               >
@@ -83,23 +83,60 @@ function FormStep() {
 export default function ApplicationForm() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
-  
+
   // Redirect to auth page if user is not logged in
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/auth?redirect=/apply");
     }
   }, [user, authLoading, navigate]);
-  
+
   // Fetch applicant's applications
   const { data: applications, isLoading: applicationsLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
+    queryFn: async ({ queryKey }) => {
+      if (!user?.id) {
+        throw new Error("User not authenticated");
+      }
+
+      const headers: Record<string, string> = {
+        'X-User-ID': user.id.toString()
+      };
+
+      const response = await fetch(queryKey[0] as string, {
+        credentials: 'include',
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+
+      const rawData = await response.json();
+
+      // Convert snake_case to camelCase for database fields
+      const normalizedData = rawData.map((app: any) => ({
+        id: app.id,
+        userId: app.user_id || app.userId,
+        fullName: app.full_name || app.fullName,
+        email: app.email,
+        phone: app.phone,
+        foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
+        foodEstablishmentCert: app.food_establishment_cert || app.foodEstablishmentCert,
+        kitchenPreference: app.kitchen_preference || app.kitchenPreference,
+        status: app.status,
+        createdAt: app.created_at || app.createdAt
+      }));
+
+      return normalizedData;
+    },
     enabled: !!user, // Only run if user is logged in
   });
 
   // Check if user has active applications
   const activeApplication = hasActiveApplication(applications);
-  
+
   // Redirect to dashboard if user already has an active application
   useEffect(() => {
     if (!applicationsLoading && activeApplication) {
@@ -107,11 +144,11 @@ export default function ApplicationForm() {
       const timer = setTimeout(() => {
         navigate("/dashboard");
       }, 2000);
-      
+
       return () => clearTimeout(timer);
     }
   }, [applicationsLoading, activeApplication, navigate]);
-  
+
   // Show loading state while checking authentication
   const isLoading = authLoading || (user && applicationsLoading);
 
@@ -125,7 +162,7 @@ export default function ApplicationForm() {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : activeApplication ? (
-            <motion.div 
+            <motion.div
               className="container mx-auto px-4 max-w-2xl"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

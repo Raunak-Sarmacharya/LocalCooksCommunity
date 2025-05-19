@@ -2,14 +2,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { Application } from "@shared/schema";
-import { 
-  formatCertificationStatus, 
-  formatKitchenPreference, 
-  getStatusBadgeColor, 
-  formatApplicationStatus 
+import {
+  formatCertificationStatus,
+  formatKitchenPreference,
+  getStatusBadgeColor,
+  formatApplicationStatus
 } from "@/lib/applicationSchema";
-import { 
-  Loader2, AlertCircle, Clock, CheckCircle, XCircle, 
+import {
+  Loader2, AlertCircle, Clock, CheckCircle, XCircle,
   CalendarDays, ChefHat, UtensilsCrossed, Building,
   HomeIcon, Award, FileText, BadgeCheck, Info, LogOut
 } from "lucide-react";
@@ -47,9 +47,9 @@ const canApplyAgain = (applications: Application[]) => {
 // Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: { 
+  visible: {
     opacity: 1,
-    transition: { 
+    transition: {
       staggerChildren: 0.1
     }
   }
@@ -57,8 +57,8 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { y: 20, opacity: 0 },
-  visible: { 
-    y: 0, 
+  visible: {
+    y: 0,
     opacity: 1,
     transition: { type: "spring", stiffness: 100 }
   }
@@ -66,9 +66,9 @@ const itemVariants = {
 
 export default function ApplicantDashboard() {
   const { user, logoutMutation } = useAuth();
-  
+
   // Debug authentication state
-  console.log('ApplicantDashboard - Authentication state:', { 
+  console.log('ApplicantDashboard - Authentication state:', {
     isLoggedIn: !!user,
     userId: user?.id,
     userRole: user?.role,
@@ -82,24 +82,40 @@ export default function ApplicantDashboard() {
       if (!user?.id) {
         throw new Error("User not authenticated");
       }
-      
+
       const headers: Record<string, string> = {
         'X-User-ID': user.id.toString()
       };
-      
-      const response = await fetch(queryKey[0] as string, { 
+
+      const response = await fetch(queryKey[0] as string, {
         credentials: 'include',
-        headers 
+        headers
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || response.statusText);
       }
-      
-      const data = await response.json();
-      console.log('Raw application data:', data);
-      return data;
+
+      const rawData = await response.json();
+      console.log('Raw application data:', rawData);
+
+      // Convert snake_case to camelCase for database fields
+      const normalizedData = rawData.map((app: any) => ({
+        id: app.id,
+        userId: app.user_id || app.userId,
+        fullName: app.full_name || app.fullName,
+        email: app.email,
+        phone: app.phone,
+        foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
+        foodEstablishmentCert: app.food_establishment_cert || app.foodEstablishmentCert,
+        kitchenPreference: app.kitchen_preference || app.kitchenPreference,
+        status: app.status,
+        createdAt: app.created_at || app.createdAt
+      }));
+
+      console.log('Normalized application data:', normalizedData);
+      return normalizedData;
     },
     enabled: !!user,
   });
@@ -112,7 +128,7 @@ export default function ApplicantDashboard() {
       if (user?.id) {
         headers['X-User-ID'] = user.id.toString();
       }
-      
+
       const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
       return await res.json();
     },
@@ -153,9 +169,9 @@ export default function ApplicantDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-0">
-              <Button 
-                asChild 
-                variant="default" 
+              <Button
+                asChild
+                variant="default"
                 size="sm"
                 className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
               >
@@ -164,9 +180,9 @@ export default function ApplicantDashboard() {
                   Explore Opportunities
                 </Link>
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleLogout}
                 className="rounded-full border-gray-300 text-xs md:text-sm py-1 h-auto md:h-10"
               >
@@ -191,7 +207,7 @@ export default function ApplicantDashboard() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : applications && applications.length > 0 ? (
-          <motion.div 
+          <motion.div
             className="space-y-6"
             variants={containerVariants}
             initial="hidden"
@@ -200,7 +216,7 @@ export default function ApplicantDashboard() {
             {applications.map((application) => {
               const canApply = !isApplicationActive(application);
               const statusIcon = () => {
-                switch(application.status) {
+                switch (application.status) {
                   case "new": return <AlertCircle className="h-5 w-5 text-yellow-500" />;
                   case "inReview": return <Clock className="h-5 w-5 text-blue-500" />;
                   case "approved": return <CheckCircle className="h-5 w-5 text-green-500" />;
@@ -209,7 +225,7 @@ export default function ApplicantDashboard() {
                   default: return null;
                 }
               };
-              
+
               return (
                 <motion.div
                   key={application.id}
@@ -285,7 +301,7 @@ export default function ApplicantDashboard() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>No, keep it</AlertDialogCancel>
-                              <AlertDialogAction 
+                              <AlertDialogAction
                                 onClick={() => cancelMutation.mutate(application.id)}
                                 className="bg-red-500 hover:bg-red-600 hover-standard"
                               >
@@ -299,7 +315,7 @@ export default function ApplicantDashboard() {
                           </AlertDialogContent>
                         </AlertDialog>
                       )}
-                      
+
                       {canApply && (
                         <Button asChild variant="default" size="sm">
                           <Link href="/apply">Apply Again</Link>
@@ -312,7 +328,7 @@ export default function ApplicantDashboard() {
             })}
           </motion.div>
         ) : (
-          <motion.div 
+          <motion.div
             className="text-center py-12 px-6 border rounded-xl bg-gradient-to-b from-white to-gray-50 shadow-sm"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -325,7 +341,7 @@ export default function ApplicantDashboard() {
             <p className="text-gray-600 mb-8 max-w-md mx-auto">
               You haven't submitted any applications to Local Cooks yet. Start your application now to join our growing community of talented chefs!
             </p>
-            <Button 
+            <Button
               asChild
               size="lg"
               className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
@@ -335,7 +351,7 @@ export default function ApplicantDashboard() {
                 Start Your Application
               </Link>
             </Button>
-            
+
             <div className="mt-10 pt-6 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 text-left">
               <div className="flex items-start gap-3">
                 <div className="bg-green-100 p-2 rounded-full mt-1">
@@ -346,7 +362,7 @@ export default function ApplicantDashboard() {
                   <p className="text-xs text-gray-600">Our application process is quick and straightforward</p>
                 </div>
               </div>
-              
+
               <div className="flex items-start gap-3">
                 <div className="bg-blue-100 p-2 rounded-full mt-1">
                   <Info className="h-4 w-4 text-blue-600" />
@@ -356,7 +372,7 @@ export default function ApplicantDashboard() {
                   <p className="text-xs text-gray-600">We'll help you every step of the way</p>
                 </div>
               </div>
-              
+
               <div className="flex items-start gap-3">
                 <div className="bg-yellow-100 p-2 rounded-full mt-1">
                   <Clock className="h-4 w-4 text-yellow-600" />
