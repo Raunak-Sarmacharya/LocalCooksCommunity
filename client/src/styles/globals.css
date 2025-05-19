@@ -1,0 +1,13 @@
+/* Custom radio button styling */
+[data-radix-collection-item] {
+  border-radius: 50% !important;
+}
+
+[data-state="checked"] {
+  background-color: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+
+[data-state="checked"] [data-radix-collection-item-indicator] {
+  color: white !important;
+}

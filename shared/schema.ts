@@ -14,6 +14,9 @@ export const applicationStatusEnum = pgEnum('application_status', ['new', 'inRev
 // Define an enum for user roles
 export const userRoleEnum = pgEnum('user_role', ['admin', 'applicant']);
 
+// Add new enums
+export const orderFulfillmentEnum = pgEnum('order_fulfillment', ['preOrder', 'onDemand', 'both']);
+
 // Define users table (for both admins and applicants)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -24,28 +27,34 @@ export const users = pgTable("users", {
   facebookId: text("facebook_id").unique(),
 });
 
-// Define the applications table
+// Update the applications table
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
   fullName: text("full_name").notNull(),
   email: text("email").notNull(),
   phone: text("phone").notNull(),
+  address: text("address").notNull(),
   foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
   foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
+  orderFulfillmentMethod: orderFulfillmentEnum("order_fulfillment_method").notNull(),
+  questions: text("questions"),
   status: applicationStatusEnum("status").default("new").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Define the Zod schema for inserting an application
+// Update the Zod schema for inserting an application
 export const insertApplicationSchema = createInsertSchema(applications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
   phone: z.string().regex(/^\+?[0-9\s\(\)-]{10,15}$/, "Please enter a valid phone number"),
+  address: z.string().min(5, "Address must be at least 5 characters"),
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
+  orderFulfillmentMethod: z.enum(["preOrder", "onDemand", "both"]),
+  questions: z.string().optional(),
   userId: z.number().optional(),
 }).omit({ id: true, status: true, createdAt: true });
 
