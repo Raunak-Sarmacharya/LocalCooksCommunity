@@ -27,7 +27,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get(
     "/api/auth/google/callback",
-    (req, res, next) => {
+    (req: { query: { error: any; }; }, res: { redirect: (arg0: string) => any; }, next: () => void) => {
       console.log("Google OAuth callback received:", req.query);
       // Check for error in the callback
       if (req.query.error) {
@@ -40,7 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       failureRedirect: "/login?error=google_callback_failed",
       failWithError: true // This will pass the error to the next middleware
     }),
-    (req, res) => {
+    (req: any, res: { redirect: (arg0: string) => void; }) => {
       // Successful authentication
       console.log("Google authentication successful");
       res.redirect("/");
@@ -69,7 +69,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get(
     "/api/auth/facebook/callback",
-    (req, res, next) => {
+    (req: { query: { error: any; }; }, res: { redirect: (arg0: string) => any; }, next: () => void) => {
       console.log("Facebook OAuth callback received:", req.query);
       // Check for error in the callback
       if (req.query.error) {
@@ -82,7 +82,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       failureRedirect: "/login?error=facebook_callback_failed",
       failWithError: true
     }),
-    (req, res) => {
+    (req: any, res: { redirect: (arg0: string) => void; }) => {
       // Successful authentication
       console.log("Facebook authentication successful");
       res.redirect("/");
@@ -110,7 +110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get(
     "/api/auth/instagram/callback",
-    (req, res, next) => {
+    (req: { query: { error: any; }; }, res: { redirect: (arg0: string) => any; }, next: () => void) => {
       console.log("Instagram OAuth callback received:", req.query);
       // Check for error in the callback
       if (req.query.error) {
@@ -123,7 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       failureRedirect: "/login?error=instagram_callback_failed",
       failWithError: true
     }),
-    (req, res) => {
+    (req: any, res: { redirect: (arg0: string) => void; }) => {
       // Successful authentication
       console.log("Instagram authentication successful");
       res.redirect("/");
