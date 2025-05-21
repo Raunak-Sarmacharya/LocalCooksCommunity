@@ -232,24 +232,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update application status endpoint (admin only)
   app.patch("/api/applications/:id/status", async (req: Request, res: Response) => {
-    // Check if user is authenticated via session or X-User-ID header
-    const userId = req.isAuthenticated() ? req.user!.id : req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'] as string) : null;
-
-    if (!userId) {
-      console.log("Status update failed: No authenticated user found");
+    // Check if user is authenticated and is an admin
+    if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    // Get the user to check their role
-    const user = await storage.getUser(userId);
-
-    if (!user) {
-      console.log(`Status update failed: User with ID ${userId} not found`);
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    if (user.role !== "admin") {
-      console.log(`Status update failed: User ${userId} is not an admin`);
+    if (req.user!.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
 

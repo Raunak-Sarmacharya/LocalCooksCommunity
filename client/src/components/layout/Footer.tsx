@@ -1,5 +1,6 @@
 import { Link } from "wouter";
-import { Facebook, Phone, Mail, MapPin, Heart, ChefHat } from "lucide-react";
+import { Phone, Mail, MapPin, Heart, ChefHat } from "lucide-react";
+import { FaFacebook, FaLinkedin } from "react-icons/fa";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 
@@ -80,12 +81,22 @@ export default function Footer() {
                   className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
                   aria-label="Facebook"
                   target="_blank"
+                  rel="noopener noreferrer"
                 >
-                  <Facebook className="h-5 w-5" />
+                  <FaFacebook className="h-5 w-5" />
+                </a>
+                <a
+                  href="https://www.linkedin.com/company/local-cooks/"
+                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
+                  aria-label="LinkedIn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <FaLinkedin className="h-5 w-5" />
                 </a>
               </div>
               <p className="text-sm text-gray-400">
-                Subscribe to our newsletter for the latest updates and opportunities.
+                Follow us on social media for updates and news.
               </p>
             </div>
           </div>
