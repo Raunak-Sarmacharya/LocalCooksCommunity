@@ -506,8 +506,8 @@ app.get('/api/health', async (req, res) => {
 
       // Check what tables exist
       const tableResult = await pool.query(`
-        SELECT table_name
-        FROM information_schema.tables
+        SELECT table_name 
+        FROM information_schema.tables 
         WHERE table_schema = 'public'
       `);
       tables = tableResult.rows.map(r => r.table_name);
@@ -645,7 +645,7 @@ app.post('/api/applications', async (req, res) => {
 
         // Insert application
         const result = await pool.query(`
-          INSERT INTO applications
+          INSERT INTO applications 
           (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference)
           VALUES ($1, $2, $3, $4, $5, $6, $7)
           RETURNING *;
@@ -804,8 +804,8 @@ app.get('/api/applications/my-applications', async (req, res) => {
       }
 
       const result = await pool.query(`
-        SELECT * FROM applications
-        WHERE user_id = $1
+        SELECT * FROM applications 
+        WHERE user_id = $1 
         ORDER BY created_at DESC;
       `, [req.session.userId]);
 
@@ -958,30 +958,18 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
 
 // Update application status endpoint (admin only)
 app.patch('/api/applications/:id/status', async (req, res) => {
-  // Get user ID from session or header
-  const userId = req.session.userId || req.headers['x-user-id'];
-
-  if (!userId) {
-    console.log('Status update failed: No authenticated user found');
+  if (!req.session.userId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
     // First check if the user is an admin
-    const user = await getUser(userId);
+    const user = await getUser(req.session.userId);
     if (!user || user.role !== 'admin') {
-      console.log(`Status update failed: User ${userId} is not an admin or not found`);
       return res.status(403).json({
         error: 'Forbidden',
         message: 'Only administrators can update application status'
       });
-    }
-
-    // Store user ID in session if it's not there
-    if (!req.session.userId && userId) {
-      console.log('Storing userId in session from header:', userId);
-      req.session.userId = userId;
-      await new Promise(resolve => req.session.save(resolve));
     }
 
     const { id } = req.params;

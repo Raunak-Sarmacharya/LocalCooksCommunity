@@ -20,8 +20,8 @@ const steps = [
     icon: <PackageCheck className="h-8 w-8 text-white" />,
     bgColor: "bg-gradient-to-br from-purple-500 to-violet-600",
     number: "03",
-    title: "We Handle Deliveries",
-    description: "Our team takes care of all the logistics, from pickup to customer delivery."
+    title: "Your Culinary Connection",
+    description: "We connect you with a growing community of local food lovers and manage all the delivery logistics, so you can focus on what you do best: cooking!"
   }
 ];
 
@@ -33,8 +33,8 @@ const benefits = [
   },
   {
     icon: <Truck className="h-6 w-6" />,
-    title: "Reliable Delivery",
-    description: "Professional delivery service ensures your food arrives fresh"
+    title: "Delivery Handled For You",
+    description: "We take care of all delivery logistics so your food reaches customers fresh"
   },
   {
     icon: <DollarSign className="h-6 w-6" />,
@@ -43,8 +43,8 @@ const benefits = [
   },
   {
     icon: <Timer className="h-6 w-6" />,
-    title: "Flexible Hours",
-    description: "Set your own availability and cooking schedule"
+    title: "Community Connection",
+    description: "Build relationships with local customers who love your unique cuisine"
   }
 ];
 
@@ -53,7 +53,7 @@ export default function HowItWorksSection() {
     <section id="how-it-works" className="py-16 md:py-24 px-4 scroll-mt-24 bg-gradient-to-b from-white to-gray-50">
       <div className="container mx-auto max-w-6xl">
         <div className="text-center mb-16">
-          <motion.span 
+          <motion.span
             className="inline-block text-primary font-medium mb-2"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -62,7 +62,7 @@ export default function HowItWorksSection() {
           >
             Simple Process
           </motion.span>
-          <motion.h2 
+          <motion.h2
             className="text-3xl md:text-4xl font-bold mb-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -71,20 +71,20 @@ export default function HowItWorksSection() {
           >
             How It Works
           </motion.h2>
-          <motion.p 
+          <motion.p
             className="max-w-2xl mx-auto text-gray-600"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.3 }}
           >
-            Join our platform in three simple steps and start sharing your culinary creations with food lovers in your area
+            Join our platform in three simple steps and start sharing your culinary creations with food lovers in your area.
           </motion.p>
         </div>
-        
+
         <div className="flex flex-col md:flex-row gap-8 mb-20">
           {steps.map((step, index) => (
-            <motion.div 
+            <motion.div
               key={index}
               className="bg-white rounded-2xl shadow-lg overflow-hidden flex-1 hover:shadow-xl hover-standard hover:-translate-y-2 border border-gray-100 group"
               initial={{ opacity: 0, y: 20 }}
@@ -106,7 +106,7 @@ export default function HowItWorksSection() {
             </motion.div>
           ))}
         </div>
-        
+
         <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12 border border-gray-100">
           <div className="grid md:grid-cols-2 gap-10 items-center">
             <div>
@@ -114,11 +114,11 @@ export default function HowItWorksSection() {
               <p className="text-gray-600 mb-8 leading-relaxed">
                 Our platform provides all the tools and support you need to build a successful food business without the overhead of a traditional restaurant.
               </p>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {benefits.map((benefit, index) => (
-                  <motion.div 
-                    key={index} 
+                  <motion.div
+                    key={index}
                     className="flex gap-4 group"
                     initial={{ opacity: 0, x: -10 }}
                     whileInView={{ opacity: 1, x: 0 }}
@@ -136,17 +136,17 @@ export default function HowItWorksSection() {
                 ))}
               </div>
             </div>
-            
-            <motion.div 
+
+            <motion.div
               className="relative"
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ delay: 0.3 }}
             >
-              <img 
-                src="https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
-                alt="Chef preparing meal" 
+              <img
+                src="https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80"
+                alt="Chef preparing meal"
                 className="rounded-xl shadow-lg object-cover h-full w-full"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/10 rounded-xl"></div>
