@@ -1039,7 +1039,31 @@ app.patch('/api/applications/:id/status', async (req, res) => {
         });
       }
 
-      return res.status(200).json(result.rows[0]);
+      const updatedApplication = result.rows[0];
+
+      // Send email notification about status change
+      try {
+        // Import the email functions
+        const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+        if (updatedApplication.email) {
+          const emailContent = generateStatusChangeEmail({
+            fullName: updatedApplication.full_name || updatedApplication.applicant_name || "Applicant",
+            email: updatedApplication.email,
+            status: updatedApplication.status
+          });
+
+          await sendEmail(emailContent);
+          console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+        } else {
+          console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending status change email:", emailError);
+      }
+
+      return res.status(200).json(updatedApplication);
     }
 
     // Fallback error - no storage
