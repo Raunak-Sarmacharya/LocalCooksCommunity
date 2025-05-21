@@ -11,6 +11,7 @@ export const applicationSchema = z.object({
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"], {
     required_error: "Please select an option",
   }),
+  feedback: z.string().optional(),
   kitchenPreference: z.enum(["commercial", "home", "notSure"], {
     required_error: "Please select an option",
   }),

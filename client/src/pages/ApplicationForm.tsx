@@ -125,6 +125,7 @@ export default function ApplicationForm() {
         foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
         foodEstablishmentCert: app.food_establishment_cert || app.foodEstablishmentCert,
         kitchenPreference: app.kitchen_preference || app.kitchenPreference,
+        feedback: app.feedback,
         status: app.status,
         createdAt: app.created_at || app.createdAt
       }));

@@ -13,9 +13,9 @@ export default function Footer() {
               <Logo variant="white" className="h-14 w-auto" />
             </div>
             <p className="text-gray-300 mb-6 max-w-md">
-              Connecting talented home chefs with hungry customers. We handle the logistics so you can focus on creating amazing culinary experiences.
+              Connecting talented home chefs with hungry customers. We're building more than a platform – we're creating a community where cooks and customers connect directly.
             </p>
-            <Button 
+            <Button
               asChild
               variant="outline"
               className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white"
@@ -26,18 +26,18 @@ export default function Footer() {
               </Link>
             </Button>
           </div>
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 md:w-3/5">
             <div>
               <h3 className="text-lg font-bold mb-4 text-primary">Contact Us</h3>
               <ul className="space-y-3">
                 <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <Mail className="h-4 w-4 text-primary" />
-                  <span>info@localcooks.ca</span>
+                  <span>admin@localcook.shop</span>
                 </li>
                 <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <Phone className="h-4 w-4 text-primary" />
-                  <span>(709) 555-1234</span>
+                  <span>(709) 689-2942</span>
                 </li>
                 <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <MapPin className="h-4 w-4 text-primary" />
@@ -45,7 +45,7 @@ export default function Footer() {
                 </li>
               </ul>
             </div>
-            
+
             <div>
               <h3 className="text-lg font-bold mb-4 text-primary">Quick Links</h3>
               <ul className="space-y-2">
@@ -71,14 +71,15 @@ export default function Footer() {
                 </li>
               </ul>
             </div>
-            
+
             <div>
               <h3 className="text-lg font-bold mb-4 text-primary">Connect</h3>
               <div className="flex space-x-4 mb-6">
-                <a 
-                  href="#" 
+                <a
+                  href="https://www.facebook.com/LocalCooks"
                   className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
                   aria-label="Facebook"
+                  target="_blank"
                 >
                   <Facebook className="h-5 w-5" />
                 </a>
@@ -89,13 +90,11 @@ export default function Footer() {
             </div>
           </div>
         </div>
-        
+
         <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
           <div className="flex flex-col md:flex-row items-center gap-4">
             <p>&copy; {new Date().getFullYear()} Local Cooks. All rights reserved.</p>
-            <Link href="/admin/login" className="text-xs text-gray-500 hover:text-gray-400 hover-text transition-colors">
-              Admin Login
-            </Link>
+
           </div>
           <div className="flex mt-4 md:mt-0">
             <span className="flex items-center">

@@ -110,6 +110,7 @@ export default function ApplicantDashboard() {
         foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
         foodEstablishmentCert: app.food_establishment_cert || app.foodEstablishmentCert,
         kitchenPreference: app.kitchen_preference || app.kitchenPreference,
+        feedback: app.feedback,
         status: app.status,
         createdAt: app.created_at || app.createdAt
       }));
@@ -273,6 +274,12 @@ export default function ApplicantDashboard() {
                       <div>
                         <h4 className="text-xs font-medium text-gray-500 mb-1">Kitchen Preference</h4>
                         <p className="font-medium text-gray-900">{formatKitchenPreference(application.kitchenPreference)}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <h4 className="text-xs font-medium text-gray-500 mb-1">Your Feedback/Questions</h4>
+                        <p className="font-medium text-gray-900 bg-gray-50 p-3 rounded-md border border-gray-200">
+                          {application.feedback || "No feedback or questions provided"}
+                        </p>
                       </div>
                     </div>
                   </div>

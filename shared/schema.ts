@@ -34,6 +34,7 @@ export const applications = pgTable("applications", {
   foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
   foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
+  feedback: text("feedback"),
   status: applicationStatusEnum("status").default("new").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -46,6 +47,7 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
+  feedback: z.string().optional(),
   userId: z.number().optional(),
 }).omit({ id: true, status: true, createdAt: true });
 

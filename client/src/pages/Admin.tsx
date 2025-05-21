@@ -81,6 +81,7 @@ function AdminDashboard() {
         foodSafetyLicense: app.food_safety_license || app.foodSafetyLicense,
         foodEstablishmentCert: app.food_establishment_cert || app.foodEstablishmentCert,
         kitchenPreference: app.kitchen_preference || app.kitchenPreference,
+        feedback: app.feedback,
         status: app.status,
         createdAt: app.created_at || app.createdAt,
         applicantUsername: app.applicant_username || app.applicantUsername
@@ -441,6 +442,12 @@ function AdminDashboard() {
                             <Badge className={`${getStatusBadgeColor(app.status)}`}>
                               {formatApplicationStatus(app.status)}
                             </Badge>
+                          </div>
+                          <div className="col-span-2 mt-2">
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Feedback/Questions</h4>
+                            <p className="font-medium text-sm bg-gray-50 p-3 rounded-md border border-gray-200">
+                              {app.feedback || "No feedback or questions provided"}
+                            </p>
                           </div>
                           <div>
                             <h4 className="text-xs font-medium text-muted-foreground mb-1">Application ID</h4>
