@@ -506,8 +506,8 @@ app.get('/api/health', async (req, res) => {
 
       // Check what tables exist
       const tableResult = await pool.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
+        SELECT table_name
+        FROM information_schema.tables
         WHERE table_schema = 'public'
       `);
       tables = tableResult.rows.map(r => r.table_name);
@@ -645,9 +645,9 @@ app.post('/api/applications', async (req, res) => {
 
         // Insert application
         const result = await pool.query(`
-          INSERT INTO applications 
-          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          INSERT INTO applications
+          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference, feedback)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING *;
         `, [
           userId, // Use the userId from session or header
@@ -656,7 +656,8 @@ app.post('/api/applications', async (req, res) => {
           phone,
           foodSafetyLicense,
           foodEstablishmentCert,
-          kitchenPreference
+          kitchenPreference,
+          req.body.feedback || null // Include feedback field, default to null if not provided
         ]);
 
         // Return the created application
@@ -680,6 +681,7 @@ app.post('/api/applications', async (req, res) => {
       foodSafetyLicense,
       foodEstablishmentCert,
       kitchenPreference,
+      feedback: req.body.feedback || null, // Include feedback field
       status: 'new',
       createdAt: new Date().toISOString()
     };
@@ -804,8 +806,8 @@ app.get('/api/applications/my-applications', async (req, res) => {
       }
 
       const result = await pool.query(`
-        SELECT * FROM applications 
-        WHERE user_id = $1 
+        SELECT * FROM applications
+        WHERE user_id = $1
         ORDER BY created_at DESC;
       `, [req.session.userId]);
 

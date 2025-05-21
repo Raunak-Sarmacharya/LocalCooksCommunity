@@ -21,21 +21,21 @@ export interface IStorage {
     googleId?: string;
     facebookId?: string;
   }): Promise<User>;
-  createOAuthUser(user: { 
+  createOAuthUser(user: {
     username: string;
     role: "admin" | "applicant";
     oauth_provider: string;
     oauth_id: string;
     profile_data?: string;
   }): Promise<User>;
-  
+
   // Application-related methods
   getAllApplications(): Promise<Application[]>;
   getApplicationById(id: number): Promise<Application | undefined>;
   getApplicationsByUserId(userId: number): Promise<Application[]>;
   createApplication(application: InsertApplication): Promise<Application>;
   updateApplicationStatus(update: UpdateApplicationStatus): Promise<Application | undefined>;
-  
+
   // Session store for authentication
   sessionStore: session.Store;
 }
@@ -117,7 +117,7 @@ export class MemStorage implements IStorage {
   async getApplicationById(id: number): Promise<Application | undefined> {
     return this.applications.get(id);
   }
-  
+
   async getApplicationsByUserId(userId: number): Promise<Application[]> {
     return Array.from(this.applications.values()).filter(
       (application) => application.userId === userId
@@ -127,7 +127,7 @@ export class MemStorage implements IStorage {
   async createApplication(insertApplication: InsertApplication): Promise<Application> {
     const id = this.applicationCurrentId++;
     const now = new Date();
-    
+
     // Create application with properly typed userId (null if not provided)
     const application: Application = {
       id,
@@ -138,65 +138,66 @@ export class MemStorage implements IStorage {
       foodSafetyLicense: insertApplication.foodSafetyLicense,
       foodEstablishmentCert: insertApplication.foodEstablishmentCert,
       kitchenPreference: insertApplication.kitchenPreference,
+      feedback: insertApplication.feedback || null, // Include feedback field
       status: "new",
       createdAt: now,
     };
-    
+
     this.applications.set(id, application);
     return application;
   }
 
   async updateApplicationStatus(update: UpdateApplicationStatus): Promise<Application | undefined> {
     const application = this.applications.get(update.id);
-    
+
     if (!application) {
       return undefined;
     }
-    
+
     const updatedApplication: Application = {
       ...application,
       status: update.status,
     };
-    
+
     this.applications.set(update.id, updatedApplication);
     return updatedApplication;
   }
 
   async getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined> {
     if (!oauthId) return undefined;
-    
+
     if (provider === 'google') {
       return this.getUserByGoogleId(oauthId);
     } else if (provider === 'facebook') {
       return this.getUserByFacebookId(oauthId);
     }
-    
+
     return undefined;
   }
 
-  async createOAuthUser(userData: Omit<InsertUser, 'password'> & { 
+  async createOAuthUser(userData: Omit<InsertUser, 'password'> & {
     oauth_provider: string;
     oauth_id: string;
     profile_data?: string;
   }): Promise<User> {
     const { oauth_provider, oauth_id, ...rest } = userData;
-    
+
     // Create user with OAuth provider details
-    const insertData: InsertUser & { 
-      googleId?: string, 
-      facebookId?: string 
+    const insertData: InsertUser & {
+      googleId?: string,
+      facebookId?: string
     } = {
       ...rest,
       password: '', // No password for OAuth users
     };
-    
+
     // Set the appropriate OAuth ID based on provider
     if (oauth_provider === 'google') {
       insertData.googleId = oauth_id;
     } else if (oauth_provider === 'facebook') {
       insertData.facebookId = oauth_id;
     }
-    
+
     return this.createUser(insertData);
   }
 }
@@ -207,9 +208,9 @@ export class DatabaseStorage implements IStorage {
 
   constructor() {
     const PostgresSessionStore = connectPg(session);
-    this.sessionStore = new PostgresSessionStore({ 
-      pool, 
-      createTableIfMissing: true 
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true
     });
   }
 
@@ -275,7 +276,7 @@ export class DatabaseStorage implements IStorage {
 
   async createApplication(insertApplication: InsertApplication): Promise<Application> {
     const now = new Date();
-    
+
     const [application] = await db
       .insert(applications)
       .values({
@@ -284,57 +285,57 @@ export class DatabaseStorage implements IStorage {
         createdAt: now,
       })
       .returning();
-    
+
     return application;
   }
 
   async updateApplicationStatus(update: UpdateApplicationStatus): Promise<Application | undefined> {
     const { id, status } = update;
-    
+
     const [updatedApplication] = await db
       .update(applications)
       .set({ status })
       .where(eq(applications.id, id))
       .returning();
-    
+
     return updatedApplication || undefined;
   }
 
   async getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined> {
     if (!oauthId) return undefined;
-    
+
     if (provider === 'google') {
       return this.getUserByGoogleId(oauthId);
     } else if (provider === 'facebook') {
       return this.getUserByFacebookId(oauthId);
     }
-    
+
     return undefined;
   }
 
-  async createOAuthUser(userData: Omit<InsertUser, 'password'> & { 
+  async createOAuthUser(userData: Omit<InsertUser, 'password'> & {
     oauth_provider: string;
     oauth_id: string;
     profile_data?: string;
   }): Promise<User> {
     const { oauth_provider, oauth_id, ...rest } = userData;
-    
+
     // Create user with OAuth provider details
-    const insertData: InsertUser & { 
-      googleId?: string, 
-      facebookId?: string 
+    const insertData: InsertUser & {
+      googleId?: string,
+      facebookId?: string
     } = {
       ...rest,
       password: '', // No password for OAuth users
     };
-    
+
     // Set the appropriate OAuth ID based on provider
     if (oauth_provider === 'google') {
       insertData.googleId = oauth_id;
     } else if (oauth_provider === 'facebook') {
       insertData.facebookId = oauth_id;
     }
-    
+
     return this.createUser(insertData);
   }
 }
@@ -342,7 +343,7 @@ export class DatabaseStorage implements IStorage {
 // Switch from in-memory to database storage
 export const storage = new MemStorage();
 /* Temporarily disabled DatabaseStorage to avoid database errors
-export const storage = process.env.NODE_ENV === "development" 
+export const storage = process.env.NODE_ENV === "development"
   ? new MemStorage()
   : new DatabaseStorage();
 */
