@@ -23,6 +23,7 @@ export const ApplicationFormProvider: React.FC<{ children: React.ReactNode }> = 
     foodSafetyLicense: undefined,
     foodEstablishmentCert: undefined,
     kitchenPreference: undefined,
+    feedback: "",
   });
 
   const updateFormData = (data: Partial<ApplicationFormData>) => {

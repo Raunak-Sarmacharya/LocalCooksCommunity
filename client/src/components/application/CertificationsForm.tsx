@@ -10,17 +10,19 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Info, ExternalLink, Check, HelpCircle } from "lucide-react";
 
-import { Form } from "@/components/ui/form";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
 
 // Create a schema for just the certifications fields
 const certificationsSchema = z.object({
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
+  feedback: z.string().optional(),
 });
 
 type CertificationsFormData = z.infer<typeof certificationsSchema>;
@@ -30,25 +32,26 @@ export default function CertificationsForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
-  
+
   const form = useForm<CertificationsFormData>({
     resolver: zodResolver(certificationsSchema),
     defaultValues: {
       foodSafetyLicense: formData.foodSafetyLicense,
       foodEstablishmentCert: formData.foodEstablishmentCert,
+      feedback: formData.feedback || "",
     },
   });
-  
+
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: ApplicationFormData) => {
       console.log("Submitting application with data:", data);
-      
+
       // Include auth header with user ID if available
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (user?.id) {
         headers["X-User-ID"] = user.id.toString();
       }
-      
+
       // Direct fetch to bypass apiRequest abstraction for debugging
       const response = await fetch("/api/applications", {
         method: "POST",
@@ -56,12 +59,12 @@ export default function CertificationsForm() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || response.statusText);
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
@@ -72,10 +75,10 @@ export default function CertificationsForm() {
       let errorMessage = "Please try again later.";
       let title = "Error submitting application";
       let isAuthError = false;
-      
+
       // Try to extract detailed error message from response
-      if (error.message === "Authentication required" || 
-          (error.response && error.response.status === 401)) {
+      if (error.message === "Authentication required" ||
+        (error.response && error.response.status === 401)) {
         errorMessage = "You must be logged in to submit an application. Please log in and try again.";
         title = "Authentication Required";
         isAuthError = true;
@@ -86,13 +89,13 @@ export default function CertificationsForm() {
           console.error("Error parsing error response:", e);
         }
       }
-      
+
       toast({
         title: title,
         description: errorMessage,
         variant: "destructive",
       });
-      
+
       // If it's an auth error, redirect to login
       if (isAuthError) {
         setTimeout(() => {
@@ -105,7 +108,7 @@ export default function CertificationsForm() {
   const onSubmit = (data: CertificationsFormData) => {
     // Update the form data with the certification information
     updateFormData(data);
-    
+
     // Check if user is authenticated
     if (!user) {
       toast({
@@ -117,17 +120,17 @@ export default function CertificationsForm() {
       navigate("/auth");
       return;
     }
-    
+
     // Combine all data and submit the complete form with user ID
     const completeFormData = {
       ...formData,
       ...data,
       userId: user.id
     } as ApplicationFormData;
-    
+
     // Log for debugging
     console.log("Submitting application:", completeFormData);
-    
+
     mutate(completeFormData);
   };
 
@@ -141,7 +144,7 @@ export default function CertificationsForm() {
             Don't worry if you don't have certifications yet. We can guide you through the process once you're approved.
           </AlertDescription>
         </Alert>
-      
+
         <div className="space-y-6 md:space-y-8">
           <div className="p-4 md:p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
@@ -161,9 +164,9 @@ export default function CertificationsForm() {
                 Learn more <ExternalLink className="h-3.5 w-3.5 ml-1" />
               </a>
             </div>
-            
+
             <p className="mb-3 md:mb-4 text-gray-600">Do you have a Food Safety License?*</p>
-            
+
             <RadioGroup
               onValueChange={(value) => form.setValue("foodSafetyLicense", value as "yes" | "no" | "notSure")}
               defaultValue={formData.foodSafetyLicense}
@@ -196,7 +199,7 @@ export default function CertificationsForm() {
                 {form.formState.errors.foodSafetyLicense.message}
               </p>
             )}
-            
+
             <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-sm text-gray-600 flex items-start">
                 <HelpCircle className="h-4 w-4 mr-2 text-primary mt-0.5 flex-shrink-0" />
@@ -204,7 +207,7 @@ export default function CertificationsForm() {
               </p>
             </div>
           </div>
-          
+
           <div className="p-4 md:p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
               <div>
@@ -223,9 +226,9 @@ export default function CertificationsForm() {
                 Provincial Guidelines <ExternalLink className="h-3.5 w-3.5 ml-1" />
               </a>
             </div>
-            
+
             <p className="mb-3 md:mb-4 text-gray-600">Do you have a Food Establishment Certificate?*</p>
-            
+
             <RadioGroup
               onValueChange={(value) => form.setValue("foodEstablishmentCert", value as "yes" | "no" | "notSure")}
               defaultValue={formData.foodEstablishmentCert}
@@ -258,7 +261,7 @@ export default function CertificationsForm() {
                 {form.formState.errors.foodEstablishmentCert.message}
               </p>
             )}
-            
+
             <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-sm text-gray-600 flex items-start">
                 <HelpCircle className="h-4 w-4 mr-2 text-primary mt-0.5 flex-shrink-0" />
@@ -267,26 +270,54 @@ export default function CertificationsForm() {
             </div>
           </div>
         </div>
-        
+
+        {/* Feedback Field */}
+        <div className="p-4 md:p-6 bg-white rounded-lg border border-gray-200 shadow-sm mt-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+              <HelpCircle className="h-5 w-5 mr-2 text-primary" />
+              Questions or Feedback (Optional)
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Share any questions, concerns, or additional information about your application
+            </p>
+          </div>
+
+          <div className="mt-2">
+            <Label htmlFor="feedback" className="text-gray-600 mb-2 block">
+              Is there anything else you'd like to share with us?
+            </Label>
+            <Textarea
+              id="feedback"
+              placeholder="Type your questions or feedback here..."
+              className="w-full min-h-[120px] p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              {...form.register("feedback")}
+            />
+            <p className="text-sm text-gray-500 mt-2">
+              This is optional. Feel free to ask questions or provide additional context about your application.
+            </p>
+          </div>
+        </div>
+
         <div className="flex justify-between items-center pt-4 md:pt-6">
-          <Button 
-            type="button" 
+          <Button
+            type="button"
             variant="outline"
             onClick={goToPreviousStep}
             className="border-primary text-primary hover:bg-primary hover:text-white hover-standard px-4"
           >
             Back
           </Button>
-          <Button 
+          <Button
             type="submit"
             disabled={isPending}
             className="bg-primary hover:bg-opacity-90 text-white font-bold py-2 md:py-3 px-5 md:px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow flex items-center"
           >
-            {isPending ? 
+            {isPending ?
               <>
                 <span className="mr-2">Submitting</span>
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              </> 
+              </>
               : 'Submit Application'
             }
           </Button>
