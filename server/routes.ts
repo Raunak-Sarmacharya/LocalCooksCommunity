@@ -14,7 +14,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/google", (req, res, next) => {
     console.log("Starting Google auth flow");
     if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-      passport.authenticate("google", { 
+      passport.authenticate("google", {
         scope: ["profile", "email"],
         failureRedirect: "/login?error=google_auth_failed",
         state: Date.now().toString() // Add state parameter for security
@@ -36,7 +36,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       next();
     },
-    passport.authenticate("google", { 
+    passport.authenticate("google", {
       failureRedirect: "/login?error=google_callback_failed",
       failWithError: true // This will pass the error to the next middleware
     }),
@@ -56,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/facebook", (req, res, next) => {
     console.log("Starting Facebook auth flow");
     if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
-      passport.authenticate("facebook", { 
+      passport.authenticate("facebook", {
         scope: ["email"],
         failureRedirect: "/login?error=facebook_auth_failed",
         state: Date.now().toString() // Add state parameter for security
@@ -78,7 +78,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       next();
     },
-    passport.authenticate("facebook", { 
+    passport.authenticate("facebook", {
       failureRedirect: "/login?error=facebook_callback_failed",
       failWithError: true
     }),
@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       next();
     },
-    passport.authenticate("instagram", { 
+    passport.authenticate("instagram", {
       failureRedirect: "/login?error=instagram_callback_failed",
       failWithError: true
     }),
@@ -142,28 +142,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "You must be logged in to submit an application" });
       }
-      
+
       // Validate the request body using Zod schema
       const parsedData = insertApplicationSchema.safeParse(req.body);
-      
+
       if (!parsedData.success) {
         const validationError = fromZodError(parsedData.error);
-        return res.status(400).json({ 
-          message: "Validation error", 
-          errors: validationError.details 
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
         });
       }
-      
+
       // Ensure the application is associated with the current user
       // Override any userId in the request to prevent spoofing
       const applicationData = {
         ...parsedData.data,
         userId: req.user!.id
       };
-      
+
       // Create the application in storage
       const application = await storage.createApplication(applicationData);
-      
+
       return res.status(201).json(application);
     } catch (error) {
       console.error("Error creating application:", error);
@@ -177,11 +177,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
     }
-    
+
     if (req.user!.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
-    
+
     try {
       const applications = await storage.getAllApplications();
       return res.status(200).json(applications);
@@ -197,7 +197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ error: "Not authenticated" });
     }
-    
+
     try {
       const userId = req.user!.id;
       const applications = await storage.getApplicationsByUserId(userId);
@@ -212,17 +212,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/applications/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid application ID" });
       }
-      
+
       const application = await storage.getApplicationById(id);
-      
+
       if (!application) {
         return res.status(404).json({ message: "Application not found" });
       }
-      
+
       return res.status(200).json(application);
     } catch (error) {
       console.error("Error fetching application:", error);
@@ -232,86 +232,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update application status endpoint (admin only)
   app.patch("/api/applications/:id/status", async (req: Request, res: Response) => {
-    // Check if user is authenticated and is an admin
-    if (!req.isAuthenticated()) {
+    // Check if user is authenticated via session or X-User-ID header
+    const userId = req.isAuthenticated() ? req.user!.id : req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'] as string) : null;
+
+    if (!userId) {
+      console.log("Status update failed: No authenticated user found");
       return res.status(401).json({ message: "Not authenticated" });
     }
-    
-    if (req.user!.role !== "admin") {
+
+    // Get the user to check their role
+    const user = await storage.getUser(userId);
+
+    if (!user) {
+      console.log(`Status update failed: User with ID ${userId} not found`);
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    if (user.role !== "admin") {
+      console.log(`Status update failed: User ${userId} is not an admin`);
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
-    
+
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid application ID" });
       }
-      
+
       // Validate the request body using Zod schema
       const parsedData = updateApplicationStatusSchema.safeParse({
         id,
         status: req.body.status
       });
-      
+
       if (!parsedData.success) {
         const validationError = fromZodError(parsedData.error);
-        return res.status(400).json({ 
-          message: "Validation error", 
-          errors: validationError.details 
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
         });
       }
-      
+
       const updatedApplication = await storage.updateApplicationStatus(parsedData.data);
-      
+
       if (!updatedApplication) {
         return res.status(404).json({ message: "Application not found" });
       }
-      
+
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error updating application status:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
-  
+
   // Cancel application endpoint (for applicants)
   app.patch("/api/applications/:id/cancel", async (req: Request, res: Response) => {
     // Check if user is authenticated
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
     }
-    
+
     try {
       const id = parseInt(req.params.id);
-      
+
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid application ID" });
       }
-      
+
       // First get the application to verify ownership
       const application = await storage.getApplicationById(id);
-      
+
       if (!application) {
         return res.status(404).json({ message: "Application not found" });
       }
-      
+
       // Check if the application belongs to the logged-in user
       if (application.userId !== req.user!.id) {
         return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
       }
-      
+
       const updateData = {
         id,
         status: "cancelled" as const
       };
-      
+
       const updatedApplication = await storage.updateApplicationStatus(updateData);
-      
+
       if (!updatedApplication) {
         return res.status(404).json({ message: "Application not found" });
       }
-      
+
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error cancelling application:", error);
