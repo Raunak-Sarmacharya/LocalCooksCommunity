@@ -28,7 +28,7 @@ export default function KitchenPreferenceForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
-  
+
   const form = useForm<KitchenPreferenceFormData>({
     resolver: zodResolver(kitchenPreferenceSchema),
     defaultValues: {
@@ -56,7 +56,7 @@ export default function KitchenPreferenceForm() {
   const onSubmit = (data: KitchenPreferenceFormData) => {
     // Update the form data with the kitchen preference
     updateFormData(data);
-    
+
     // Go to the next step (certifications form)
     goToNextStep();
   };
@@ -71,7 +71,7 @@ export default function KitchenPreferenceForm() {
             Your choice helps us understand your needs. Don't worry - you can change this later if needed.
           </AlertDescription>
         </Alert>
-      
+
         <div className="space-y-5">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-lg font-semibold text-gray-800 flex items-center">
@@ -79,11 +79,11 @@ export default function KitchenPreferenceForm() {
               Choose Your Kitchen Setting
             </h3>
           </div>
-          
+
           <p className="text-gray-600 mb-3 md:mb-4">
             This helps us understand how to best support your cooking journey. We have options for every cooking situation!
           </p>
-          
+
           <RadioGroup
             onValueChange={(value) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
             defaultValue={formData.kitchenPreference}
@@ -109,7 +109,7 @@ export default function KitchenPreferenceForm() {
                 </ul>
               </div>
             </div>
-            
+
             <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary hover-text h-full shadow-sm transition-all duration-200 hover:shadow-md">
               <div className="bg-green-50 py-3 px-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
@@ -117,7 +117,7 @@ export default function KitchenPreferenceForm() {
                   <HomeIcon className="h-5 w-5 text-green-500" />
                 </div>
               </div>
-              <div className="p-5">
+              <div className="p-6">
                 <div className="flex items-center space-x-3 mb-4">
                   <RadioGroupItem value="home" id="kp-home" />
                   <Label htmlFor="kp-home" className="text-sm font-medium cursor-pointer">I want to cook from my home</Label>
@@ -130,7 +130,7 @@ export default function KitchenPreferenceForm() {
                 </ul>
               </div>
             </div>
-            
+
             <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary hover-text h-full shadow-sm transition-all duration-200 hover:shadow-md">
               <div className="bg-purple-50 py-3 px-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
@@ -152,25 +152,25 @@ export default function KitchenPreferenceForm() {
               </div>
             </div>
           </RadioGroup>
-          
+
           {form.formState.errors.kitchenPreference && (
             <p className="text-primary text-sm mt-2">
               Please select a kitchen preference to continue
             </p>
           )}
         </div>
-        
+
         <div className="flex justify-between items-center pt-4 md:pt-6">
-          <Button 
-            type="button" 
+          <Button
+            type="button"
             variant="outline"
             onClick={goToPreviousStep}
             className="border-primary text-primary hover:bg-primary hover:text-white hover-standard px-4"
           >
             Back
           </Button>
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={isPending}
             className="bg-primary hover:bg-opacity-90 text-white font-bold py-2 md:py-3 px-5 md:px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow flex items-center"
           >
