@@ -5,6 +5,7 @@ import { insertApplicationSchema, updateApplicationStatusSchema } from "@shared/
 import { fromZodError } from "zod-validation-error";
 import { setupAuth } from "./auth";
 import passport from "passport";
+import { sendEmail, generateStatusChangeEmail } from "./email";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -280,6 +281,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Application not found" });
       }
 
+      // Send email notification about status change
+      try {
+        if (updatedApplication.email) {
+          const emailContent = generateStatusChangeEmail({
+            fullName: updatedApplication.fullName || "Applicant",
+            email: updatedApplication.email,
+            status: updatedApplication.status
+          });
+
+          await sendEmail(emailContent);
+          console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+        } else {
+          console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending status change email:", emailError);
+      }
+
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error updating application status:", error);
@@ -336,6 +356,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error cancelling application:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Test endpoint for sending status change emails
+  app.post("/api/test/status-email", async (req: Request, res: Response) => {
+    // Check if user is authenticated and is an admin
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    if (req.user!.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+
+    try {
+      const { status, email, fullName } = req.body;
+
+      if (!status || !email || !fullName) {
+        return res.status(400).json({
+          message: "Missing required fields",
+          required: ["status", "email", "fullName"]
+        });
+      }
+
+      // Generate email content
+      const emailContent = generateStatusChangeEmail({
+        fullName,
+        email,
+        status
+      });
+
+      // Send the email
+      const emailSent = await sendEmail(emailContent);
+
+      if (!emailSent) {
+        return res.status(500).json({
+          message: "Failed to send email",
+          details: "Check server logs for more information"
+        });
+      }
+
+      return res.status(200).json({
+        message: "Test email sent successfully",
+        emailDetails: {
+          to: email,
+          subject: emailContent.subject,
+          status
+        }
+      });
+    } catch (error) {
+      console.error("Error sending test email:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

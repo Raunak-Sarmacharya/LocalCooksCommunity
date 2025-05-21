@@ -115,12 +115,14 @@ function AdminDashboard() {
         throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
       toast({
         title: "Status updated",
-        description: "Application status has been updated successfully.",
+        description: `Application status changed to ${data.status}. Email notification sent.`,
       });
+
+      console.log('Status update successful with email notification:', data);
     },
     onError: (error) => {
       console.error('Status update error details:', error);
