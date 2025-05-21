@@ -331,7 +331,15 @@ app.post('/api/admin-login', async (req, res) => {
     req.session.userId = admin.id;
     req.session.user = { id: admin.id, username: admin.username, role: admin.role };
 
-    await new Promise(resolve => req.session.save(resolve));
+    // Ensure session is saved before responding
+    await new Promise(resolve => req.session.save(err => {
+      if (err) {
+        console.error('Error saving session:', err);
+      } else {
+        console.log('Session saved successfully with userId:', admin.id);
+      }
+      resolve();
+    }));
 
     // Remove sensitive info
     const { password: _, ...adminWithoutPassword } = admin;
@@ -960,18 +968,34 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
 
 // Update application status endpoint (admin only)
 app.patch('/api/applications/:id/status', async (req, res) => {
-  if (!req.session.userId) {
+  // Check if user is authenticated via session or X-User-ID header
+  const userId = req.session.userId || (req.headers['x-user-id'] ? parseInt(req.headers['x-user-id']) : null);
+
+  console.log('Status update request - Auth info:', {
+    sessionUserId: req.session.userId,
+    headerUserId: req.headers['x-user-id'],
+    resolvedUserId: userId
+  });
+
+  if (!userId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
     // First check if the user is an admin
-    const user = await getUser(req.session.userId);
+    const user = await getUser(userId);
     if (!user || user.role !== 'admin') {
       return res.status(403).json({
         error: 'Forbidden',
         message: 'Only administrators can update application status'
       });
+    }
+
+    // Store user ID in session if it's not there
+    if (!req.session.userId && userId) {
+      console.log('Storing userId in session from header:', userId);
+      req.session.userId = userId;
+      await new Promise(resolve => req.session.save(resolve));
     }
 
     const { id } = req.params;

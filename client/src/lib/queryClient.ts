@@ -33,8 +33,18 @@ export async function apiRequest(
 ): Promise<Response> {
   console.log(`Making ${method} request to ${url}`, data);
 
+  // Always include user ID from localStorage if available
+  const userId = localStorage.getItem('userId');
+  const defaultHeaders: Record<string, string> = {};
+
+  if (userId) {
+    defaultHeaders['X-User-ID'] = userId;
+    console.log('Including userId in request headers:', userId);
+  }
+
   const headers: Record<string, string> = {
     ...(data ? { "Content-Type": "application/json" } : {}),
+    ...defaultHeaders,
     ...(customHeaders || {})
   };
 
@@ -76,6 +86,7 @@ export const getQueryFn: <T>(options: {
 
       if (userId) {
         defaultHeaders['X-User-ID'] = userId;
+        console.log('Including userId in query headers:', userId);
       }
 
       const res = await fetch(queryKey[0] as string, {
