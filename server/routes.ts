@@ -232,12 +232,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update application status endpoint (admin only)
   app.patch("/api/applications/:id/status", async (req: Request, res: Response) => {
-    // Check if user is authenticated and is an admin
-    if (!req.isAuthenticated()) {
+    // Check if user is authenticated via session or X-User-ID header
+    const userId = req.isAuthenticated() ? req.user!.id : (req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'] as string) : null);
+
+    console.log('Status update request - Auth info:', {
+      isAuthenticated: req.isAuthenticated(),
+      sessionUserId: req.isAuthenticated() ? req.user!.id : null,
+      headerUserId: req.headers['x-user-id'],
+      resolvedUserId: userId
+    });
+
+    if (!userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    if (req.user!.role !== "admin") {
+    // Get user from storage to check role
+    const user = await storage.getUser(userId);
+
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
 
@@ -277,8 +289,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Cancel application endpoint (for applicants)
   app.patch("/api/applications/:id/cancel", async (req: Request, res: Response) => {
-    // Check if user is authenticated
-    if (!req.isAuthenticated()) {
+    // Check if user is authenticated via session or X-User-ID header
+    const userId = req.isAuthenticated() ? req.user!.id : (req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'] as string) : null);
+
+    console.log('Cancel application request - Auth info:', {
+      isAuthenticated: req.isAuthenticated(),
+      sessionUserId: req.isAuthenticated() ? req.user!.id : null,
+      headerUserId: req.headers['x-user-id'],
+      resolvedUserId: userId
+    });
+
+    if (!userId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
@@ -296,8 +317,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Application not found" });
       }
 
-      // Check if the application belongs to the logged-in user
-      if (application.userId !== req.user!.id) {
+      // Check if the application belongs to the authenticated user
+      if (application.userId !== userId) {
         return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
       }
 

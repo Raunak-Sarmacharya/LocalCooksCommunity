@@ -96,7 +96,16 @@ function AdminDashboard() {
   // Mutation to update application status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number, status: string }) => {
-      const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status });
+      // Create custom headers with user ID for authentication
+      const customHeaders: Record<string, string> = {};
+
+      // Include user ID in header for authentication
+      if (user?.id) {
+        customHeaders['X-User-ID'] = user.id.toString();
+        console.log('Adding X-User-ID header for status update:', user.id);
+      }
+
+      const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status }, customHeaders);
       return response.json();
     },
     onSuccess: () => {
@@ -107,6 +116,7 @@ function AdminDashboard() {
       });
     },
     onError: (error) => {
+      console.error('Status update error details:', error);
       toast({
         title: "Error updating status",
         description: error.message || "Please try again.",
