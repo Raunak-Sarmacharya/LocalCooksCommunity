@@ -105,8 +105,15 @@ function AdminDashboard() {
         console.log('Adding X-User-ID header for status update:', user.id);
       }
 
-      const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status }, customHeaders);
-      return response.json();
+      try {
+        console.log(`Updating application ${id} status to ${status}`);
+        const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status }, customHeaders);
+        console.log('Status update response:', response.status);
+        return response.json();
+      } catch (error) {
+        console.error('Error updating application status:', error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
@@ -117,11 +124,28 @@ function AdminDashboard() {
     },
     onError: (error) => {
       console.error('Status update error details:', error);
-      toast({
-        title: "Error updating status",
-        description: error.message || "Please try again.",
-        variant: "destructive",
-      });
+
+      // Check if it's an authentication error
+      const isAuthError = error.message?.includes('Authentication') ||
+        error.message?.includes('401') ||
+        error.message?.includes('403');
+
+      if (isAuthError) {
+        toast({
+          title: "Authentication Error",
+          description: "Your session may have expired. Please refresh the page or log in again.",
+          variant: "destructive",
+        });
+
+        // Refresh the auth state
+        queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      } else {
+        toast({
+          title: "Error updating status",
+          description: error.message || "Please try again.",
+          variant: "destructive",
+        });
+      }
     },
   });
 

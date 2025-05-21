@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useEffect } from "react";
 import {
   useQuery,
   useMutation,
@@ -30,28 +30,46 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  
+
   // Check for stored userId in localStorage on initial load
   const savedUserId = localStorage.getItem('userId');
-  
+
   // Custom headers to include userId if available
   const headers: Record<string, string> = {};
   if (savedUserId) {
     headers['X-User-ID'] = savedUserId;
     console.log('Found userId in localStorage, adding to headers:', savedUserId);
   }
-  
+
+  // Function to ensure userId is in localStorage
+  const ensureUserIdInStorage = (user: AuthUser | null) => {
+    if (user?.id) {
+      const currentStoredId = localStorage.getItem('userId');
+      if (currentStoredId !== user.id.toString()) {
+        localStorage.setItem('userId', user.id.toString());
+        console.log('Updated userId in localStorage:', user.id);
+      }
+    }
+  }
+
   const {
     data: user,
     error,
     isLoading,
   } = useQuery<AuthUser | null, Error>({
     queryKey: ["/api/user"],
-    queryFn: getQueryFn({ 
+    queryFn: getQueryFn({
       on401: "returnNull",
       headers
-    }),
+    })
   });
+
+  // Store user ID in localStorage whenever it changes
+  useEffect(() => {
+    if (user) {
+      ensureUserIdInStorage(user);
+    }
+  }, [user]);
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
@@ -62,18 +80,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (user: AuthUser) => {
       console.log("Login success, user data:", user);
       queryClient.setQueryData(["/api/user"], user);
-      
+
       // Store userId in localStorage for persistence
       if (user?.id) {
         localStorage.setItem('userId', user.id.toString());
         console.log('Saved userId to localStorage:', user.id);
       }
-      
+
       toast({
         title: "Login successful",
         description: "Welcome back!",
       });
-      
+
       // Verify that the user is stored in the query cache
       setTimeout(() => {
         const cachedUser = queryClient.getQueryData(["/api/user"]);
@@ -97,13 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (user: AuthUser) => {
       queryClient.setQueryData(["/api/user"], user);
-      
+
       // Store userId in localStorage for persistence
       if (user?.id) {
         localStorage.setItem('userId', user.id.toString());
         console.log('Saved userId to localStorage after registration:', user.id);
       }
-      
+
       toast({
         title: "Registration successful",
         description: "Your account has been created!",
@@ -125,11 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       // Clear user from query cache
       queryClient.setQueryData(["/api/user"], null);
-      
+
       // Clear user ID from localStorage for persistence
       localStorage.removeItem('userId');
       console.log('Cleared userId from localStorage on logout');
-      
+
       toast({
         title: "Logout successful",
         description: "You have been logged out",
