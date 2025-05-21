@@ -475,6 +475,7 @@ function AdminDashboard() {
                             <SelectItem value="inReview">In Review</SelectItem>
                             <SelectItem value="approved">Approve</SelectItem>
                             <SelectItem value="rejected">Reject</SelectItem>
+                            <SelectItem value="cancelled">Cancel</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
