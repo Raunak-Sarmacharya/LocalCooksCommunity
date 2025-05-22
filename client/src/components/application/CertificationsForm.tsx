@@ -168,10 +168,10 @@ export default function CertificationsForm() {
                 <p className="text-gray-600 mt-2 ml-10 max-w-xl">Required for professional food preparation</p>
               </div>
               <a
-                href="https://skillpassnl.ca/en/home/"
+                href="https://skillspassnl.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary bg-primary bg-opacity-5 hover:bg-opacity-10 text-sm font-medium py-2 px-4 rounded-lg transition-all duration-200 inline-flex items-center whitespace-nowrap"
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium py-2 px-4 rounded-lg transition-all duration-200 inline-flex items-center whitespace-nowrap border border-blue-200"
               >
                 Learn more <ExternalLink className="h-3.5 w-3.5 ml-2" />
               </a>
@@ -257,10 +257,10 @@ export default function CertificationsForm() {
                 <p className="text-gray-600 mt-2 ml-10 max-w-xl">Required for operating a food business</p>
               </div>
               <a
-                href="https://www.gov.nl.ca/dgsnl/licensing/environmental-health/"
+                href="https://www.gov.nl.ca/dgsnl/licences/env-health/food/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary bg-primary bg-opacity-5 hover:bg-opacity-10 text-sm font-medium py-2 px-4 rounded-lg transition-all duration-200 inline-flex items-center whitespace-nowrap"
+                className="bg-orange-50 hover:bg-orange-100 text-orange-700 text-sm font-medium py-2 px-4 rounded-lg transition-all duration-200 inline-flex items-center whitespace-nowrap border border-orange-200"
               >
                 Provincial Guidelines <ExternalLink className="h-3.5 w-3.5 ml-2" />
               </a>

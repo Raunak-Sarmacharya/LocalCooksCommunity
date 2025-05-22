@@ -82,8 +82,8 @@ export default function KitchenPreferenceForm() {
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <div>
               <h3 className="text-xl font-semibold text-gray-900 flex items-center mb-2">
-                <span className="bg-primary bg-opacity-10 p-1.5 rounded-full mr-3">
-                  <ChefHat className="h-5 w-5 text-primary" />
+                <span className="bg-blue-50 p-1.5 rounded-full mr-3">
+                  <ChefHat className="h-5 w-5 text-blue-600" />
                 </span>
                 Choose Your Kitchen Setting
               </h3>
