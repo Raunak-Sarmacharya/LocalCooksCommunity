@@ -23,23 +23,23 @@ const RadioGroupItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>
 >(({ className, ...props }, ref) => {
   return (
-    // The relative inline-flex div around it is fine if you need it for layout
     <div className="relative inline-flex items-center justify-center">
       <RadioGroupPrimitive.Item
         ref={ref}
         className={cn(
-          // **Here are the key changes for the simple red outline**
-          "h-1 w-5 rounded-full border-2 border-red-500", // Make it a circle, 2px red border
-          "data-[state=checked]:bg-red-500", // Fill with red when checked
-          "disabled:cursor-not-allowed disabled:opacity-50", // Keep disabled styles
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2", // Red focus ring for accessibility
-          className // Allows external classes to be merged
+          // Minimal, modern radio style
+          "h-5 w-5 rounded-full border border-gray-300 bg-white shadow-sm transition-colors duration-200",
+          "data-[state=checked]:border-primary data-[state=checked]:ring-2 data-[state=checked]:ring-primary",
+          "flex items-center justify-center cursor-pointer",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          className
         )}
         {...props}
       >
         <RadioGroupPrimitive.Indicator className="flex items-center justify-center">
-          {/* Inner dot will be white when the item is checked */}
-          <div className="h-2.5 w-2.5 rounded-full bg-white" />
+          {/* Minimal filled dot for checked state */}
+          <div className="h-2.5 w-2.5 rounded-full bg-primary transition-all duration-200 scale-100 data-[state=unchecked]:scale-0" />
         </RadioGroupPrimitive.Indicator>
       </RadioGroupPrimitive.Item>
     </div>
