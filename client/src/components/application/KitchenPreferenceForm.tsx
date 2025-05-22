@@ -13,7 +13,7 @@ import { ChefHat, HomeIcon, HelpCircle, ArrowRight, Building, Info } from "lucid
 import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { CustomRadioGroup, CustomRadioItem } from "@/components/ui/custom-radio";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Create a schema for just the kitchen preference field
@@ -84,8 +84,8 @@ export default function KitchenPreferenceForm() {
             This helps us understand how to best support your cooking journey. We have options for every cooking situation!
           </p>
 
-          <RadioGroup
-            onValueChange={(value) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
+          <CustomRadioGroup
+            onValueChange={(value: string) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
             defaultValue={formData.kitchenPreference}
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4"
           >
@@ -98,7 +98,7 @@ export default function KitchenPreferenceForm() {
               </div>
               <div className="p-5">
                 <div className="flex items-center space-x-3 py-2">
-                  <RadioGroupItem value="commercial" id="kp-commercial" />
+                  <CustomRadioItem value="commercial" id="kp-commercial" />
                   <Label htmlFor="kp-commercial" className="text-sm font-medium cursor-pointer">I want to cook in a professional setting</Label>
                 </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
@@ -119,7 +119,7 @@ export default function KitchenPreferenceForm() {
               </div>
               <div className="p-6">
                 <div className="flex items-center space-x-3 py-2">
-                  <RadioGroupItem value="home" id="kp-home" />
+                  <CustomRadioItem value="home" id="kp-home" />
                   <Label htmlFor="kp-home" className="text-sm font-medium cursor-pointer">I want to cook from my home</Label>
                 </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
@@ -140,7 +140,7 @@ export default function KitchenPreferenceForm() {
               </div>
               <div className="p-5">
                 <div className="flex items-center space-x-3 py-2">
-                  <RadioGroupItem value="notSure" id="kp-not-sure" />
+                  <CustomRadioItem value="notSure" id="kp-not-sure" />
                   <Label htmlFor="kp-not-sure" className="text-sm font-medium cursor-pointer">I'd like personalized guidance</Label>
                 </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
@@ -151,7 +151,7 @@ export default function KitchenPreferenceForm() {
                 </ul>
               </div>
             </div>
-          </RadioGroup>
+          </CustomRadioGroup>
 
           {form.formState.errors.kitchenPreference && (
             <p className="text-primary text-sm mt-2">
