@@ -219,8 +219,8 @@ export const generateStatusChangeEmail = (
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);padding:0;">
                 <tr>
                   <td style="padding:32px 32px 16px 32px;text-align:center;">
-                    <span style="display:inline-block;font-size:32px;line-height:1.2;">🍳</span>
-                    <h1 style="margin:12px 0 0 0;font-family:'Segoe UI',Arial,sans-serif;font-size:2rem;font-weight:700;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
+                    <img src="https://localcooks.community/assets/logo-white.png" alt="Local Cooks Logo" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
+                    <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive;font-size:2rem;font-weight:700;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
                   </td>
                 </tr>
               </table>
@@ -263,7 +263,7 @@ export const generateStatusChangeEmail = (
                 <!-- Footer -->
                 <tr>
                   <td style="padding:32px 32px 32px 32px;text-align:center;">
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">Thank you for your interest in <span style="color:#6366f1;font-weight:600;">Local Cooks</span>!</p>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">Thank you for your interest in <a href="https://localcooks.ca" style="color:#6366f1;font-weight:600;text-decoration:none;">Local Cooks</a>!</p>
                     <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">If you have any questions, just reply to this email or contact us at <a href="mailto:support@localcooks.community" style="color:#6366f1;text-decoration:underline;">support@localcooks.community</a>.</p>
                     <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);opacity:0.18;"></div>
                     <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
