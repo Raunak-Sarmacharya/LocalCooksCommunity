@@ -13,7 +13,7 @@ import { ChefHat, HomeIcon, HelpCircle, ArrowRight, Building, Info } from "lucid
 import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { CustomRadioGroup, CustomRadioItem } from "@/components/ui/custom-radio";
+import { CircleRadioGroup, CircleRadioItem } from "@/components/ui/circle-radio";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Create a schema for just the kitchen preference field
@@ -84,8 +84,8 @@ export default function KitchenPreferenceForm() {
             This helps us understand how to best support your cooking journey. We have options for every cooking situation!
           </p>
 
-          <CustomRadioGroup
-            onValueChange={(value: string) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
+          <CircleRadioGroup
+            onValueChange={(value) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
             defaultValue={formData.kitchenPreference}
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4"
           >
@@ -97,11 +97,10 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-5">
-                <div className="flex items-center space-x-3 py-2">
-                  <CustomRadioItem value="commercial" id="kp-commercial" />
-                  <Label htmlFor="kp-commercial" className="text-sm font-medium cursor-pointer">I want to cook in a professional setting</Label>
-                </div>
-                <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
+                <CircleRadioItem value="commercial" id="kp-commercial">
+                  <span className="text-sm font-medium cursor-pointer">I want to cook in a professional setting</span>
+                </CircleRadioItem>
+                <ul className="space-y-2 text-sm text-gray-600 pl-9 mt-3 list-disc">
                   <li>Professional-grade equipment</li>
                   <li>Meets all health regulations</li>
                   <li>Greater capacity for volume</li>
@@ -118,11 +117,10 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-6">
-                <div className="flex items-center space-x-3 py-2">
-                  <CustomRadioItem value="home" id="kp-home" />
-                  <Label htmlFor="kp-home" className="text-sm font-medium cursor-pointer">I want to cook from my home</Label>
-                </div>
-                <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
+                <CircleRadioItem value="home" id="kp-home">
+                  <span className="text-sm font-medium cursor-pointer">I want to cook from my home</span>
+                </CircleRadioItem>
+                <ul className="space-y-2 text-sm text-gray-600 pl-9 mt-3 list-disc">
                   <li>Comfortable, familiar environment</li>
                   <li>No commute required</li>
                   <li>Perfect for specialty items</li>
@@ -139,11 +137,10 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-5">
-                <div className="flex items-center space-x-3 py-2">
-                  <CustomRadioItem value="notSure" id="kp-not-sure" />
-                  <Label htmlFor="kp-not-sure" className="text-sm font-medium cursor-pointer">I'd like personalized guidance</Label>
-                </div>
-                <ul className="space-y-2 text-sm text-gray-600 pl-9 list-disc">
+                <CircleRadioItem value="notSure" id="kp-not-sure">
+                  <span className="text-sm font-medium cursor-pointer">I'd like personalized guidance</span>
+                </CircleRadioItem>
+                <ul className="space-y-2 text-sm text-gray-600 pl-9 mt-3 list-disc">
                   <li>Get personalized advice</li>
                   <li>Learn about both options</li>
                   <li>Weigh pros and cons</li>
@@ -151,7 +148,7 @@ export default function KitchenPreferenceForm() {
                 </ul>
               </div>
             </div>
-          </CustomRadioGroup>
+          </CircleRadioGroup>
 
           {form.formState.errors.kitchenPreference && (
             <p className="text-primary text-sm mt-2">

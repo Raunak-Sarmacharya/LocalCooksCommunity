@@ -21,23 +21,31 @@ const CustomRadioItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>
 >(({ className, ...props }, ref) => {
   return (
-    <RadioGroupPrimitive.Item
-      ref={ref}
-      className={cn(
-        // Perfect circle with fixed dimensions
-        "aspect-square h-4 w-4 rounded-full border border-gray-300",
-        "flex items-center justify-center",
-        "data-[state=checked]:border-primary data-[state=checked]:ring-1 data-[state=checked]:ring-primary",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        className
-      )}
-      {...props}
-    >
-      <RadioGroupPrimitive.Indicator className="flex items-center justify-center">
-        <div className="h-2 w-2 rounded-full bg-primary" />
-      </RadioGroupPrimitive.Indicator>
-    </RadioGroupPrimitive.Item>
+    <div className="inline-flex items-center justify-center">
+      <RadioGroupPrimitive.Item
+        ref={ref}
+        className={cn(
+          // Simplified pure circle with fixed dimensions
+          "appearance-none m-0 outline-none border-0",
+          "w-4 h-4 rounded-full border-2 border-gray-300 bg-white",
+          "data-[state=checked]:border-primary data-[state=checked]:bg-white",
+          "data-[state=checked]:ring-0",
+          "focus:outline-none focus-visible:ring-1 focus-visible:ring-primary",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        {...props}
+      />
+      <div 
+        className={cn(
+          "absolute pointer-events-none w-2 h-2 rounded-full bg-primary transform scale-0",
+          // Show inner dot only when checked
+          "data-[state=checked]:scale-100",
+        )}
+        aria-hidden="true"
+        data-state={props.checked ? "checked" : "unchecked"}
+      />
+    </div>
   )
 })
 CustomRadioItem.displayName = "CustomRadioItem"
