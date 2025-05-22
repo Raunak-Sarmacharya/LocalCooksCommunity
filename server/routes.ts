@@ -313,7 +313,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           await sendEmail(emailContent);
-          console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+
+          if (updatedApplication.status === "new") {
+            console.log(`New application email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+          } else {
+            console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+          }
         } else {
           console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
         }
