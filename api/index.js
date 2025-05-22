@@ -668,8 +668,32 @@ app.post('/api/applications', async (req, res) => {
           req.body.feedback || null // Include feedback field, default to null if not provided
         ]);
 
+        const createdApplication = result.rows[0];
+
+        // Send email notification about new application
+        try {
+          // Import the email functions
+          const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+          if (email) {
+            const emailContent = generateStatusChangeEmail({
+              fullName: fullName,
+              email: email,
+              status: 'new'
+            });
+
+            await sendEmail(emailContent);
+            console.log(`Application submission email sent to ${email} for application ${createdApplication.id}`);
+          } else {
+            console.warn(`Cannot send application submission email: Missing email address`);
+          }
+        } catch (emailError) {
+          // Log the error but don't fail the request
+          console.error("Error sending application submission email:", emailError);
+        }
+
         // Return the created application
-        return res.status(201).json(result.rows[0]);
+        return res.status(201).json(createdApplication);
       } catch (error) {
         console.error('Error storing application:', error);
         return res.status(500).json({
@@ -693,6 +717,28 @@ app.post('/api/applications', async (req, res) => {
       status: 'new',
       createdAt: new Date().toISOString()
     };
+
+    // Send email notification about new application (for memory storage case)
+    try {
+      // Import the email functions
+      const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+      if (email) {
+        const emailContent = generateStatusChangeEmail({
+          fullName: fullName,
+          email: email,
+          status: 'new'
+        });
+
+        await sendEmail(emailContent);
+        console.log(`Application submission email sent to ${email} for application ${application.id}`);
+      } else {
+        console.warn(`Cannot send application submission email: Missing email address`);
+      }
+    } catch (emailError) {
+      // Log the error but don't fail the request
+      console.error("Error sending application submission email:", emailError);
+    }
 
     res.status(201).json(application);
   } catch (error) {
