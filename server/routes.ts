@@ -255,38 +255,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update application status endpoint (admin only)
   app.patch("/api/applications/:id/status", async (req: Request, res: Response) => {
-    // Check if user is authenticated via session or X-User-ID header
-    const userId = req.isAuthenticated() ? req.user!.id : (req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'] as string) : null);
-
-    console.log('Status update request - Auth info:', {
-      isAuthenticated: req.isAuthenticated(),
-      sessionUserId: req.isAuthenticated() ? req.user!.id : null,
-      headerUserId: req.headers['x-user-id'],
-      resolvedUserId: userId
-    });
-
-    if (!userId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    // Get user from storage to check role
-    const user = await storage.getUser(userId);
-
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admin role required." });
-    }
-
     try {
-      const id = parseInt(req.params.id);
+      // Check if user is authenticated and is an admin
+      console.log('Status update request - Auth info:', {
+        isAuthenticated: req.isAuthenticated(),
+        userRole: req.user?.role,
+        userId: req.user?.id
+      });
 
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid application ID" });
+      }
+
+      // Check if the application exists
+      const application = await storage.getApplicationById(id);
+      if (!application) {
+        return res.status(404).json({ message: "Application not found" });
       }
 
       // Validate the request body using Zod schema
       const parsedData = updateApplicationStatusSchema.safeParse({
         id,
-        status: req.body.status
+        ...req.body
       });
 
       if (!parsedData.success) {
@@ -297,10 +296,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Update the application in storage
       const updatedApplication = await storage.updateApplicationStatus(parsedData.data);
-
       if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
+        return res.status(404).json({ message: "Application not found or could not be updated" });
       }
 
       // Send email notification about status change
@@ -312,10 +311,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: updatedApplication.status
           });
 
-          await sendEmail(emailContent);
-
+          await sendEmail(emailContent, {
+            trackingId: `status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
+          });
+          
           if (updatedApplication.status === "new") {
-            console.log(`New application email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+            console.warn(`Skipping "new" status notification since this shouldn't happen through this endpoint`);
           } else {
             console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
           }
@@ -388,51 +389,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Test endpoint for sending status change emails
-  app.post("/api/test/status-email", async (req: Request, res: Response) => {
-    // Check if user is authenticated and is an admin
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    if (req.user!.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admin role required." });
-    }
-
+  app.post("/api/test-status-email", async (req: Request, res: Response) => {
     try {
-      const { status, email, fullName } = req.body;
-
-      if (!status || !email || !fullName) {
-        return res.status(400).json({
-          message: "Missing required fields",
-          required: ["status", "email", "fullName"]
-        });
+      // Check if user is authenticated and is an admin
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
       }
 
-      // Generate email content
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const { fullName, email, status } = req.body;
+
+      // Generate and send a test email
       const emailContent = generateStatusChangeEmail({
-        fullName,
-        email,
-        status
+        fullName: fullName || "Test User",
+        email: email || "test@example.com",
+        status: status || "approved"
       });
 
-      // Send the email
-      const emailSent = await sendEmail(emailContent);
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `test_${email}_${status}_${Date.now()}`
+      });
 
-      if (!emailSent) {
-        return res.status(500).json({
-          message: "Failed to send email",
-          details: "Check server logs for more information"
-        });
+      if (emailSent) {
+        console.log(`Test status email sent to: ${email}`);
+        return res.status(200).json({ message: "Test email sent successfully" });
+      } else {
+        return res.status(500).json({ message: "Failed to send test email" });
       }
-
-      return res.status(200).json({
-        message: "Test email sent successfully",
-        emailDetails: {
-          to: email,
-          subject: emailContent.subject,
-          status
-        }
-      });
     } catch (error) {
       console.error("Error sending test email:", error);
       return res.status(500).json({ message: "Internal server error" });

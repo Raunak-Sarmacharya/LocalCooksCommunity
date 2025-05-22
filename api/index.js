@@ -675,21 +675,23 @@ app.post('/api/applications', async (req, res) => {
           // Import the email functions
           const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
-          if (email) {
+          if (createdApplication.email) {
             const emailContent = generateStatusChangeEmail({
-              fullName: fullName,
-              email: email,
+              fullName: createdApplication.full_name || "Applicant",
+              email: createdApplication.email,
               status: 'new'
             });
 
-            await sendEmail(emailContent);
-            console.log(`Application submission email sent to ${email} for application ${createdApplication.id}`);
+            await sendEmail(emailContent, {
+              trackingId: `new_${createdApplication.id}_${Date.now()}`
+            });
+            console.log(`New application email sent to ${createdApplication.email} for application ${createdApplication.id}`);
           } else {
-            console.warn(`Cannot send application submission email: Missing email address`);
+            console.warn(`Cannot send new application email: Missing email address`);
           }
         } catch (emailError) {
           // Log the error but don't fail the request
-          console.error("Error sending application submission email:", emailError);
+          console.error("Error sending new application email:", emailError);
         }
 
         // Return the created application
@@ -723,21 +725,23 @@ app.post('/api/applications', async (req, res) => {
       // Import the email functions
       const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
-      if (email) {
+      if (application.email) {
         const emailContent = generateStatusChangeEmail({
-          fullName: fullName,
-          email: email,
+          fullName: application.fullName || "Applicant",
+          email: application.email,
           status: 'new'
         });
 
-        await sendEmail(emailContent);
-        console.log(`Application submission email sent to ${email} for application ${application.id}`);
+        await sendEmail(emailContent, {
+          trackingId: `new_${application.id}_${Date.now()}`
+        });
+        console.log(`New application email sent to ${application.email} for application ${application.id}`);
       } else {
-        console.warn(`Cannot send application submission email: Missing email address`);
+        console.warn(`Cannot send new application email: Missing email address`);
       }
     } catch (emailError) {
       // Log the error but don't fail the request
-      console.error("Error sending application submission email:", emailError);
+      console.error("Error sending new application email:", emailError);
     }
 
     res.status(201).json(application);
@@ -1099,7 +1103,9 @@ app.patch('/api/applications/:id/status', async (req, res) => {
             status: updatedApplication.status
           });
 
-          await sendEmail(emailContent);
+          await sendEmail(emailContent, {
+            trackingId: `status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
+          });
           console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
