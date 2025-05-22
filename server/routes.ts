@@ -165,16 +165,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create the application in storage
       const application = await storage.createApplication(applicationData);
 
+      // Fetch the full application record to ensure all fields are present
+      const fullApplication = await storage.getApplicationById(application.id);
+
       // Send email notification about new application
       try {
-        const emailContent = generateStatusChangeEmail({
-          fullName: application.fullName,
-          email: application.email,
-          status: "new"
-        });
+        if (fullApplication && fullApplication.email) {
+          const emailContent = generateStatusChangeEmail({
+            fullName: fullApplication.fullName || "Applicant",
+            email: fullApplication.email,
+            status: "new"
+          });
 
-        await sendEmail(emailContent);
-        console.log(`New application email sent to ${application.email} for application ${application.id}`);
+          await sendEmail(emailContent);
+          console.log(`New application email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+        } else {
+          console.warn(`Cannot send new application email: Application record not found or missing email.`);
+        }
       } catch (emailError) {
         // Log the error but don't fail the request
         console.error("Error sending new application email:", emailError);
