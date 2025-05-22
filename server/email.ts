@@ -219,7 +219,7 @@ export const generateStatusChangeEmail = (
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);padding:0;">
                 <tr>
                   <td style="padding:32px 32px 16px 32px;text-align:center;">
-                    <img src="./assets/logo-white.png" alt="Local Cooks Logo" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
+                    <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
                     <h1 class="text-3xl md:text-5xl font-bold mb-1 md:mb-2";font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:700;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
                   </td>
                 </tr>
