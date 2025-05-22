@@ -97,7 +97,7 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-5">
-                <div className="flex items-center space-x-3 mb-4">
+                <div className="flex items-center space-x-3 py-2">
                   <RadioGroupItem value="commercial" id="kp-commercial" />
                   <Label htmlFor="kp-commercial" className="text-sm font-medium cursor-pointer">I want to cook in a professional setting</Label>
                 </div>
@@ -118,7 +118,7 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-6">
-                <div className="flex items-center space-x-3 mb-4">
+                <div className="flex items-center space-x-3 py-2">
                   <RadioGroupItem value="home" id="kp-home" />
                   <Label htmlFor="kp-home" className="text-sm font-medium cursor-pointer">I want to cook from my home</Label>
                 </div>
@@ -139,7 +139,7 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-5">
-                <div className="flex items-center space-x-3 mb-4">
+                <div className="flex items-center space-x-3 py-2">
                   <RadioGroupItem value="notSure" id="kp-not-sure" />
                   <Label htmlFor="kp-not-sure" className="text-sm font-medium cursor-pointer">I'd like personalized guidance</Label>
                 </div>
