@@ -12,8 +12,6 @@ import { ChefHat, HomeIcon, HelpCircle, ArrowRight, Building, Info } from "lucid
 
 import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { CircleRadioGroup, CircleRadioItem } from "@/components/ui/circle-radio";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Create a schema for just the kitchen preference field
@@ -84,11 +82,7 @@ export default function KitchenPreferenceForm() {
             This helps us understand how to best support your cooking journey. We have options for every cooking situation!
           </p>
 
-          <CircleRadioGroup
-            onValueChange={(value) => form.setValue("kitchenPreference", value as "commercial" | "home" | "notSure")}
-            defaultValue={formData.kitchenPreference}
-            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4"
-          >
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
             <div className="bg-white rounded-lg border-2 border-gray-200 hover:border-primary hover-text h-full shadow-sm transition-all duration-200 hover:shadow-md">
               <div className="bg-blue-50 py-3 px-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
@@ -97,9 +91,19 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-5">
-                <CircleRadioItem value="commercial" id="kp-commercial">
-                  <span className="text-sm font-medium cursor-pointer">I want to cook in a professional setting</span>
-                </CircleRadioItem>
+                <div 
+                  className="flex items-center cursor-pointer" 
+                  onClick={() => form.setValue("kitchenPreference", "commercial")}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("kitchenPreference") === "commercial" ? 'border-primary' : 'border-gray-300'}`}>
+                      {form.watch("kitchenPreference") === "commercial" && (
+                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm font-medium ml-3">I want to cook in a professional setting</span>
+                </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 mt-3 list-disc">
                   <li>Professional-grade equipment</li>
                   <li>Meets all health regulations</li>
@@ -117,9 +121,19 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-6">
-                <CircleRadioItem value="home" id="kp-home">
-                  <span className="text-sm font-medium cursor-pointer">I want to cook from my home</span>
-                </CircleRadioItem>
+                <div 
+                  className="flex items-center cursor-pointer" 
+                  onClick={() => form.setValue("kitchenPreference", "home")}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("kitchenPreference") === "home" ? 'border-primary' : 'border-gray-300'}`}>
+                      {form.watch("kitchenPreference") === "home" && (
+                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm font-medium ml-3">I want to cook from my home</span>
+                </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 mt-3 list-disc">
                   <li>Comfortable, familiar environment</li>
                   <li>No commute required</li>
@@ -137,9 +151,19 @@ export default function KitchenPreferenceForm() {
                 </div>
               </div>
               <div className="p-5">
-                <CircleRadioItem value="notSure" id="kp-not-sure">
-                  <span className="text-sm font-medium cursor-pointer">I'd like personalized guidance</span>
-                </CircleRadioItem>
+                <div 
+                  className="flex items-center cursor-pointer" 
+                  onClick={() => form.setValue("kitchenPreference", "notSure")}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("kitchenPreference") === "notSure" ? 'border-primary' : 'border-gray-300'}`}>
+                      {form.watch("kitchenPreference") === "notSure" && (
+                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-sm font-medium ml-3">I'd like personalized guidance</span>
+                </div>
                 <ul className="space-y-2 text-sm text-gray-600 pl-9 mt-3 list-disc">
                   <li>Get personalized advice</li>
                   <li>Learn about both options</li>
@@ -148,7 +172,7 @@ export default function KitchenPreferenceForm() {
                 </ul>
               </div>
             </div>
-          </CircleRadioGroup>
+          </div>
 
           {form.formState.errors.kitchenPreference && (
             <p className="text-primary text-sm mt-2">
