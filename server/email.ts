@@ -19,6 +19,10 @@ interface EmailContent {
   html?: string;
 }
 
+// Add email tracking to prevent duplicates
+const recentEmails = new Map<string, number>();
+const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
+
 // Create a transporter with configuration
 const createTransporter = (config: EmailConfig) => {
   return nodemailer.createTransport({
@@ -46,8 +50,30 @@ const getEmailConfig = (): EmailConfig => {
 };
 
 // Send email function
-export const sendEmail = async (content: EmailContent): Promise<boolean> => {
+export const sendEmail = async (content: EmailContent, options?: { trackingId?: string }): Promise<boolean> => {
   try {
+    // Check for duplicate emails if trackingId is provided
+    if (options?.trackingId) {
+      const lastSent = recentEmails.get(options.trackingId);
+      const now = Date.now();
+      
+      if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
+        console.log(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
+        return true; // Return true to avoid breaking existing code
+      }
+      
+      // Update the tracking map with current timestamp
+      recentEmails.set(options.trackingId, now);
+      
+      // Cleanup old entries every 10 minutes to prevent memory leaks
+      if (recentEmails.size > 100) {
+        const cutoffTime = now - DUPLICATE_PREVENTION_WINDOW;
+        recentEmails.forEach((timestamp, id) => {
+          if (timestamp < cutoffTime) recentEmails.delete(id);
+        });
+      }
+    }
+    
     // Check if email configuration is available
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
