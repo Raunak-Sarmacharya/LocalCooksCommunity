@@ -165,6 +165,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create the application in storage
       const application = await storage.createApplication(applicationData);
 
+      // Send email notification about new application
+      try {
+        const emailContent = generateStatusChangeEmail({
+          fullName: application.fullName,
+          email: application.email,
+          status: "new"
+        });
+
+        await sendEmail(emailContent);
+        console.log(`New application email sent to ${application.email} for application ${application.id}`);
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending new application email:", emailError);
+      }
+
       return res.status(201).json(application);
     } catch (error) {
       console.error("Error creating application:", error);
