@@ -167,33 +167,56 @@ export default function CertificationsForm() {
 
             <p className="mb-3 md:mb-4 text-gray-600">Do you have a Food Safety License?*</p>
 
-            <RadioGroup
-              onValueChange={(value) => form.setValue("foodSafetyLicense", value as "yes" | "no" | "notSure")}
-              defaultValue={formData.foodSafetyLicense}
-              className="flex flex-col space-y-3 md:space-y-4"
-            >
-              <div className="flex items-center space-x-3 py-2">
-                <RadioGroupItem value="yes" id="fsl-yes" />
+            <div className="flex flex-col space-y-3 md:space-y-4">
+              <div 
+                className="flex items-center space-x-3 py-2 cursor-pointer" 
+                onClick={() => form.setValue("foodSafetyLicense", "yes")}
+              >
+                <div className="relative flex items-center justify-center">
+                  <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodSafetyLicense") === "yes" ? 'border-primary' : 'border-gray-300'}`}>
+                    {form.watch("foodSafetyLicense") === "yes" && (
+                      <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <Label htmlFor="fsl-yes" className="font-medium cursor-pointer">Yes, I have a license</Label>
+                  <span className="font-medium cursor-pointer">Yes, I have a license</span>
                   <p className="text-sm text-gray-500 mt-1">I've completed the food safety training course</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 py-2">
-                <RadioGroupItem value="no" id="fsl-no" />
+              <div 
+                className="flex items-center space-x-3 py-2 cursor-pointer" 
+                onClick={() => form.setValue("foodSafetyLicense", "no")}
+              >
+                <div className="relative flex items-center justify-center">
+                  <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodSafetyLicense") === "no" ? 'border-primary' : 'border-gray-300'}`}>
+                    {form.watch("foodSafetyLicense") === "no" && (
+                      <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <Label htmlFor="fsl-no" className="font-medium cursor-pointer">Not yet, but I'd like to learn</Label>
+                  <span className="font-medium cursor-pointer">Not yet, but I'd like to learn</span>
                   <p className="text-sm text-gray-500 mt-1">We'll guide you through the simple process</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 py-2">
-                <RadioGroupItem value="notSure" id="fsl-not-sure" />
+              <div 
+                className="flex items-center space-x-3 py-2 cursor-pointer" 
+                onClick={() => form.setValue("foodSafetyLicense", "notSure")}
+              >
+                <div className="relative flex items-center justify-center">
+                  <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodSafetyLicense") === "notSure" ? 'border-primary' : 'border-gray-300'}`}>
+                    {form.watch("foodSafetyLicense") === "notSure" && (
+                      <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <Label htmlFor="fsl-not-sure" className="font-medium cursor-pointer">I'd like to learn more</Label>
+                  <span className="font-medium cursor-pointer">I'd like to learn more</span>
                   <p className="text-sm text-gray-500 mt-1">I'm exploring my options and need more information</p>
                 </div>
               </div>
-            </RadioGroup>
+            </div>
             {form.formState.errors.foodSafetyLicense && (
               <p className="text-primary text-sm mt-2">
                 {form.formState.errors.foodSafetyLicense.message}
@@ -229,33 +252,56 @@ export default function CertificationsForm() {
 
             <p className="mb-3 md:mb-4 text-gray-600">Do you have a Food Establishment Certificate?*</p>
 
-            <RadioGroup
-              onValueChange={(value) => form.setValue("foodEstablishmentCert", value as "yes" | "no" | "notSure")}
-              defaultValue={formData.foodEstablishmentCert}
-              className="flex flex-col space-y-3 md:space-y-4"
-            >
-              <div className="flex items-center space-x-3 py-2">
-                <RadioGroupItem value="yes" id="fec-yes" />
+            <div className="flex flex-col space-y-3 md:space-y-4">
+              <div 
+                className="flex items-center space-x-3 py-2 cursor-pointer" 
+                onClick={() => form.setValue("foodEstablishmentCert", "yes")}
+              >
+                <div className="relative flex items-center justify-center">
+                  <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodEstablishmentCert") === "yes" ? 'border-primary' : 'border-gray-300'}`}>
+                    {form.watch("foodEstablishmentCert") === "yes" && (
+                      <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <Label htmlFor="fec-yes" className="font-medium cursor-pointer">Yes, I have a certificate</Label>
+                  <span className="font-medium cursor-pointer">Yes, I have a certificate</span>
                   <p className="text-sm text-gray-500 mt-1">My kitchen has been inspected and approved</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 py-2">
-                <RadioGroupItem value="no" id="fec-no" />
+              <div 
+                className="flex items-center space-x-3 py-2 cursor-pointer" 
+                onClick={() => form.setValue("foodEstablishmentCert", "no")}
+              >
+                <div className="relative flex items-center justify-center">
+                  <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodEstablishmentCert") === "no" ? 'border-primary' : 'border-gray-300'}`}>
+                    {form.watch("foodEstablishmentCert") === "no" && (
+                      <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <Label htmlFor="fec-no" className="font-medium cursor-pointer">Not yet, I'm interested</Label>
+                  <span className="font-medium cursor-pointer">Not yet, I'm interested</span>
                   <p className="text-sm text-gray-500 mt-1">We'll connect you with resources to get started</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 py-2">
-                <RadioGroupItem value="notSure" id="fec-not-sure" />
+              <div 
+                className="flex items-center space-x-3 py-2 cursor-pointer" 
+                onClick={() => form.setValue("foodEstablishmentCert", "notSure")}
+              >
+                <div className="relative flex items-center justify-center">
+                  <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodEstablishmentCert") === "notSure" ? 'border-primary' : 'border-gray-300'}`}>
+                    {form.watch("foodEstablishmentCert") === "notSure" && (
+                      <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                    )}
+                  </div>
+                </div>
                 <div>
-                  <Label htmlFor="fec-not-sure" className="font-medium cursor-pointer">Tell me more</Label>
+                  <span className="font-medium cursor-pointer">Tell me more</span>
                   <p className="text-sm text-gray-500 mt-1">I'd like to discuss my specific situation</p>
                 </div>
               </div>
-            </RadioGroup>
+            </div>
             {form.formState.errors.foodEstablishmentCert && (
               <p className="text-primary text-sm mt-2">
                 {form.formState.errors.foodEstablishmentCert.message}
