@@ -40,24 +40,7 @@ export default function CTASection() {
             Start Your Application
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="rounded-full border-primary text-primary hover:bg-primary hover:text-white">
-                Test Features <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={handleTestEmailClick} className="cursor-pointer">
-                <Mail className="mr-2 h-4 w-4" />
-                <span>Test Email Notifications</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/apply")} className="cursor-pointer">
-                <FileText className="mr-2 h-4 w-4" />
-                <span>Application Form</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
         </div>
       </div>
     </section>
