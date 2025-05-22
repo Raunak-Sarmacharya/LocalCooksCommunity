@@ -139,21 +139,117 @@ export const generateStatusChangeEmail = (
     },
   };
 
+  const statusStyles: Record<string, { badge: string; badgeBg: string; badgeShadow: string; emoji: string; cta?: { text: string; url: string } }> = {
+    new: {
+      badge: 'Received',
+      badgeBg: 'linear-gradient(90deg, #e0e7ff 0%, #c7d2fe 100%)',
+      badgeShadow: '0 2px 8px 0 rgba(79,70,229,0.10)',
+      emoji: '📥',
+    },
+    inReview: {
+      badge: 'In Review',
+      badgeBg: 'linear-gradient(90deg, #fef9c3 0%, #fde68a 100%)',
+      badgeShadow: '0 2px 8px 0 rgba(234,179,8,0.10)',
+      emoji: '🔎',
+    },
+    approved: {
+      badge: 'Approved',
+      badgeBg: 'linear-gradient(90deg, #bbf7d0 0%, #4ade80 100%)',
+      badgeShadow: '0 2px 8px 0 rgba(16,185,129,0.10)',
+      emoji: '🎉',
+      cta: {
+        text: 'Get Started',
+        url: 'https://localcooks.community/dashboard',
+      },
+    },
+    rejected: {
+      badge: 'Not Approved',
+      badgeBg: 'linear-gradient(90deg, #fee2e2 0%, #fecaca 100%)',
+      badgeShadow: '0 2px 8px 0 rgba(239,68,68,0.10)',
+      emoji: '❌',
+    },
+    cancelled: {
+      badge: 'Cancelled',
+      badgeBg: 'linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 100%)',
+      badgeShadow: '0 2px 8px 0 rgba(107,114,128,0.10)',
+      emoji: '🛑',
+    },
+  };
+
   const { subject, message } = statusMessages[applicationData.status] || {
     subject: 'Update on Your Application Status',
     message: `Your application status has been updated to: ${applicationData.status}`,
   };
+  const style = statusStyles[applicationData.status] || statusStyles['new'];
 
   const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #4f46e5;">Hello ${applicationData.fullName},</h2>
-      <p>${message}</p>
-      <p>Your application status is now: <strong>${applicationData.status}</strong></p>
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eaeaea;">
-        <p style="color: #666;">Thank you for your interest in Local Cooks!</p>
-        <p style="color: #666;">If you have any questions, please contact us.</p>
-      </div>
-    </div>
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
+    <tr>
+      <td align="center" style="padding:0;margin:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
+          <tr>
+            <td style="padding:0;">
+              <!-- Header -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);padding:0;">
+                <tr>
+                  <td style="padding:32px 32px 16px 32px;text-align:center;">
+                    <span style="display:inline-block;font-size:32px;line-height:1.2;">🍳</span>
+                    <h1 style="margin:12px 0 0 0;font-family:'Segoe UI',Arial,sans-serif;font-size:2rem;font-weight:700;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
+                  </td>
+                </tr>
+              </table>
+              <!-- Status Badge -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td align="center" style="padding:32px 32px 0 32px;">
+                    <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:600;border-radius:999px;background:${style.badgeBg};box-shadow:${style.badgeShadow};color:#222;letter-spacing:0.5px;vertical-align:middle;">
+                      <span style="font-size:1.5rem;vertical-align:middle;margin-right:8px;">${style.emoji}</span>
+                      ${style.badge}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+              <!-- Main Content -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="padding:32px 32px 0 32px;">
+                    <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#4f46e5;margin:0 0 12px 0;letter-spacing:-0.5px;">Hello ${applicationData.fullName},</h2>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 18px 0;">${message}</p>
+                    <div style="margin:24px 0 0 0;">
+                      <span style="display:inline-block;font-family:'Segoe UI',Arial,sans-serif;font-size:1rem;font-weight:500;color:#6366f1;background:linear-gradient(90deg,#eef2ff 0%,#c7d2fe 100%);padding:8px 20px;border-radius:8px;box-shadow:0 1px 4px 0 rgba(99,102,241,0.07);">Status: <strong>${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}</strong></span>
+                    </div>
+                  </td>
+                </tr>
+                <!-- CTA Button for Approved -->
+                ${applicationData.status === 'approved' && style.cta ? `
+                <tr>
+                  <td align="center" style="padding:32px 32px 0 32px;">
+                    <a href="${style.cta.url}" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#22d3ee 0%,#4ade80 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(34,211,238,0.13);text-decoration:none;transition:box-shadow 0.2s;">${style.cta.text} &rarr;</a>
+                  </td>
+                </tr>
+                ` : ''}
+                <!-- Divider -->
+                <tr>
+                  <td style="padding:40px 32px 0 32px;">
+                    <div style="height:1px;width:100%;background:linear-gradient(90deg,#e0e7ff 0%,#f3f4f6 100%);opacity:0.7;"></div>
+                  </td>
+                </tr>
+                <!-- Footer -->
+                <tr>
+                  <td style="padding:32px 32px 32px 32px;text-align:center;">
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">Thank you for your interest in <span style="color:#6366f1;font-weight:600;">Local Cooks</span>!</p>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">If you have any questions, just reply to this email or contact us at <a href="mailto:support@localcooks.community" style="color:#6366f1;text-decoration:underline;">support@localcooks.community</a>.</p>
+                    <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);opacity:0.18;"></div>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
   `;
 
   return {
