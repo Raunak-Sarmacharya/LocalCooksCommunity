@@ -14,9 +14,6 @@ export const applicationStatusEnum = pgEnum('application_status', ['new', 'inRev
 // Define an enum for user roles
 export const userRoleEnum = pgEnum('user_role', ['admin', 'applicant']);
 
-// Define an enum for document verification status
-export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
-
 // Define users table (for both admins and applicants)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -25,7 +22,6 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").default("applicant").notNull(),
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
-  isVerified: boolean("is_verified").default(false).notNull(),
 });
 
 // Define the applications table
@@ -41,21 +37,6 @@ export const applications = pgTable("applications", {
   feedback: text("feedback"),
   status: applicationStatusEnum("status").default("new").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Define the document verification table
-export const documentVerifications = pgTable("document_verifications", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull(),
-  foodSafetyLicenseUrl: text("food_safety_license_url"),
-  foodEstablishmentCertUrl: text("food_establishment_cert_url"),
-  foodSafetyLicenseStatus: documentVerificationStatusEnum("food_safety_license_status").default("pending"),
-  foodEstablishmentCertStatus: documentVerificationStatusEnum("food_establishment_cert_status").default("pending"),
-  adminFeedback: text("admin_feedback"),
-  reviewedBy: integer("reviewed_by").references(() => users.id),
-  reviewedAt: timestamp("reviewed_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Define the Zod schema for inserting an application
@@ -76,30 +57,10 @@ export const updateApplicationStatusSchema = z.object({
   status: z.enum(["new", "inReview", "approved", "rejected", "cancelled"]),
 });
 
-// Define the Zod schema for document verification
-export const insertDocumentVerificationSchema = createInsertSchema(documentVerifications, {
-  userId: z.number(),
-  foodSafetyLicenseUrl: z.string().url().optional(),
-  foodEstablishmentCertUrl: z.string().url().optional(),
-}).omit({ id: true, createdAt: true, updatedAt: true, foodSafetyLicenseStatus: true, foodEstablishmentCertStatus: true, reviewedBy: true, reviewedAt: true });
-
-// Define the Zod schema for updating document verification status
-export const updateDocumentVerificationSchema = z.object({
-  id: z.number(),
-  foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
-  foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
-  adminFeedback: z.string().optional(),
-  reviewedBy: z.number(),
-});
-
 // Define the types
 export type Application = typeof applications.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type UpdateApplicationStatus = z.infer<typeof updateApplicationStatusSchema>;
-
-export type DocumentVerification = typeof documentVerifications.$inferSelect;
-export type InsertDocumentVerification = z.infer<typeof insertDocumentVerificationSchema>;
-export type UpdateDocumentVerification = z.infer<typeof updateDocumentVerificationSchema>;
 
 // Schema for inserting users
 export const insertUserSchema = z.object({

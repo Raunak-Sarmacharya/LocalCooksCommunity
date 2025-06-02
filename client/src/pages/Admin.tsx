@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Application, DocumentVerification } from "@shared/schema";
+import { Application } from "@shared/schema";
 import {
   formatCertificationStatus,
   formatKitchenPreference,
@@ -19,8 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,7 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger
 } from "@/components/ui/accordion";
-import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, FileText, ExternalLink, BadgeCheck } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -38,7 +36,6 @@ function AdminDashboard() {
   const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [activeTab, setActiveTab] = useState("applications");
 
   const { user } = useAuth();
 
@@ -94,24 +91,6 @@ function AdminDashboard() {
       return normalizedData;
     },
     enabled: !!user, // Only run query when user is authenticated
-  });
-
-  // Fetch document verifications
-  const { data: documentVerifications = [], isLoading: isLoadingDocs } = useQuery<DocumentVerification[]>({
-    queryKey: ["/api/document-verification"],
-    queryFn: async ({ queryKey }) => {
-      const headers: Record<string, string> = {};
-      if (user?.id) {
-        headers['X-User-ID'] = user.id.toString();
-      }
-
-      const response = await apiRequest("GET", queryKey[0] as string, undefined, headers);
-      if (!response.ok) {
-        throw new Error("Failed to fetch document verifications");
-      }
-      return response.json();
-    },
-    enabled: !!user,
   });
 
   // Mutation to update application status
@@ -172,47 +151,6 @@ function AdminDashboard() {
     },
   });
 
-  // Mutation to update document verification status
-  const updateDocumentMutation = useMutation({
-    mutationFn: async ({ 
-      id, 
-      foodSafetyLicenseStatus, 
-      foodEstablishmentCertStatus, 
-      adminFeedback 
-    }: { 
-      id: number; 
-      foodSafetyLicenseStatus?: string; 
-      foodEstablishmentCertStatus?: string; 
-      adminFeedback?: string; 
-    }) => {
-      const headers: Record<string, string> = {};
-      if (user?.id) {
-        headers['X-User-ID'] = user.id.toString();
-      }
-
-      const response = await apiRequest("PATCH", `/api/document-verification/${id}/status`, {
-        foodSafetyLicenseStatus,
-        foodEstablishmentCertStatus,
-        adminFeedback,
-      }, headers);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/document-verification"] });
-      toast({
-        title: "Document status updated",
-        description: "Document verification status has been updated successfully.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error updating document status",
-        description: error.message || "Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
   // Filter applications based on status and search term
   const filteredApplications = applications ? applications.filter((app) => {
     const matchesStatus = filterStatus === "all" || app.status === filterStatus;
@@ -226,20 +164,6 @@ function AdminDashboard() {
   // Handle status change
   const handleStatusChange = (id: number, newStatus: string) => {
     updateStatusMutation.mutate({ id, status: newStatus });
-  };
-
-  // Handle document status change
-  const handleDocumentStatusChange = (
-    id: number, 
-    field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', 
-    status: string,
-    feedback?: string
-  ) => {
-    updateDocumentMutation.mutate({
-      id,
-      [field]: status,
-      adminFeedback: feedback,
-    });
   };
 
   // Handle logout
@@ -285,7 +209,6 @@ function AdminDashboard() {
       case "approved": return <CheckCircle className="h-4 w-4 text-green-500" />;
       case "rejected": return <XCircle className="h-4 w-4 text-red-500" />;
       case "cancelled": return <XCircle className="h-4 w-4 text-gray-500" />;
-      case "pending": return <Clock className="h-4 w-4 text-yellow-500" />;
       default: return null;
     }
   };
@@ -297,247 +220,134 @@ function AdminDashboard() {
     approved: applications.filter(app => app.status === "approved").length,
     rejected: applications.filter(app => app.status === "rejected").length,
     cancelled: applications.filter(app => app.status === "cancelled").length,
-  };
-
-  const documentCounts = {
-    pending: documentVerifications.filter(doc => 
-      doc.foodSafetyLicenseStatus === 'pending' || doc.foodEstablishmentCertStatus === 'pending'
-    ).length,
-    approved: documentVerifications.filter(doc => 
-      doc.foodSafetyLicenseStatus === 'approved' && 
-      (doc.foodEstablishmentCertStatus === 'approved' || !doc.foodEstablishmentCertUrl)
-    ).length,
-    rejected: documentVerifications.filter(doc => 
-      doc.foodSafetyLicenseStatus === 'rejected' || doc.foodEstablishmentCertStatus === 'rejected'
-    ).length,
+    total: applications.length
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
       <Header />
       <main className="flex-grow pt-28 pb-16">
-        <div className="container mx-auto px-4 max-w-7xl">
+        <div className="container mx-auto px-4">
           <motion.div
+            className="max-w-6xl mx-auto"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="space-y-8"
           >
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="text-gray-600 mt-2">Manage applications and document verifications</p>
-              </div>
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </Button>
-            </div>
+            <Card className="bg-white shadow-lg mb-8">
+              <CardHeader className="pb-2">
+                <div className="flex flex-col md:flex-row justify-between items-center">
+                  <div>
+                    <CardTitle className="text-2xl md:text-3xl font-bold">Admin Dashboard</CardTitle>
+                    <CardDescription className="text-lg mt-1">
+                      Review and manage cook applications
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleLogout}
+                    className="mt-4 md:mt-0 border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                  >
+                    Logout
+                  </Button>
+                </div>
+              </CardHeader>
 
-            {/* Main Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="applications" className="flex items-center gap-2">
-                  <UserIcon className="h-4 w-4" />
-                  Applications ({applications.length})
-                </TabsTrigger>
-                <TabsTrigger value="documents" className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Document Verifications ({documentVerifications.length})
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Applications Tab */}
-              <TabsContent value="applications" className="mt-6">
-                {/* Dashboard Metrics */}
+              <CardContent className="pt-6">
+                {/* Application Summary Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">New</p>
-                          <p className="text-2xl font-bold">{statusCounts.new}</p>
-                        </div>
-                        <AlertCircle className="h-8 w-8 text-yellow-500" />
-                      </div>
+                  <Card className="bg-white shadow-sm border-2 border-green-100">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-4xl font-bold text-green-500">{statusCounts.approved}</div>
+                      <div className="text-sm mt-1 text-gray-600">Approved</div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">In Review</p>
-                          <p className="text-2xl font-bold">{statusCounts.inReview}</p>
-                        </div>
-                        <Clock className="h-8 w-8 text-blue-500" />
-                      </div>
+
+                  <Card className="bg-white shadow-sm border-2 border-yellow-100">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-4xl font-bold text-yellow-500">{statusCounts.new}</div>
+                      <div className="text-sm mt-1 text-gray-600">New</div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">Approved</p>
-                          <p className="text-2xl font-bold">{statusCounts.approved}</p>
-                        </div>
-                        <CheckCircle className="h-8 w-8 text-green-500" />
-                      </div>
+
+                  <Card className="bg-white shadow-sm border-2 border-blue-100">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-4xl font-bold text-blue-500">{statusCounts.inReview}</div>
+                      <div className="text-sm mt-1 text-gray-600">In Review</div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">Rejected</p>
-                          <p className="text-2xl font-bold">{statusCounts.rejected}</p>
-                        </div>
-                        <XCircle className="h-8 w-8 text-red-500" />
-                      </div>
+
+                  <Card className="bg-white shadow-sm border-2 border-red-100">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-4xl font-bold text-red-500">{statusCounts.rejected}</div>
+                      <div className="text-sm mt-1 text-gray-600">Rejected</div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">Total</p>
-                          <p className="text-2xl font-bold">{applications.length}</p>
-                        </div>
-                        <UserIcon className="h-8 w-8 text-gray-500" />
-                      </div>
+
+                  <Card className="bg-white shadow-sm border-2 border-gray-200">
+                    <CardContent className="p-4 text-center">
+                      <div className="text-4xl font-bold text-gray-700">{statusCounts.total}</div>
+                      <div className="text-sm mt-1 text-gray-600">Total</div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Filters and Search */}
-                <Card className="mb-6">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col md:flex-row gap-4">
-                      <div className="flex-1">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                          <Input
-                            placeholder="Search by name or email..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Filter className="h-4 w-4 text-gray-500" />
-                        <Select value={filterStatus} onValueChange={setFilterStatus}>
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Filter by status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Applications</SelectItem>
-                            <SelectItem value="new">New</SelectItem>
-                            <SelectItem value="inReview">In Review</SelectItem>
-                            <SelectItem value="approved">Approved</SelectItem>
-                            <SelectItem value="rejected">Rejected</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                          </SelectContent>
-                        </Select>
+                <Tabs defaultValue="all" className="w-full mb-6">
+                  <div className="flex flex-col md:flex-row justify-between items-center mb-4">
+                    <TabsList>
+                      <TabsTrigger value="all" className="flex items-center gap-1">
+                        All
+                      </TabsTrigger>
+                      <TabsTrigger value="new" className="flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
+                        New
+                      </TabsTrigger>
+                      <TabsTrigger value="inReview" className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-blue-500" />
+                        In Review
+                      </TabsTrigger>
+                      <TabsTrigger value="approved" className="flex items-center gap-1">
+                        <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                        Approved
+                      </TabsTrigger>
+                      <TabsTrigger value="rejected" className="flex items-center gap-1">
+                        <XCircle className="h-3.5 w-3.5 text-red-500" />
+                        Rejected
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <div className="mt-4 md:mt-0 w-full md:w-auto flex items-center">
+                      <div className="relative w-full md:w-64">
+                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Search applications..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-8 pr-4 py-2"
+                        />
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
 
-                {/* Applications List */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Applications</CardTitle>
-                    <CardDescription>
-                      Manage and review all submitted applications
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Tabs defaultValue="all" className="w-full">
-                      <TabsList className="grid w-full grid-cols-5">
-                        <TabsTrigger value="all">All ({filteredApplications.length})</TabsTrigger>
-                        <TabsTrigger value="new">New ({filteredApplications.filter(app => app.status === "new").length})</TabsTrigger>
-                        <TabsTrigger value="inReview">In Review ({filteredApplications.filter(app => app.status === "inReview").length})</TabsTrigger>
-                        <TabsTrigger value="approved">Approved ({filteredApplications.filter(app => app.status === "approved").length})</TabsTrigger>
-                        <TabsTrigger value="rejected">Rejected ({filteredApplications.filter(app => app.status === "rejected").length})</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="all" className="mt-0">
-                        {renderApplicationList(filteredApplications)}
-                      </TabsContent>
-                      <TabsContent value="new" className="mt-0">
-                        {renderApplicationList(filteredApplications.filter(app => app.status === "new"))}
-                      </TabsContent>
-                      <TabsContent value="inReview" className="mt-0">
-                        {renderApplicationList(filteredApplications.filter(app => app.status === "inReview"))}
-                      </TabsContent>
-                      <TabsContent value="approved" className="mt-0">
-                        {renderApplicationList(filteredApplications.filter(app => app.status === "approved"))}
-                      </TabsContent>
-                      <TabsContent value="rejected" className="mt-0">
-                        {renderApplicationList(filteredApplications.filter(app => app.status === "rejected"))}
-                      </TabsContent>
-                    </Tabs>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Document Verifications Tab */}
-              <TabsContent value="documents" className="mt-6">
-                {/* Document Metrics */}
-                <div className="grid grid-cols-3 gap-4 mb-8">
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">Pending Review</p>
-                          <p className="text-2xl font-bold">{documentCounts.pending}</p>
-                        </div>
-                        <Clock className="h-8 w-8 text-yellow-500" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">Approved</p>
-                          <p className="text-2xl font-bold">{documentCounts.approved}</p>
-                        </div>
-                        <CheckCircle className="h-8 w-8 text-green-500" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">Rejected</p>
-                          <p className="text-2xl font-bold">{documentCounts.rejected}</p>
-                        </div>
-                        <XCircle className="h-8 w-8 text-red-500" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Document Verifications List */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Document Verifications</CardTitle>
-                    <CardDescription>
-                      Review and approve uploaded documents for verification
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {renderDocumentVerificationList(documentVerifications)}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                  <TabsContent value="all" className="mt-0">
+                    {renderApplicationList(filteredApplications)}
+                  </TabsContent>
+                  <TabsContent value="new" className="mt-0">
+                    {renderApplicationList(applications.filter(app => app.status === "new"))}
+                  </TabsContent>
+                  <TabsContent value="inReview" className="mt-0">
+                    {renderApplicationList(applications.filter(app => app.status === "inReview"))}
+                  </TabsContent>
+                  <TabsContent value="approved" className="mt-0">
+                    {renderApplicationList(applications.filter(app => app.status === "approved"))}
+                  </TabsContent>
+                  <TabsContent value="rejected" className="mt-0">
+                    {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
 
             <div className="text-center">
               <Button
@@ -708,186 +518,6 @@ function AdminDashboard() {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
-    );
-  }
-
-  // Helper function to render document verification list
-  function renderDocumentVerificationList(docs: DocumentVerification[]) {
-    if (isLoadingDocs) {
-      return (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4">Loading document verifications...</p>
-        </div>
-      );
-    }
-
-    if (docs.length === 0) {
-      return (
-        <div className="text-center py-12 border rounded-lg bg-muted/20">
-          <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-          <h2 className="text-xl font-semibold mb-2">No document verifications found</h2>
-          <p className="text-muted-foreground">
-            No users have uploaded documents for verification yet.
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="space-y-4"
-      >
-        {docs.map((doc: DocumentVerification) => (
-          <motion.div key={doc.id} variants={itemVariants} className="w-full">
-            <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Document Verification #{doc.id}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">User ID: {doc.userId}</p>
-                  </div>
-                  <Badge variant="outline">
-                    {new Date(doc.createdAt).toLocaleDateString()}
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Food Safety License */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Food Safety License</h4>
-                      <Badge className={`${
-                        doc.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                        doc.foodSafetyLicenseStatus === 'rejected' ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {getStatusIcon(doc.foodSafetyLicenseStatus || 'pending')}
-                        {doc.foodSafetyLicenseStatus || 'pending'}
-                      </Badge>
-                    </div>
-                    {doc.foodSafetyLicenseUrl && (
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={doc.foodSafetyLicenseUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          View Document
-                        </a>
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-green-600 border-green-200 hover:bg-green-50"
-                        onClick={() => handleDocumentStatusChange(doc.id, 'foodSafetyLicenseStatus', 'approved')}
-                        disabled={updateDocumentMutation.isPending}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={() => handleDocumentStatusChange(doc.id, 'foodSafetyLicenseStatus', 'rejected')}
-                        disabled={updateDocumentMutation.isPending}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Food Establishment Certificate */}
-                  {doc.foodEstablishmentCertUrl && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium">Food Establishment Certificate</h4>
-                        <Badge className={`${
-                          doc.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                          doc.foodEstablishmentCertStatus === 'rejected' ? 'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {getStatusIcon(doc.foodEstablishmentCertStatus || 'pending')}
-                          {doc.foodEstablishmentCertStatus || 'pending'}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={doc.foodEstablishmentCertUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          View Document
-                        </a>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-green-600 border-green-200 hover:bg-green-50"
-                          onClick={() => handleDocumentStatusChange(doc.id, 'foodEstablishmentCertStatus', 'approved')}
-                          disabled={updateDocumentMutation.isPending}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => handleDocumentStatusChange(doc.id, 'foodEstablishmentCertStatus', 'rejected')}
-                          disabled={updateDocumentMutation.isPending}
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Admin Feedback */}
-                <div className="mt-6 pt-4 border-t">
-                  <Label htmlFor={`feedback-${doc.id}`} className="text-sm font-medium">
-                    Admin Feedback
-                  </Label>
-                  <Textarea
-                    id={`feedback-${doc.id}`}
-                    placeholder="Add feedback for the applicant..."
-                    defaultValue={doc.adminFeedback || ''}
-                    className="mt-2"
-                    rows={3}
-                    onBlur={(e) => {
-                      if (e.target.value !== (doc.adminFeedback || '')) {
-                        updateDocumentMutation.mutate({
-                          id: doc.id,
-                          adminFeedback: e.target.value,
-                        });
-                      }
-                    }}
-                  />
-                </div>
-
-                {doc.reviewedAt && (
-                  <div className="mt-4 text-sm text-muted-foreground">
-                    Last reviewed: {new Date(doc.reviewedAt).toLocaleDateString()}
-                  </div>
-                )}
               </CardContent>
             </Card>
           </motion.div>

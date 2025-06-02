@@ -19,7 +19,6 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
-import DocumentStatus from "@/components/document-verification/DocumentStatus";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -285,23 +284,7 @@ export default function ApplicantDashboard() {
                     </div>
                   </div>
 
-                  {/* Document Verification Section for Approved Applications */}
-                  {application.status === 'approved' && (
-                    <div className="mt-4 md:mt-6 bg-green-50 p-4 rounded-lg border border-green-200">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-medium text-green-800 flex items-center gap-2">
-                          <BadgeCheck className="h-4 w-4" />
-                          Document Verification
-                        </h3>
-                        <Button asChild variant="outline" size="sm">
-                          <Link href="/document-verification">
-                            Manage Documents
-                          </Link>
-                        </Button>
-                      </div>
-                      <DocumentStatus showUploadPrompt={false} />
-                    </div>
-                  )}
+
 
                   <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 md:gap-4">
                     <div className="flex items-center text-sm text-muted-foreground">
