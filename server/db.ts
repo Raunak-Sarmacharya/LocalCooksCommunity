@@ -5,8 +5,12 @@ import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
 
-// Check if we're in dev mode using in-memory storage
-const isInMemoryMode = process.env.NODE_ENV === 'development' && !process.env.DATABASE_URL;
+// Check if we have a valid database URL (not dummy/placeholder)
+const hasValidDatabaseUrl = process.env.DATABASE_URL && 
+                           !process.env.DATABASE_URL.includes('dummy') && 
+                           !process.env.DATABASE_URL.includes('username:password@hostname');
+
+const isInMemoryMode = !hasValidDatabaseUrl;
 
 // Only throw error if not in in-memory mode and database URL is missing
 if (!isInMemoryMode && !process.env.DATABASE_URL) {
@@ -14,6 +18,7 @@ if (!isInMemoryMode && !process.env.DATABASE_URL) {
     "DATABASE_URL must be set. Did you forget to provision a database?",
   );
 }
+
 // Create a mock pool object for in-memory mode
 export const pool = isInMemoryMode ?
   {} as Pool :

@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertApplicationSchema, updateApplicationStatusSchema } from "@shared/schema";
+import { insertDocumentVerificationSchema, updateDocumentVerificationSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { setupAuth } from "./auth";
 import passport from "passport";
@@ -421,6 +422,156 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error("Error sending test email:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Document verification endpoints
+
+  // Upload documents for verification (for approved users)
+  app.post("/api/document-verification", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const userId = req.user!.id;
+
+      // Check if user has an approved application
+      const applications = await storage.getApplicationsByUserId(userId);
+      const hasApprovedApplication = applications.some(app => app.status === 'approved');
+
+      if (!hasApprovedApplication) {
+        return res.status(403).json({ 
+          message: "You must have an approved application before uploading verification documents" 
+        });
+      }
+
+      // Check if user already has a document verification record
+      const existingVerification = await storage.getDocumentVerificationByUserId(userId);
+      if (existingVerification) {
+        return res.status(400).json({ 
+          message: "You already have documents under review. Please wait for admin approval or contact support." 
+        });
+      }
+
+      // Validate the request body
+      const parsedData = insertDocumentVerificationSchema.safeParse({
+        ...req.body,
+        userId
+      });
+
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
+        });
+      }
+
+      // Create document verification record
+      const verification = await storage.createDocumentVerification(parsedData.data);
+
+      return res.status(201).json(verification);
+    } catch (error) {
+      console.error("Error uploading documents:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get user's document verification status
+  app.get("/api/document-verification/my-status", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const userId = req.user!.id;
+      const verification = await storage.getDocumentVerificationByUserId(userId);
+
+      if (!verification) {
+        return res.status(404).json({ message: "No document verification found" });
+      }
+
+      return res.status(200).json(verification);
+    } catch (error) {
+      console.error("Error fetching document verification status:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get all document verifications (admin only)
+  app.get("/api/document-verification", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated and is an admin
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const verifications = await storage.getAllDocumentVerifications();
+      return res.status(200).json(verifications);
+    } catch (error) {
+      console.error("Error fetching document verifications:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update document verification status (admin only)
+  app.patch("/api/document-verification/:id/status", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated and is an admin
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid verification ID" });
+      }
+
+      // Validate the request body
+      const parsedData = updateDocumentVerificationSchema.safeParse({
+        id,
+        ...req.body,
+        reviewedBy: req.user!.id
+      });
+
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
+        });
+      }
+
+      // Update the document verification
+      const updatedVerification = await storage.updateDocumentVerification(parsedData.data);
+      if (!updatedVerification) {
+        return res.status(404).json({ message: "Document verification not found" });
+      }
+
+      // Check if both documents are approved to mark user as verified
+      const isFullyVerified = updatedVerification.foodSafetyLicenseStatus === 'approved' && 
+                             (updatedVerification.foodEstablishmentCertStatus === 'approved' || 
+                              !updatedVerification.foodEstablishmentCertUrl); // Optional document
+
+      if (isFullyVerified) {
+        await storage.updateUserVerificationStatus(updatedVerification.userId, true);
+      }
+
+      return res.status(200).json(updatedVerification);
+    } catch (error) {
+      console.error("Error updating document verification status:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
