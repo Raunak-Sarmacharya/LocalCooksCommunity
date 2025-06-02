@@ -1156,6 +1156,105 @@ app.get('/api/init-db', async (req, res) => {
   }
 });
 
+// Force admin user creation endpoint
+app.post('/api/force-create-admin', async (req, res) => {
+  if (!pool) {
+    return res.status(400).json({
+      error: 'No database connection',
+      message: 'DATABASE_URL environment variable is not set'
+    });
+  }
+
+  try {
+    console.log('Force creating admin user...');
+    
+    // First, ensure database tables exist
+    await initializeDatabase();
+    
+    // Check if admin already exists
+    const existingAdmin = await getUserByUsername('admin');
+    
+    if (existingAdmin) {
+      console.log('Admin user already exists:', { id: existingAdmin.id, role: existingAdmin.role });
+      return res.status(200).json({
+        message: 'Admin user already exists',
+        admin: { id: existingAdmin.id, username: existingAdmin.username, role: existingAdmin.role }
+      });
+    }
+    
+    // Create admin user with hardcoded password hash for 'localcooks'
+    const hashedPassword = 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668';
+    
+    const result = await pool.query(`
+      INSERT INTO users (username, password, role)
+      VALUES ('admin', $1, 'admin')
+      RETURNING id, username, role;
+    `, [hashedPassword]);
+    
+    const newAdmin = result.rows[0];
+    console.log('Admin user created successfully:', newAdmin);
+    
+    res.status(201).json({
+      message: 'Admin user created successfully',
+      admin: newAdmin
+    });
+    
+  } catch (error) {
+    console.error('Error forcing admin user creation:', error);
+    res.status(500).json({
+      error: 'Failed to create admin user',
+      message: error.message
+    });
+  }
+});
+
+// Debug admin user endpoint
+app.get('/api/debug-admin', async (req, res) => {
+  if (!pool) {
+    return res.status(400).json({
+      error: 'No database connection',
+      message: 'DATABASE_URL environment variable is not set'
+    });
+  }
+
+  try {
+    // Get admin user from database
+    const result = await pool.query(`
+      SELECT id, username, role, 
+             LENGTH(password) as password_length,
+             SUBSTRING(password, 1, 20) as password_preview
+      FROM users 
+      WHERE role = 'admin' OR username = 'admin'
+      ORDER BY id;
+    `);
+
+    const adminUsers = result.rows;
+
+    // Also check via our helper function
+    const adminViaHelper = await getUserByUsername('admin');
+
+    res.status(200).json({
+      message: 'Admin user debug info',
+      adminUsersInDB: adminUsers,
+      adminViaHelper: adminViaHelper ? {
+        id: adminViaHelper.id,
+        username: adminViaHelper.username,
+        role: adminViaHelper.role,
+        passwordLength: adminViaHelper.password?.length,
+        passwordPreview: adminViaHelper.password?.substring(0, 20)
+      } : null,
+      expectedPasswordHash: 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668'
+    });
+    
+  } catch (error) {
+    console.error('Error debugging admin user:', error);
+    res.status(500).json({
+      error: 'Failed to debug admin user',
+      message: error.message
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);

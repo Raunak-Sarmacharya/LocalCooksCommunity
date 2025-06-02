@@ -1,6 +1,5 @@
 import { applications, type Application, type InsertApplication, applicationStatusEnum, type UpdateApplicationStatus } from "@shared/schema";
 import { users, type User, type InsertUser } from "@shared/schema";
-import { documentVerifications, type DocumentVerification, type InsertDocumentVerification, type UpdateDocumentVerification } from "@shared/schema";
 import session from "express-session";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
@@ -29,7 +28,6 @@ export interface IStorage {
     oauth_id: string;
     profile_data?: string;
   }): Promise<User>;
-  updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined>;
 
   // Application-related methods
   getAllApplications(): Promise<Application[]>;
@@ -38,12 +36,6 @@ export interface IStorage {
   createApplication(application: InsertApplication): Promise<Application>;
   updateApplicationStatus(update: UpdateApplicationStatus): Promise<Application | undefined>;
 
-  // Document verification methods
-  getDocumentVerificationByUserId(userId: number): Promise<DocumentVerification | undefined>;
-  createDocumentVerification(verification: InsertDocumentVerification): Promise<DocumentVerification>;
-  updateDocumentVerification(update: UpdateDocumentVerification): Promise<DocumentVerification | undefined>;
-  getAllDocumentVerifications(): Promise<DocumentVerification[]>;
-
   // Session store for authentication
   sessionStore: session.Store;
 }
@@ -51,20 +43,16 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private applications: Map<number, Application>;
-  private documentVerifications: Map<number, DocumentVerification>;
   private userCurrentId: number;
   private applicationCurrentId: number;
-  private documentVerificationCurrentId: number;
   sessionStore: session.Store;
   // TypeScript fixes for instagramId and twitterId
 
   constructor() {
     this.users = new Map();
     this.applications = new Map();
-    this.documentVerifications = new Map();
     this.userCurrentId = 1;
     this.applicationCurrentId = 1;
-    this.documentVerificationCurrentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // 24hrs
     });
@@ -112,9 +100,10 @@ export class MemStorage implements IStorage {
       username: insertUser.username,
       password: insertUser.password,
       role: insertUser.role || "applicant",
+      twitterId: null,
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
-      isVerified: false,
+      instagramId: null,
     };
     this.users.set(user.id, user);
     return user;
@@ -211,84 +200,6 @@ export class MemStorage implements IStorage {
 
     return this.createUser(insertData);
   }
-
-  async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
-    const user = this.users.get(userId);
-    if (user) {
-      const updatedUser: User = {
-        ...user,
-        isVerified,
-      };
-      this.users.set(userId, updatedUser);
-      return updatedUser;
-    }
-    return undefined;
-  }
-
-  // Document verification methods
-  async getDocumentVerificationByUserId(userId: number): Promise<DocumentVerification | undefined> {
-    return Array.from(this.documentVerifications.values()).find(
-      (verification) => verification.userId === userId
-    );
-  }
-
-  async createDocumentVerification(verification: InsertDocumentVerification): Promise<DocumentVerification> {
-    const id = this.documentVerificationCurrentId++;
-    const now = new Date();
-
-    const documentVerification: DocumentVerification = {
-      id,
-      userId: verification.userId,
-      foodSafetyLicenseUrl: verification.foodSafetyLicenseUrl || null,
-      foodEstablishmentCertUrl: verification.foodEstablishmentCertUrl || null,
-      foodSafetyLicenseStatus: 'pending',
-      foodEstablishmentCertStatus: 'pending',
-      adminFeedback: null,
-      reviewedBy: null,
-      reviewedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.documentVerifications.set(id, documentVerification);
-    return documentVerification;
-  }
-
-  async updateDocumentVerification(update: UpdateDocumentVerification): Promise<DocumentVerification | undefined> {
-    const verification = this.documentVerifications.get(update.id);
-
-    if (!verification) {
-      return undefined;
-    }
-
-    const now = new Date();
-    const updatedVerification: DocumentVerification = {
-      ...verification,
-      foodSafetyLicenseStatus: update.foodSafetyLicenseStatus || verification.foodSafetyLicenseStatus,
-      foodEstablishmentCertStatus: update.foodEstablishmentCertStatus || verification.foodEstablishmentCertStatus,
-      adminFeedback: update.adminFeedback !== undefined ? update.adminFeedback : verification.adminFeedback,
-      reviewedBy: update.reviewedBy,
-      reviewedAt: now,
-      updatedAt: now,
-    };
-
-    this.documentVerifications.set(update.id, updatedVerification);
-    
-    // Check if user should be marked as verified
-    const isFullyVerified = updatedVerification.foodSafetyLicenseStatus === 'approved' && 
-                           (updatedVerification.foodEstablishmentCertStatus === 'approved' || 
-                            !updatedVerification.foodEstablishmentCertUrl);
-
-    if (isFullyVerified) {
-      await this.updateUserVerificationStatus(updatedVerification.userId, true);
-    }
-
-    return updatedVerification;
-  }
-
-  async getAllDocumentVerifications(): Promise<DocumentVerification[]> {
-    return Array.from(this.documentVerifications.values());
-  }
 }
 
 // PostgreSQL-based database storage implementation
@@ -336,19 +247,17 @@ export class DatabaseStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-
-    const [user] = await db
-      .insert(users)
-      .values({
-        username: insertUser.username,
-        password: insertUser.password,
-        role: insertUser.role || "applicant",
-        googleId: insertUser.googleId || null,
-        facebookId: insertUser.facebookId || null,
-        isVerified: false,
-      })
-      .returning();
-
+    const user: User = {
+      id: this.userCurrentId++,
+      username: insertUser.username,
+      password: insertUser.password,
+      role: insertUser.role || "applicant",
+      twitterId: null,
+      googleId: insertUser.googleId || null,
+      facebookId: insertUser.facebookId || null,
+      instagramId: null,
+    };
+    this.users.set(user.id, user);
     return user;
   }
 
@@ -429,73 +338,12 @@ export class DatabaseStorage implements IStorage {
 
     return this.createUser(insertData);
   }
-
-  async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({ isVerified })
-      .where(eq(users.id, userId))
-      .returning();
-
-    return updatedUser || undefined;
-  }
-
-  // Document verification methods
-  async getDocumentVerificationByUserId(userId: number): Promise<DocumentVerification | undefined> {
-    const [verification] = await db
-      .select()
-      .from(documentVerifications)
-      .where(eq(documentVerifications.userId, userId));
-    return verification || undefined;
-  }
-
-  async createDocumentVerification(verification: InsertDocumentVerification): Promise<DocumentVerification> {
-    const now = new Date();
-
-    const [createdVerification] = await db
-      .insert(documentVerifications)
-      .values({
-        ...verification,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    return createdVerification;
-  }
-
-  async updateDocumentVerification(update: UpdateDocumentVerification): Promise<DocumentVerification | undefined> {
-    const { id, ...updateData } = update;
-    const now = new Date();
-
-    const [updatedVerification] = await db
-      .update(documentVerifications)
-      .set({
-        ...updateData,
-        updatedAt: now,
-        reviewedAt: now,
-      })
-      .where(eq(documentVerifications.id, id))
-      .returning();
-
-    return updatedVerification || undefined;
-  }
-
-  async getAllDocumentVerifications(): Promise<DocumentVerification[]> {
-    return await db.select().from(documentVerifications);
-  }
 }
 
-// Switch between in-memory and database storage based on DATABASE_URL
-const hasValidDatabaseUrl = process.env.DATABASE_URL && 
-                           !process.env.DATABASE_URL.includes('dummy') && 
-                           !process.env.DATABASE_URL.includes('username:password@hostname');
-
-export const storage = hasValidDatabaseUrl 
-  ? new DatabaseStorage()
-  : new MemStorage();
-
-console.log(`📦 Storage: Using ${hasValidDatabaseUrl ? 'Database' : 'In-Memory'} storage`);
-if (!hasValidDatabaseUrl) {
-  console.log('💡 To use database storage, set a valid DATABASE_URL in your .env file');
-}
+// Switch from in-memory to database storage
+export const storage = new MemStorage();
+/* Temporarily disabled DatabaseStorage to avoid database errors
+export const storage = process.env.NODE_ENV === "development"
+  ? new MemStorage()
+  : new DatabaseStorage();
+*/

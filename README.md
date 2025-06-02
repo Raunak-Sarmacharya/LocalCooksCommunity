@@ -239,3 +239,63 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [TanStack Query](https://tanstack.com/query) - Data fetching library
 - [Framer Motion](https://www.framer.com/motion/) - Animation library
 - [Zod](https://zod.dev/) - Schema validation
+
+# Production Admin Setup
+
+If you're having issues with admin credentials not working in production, follow these steps:
+
+## Method 1: Manual Database Setup (Recommended)
+
+1. **Access your production database directly** (through Neon dashboard or your database provider)
+
+2. **Run this SQL directly in your database console:**
+   ```sql
+   -- Create an admin user (username: admin, password: localcooks)
+   INSERT INTO users (username, password, role)
+   VALUES (
+     'admin',
+     'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668',
+     'admin'
+   ) ON CONFLICT (username) DO NOTHING;
+   ```
+
+3. **Verify the admin user was created:**
+   ```sql
+   SELECT id, username, role FROM users WHERE role = 'admin';
+   ```
+
+## Method 2: Using API Endpoint
+
+Visit your production site and navigate to:
+`https://your-app.vercel.app/api/init-db`
+
+This will trigger the database initialization and admin user creation.
+
+## Method 3: Using Vercel CLI
+
+```bash
+# Login to Vercel
+vercel login
+
+# Pull environment variables
+vercel env pull .env.production.local
+
+# Run admin creation script with production database
+NODE_ENV=production npm run create-admin
+```
+
+## Troubleshooting
+
+If admin credentials still don't work:
+
+1. **Check your environment variables** in Vercel dashboard:
+   - `DATABASE_URL` should be set correctly
+   - `SESSION_SECRET` should be set
+   - `NODE_ENV` should be "production"
+
+2. **Check the health endpoint**: Visit `https://your-app.vercel.app/api/health` to verify:
+   - Database connection status
+   - Environment variables are properly set
+   - Database tables exist
+
+3. **Check Vercel function logs** for any errors during startup
