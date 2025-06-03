@@ -28,7 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger
 } from "@/components/ui/accordion";
-import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, Shield, ExternalLink } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -84,7 +84,15 @@ function AdminDashboard() {
         feedback: app.feedback,
         status: app.status,
         createdAt: app.created_at || app.createdAt,
-        applicantUsername: app.applicant_username || app.applicantUsername
+        applicantUsername: app.applicant_username || app.applicantUsername,
+        // Document verification fields
+        foodSafetyLicenseUrl: app.food_safety_license_url || app.foodSafetyLicenseUrl,
+        foodEstablishmentCertUrl: app.food_establishment_cert_url || app.foodEstablishmentCertUrl,
+        foodSafetyLicenseStatus: app.food_safety_license_status || app.foodSafetyLicenseStatus,
+        foodEstablishmentCertStatus: app.food_establishment_cert_status || app.foodEstablishmentCertStatus,
+        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
+        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
+        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
       }));
 
       console.log('Normalized admin application data:', normalizedData);
@@ -151,6 +159,69 @@ function AdminDashboard() {
     },
   });
 
+  // Mutation to update document verification status
+  const updateDocumentStatusMutation = useMutation({
+    mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
+      const customHeaders: Record<string, string> = {};
+      
+      if (user?.id) {
+        customHeaders['X-User-ID'] = user.id.toString();
+      }
+
+      const updateData = { [field]: status };
+      const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData, customHeaders);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
+      toast({
+        title: "Document status updated",
+        description: "Document verification status has been updated.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error updating document status",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Helper function to get document status badge
+  const getDocumentStatusBadge = (status: string | null) => {
+    switch (status) {
+      case "pending":
+        return (
+          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </Badge>
+        );
+      case "approved":
+        return (
+          <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Approved
+          </Badge>
+        );
+      case "rejected":
+        return (
+          <Badge variant="secondary" className="bg-red-100 text-red-800 border-red-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Rejected
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="secondary" className="bg-gray-100 text-gray-800 border-gray-300">
+            Not Set
+          </Badge>
+        );
+    }
+  };
+
   // Filter applications based on status and search term
   const filteredApplications = applications ? applications.filter((app) => {
     const matchesStatus = filterStatus === "all" || app.status === filterStatus;
@@ -164,6 +235,11 @@ function AdminDashboard() {
   // Handle status change
   const handleStatusChange = (id: number, newStatus: string) => {
     updateStatusMutation.mutate({ id, status: newStatus });
+  };
+
+  // Handle document status change
+  const handleDocumentStatusUpdate = (id: number, field: string, status: string) => {
+    updateDocumentStatusMutation.mutate({ id, field, status });
   };
 
   // Handle logout
@@ -444,6 +520,117 @@ function AdminDashboard() {
                         <p className="font-medium text-sm">{formatKitchenPreference(app.kitchenPreference)}</p>
                       </div>
                     </div>
+
+                    {/* Document Verification Section */}
+                    {app.status === "approved" && (
+                      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h4 className="text-sm font-semibold mb-3 text-blue-800 flex items-center gap-2">
+                          <Shield className="h-4 w-4" />
+                          Document Verification
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          {/* Food Safety License Document */}
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-medium text-gray-600">Food Safety License</h5>
+                            {app.foodSafetyLicenseUrl ? (
+                              <div className="space-y-1">
+                                <a 
+                                  href={app.foodSafetyLicenseUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  {app.foodSafetyLicenseUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
+                                </a>
+                                <div>
+                                  {getDocumentStatusBadge(app.foodSafetyLicenseStatus)}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-500 text-sm">No document uploaded</span>
+                            )}
+                          </div>
+
+                          {/* Food Establishment Certificate Document */}
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-medium text-gray-600">Food Establishment Certificate</h5>
+                            {app.foodEstablishmentCertUrl ? (
+                              <div className="space-y-1">
+                                <a 
+                                  href={app.foodEstablishmentCertUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  {app.foodEstablishmentCertUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
+                                </a>
+                                <div>
+                                  {getDocumentStatusBadge(app.foodEstablishmentCertStatus)}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-500 text-sm">No document uploaded</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Document Verification Controls */}
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
+                            className="text-green-600 border-green-200 hover:bg-green-50"
+                          >
+                            Approve FSL
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            Reject FSL
+                          </Button>
+                          {app.foodEstablishmentCertUrl && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
+                                className="text-green-600 border-green-200 hover:bg-green-50"
+                              >
+                                Approve FEC
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                              >
+                                Reject FEC
+                              </Button>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Admin Feedback */}
+                        {app.documentsAdminFeedback && (
+                          <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                            <strong>Admin Feedback:</strong> {app.documentsAdminFeedback}
+                          </div>
+                        )}
+
+                        {app.documentsReviewedAt && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Last reviewed: {new Date(app.documentsReviewedAt).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-4 pt-4 border-t w-full">
                       <h3 className="text-sm font-medium mb-3">Application Details</h3>

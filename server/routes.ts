@@ -1,12 +1,16 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertApplicationSchema, updateApplicationStatusSchema } from "@shared/schema";
+import { insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { setupAuth } from "./auth";
 import passport from "passport";
 import { sendEmail, generateStatusChangeEmail } from "./email";
 import { hashPassword, comparePasswords } from "./passwordUtils";
+import { upload, deleteFile, getFileUrl } from "./fileUpload";
+import path from "path";
+import fs from "fs";
+import type { User } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -545,7 +549,251 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Admin login error:', error);
-      res.status(500).json({ error: 'Admin login failed', message: error.message });
+      res.status(500).json({ error: 'Admin login failed', message: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  });
+
+  // ===============================
+  // FILE SERVING ROUTES
+  // ===============================
+
+  // Serve uploaded document files
+  app.get("/api/files/documents/:filename", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const filename = req.params.filename;
+      const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      // Extract userId from filename (format: userId_documentType_timestamp_originalname)
+      const fileUserId = parseInt(filename.split('_')[0]);
+      
+      // Allow access if user owns the file or is admin
+      if (req.user!.id !== fileUserId && req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get file info
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filename).toLowerCase();
+      
+      // Set appropriate content type
+      let contentType = 'application/octet-stream';
+      if (ext === '.pdf') {
+        contentType = 'application/pdf';
+      } else if (['.jpg', '.jpeg'].includes(ext)) {
+        contentType = 'image/jpeg';
+      } else if (ext === '.png') {
+        contentType = 'image/png';
+      } else if (ext === '.webp') {
+        contentType = 'image/webp';
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      
+      // Stream the file
+      const readStream = fs.createReadStream(filePath);
+      readStream.pipe(res);
+    } catch (error) {
+      console.error("Error serving file:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ===============================
+  // APPLICATION DOCUMENT ROUTES
+  // ===============================
+
+  // Update application documents endpoint (for approved applicants)
+  app.patch("/api/applications/:id/documents", 
+    upload.fields([
+      { name: 'foodSafetyLicense', maxCount: 1 },
+      { name: 'foodEstablishmentCert', maxCount: 1 }
+    ]), 
+    async (req: Request, res: Response) => {
+      try {
+        // Check if user is authenticated
+        if (!req.isAuthenticated()) {
+          return res.status(401).json({ message: "Not authenticated" });
+        }
+
+        const applicationId = parseInt(req.params.id);
+        if (isNaN(applicationId)) {
+          return res.status(400).json({ message: "Invalid application ID" });
+        }
+
+        // Get the application to verify ownership and status
+        const application = await storage.getApplicationById(applicationId);
+        if (!application) {
+          // Clean up uploaded files
+          if (req.files) {
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+            Object.values(files).flat().forEach(file => {
+              try {
+                fs.unlinkSync(file.path);
+              } catch (e) {
+                console.error('Error cleaning up file:', e);
+              }
+            });
+          }
+          return res.status(404).json({ message: "Application not found" });
+        }
+
+        // Check if user owns the application or is admin
+        if (application.userId !== req.user!.id && req.user!.role !== "admin") {
+          // Clean up uploaded files
+          if (req.files) {
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+            Object.values(files).flat().forEach(file => {
+              try {
+                fs.unlinkSync(file.path);
+              } catch (e) {
+                console.error('Error cleaning up file:', e);
+              }
+            });
+          }
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        const updateData: any = {
+          id: applicationId,
+        };
+
+        // Handle food safety license file
+        if (files && files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+          // Delete old file if it exists and is a file path (not URL)
+          if (application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith('/api/files/')) {
+            const oldFilename = application.foodSafetyLicenseUrl.split('/').pop();
+            if (oldFilename) {
+              const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
+              deleteFile(oldFilePath);
+            }
+          }
+          
+          const filename = files.foodSafetyLicense[0].filename;
+          updateData.foodSafetyLicenseUrl = getFileUrl(filename);
+        }
+
+        // Handle food establishment cert file  
+        if (files && files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+          // Delete old file if it exists and is a file path (not URL)
+          if (application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith('/api/files/')) {
+            const oldFilename = application.foodEstablishmentCertUrl.split('/').pop();
+            if (oldFilename) {
+              const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
+              deleteFile(oldFilePath);
+            }
+          }
+          
+          const filename = files.foodEstablishmentCert[0].filename;
+          updateData.foodEstablishmentCertUrl = getFileUrl(filename);
+        }
+
+        // Handle URL inputs if no files uploaded
+        if (req.body.foodSafetyLicenseUrl && !updateData.foodSafetyLicenseUrl) {
+          updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+        }
+
+        if (req.body.foodEstablishmentCertUrl && !updateData.foodEstablishmentCertUrl) {
+          updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+        }
+
+        // Update the application documents
+        const updatedApplication = await storage.updateApplicationDocuments(updateData);
+
+        if (!updatedApplication) {
+          return res.status(404).json({ message: "Failed to update application documents" });
+        }
+
+        return res.status(200).json(updatedApplication);
+      } catch (error) {
+        console.error("Error updating application documents:", error);
+        
+        // Clean up uploaded files on error
+        if (req.files) {
+          const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+          Object.values(files).flat().forEach(file => {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (e) {
+              console.error('Error cleaning up file:', e);
+            }
+          });
+        }
+        
+        return res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  );
+
+  // Update application document verification status (admin only)
+  app.patch("/api/applications/:id/document-verification", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated and is an admin
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const applicationId = parseInt(req.params.id);
+      if (isNaN(applicationId)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+
+      // Validate the request body using Zod schema
+      const parsedData = updateDocumentVerificationSchema.safeParse({
+        id: applicationId,
+        ...req.body,
+        documentsReviewedBy: req.user!.id
+      });
+
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
+        });
+      }
+
+      // Update the application document verification
+      const updatedApplication = await storage.updateApplicationDocumentVerification(parsedData.data);
+
+      if (!updatedApplication) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+
+      console.log(`Document verification updated for application ${applicationId}:`, {
+        foodSafetyLicenseStatus: updatedApplication.foodSafetyLicenseStatus,
+        foodEstablishmentCertStatus: updatedApplication.foodEstablishmentCertStatus,
+        reviewedBy: parsedData.data.documentsReviewedBy,
+        timestamp: new Date().toISOString()
+      });
+
+      // Check if both documents are approved, then update user verification status
+      if (updatedApplication.foodSafetyLicenseStatus === "approved" && 
+          (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
+        await storage.updateUserVerificationStatus(updatedApplication.userId!, true);
+        console.log(`User ${updatedApplication.userId} has been fully verified`);
+      }
+
+      return res.status(200).json(updatedApplication);
+    } catch (error) {
+      console.error("Error updating application document verification:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
 

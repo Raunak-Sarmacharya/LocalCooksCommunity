@@ -1,4 +1,4 @@
-import { applications, type Application, type InsertApplication, applicationStatusEnum, type UpdateApplicationStatus } from "@shared/schema";
+import { applications, type Application, type InsertApplication, applicationStatusEnum, type UpdateApplicationStatus, type UpdateApplicationDocuments, type UpdateDocumentVerification } from "@shared/schema";
 import { users, type User, type InsertUser } from "@shared/schema";
 import session from "express-session";
 import { eq } from "drizzle-orm";
@@ -29,12 +29,15 @@ export interface IStorage {
     profile_data?: string;
   }): Promise<User>;
 
-  // Application-related methods
+  // Application-related methods (now includes document verification)
   getAllApplications(): Promise<Application[]>;
   getApplicationById(id: number): Promise<Application | undefined>;
   getApplicationsByUserId(userId: number): Promise<Application[]>;
   createApplication(application: InsertApplication): Promise<Application>;
   updateApplicationStatus(update: UpdateApplicationStatus): Promise<Application | undefined>;
+  updateApplicationDocuments(update: UpdateApplicationDocuments): Promise<Application | undefined>;
+  updateApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<Application | undefined>;
+  updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined>;
 
   // Session store for authentication
   sessionStore: session.Store;
@@ -69,10 +72,9 @@ export class MemStorage implements IStorage {
       username: "admin",
       password: "fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668", // "localcooks"
       role: "admin",
-      twitterId: null,
       googleId: null,
       facebookId: null,
-      instagramId: null,
+      isVerified: true,
     };
     this.users.set(adminUser.id, adminUser);
     console.log("Development: Default admin user created (username: admin, password: localcooks)");
@@ -115,16 +117,18 @@ export class MemStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
+    
+    // Create user in memory instead of database
     const user: User = {
       id: this.userCurrentId++,
       username: insertUser.username,
       password: insertUser.password,
       role: insertUser.role || "applicant",
-      twitterId: null,
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
-      instagramId: null,
+      isVerified: false,
     };
+
     this.users.set(user.id, user);
     return user;
   }
@@ -158,8 +162,18 @@ export class MemStorage implements IStorage {
       foodSafetyLicense: insertApplication.foodSafetyLicense,
       foodEstablishmentCert: insertApplication.foodEstablishmentCert,
       kitchenPreference: insertApplication.kitchenPreference,
-      feedback: insertApplication.feedback || null, // Include feedback field
+      feedback: insertApplication.feedback || null,
       status: "new",
+      
+      // Initialize document verification fields
+      foodSafetyLicenseUrl: insertApplication.foodSafetyLicenseUrl || null,
+      foodEstablishmentCertUrl: insertApplication.foodEstablishmentCertUrl || null,
+      foodSafetyLicenseStatus: "pending",
+      foodEstablishmentCertStatus: "pending",
+      documentsAdminFeedback: null,
+      documentsReviewedBy: null,
+      documentsReviewedAt: null,
+      
       createdAt: now,
     };
 
@@ -220,6 +234,59 @@ export class MemStorage implements IStorage {
 
     return this.createUser(insertData);
   }
+
+  // Application-related methods (now includes document verification)
+  async updateApplicationDocuments(update: UpdateApplicationDocuments): Promise<Application | undefined> {
+    const application = this.applications.get(update.id);
+
+    if (!application) {
+      return undefined;
+    }
+
+    const updatedApplication: Application = {
+      ...application,
+      ...update,
+      // Reset document status to pending when new documents are uploaded
+      ...(update.foodSafetyLicenseUrl && { foodSafetyLicenseStatus: "pending" }),
+      ...(update.foodEstablishmentCertUrl && { foodEstablishmentCertStatus: "pending" }),
+    };
+
+    this.applications.set(update.id, updatedApplication);
+    return updatedApplication;
+  }
+
+  async updateApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<Application | undefined> {
+    const application = this.applications.get(update.id);
+
+    if (!application) {
+      return undefined;
+    }
+
+    const updatedApplication: Application = {
+      ...application,
+      ...update,
+      documentsReviewedAt: new Date(),
+    };
+
+    this.applications.set(update.id, updatedApplication);
+    return updatedApplication;
+  }
+
+  async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    
+    if (!user) {
+      return undefined;
+    }
+
+    const updatedUser: User = {
+      ...user,
+      isVerified,
+    };
+
+    this.users.set(userId, updatedUser);
+    return updatedUser;
+  }
 }
 
 // PostgreSQL-based database storage implementation
@@ -257,9 +324,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByInstagramId(instagramId: string): Promise<User | undefined> {
-    if (!instagramId) return undefined;
-    const [user] = await db.select().from(users).where(eq(users.instagramId, instagramId));
-    return user || undefined;
+    // Instagram authentication was removed - always return undefined
+    return undefined;
   }
 
   async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string }): Promise<User> {
@@ -267,20 +333,22 @@ export class DatabaseStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    const user: User = {
-      id: this.userCurrentId++,
-      username: insertUser.username,
-      password: insertUser.password,
-      role: insertUser.role || "applicant",
-      twitterId: null,
-      googleId: insertUser.googleId || null,
-      facebookId: insertUser.facebookId || null,
-      instagramId: null,
-    };
-    this.users.set(user.id, user);
+    
+    const [user] = await db
+      .insert(users)
+      .values({
+        username: insertUser.username,
+        password: insertUser.password,
+        role: insertUser.role || "applicant",
+        googleId: insertUser.googleId || null,
+        facebookId: insertUser.facebookId || null,
+      })
+      .returning();
+
     return user;
   }
 
+  // Application-related methods
   async getAllApplications(): Promise<Application[]> {
     return await db.select().from(applications);
   }
@@ -358,12 +426,52 @@ export class DatabaseStorage implements IStorage {
 
     return this.createUser(insertData);
   }
+
+  // Application-related methods (now includes document verification)
+  async updateApplicationDocuments(update: UpdateApplicationDocuments): Promise<Application | undefined> {
+    const { id, ...updateData } = update;
+
+    const [updatedApplication] = await db
+      .update(applications)
+      .set({
+        ...updateData,
+        // Reset document status to pending when new documents are uploaded
+        ...(updateData.foodSafetyLicenseUrl && { foodSafetyLicenseStatus: "pending" }),
+        ...(updateData.foodEstablishmentCertUrl && { foodEstablishmentCertStatus: "pending" }),
+      })
+      .where(eq(applications.id, id))
+      .returning();
+
+    return updatedApplication || undefined;
+  }
+
+  async updateApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<Application | undefined> {
+    const { id, ...updateData } = update;
+
+    const [updatedApplication] = await db
+      .update(applications)
+      .set({
+        ...updateData,
+        documentsReviewedAt: new Date(),
+      })
+      .where(eq(applications.id, id))
+      .returning();
+
+    return updatedApplication || undefined;
+  }
+
+  async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ isVerified })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return updatedUser || undefined;
+  }
 }
 
 // Switch from in-memory to database storage
-export const storage = new MemStorage();
-/* Temporarily disabled DatabaseStorage to avoid database errors
 export const storage = process.env.NODE_ENV === "development"
   ? new MemStorage()
   : new DatabaseStorage();
-*/

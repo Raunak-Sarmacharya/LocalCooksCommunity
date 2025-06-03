@@ -112,7 +112,15 @@ export default function ApplicantDashboard() {
         kitchenPreference: app.kitchen_preference || app.kitchenPreference,
         feedback: app.feedback,
         status: app.status,
-        createdAt: app.created_at || app.createdAt
+        createdAt: app.created_at || app.createdAt,
+        // Document verification fields
+        foodSafetyLicenseUrl: app.food_safety_license_url || app.foodSafetyLicenseUrl,
+        foodEstablishmentCertUrl: app.food_establishment_cert_url || app.foodEstablishmentCertUrl,
+        foodSafetyLicenseStatus: app.food_safety_license_status || app.foodSafetyLicenseStatus,
+        foodEstablishmentCertStatus: app.food_establishment_cert_status || app.foodEstablishmentCertStatus,
+        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
+        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
+        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
       }));
 
       console.log('Normalized application data:', normalizedData);
@@ -216,6 +224,7 @@ export default function ApplicantDashboard() {
           >
             {applications.map((application) => {
               const canApply = !isApplicationActive(application);
+              const isApproved = application.status === "approved";
               const statusIcon = () => {
                 switch (application.status) {
                   case "new": return <AlertCircle className="h-5 w-5 text-yellow-500" />;
@@ -243,6 +252,137 @@ export default function ApplicantDashboard() {
                       {formatApplicationStatus(application.status)}
                     </Badge>
                   </div>
+
+                  {/* Document Verification Alert for Approved Applications */}
+                  {isApproved && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      transition={{ duration: 0.3 }}
+                      className="mt-4"
+                    >
+                      {/* Check if user is fully verified */}
+                      {(() => {
+                        const isFullyVerified = application.foodSafetyLicenseStatus === "approved" && 
+                          (!application.foodEstablishmentCertUrl || application.foodEstablishmentCertStatus === "approved");
+                        
+                        if (isFullyVerified) {
+                          return (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                              <div className="flex items-start gap-3">
+                                <div className="bg-green-100 p-2 rounded-full">
+                                  <CheckCircle className="h-5 w-5 text-green-600" />
+                                </div>
+                                <div className="flex-1">
+                                  <h3 className="font-semibold text-green-800 mb-1 flex items-center gap-2">
+                                    <Award className="h-4 w-4" />
+                                    Fully Verified Cook!
+                                  </h3>
+                                  <p className="text-sm text-green-700 mb-3">
+                                    🎉 Congratulations! Your documents have been approved and you are now a verified Local Cook. You can start accepting orders from customers.
+                                  </p>
+                                  <div className="flex flex-col sm:flex-row gap-2 items-start">
+                                    <div className="flex items-center gap-2">
+                                      <Badge className="bg-green-100 text-green-800 border-green-300">
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Food Safety License: Approved
+                                      </Badge>
+                                      {application.foodEstablishmentCertUrl && (
+                                        <Badge className="bg-green-100 text-green-800 border-green-300">
+                                          <CheckCircle className="h-3 w-3 mr-1" />
+                                          Food Establishment Cert: Approved
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {application.documentsReviewedAt && (
+                                    <p className="text-xs text-green-600 mt-2">
+                                      Verified on {new Date(application.documentsReviewedAt).toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          // Show document management interface for non-verified users
+                          return (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                              <div className="flex items-start gap-3">
+                                <div className="bg-green-100 p-2 rounded-full">
+                                  <FileText className="h-5 w-5 text-green-600" />
+                                </div>
+                                <div className="flex-1">
+                                  <h3 className="font-semibold text-green-800 mb-1">Document Verification Center</h3>
+                                  <p className="text-sm text-green-700 mb-3">
+                                    Congratulations! Your application has been approved. Upload your verification documents or update existing ones anytime.
+                                  </p>
+                                  <div className="flex flex-col sm:flex-row gap-2">
+                                    <Button
+                                      asChild
+                                      size="sm"
+                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                    >
+                                      <Link href="/document-verification">
+                                        <BadgeCheck className="mr-2 h-4 w-4" />
+                                        Manage Documents
+                                      </Link>
+                                    </Button>
+                                    <span className="text-xs text-green-600 flex items-center">
+                                      <Info className="mr-1 h-3 w-3" />
+                                      Upload new or replace existing files
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Show current document status if documents are uploaded */}
+                                  {(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl) && (
+                                    <div className="mt-3 pt-3 border-t border-green-200">
+                                      <h4 className="text-xs font-medium text-green-700 mb-2">Current Status:</h4>
+                                      <div className="flex flex-wrap gap-2">
+                                        {application.foodSafetyLicenseUrl && (
+                                          <Badge variant="secondary" className={
+                                            application.foodSafetyLicenseStatus === "approved" 
+                                              ? "bg-green-100 text-green-800 border-green-300"
+                                              : application.foodSafetyLicenseStatus === "rejected"
+                                              ? "bg-red-100 text-red-800 border-red-300"
+                                              : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                          }>
+                                            {application.foodSafetyLicenseStatus === "approved" && <CheckCircle className="h-3 w-3 mr-1" />}
+                                            {application.foodSafetyLicenseStatus === "rejected" && <XCircle className="h-3 w-3 mr-1" />}
+                                            {application.foodSafetyLicenseStatus === "pending" && <Clock className="h-3 w-3 mr-1" />}
+                                            FSL: {application.foodSafetyLicenseStatus}
+                                          </Badge>
+                                        )}
+                                        {application.foodEstablishmentCertUrl && (
+                                          <Badge variant="secondary" className={
+                                            application.foodEstablishmentCertStatus === "approved" 
+                                              ? "bg-green-100 text-green-800 border-green-300"
+                                              : application.foodEstablishmentCertStatus === "rejected"
+                                              ? "bg-red-100 text-red-800 border-red-300"
+                                              : "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                          }>
+                                            {application.foodEstablishmentCertStatus === "approved" && <CheckCircle className="h-3 w-3 mr-1" />}
+                                            {application.foodEstablishmentCertStatus === "rejected" && <XCircle className="h-3 w-3 mr-1" />}
+                                            {application.foodEstablishmentCertStatus === "pending" && <Clock className="h-3 w-3 mr-1" />}
+                                            FEC: {application.foodEstablishmentCertStatus}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </motion.div>
+                  )}
 
                   <div className="mt-4 md:mt-6 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                     <h3 className="text-sm font-medium mb-3 text-gray-700">Application Details</h3>
@@ -283,8 +423,6 @@ export default function ApplicantDashboard() {
                       </div>
                     </div>
                   </div>
-
-
 
                   <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 md:gap-4">
                     <div className="flex items-center text-sm text-muted-foreground">

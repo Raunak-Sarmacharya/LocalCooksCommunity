@@ -14,6 +14,9 @@ export const applicationStatusEnum = pgEnum('application_status', ['new', 'inRev
 // Define an enum for user roles
 export const userRoleEnum = pgEnum('user_role', ['admin', 'applicant']);
 
+// Define an enum for document verification status
+export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
+
 // Define users table (for both admins and applicants)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -22,6 +25,7 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").default("applicant").notNull(),
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
+  isVerified: boolean("is_verified").default(false).notNull(),
 });
 
 // Define the applications table
@@ -36,6 +40,16 @@ export const applications = pgTable("applications", {
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
   feedback: text("feedback"),
   status: applicationStatusEnum("status").default("new").notNull(),
+  
+  // Document verification fields
+  foodSafetyLicenseUrl: text("food_safety_license_url"),
+  foodEstablishmentCertUrl: text("food_establishment_cert_url"),
+  foodSafetyLicenseStatus: documentVerificationStatusEnum("food_safety_license_status").default("pending"),
+  foodEstablishmentCertStatus: documentVerificationStatusEnum("food_establishment_cert_status").default("pending"),
+  documentsAdminFeedback: text("documents_admin_feedback"),
+  documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
+  documentsReviewedAt: timestamp("documents_reviewed_at"),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -49,7 +63,19 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
   feedback: z.string().optional(),
   userId: z.number().optional(),
-}).omit({ id: true, status: true, createdAt: true });
+  // Document fields are optional during initial application submission
+  foodSafetyLicenseUrl: z.string().optional(),
+  foodEstablishmentCertUrl: z.string().optional(),
+}).omit({ 
+  id: true, 
+  status: true, 
+  createdAt: true,
+  foodSafetyLicenseStatus: true,
+  foodEstablishmentCertStatus: true,
+  documentsAdminFeedback: true,
+  documentsReviewedBy: true,
+  documentsReviewedAt: true,
+});
 
 // Define the Zod schema for updating the status of an application
 export const updateApplicationStatusSchema = z.object({
@@ -57,10 +83,28 @@ export const updateApplicationStatusSchema = z.object({
   status: z.enum(["new", "inReview", "approved", "rejected", "cancelled"]),
 });
 
+// Schema for updating application documents
+export const updateApplicationDocumentsSchema = z.object({
+  id: z.number(),
+  foodSafetyLicenseUrl: z.string().optional(),
+  foodEstablishmentCertUrl: z.string().optional(),
+});
+
+// Schema for admin document verification updates
+export const updateDocumentVerificationSchema = z.object({
+  id: z.number(),
+  foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  documentsAdminFeedback: z.string().optional(),
+  documentsReviewedBy: z.number().optional(),
+});
+
 // Define the types
 export type Application = typeof applications.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type UpdateApplicationStatus = z.infer<typeof updateApplicationStatusSchema>;
+export type UpdateApplicationDocuments = z.infer<typeof updateApplicationDocumentsSchema>;
+export type UpdateDocumentVerification = z.infer<typeof updateDocumentVerificationSchema>;
 
 // Schema for inserting users
 export const insertUserSchema = z.object({
@@ -73,3 +117,6 @@ export const insertUserSchema = z.object({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Remove old document verification schemas and types since they're now part of applications
+// The document verification functionality is now integrated into the applications table

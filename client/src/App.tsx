@@ -12,6 +12,7 @@ import Admin from "@/pages/Admin";
 import AdminLogin from "@/pages/AdminLogin";
 import AuthPage from "@/pages/auth-page";
 import ApplicantDashboard from "@/pages/ApplicantDashboard";
+import DocumentVerification from "@/pages/DocumentVerification";
 import NotFound from "@/pages/not-found";
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/success" component={Success} />
       <Route path="/auth" component={AuthPage} />
       <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
+      <ProtectedRoute path="/document-verification" component={DocumentVerification} />
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin">
         <AdminProtectedRoute>
