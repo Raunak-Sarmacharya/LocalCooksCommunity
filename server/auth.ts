@@ -89,74 +89,108 @@ export function setupAuth(app: Express) {
 
   // Configure Google OAuth Strategy if credentials are available
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    // Determine callback URL based on environment
+    const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL || 
+      (process.env.NODE_ENV === 'production' 
+        ? 'https://your-domain.com/api/auth/google/callback'
+        : 'http://localhost:5000/api/auth/google/callback');
+
     passport.use(
       new GoogleStrategy(
         {
           clientID: process.env.GOOGLE_CLIENT_ID,
           clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          callbackURL: process.env.GOOGLE_CALLBACK_URL || "/api/auth/google/callback",
+          callbackURL: googleCallbackURL,
           scope: ["profile", "email"]
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
+            console.log('Google OAuth callback - Profile received:', {
+              id: profile.id,
+              email: profile.emails?.[0]?.value,
+              name: profile.displayName
+            });
+
             // Check if user exists
             let user = await storage.getUserByOAuthId("google", profile.id);
             
             if (!user) {
               // Create a new user
-              user = await storage.createOAuthUser({
+              const userData = {
                 oauth_provider: "google",
                 oauth_id: profile.id,
                 username: profile.emails?.[0]?.value || `google_${profile.id}`,
-                role: "applicant",
+                role: "applicant" as const,
                 profile_data: JSON.stringify(profile)
-              });
+              };
+
+              console.log('Creating new Google OAuth user:', userData.username);
+              user = await storage.createOAuthUser(userData);
             }
             
+            console.log('Google OAuth authentication successful for user:', user.id);
             return done(null, user);
           } catch (error) {
+            console.error('Google OAuth error:', error);
             return done(error as Error);
           }
         }
       )
     );
-    console.log("Google OAuth strategy configured");
+    console.log(`Google OAuth strategy configured with callback: ${googleCallbackURL}`);
   } else {
     console.log("Google OAuth strategy not configured - missing environment variables");
   }
 
   // Configure Facebook OAuth Strategy if credentials are available
   if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
+    // Determine callback URL based on environment
+    const facebookCallbackURL = process.env.FACEBOOK_CALLBACK_URL || 
+      (process.env.NODE_ENV === 'production' 
+        ? 'https://your-domain.com/api/auth/facebook/callback'
+        : 'http://localhost:5000/api/auth/facebook/callback');
+
     passport.use(
       new FacebookStrategy(
         {
           clientID: process.env.FACEBOOK_CLIENT_ID,
           clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-          callbackURL: process.env.FACEBOOK_CALLBACK_URL || "/api/auth/facebook/callback",
-          profileFields: ["id", "emails", "name"]
+          callbackURL: facebookCallbackURL,
+          profileFields: ["id", "emails", "name", "displayName"]
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
+            console.log('Facebook OAuth callback - Profile received:', {
+              id: profile.id,
+              email: profile.emails?.[0]?.value,
+              name: profile.displayName
+            });
+
             let user = await storage.getUserByOAuthId("facebook", profile.id);
             
             if (!user) {
-              user = await storage.createOAuthUser({
+              const userData = {
                 oauth_provider: "facebook",
                 oauth_id: profile.id,
                 username: profile.emails?.[0]?.value || `facebook_${profile.id}`,
-                role: "applicant",
+                role: "applicant" as const,
                 profile_data: JSON.stringify(profile)
-              });
+              };
+
+              console.log('Creating new Facebook OAuth user:', userData.username);
+              user = await storage.createOAuthUser(userData);
             }
             
+            console.log('Facebook OAuth authentication successful for user:', user.id);
             return done(null, user);
           } catch (error) {
+            console.error('Facebook OAuth error:', error);
             return done(error as Error);
           }
         }
       )
     );
-    console.log("Facebook OAuth strategy configured");
+    console.log(`Facebook OAuth strategy configured with callback: ${facebookCallbackURL}`);
   } else {
     console.log("Facebook OAuth strategy not configured - missing environment variables");
   }
