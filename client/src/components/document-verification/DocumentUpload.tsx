@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
+import { storage } from "../../../firebase"; // adjust path if needed
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export default function DocumentUpload() {
   const { verification, isLoading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
@@ -38,6 +40,14 @@ export default function DocumentUpload() {
   
   // Use URL method by default for consistency across all environments
   const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('url');
+  const [uploading, setUploading] = useState(false);
+
+  // Firebase upload helper
+  async function uploadToFirebase(file: File): Promise<string> {
+    const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+    await uploadBytes(storageRef, file);
+    return await getDownloadURL(storageRef);
+  }
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -100,18 +110,10 @@ export default function DocumentUpload() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     const newErrors: Record<string, string> = {};
-    
-    // Prevent file uploads in production
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && uploadMethod === 'file') {
-      newErrors.production = "File uploads are not supported in production. Please use the URL tab to provide document links.";
-      setErrors(newErrors);
-      return;
-    }
-    
+
     if (uploadMethod === 'file') {
       // Validate files
       if (!foodSafetyFile && !verification?.foodSafetyLicenseUrl) {
@@ -124,35 +126,40 @@ export default function DocumentUpload() {
       } else if (foodSafetyLicenseUrl.trim() && !validateUrl(foodSafetyLicenseUrl)) {
         newErrors.foodSafetyUrl = "Please enter a valid URL";
       }
-
       if (foodEstablishmentCertUrl.trim() && !validateUrl(foodEstablishmentCertUrl)) {
         newErrors.foodEstablishmentUrl = "Please enter a valid URL";
       }
     }
-
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
-
     setErrors({});
 
-    if (uploadMethod === 'file' && window.location.hostname === 'localhost') {
-      // Prepare form data for file uploads (development only)
-      const formData = new FormData();
-      if (foodSafetyFile) {
-        formData.append('foodSafetyLicense', foodSafetyFile);
-      }
-      if (foodEstablishmentFile) {
-        formData.append('foodEstablishmentCert', foodEstablishmentFile);
-      }
-
-      if (verification) {
-        // Update existing verification
-        updateMutation.mutate(formData as any);
-      } else {
-        // Create new verification
-        createMutation.mutate(formData as any);
+    if (uploadMethod === 'file') {
+      try {
+        setUploading(true);
+        let foodSafetyUrl = verification?.foodSafetyLicenseUrl || "";
+        let foodEstablishmentUrl = verification?.foodEstablishmentCertUrl || "";
+        if (foodSafetyFile) {
+          foodSafetyUrl = await uploadToFirebase(foodSafetyFile);
+        }
+        if (foodEstablishmentFile) {
+          foodEstablishmentUrl = await uploadToFirebase(foodEstablishmentFile);
+        }
+        const urlData = {
+          ...(foodSafetyUrl && { foodSafetyLicenseUrl: foodSafetyUrl }),
+          ...(foodEstablishmentUrl && { foodEstablishmentCertUrl: foodEstablishmentUrl })
+        };
+        if (verification) {
+          updateMutation.mutate(urlData as any);
+        } else {
+          createMutation.mutate(urlData as any);
+        }
+      } catch (err: any) {
+        setErrors({ production: "Failed to upload file(s) to cloud storage. Please try again or use the URL method." });
+      } finally {
+        setUploading(false);
       }
     } else {
       // Prepare JSON data for URL submissions
@@ -160,12 +167,9 @@ export default function DocumentUpload() {
         ...(foodSafetyLicenseUrl.trim() && { foodSafetyLicenseUrl: foodSafetyLicenseUrl.trim() }),
         ...(foodEstablishmentCertUrl.trim() && { foodEstablishmentCertUrl: foodEstablishmentCertUrl.trim() })
       };
-
       if (verification) {
-        // Update existing verification with URLs
         updateMutation.mutate(urlData as any);
       } else {
-        // Create new verification with URLs
         createMutation.mutate(urlData as any);
       }
     }
@@ -421,7 +425,7 @@ export default function DocumentUpload() {
             </TabsList>
 
             {/* Production warning for file uploads */}
-            {window.location.hostname !== 'localhost' && uploadMethod === 'file' && (
+            {false && window.location.hostname !== 'localhost' && uploadMethod === 'file' && (
               <Alert className="mt-4 border-amber-200 bg-amber-50">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-amber-800">
@@ -659,9 +663,9 @@ export default function DocumentUpload() {
               <Button 
                 type="submit" 
                 className="w-full"
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || uploading}
               >
-                {createMutation.isPending || updateMutation.isPending ? (
+                {(createMutation.isPending || updateMutation.isPending || uploading) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {verification ? "Updating..." : "Uploading..."}
