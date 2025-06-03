@@ -35,7 +35,12 @@ export default function DocumentUpload() {
   const [foodEstablishmentCertUrl, setFoodEstablishmentCertUrl] = useState("");
   
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('file');
+  
+  // Detect if we're in production environment (deployed app)
+  const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  
+  // Default to URL mode in production, file mode in development
+  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>(isProduction ? 'url' : 'file');
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -103,6 +108,13 @@ export default function DocumentUpload() {
     
     const newErrors: Record<string, string> = {};
     
+    // Prevent file uploads in production
+    if (isProduction && uploadMethod === 'file') {
+      newErrors.production = "File uploads are not supported in production. Please use the URL tab to provide document links.";
+      setErrors(newErrors);
+      return;
+    }
+    
     if (uploadMethod === 'file') {
       // Validate files
       if (!foodSafetyFile && !verification?.foodSafetyLicenseUrl) {
@@ -131,7 +143,7 @@ export default function DocumentUpload() {
     // Prepare form data
     const formData = new FormData();
 
-    if (uploadMethod === 'file') {
+    if (uploadMethod === 'file' && !isProduction) {
       if (foodSafetyFile) {
         formData.append('foodSafetyLicense', foodSafetyFile);
       }
@@ -412,6 +424,16 @@ export default function DocumentUpload() {
               </TabsTrigger>
             </TabsList>
 
+            {/* Production warning for file uploads */}
+            {isProduction && uploadMethod === 'file' && (
+              <Alert className="mt-4 border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  <strong>File uploads are not available in production.</strong> Please use the "Provide URLs" tab to submit links to your documents stored on cloud services (Google Drive, Dropbox, etc.). Make sure your document links are publicly accessible.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6 mt-6">
               <TabsContent value="file" className="space-y-6 mt-0">
                 {/* Food Safety License File Upload */}
@@ -623,6 +645,16 @@ export default function DocumentUpload() {
                   <Award className="h-4 w-4" />
                   <AlertDescription>
                     <strong>Admin Feedback:</strong> {verification.documentsAdminFeedback}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Production error */}
+              {errors.production && (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800">
+                    {errors.production}
                   </AlertDescription>
                 </Alert>
               )}

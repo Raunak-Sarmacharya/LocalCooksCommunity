@@ -1327,48 +1327,10 @@ app.get("/api/files/documents/:filename", async (req, res) => {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const filename = req.params.filename;
-    const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: "File not found" });
-    }
-
-    // Extract userId from filename (format: userId_documentType_timestamp_originalname)
-    const fileUserId = parseInt(filename.split('_')[0]);
-    
-    // Get user to check if admin
-    const user = await getUser(userId);
-    
-    // Allow access if user owns the file or is admin
-    if (parseInt(userId) !== fileUserId && user?.role !== "admin") {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    // Get file info
-    const stat = fs.statSync(filePath);
-    const ext = path.extname(filename).toLowerCase();
-    
-    // Set appropriate content type
-    let contentType = 'application/octet-stream';
-    if (ext === '.pdf') {
-      contentType = 'application/pdf';
-    } else if (['.jpg', '.jpeg'].includes(ext)) {
-      contentType = 'image/jpeg';
-    } else if (ext === '.png') {
-      contentType = 'image/png';
-    } else if (ext === '.webp') {
-      contentType = 'image/webp';
-    }
-
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    
-    // Stream the file
-    const readStream = fs.createReadStream(filePath);
-    readStream.pipe(res);
+    // File serving not supported in serverless environment
+    return res.status(501).json({ 
+      message: "File serving not available in production environment. Please use external URLs for document storage." 
+    });
   } catch (error) {
     console.error("Error serving file:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -1380,158 +1342,86 @@ app.get("/api/files/documents/:filename", async (req, res) => {
 // ===============================
 
 // Update application documents endpoint (for approved applicants)
-app.patch("/api/applications/:id/documents", 
-  upload.fields([
-    { name: 'foodSafetyLicense', maxCount: 1 },
-    { name: 'foodEstablishmentCert', maxCount: 1 }
-  ]), 
-  async (req, res) => {
-    try {
-      // Check if user is authenticated
-      const userId = req.session.userId || req.headers['x-user-id'];
-      if (!userId) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      const applicationId = parseInt(req.params.id);
-      if (isNaN(applicationId)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-
-      // Get the application to verify ownership and status
-      let application = null;
-      if (pool) {
-        const result = await pool.query(`
-          SELECT * FROM applications WHERE id = $1
-        `, [applicationId]);
-        application = result.rows[0];
-      }
-
-      if (!application) {
-        // Clean up uploaded files
-        if (req.files) {
-          Object.values(req.files).flat().forEach(file => {
-            try {
-              fs.unlinkSync(file.path);
-            } catch (e) {
-              console.error('Error cleaning up file:', e);
-            }
-          });
-        }
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      // Get user to check if admin
-      const user = await getUser(userId);
-      
-      // Check if user owns the application or is admin
-      if (application.user_id !== parseInt(userId) && user?.role !== "admin") {
-        // Clean up uploaded files
-        if (req.files) {
-          Object.values(req.files).flat().forEach(file => {
-            try {
-              fs.unlinkSync(file.path);
-            } catch (e) {
-              console.error('Error cleaning up file:', e);
-            }
-          });
-        }
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      const files = req.files;
-      const updateData = {};
-
-      // Handle food safety license file
-      if (files && files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-        // Delete old file if it exists and is a file path (not URL)
-        if (application.food_safety_license_url && application.food_safety_license_url.startsWith('/api/files/')) {
-          const oldFilename = application.food_safety_license_url.split('/').pop();
-          if (oldFilename) {
-            const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
-            try {
-              fs.unlinkSync(oldFilePath);
-            } catch (e) {
-              console.error('Error deleting old file:', e);
-            }
-          }
-        }
-        
-        const filename = files.foodSafetyLicense[0].filename;
-        updateData.food_safety_license_url = `/api/files/documents/${filename}`;
-        updateData.food_safety_license_status = 'pending';
-      }
-
-      // Handle food establishment cert file  
-      if (files && files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-        // Delete old file if it exists and is a file path (not URL)
-        if (application.food_establishment_cert_url && application.food_establishment_cert_url.startsWith('/api/files/')) {
-          const oldFilename = application.food_establishment_cert_url.split('/').pop();
-          if (oldFilename) {
-            const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
-            try {
-              fs.unlinkSync(oldFilePath);
-            } catch (e) {
-              console.error('Error deleting old file:', e);
-            }
-          }
-        }
-        
-        const filename = files.foodEstablishmentCert[0].filename;
-        updateData.food_establishment_cert_url = `/api/files/documents/${filename}`;
-        updateData.food_establishment_cert_status = 'pending';
-      }
-
-      // Handle URL inputs if no files uploaded
-      if (req.body.foodSafetyLicenseUrl && !updateData.food_safety_license_url) {
-        updateData.food_safety_license_url = req.body.foodSafetyLicenseUrl;
-        updateData.food_safety_license_status = 'pending';
-      }
-
-      if (req.body.foodEstablishmentCertUrl && !updateData.food_establishment_cert_url) {
-        updateData.food_establishment_cert_url = req.body.foodEstablishmentCertUrl;
-        updateData.food_establishment_cert_status = 'pending';
-      }
-
-      // Update the application documents in database
-      if (pool && Object.keys(updateData).length > 0) {
-        const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-        const values = [applicationId, ...Object.values(updateData)];
-        
-        const result = await pool.query(`
-          UPDATE applications 
-          SET ${setClause}
-          WHERE id = $1
-          RETURNING *;
-        `, values);
-
-        if (result.rowCount === 0) {
-          return res.status(404).json({ message: "Failed to update application documents" });
-        }
-
-        const updatedApplication = result.rows[0];
-        return res.status(200).json(updatedApplication);
-      }
-
-      return res.status(400).json({ message: "No valid documents provided" });
-    } catch (error) {
-      console.error("Error updating application documents:", error);
-      
-      // Clean up uploaded files on error
-      if (req.files) {
-        Object.values(req.files).flat().forEach(file => {
-          try {
-            fs.unlinkSync(file.path);
-          } catch (e) {
-            console.error('Error cleaning up file:', e);
-          }
-        });
-      }
-      
-      return res.status(500).json({ message: "Internal server error" });
+app.patch("/api/applications/:id/documents", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const userId = req.session.userId || req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
     }
+
+    const applicationId = parseInt(req.params.id);
+    if (isNaN(applicationId)) {
+      return res.status(400).json({ message: "Invalid application ID" });
+    }
+
+    // Get the application to verify ownership and status
+    let application = null;
+    if (pool) {
+      const result = await pool.query(`
+        SELECT * FROM applications WHERE id = $1
+      `, [applicationId]);
+      application = result.rows[0];
+    }
+
+    if (!application) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    // Get user to check if admin
+    const user = await getUser(userId);
+    
+    // Check if user owns the application or is admin
+    if (application.user_id !== parseInt(userId) && user?.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const updateData = {};
+
+    // Handle URL inputs only (file uploads not supported in serverless environment)
+    if (req.body.foodSafetyLicenseUrl) {
+      updateData.food_safety_license_url = req.body.foodSafetyLicenseUrl;
+      updateData.food_safety_license_status = 'pending';
+    }
+
+    if (req.body.foodEstablishmentCertUrl) {
+      updateData.food_establishment_cert_url = req.body.foodEstablishmentCertUrl;
+      updateData.food_establishment_cert_status = 'pending';
+    }
+
+    // Check if any document data was provided
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ 
+        message: "No document URLs provided. Please provide document URLs for upload." 
+      });
+    }
+
+    // Update the application documents in database
+    if (pool) {
+      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+      const values = [applicationId, ...Object.values(updateData)];
+      
+      const result = await pool.query(`
+        UPDATE applications 
+        SET ${setClause}
+        WHERE id = $1
+        RETURNING *;
+      `, values);
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Failed to update application documents" });
+      }
+
+      const updatedApplication = result.rows[0];
+      return res.status(200).json(updatedApplication);
+    }
+
+    return res.status(500).json({ message: "Database not available" });
+  } catch (error) {
+    console.error("Error updating application documents:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
-);
+});
 
 // Update application document verification status (admin only)
 app.patch("/api/applications/:id/document-verification", async (req, res) => {
