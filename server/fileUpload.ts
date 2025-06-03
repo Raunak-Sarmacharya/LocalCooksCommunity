@@ -68,4 +68,34 @@ export const deleteFile = (filePath: string): void => {
 // Helper function to get file URL
 export const getFileUrl = (filename: string): string => {
   return `/api/files/documents/${filename}`;
+};
+
+// Helper function to clean up application documents when application is cancelled
+export const cleanupApplicationDocuments = (application: { 
+  foodSafetyLicenseUrl?: string | null, 
+  foodEstablishmentCertUrl?: string | null 
+}): void => {
+  try {
+    // Clean up food safety license file
+    if (application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith('/api/files/')) {
+      const filename = application.foodSafetyLicenseUrl.split('/').pop();
+      if (filename) {
+        const filePath = path.join(uploadsDir, filename);
+        deleteFile(filePath);
+        console.log(`Deleted food safety license file: ${filename}`);
+      }
+    }
+
+    // Clean up food establishment certificate file
+    if (application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith('/api/files/')) {
+      const filename = application.foodEstablishmentCertUrl.split('/').pop();
+      if (filename) {
+        const filePath = path.join(uploadsDir, filename);
+        deleteFile(filePath);
+        console.log(`Deleted food establishment certificate file: ${filename}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error cleaning up application documents:', error);
+  }
 }; 
