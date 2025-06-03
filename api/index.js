@@ -1550,6 +1550,20 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       updated_at: new Date()
     };
 
+    // Map camelCase field names to snake_case database column names
+    const fieldMapping = {
+      'foodSafetyLicenseStatus': 'food_safety_license_status',
+      'foodEstablishmentCertStatus': 'food_establishment_cert_status',
+      'documentsAdminFeedback': 'admin_feedback'
+    };
+
+    // Apply field mapping
+    const mappedUpdateData = { reviewed_by: parseInt(userId), reviewed_at: new Date(), updated_at: new Date() };
+    Object.keys(req.body).forEach(key => {
+      const mappedKey = fieldMapping[key] || key;
+      mappedUpdateData[mappedKey] = req.body[key];
+    });
+
     // Check if document verification record exists
     const existingVerification = await pool.query(`
       SELECT * FROM document_verifications WHERE user_id = $1
@@ -1558,8 +1572,8 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
     let result;
     if (existingVerification.rows.length > 0) {
       // Update existing record
-      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-      const values = [targetUserId, ...Object.values(updateData)];
+      const setClause = Object.keys(mappedUpdateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+      const values = [targetUserId, ...Object.values(mappedUpdateData)];
       
       result = await pool.query(`
         UPDATE document_verifications 
@@ -1569,9 +1583,9 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       `, values);
     } else {
       // Insert new record with admin data
-      const columns = ['user_id', ...Object.keys(updateData)];
+      const columns = ['user_id', ...Object.keys(mappedUpdateData)];
       const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
-      const values = [targetUserId, ...Object.values(updateData)];
+      const values = [targetUserId, ...Object.values(mappedUpdateData)];
       
       result = await pool.query(`
         INSERT INTO document_verifications (${columns.join(', ')})

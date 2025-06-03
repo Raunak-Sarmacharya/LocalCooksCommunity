@@ -168,14 +168,7 @@ function AdminDashboard() {
         customHeaders['X-User-ID'] = user.id.toString();
       }
 
-      // Map frontend field names to database column names
-      const fieldMapping: Record<string, string> = {
-        'foodSafetyLicenseStatus': 'food_safety_license_status',
-        'foodEstablishmentCertStatus': 'food_establishment_cert_status'
-      };
-
-      const dbField = fieldMapping[field] || field;
-      const updateData = { [dbField]: status };
+      const updateData = { [field]: status };
       const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData, customHeaders);
       return response.json();
     },
