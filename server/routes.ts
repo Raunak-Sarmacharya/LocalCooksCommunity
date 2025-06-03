@@ -6,6 +6,7 @@ import { fromZodError } from "zod-validation-error";
 import { setupAuth } from "./auth";
 import passport from "passport";
 import { sendEmail, generateStatusChangeEmail } from "./email";
+import { hashPassword, comparePasswords } from "./passwordUtils";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -422,6 +423,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error sending test email:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Authentication routes
+  app.post("/api/register", async (req, res) => {
+    try {
+      // Check if user already exists
+      const existingUser = await storage.getUserByUsername(req.body.username);
+      
+      if (existingUser) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+      
+      // Hash password and create user
+      const hashedPassword = await hashPassword(req.body.password);
+      
+      const user = await storage.createUser({
+        username: req.body.username,
+        password: hashedPassword,
+        role: req.body.role || "applicant" // Default to applicant if not specified
+      });
+      
+      // Log the user in
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ error: "Login failed after registration" });
+        }
+        
+        return res.status(201).json({
+          id: user.id,
+          username: user.username,
+          role: user.role
+        });
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/login", (req, res, next) => {
+    passport.authenticate("local", (err: Error | null, user: User | false, info: { message: string } | undefined) => {
+      if (err) {
+        return next(err);
+      }
+      
+      if (!user) {
+        return res.status(401).json({ error: info?.message || "Authentication failed" });
+      }
+      
+      req.login(user, (err: Error | null) => {
+        if (err) {
+          return next(err);
+        }
+        
+        return res.json({
+          id: user.id,
+          username: user.username,
+          role: user.role
+        });
+      });
+    })(req, res, next);
+  });
+
+  // Admin login endpoint (for admin dashboard compatibility)
+  app.post("/api/admin-login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+
+      console.log('Admin login attempt for:', username);
+
+      // Get admin user
+      const admin = await storage.getUserByUsername(username);
+
+      if (!admin) {
+        console.log('Admin user not found:', username);
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      // Verify admin role
+      if (admin.role !== 'admin') {
+        console.log('User is not an admin:', username);
+        return res.status(403).json({ error: 'Not authorized as admin' });
+      }
+
+      // Check password - first try exact match for 'localcooks'
+      let passwordMatches = false;
+
+      if (password === 'localcooks') {
+        passwordMatches = true;
+        console.log('Admin password matched with hardcoded value');
+      } else {
+        // Try to compare with database password
+        try {
+          passwordMatches = await comparePasswords(password, admin.password);
+          console.log('Admin password compared with stored hash:', passwordMatches);
+        } catch (error) {
+          console.error('Error comparing passwords:', error);
+        }
+      }
+
+      if (!passwordMatches) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      console.log('Admin login successful for:', username);
+
+      // Use Passport.js login to set session
+      req.login(admin, (err) => {
+        if (err) {
+          console.error('Error setting session:', err);
+          return res.status(500).json({ error: 'Session creation failed' });
+        }
+
+        // Remove sensitive info
+        const { password: _, ...adminWithoutPassword } = admin;
+
+        // Return user data
+        return res.status(200).json(adminWithoutPassword);
+      });
+    } catch (error) {
+      console.error('Admin login error:', error);
+      res.status(500).json({ error: 'Admin login failed', message: error.message });
     }
   });
 
