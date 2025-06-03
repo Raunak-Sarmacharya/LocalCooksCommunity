@@ -168,7 +168,14 @@ function AdminDashboard() {
         customHeaders['X-User-ID'] = user.id.toString();
       }
 
-      const updateData = { [field]: status };
+      // Map frontend field names to database column names
+      const fieldMapping: Record<string, string> = {
+        'foodSafetyLicenseStatus': 'food_safety_license_status',
+        'foodEstablishmentCertStatus': 'food_establishment_cert_status'
+      };
+
+      const dbField = fieldMapping[field] || field;
+      const updateData = { [dbField]: status };
       const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData, customHeaders);
       return response.json();
     },
@@ -534,7 +541,7 @@ function AdminDashboard() {
                           <div className="space-y-2">
                             <h5 className="text-xs font-medium text-gray-600">Food Safety License</h5>
                             {app.foodSafetyLicenseUrl ? (
-                              <div className="space-y-1">
+                              <div className="space-y-2">
                                 <a 
                                   href={app.foodSafetyLicenseUrl} 
                                   target="_blank" 
@@ -547,6 +554,25 @@ function AdminDashboard() {
                                 <div>
                                   {getDocumentStatusBadge(app.foodSafetyLicenseStatus)}
                                 </div>
+                                {/* FSL Approval Controls */}
+                                <div className="flex gap-1 pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
+                                    className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
+                                    className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
                               </div>
                             ) : (
                               <span className="text-gray-500 text-sm">No document uploaded</span>
@@ -557,7 +583,7 @@ function AdminDashboard() {
                           <div className="space-y-2">
                             <h5 className="text-xs font-medium text-gray-600">Food Establishment Certificate</h5>
                             {app.foodEstablishmentCertUrl ? (
-                              <div className="space-y-1">
+                              <div className="space-y-2">
                                 <a 
                                   href={app.foodEstablishmentCertUrl} 
                                   target="_blank" 
@@ -570,51 +596,30 @@ function AdminDashboard() {
                                 <div>
                                   {getDocumentStatusBadge(app.foodEstablishmentCertStatus)}
                                 </div>
+                                {/* FEC Approval Controls */}
+                                <div className="flex gap-1 pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
+                                    className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
+                                    className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
                               </div>
                             ) : (
                               <span className="text-gray-500 text-sm">No document uploaded</span>
                             )}
                           </div>
-                        </div>
-
-                        {/* Document Verification Controls */}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
-                            className="text-green-600 border-green-200 hover:bg-green-50"
-                          >
-                            Approve FSL
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                          >
-                            Reject FSL
-                          </Button>
-                          {app.foodEstablishmentCertUrl && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
-                                className="text-green-600 border-green-200 hover:bg-green-50"
-                              >
-                                Approve FEC
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
-                                className="text-red-600 border-red-200 hover:bg-red-50"
-                              >
-                                Reject FEC
-                              </Button>
-                            </>
-                          )}
                         </div>
 
                         {/* Admin Feedback */}
