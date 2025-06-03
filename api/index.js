@@ -330,9 +330,9 @@ async function initializeDatabase() {
         );
       `);
 
-      // Create document_verification table
+      // Create document_verifications table
       await pool.query(`
-        CREATE TABLE IF NOT EXISTS document_verification (
+        CREATE TABLE IF NOT EXISTS document_verifications (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id),
           food_safety_license_url TEXT,
@@ -343,8 +343,7 @@ async function initializeDatabase() {
           reviewed_by INTEGER REFERENCES users(id),
           reviewed_at TIMESTAMP WITH TIME ZONE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(user_id)
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
       `);
 
@@ -402,9 +401,9 @@ async function initializeDatabase() {
           );
         `);
 
-        // Create document_verification table
+        // Create document_verifications table
         await pool.query(`
-          CREATE TABLE IF NOT EXISTS document_verification (
+          CREATE TABLE IF NOT EXISTS document_verifications (
             id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
             food_safety_license_url TEXT,
@@ -415,8 +414,7 @@ async function initializeDatabase() {
             reviewed_by INTEGER REFERENCES users(id),
             reviewed_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id)
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
         `);
 
@@ -978,7 +976,7 @@ app.get('/api/applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
-      // Join with document_verification table to get document data
+      // Join with document_verifications table to get document data
       const result = await pool.query(`
         SELECT a.*, u.username as applicant_username,
                dv.food_safety_license_url,
@@ -990,7 +988,7 @@ app.get('/api/applications', async (req, res) => {
                dv.reviewed_at as documents_reviewed_at
         FROM applications a
         JOIN users u ON a.user_id = u.id
-        LEFT JOIN document_verification dv ON a.user_id = dv.user_id
+        LEFT JOIN document_verifications dv ON a.user_id = dv.user_id
         ORDER BY a.created_at DESC;
       `);
 
@@ -1046,7 +1044,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
-      // Join with document_verification table to get document data
+      // Join with document_verifications table to get document data
       const result = await pool.query(`
         SELECT a.*, 
                dv.food_safety_license_url,
@@ -1057,7 +1055,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
                dv.reviewed_by as documents_reviewed_by,
                dv.reviewed_at as documents_reviewed_at
         FROM applications a
-        LEFT JOIN document_verification dv ON a.user_id = dv.user_id
+        LEFT JOIN document_verifications dv ON a.user_id = dv.user_id
         WHERE a.user_id = $1
         ORDER BY a.created_at DESC;
       `, [req.session.userId]);
@@ -1450,11 +1448,11 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     // Add updated_at timestamp
     updateData.updated_at = new Date();
 
-    // Update or insert into document_verification table
+    // Update or insert into document_verifications table
     if (pool) {
       // Check if document verification record exists for this user
       const existingVerification = await pool.query(`
-        SELECT * FROM document_verification WHERE user_id = $1
+        SELECT * FROM document_verifications WHERE user_id = $1
       `, [application.user_id]);
 
       let result;
@@ -1464,7 +1462,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
         const values = [application.user_id, ...Object.values(updateData)];
         
         result = await pool.query(`
-          UPDATE document_verification 
+          UPDATE document_verifications 
           SET ${setClause}
           WHERE user_id = $1
           RETURNING *;
@@ -1476,7 +1474,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
         const values = [application.user_id, ...Object.values(updateData)];
         
         result = await pool.query(`
-          INSERT INTO document_verification (${columns.join(', ')})
+          INSERT INTO document_verifications (${columns.join(', ')})
           VALUES (${placeholders})
           RETURNING *;
         `, values);
@@ -1544,7 +1542,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
 
     const targetUserId = appResult.rows[0].user_id;
 
-    // Build update data for document_verification table
+    // Build update data for document_verifications table
     const updateData = {
       ...req.body,
       reviewed_by: parseInt(userId),
@@ -1554,7 +1552,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
 
     // Check if document verification record exists
     const existingVerification = await pool.query(`
-      SELECT * FROM document_verification WHERE user_id = $1
+      SELECT * FROM document_verifications WHERE user_id = $1
     `, [targetUserId]);
 
     let result;
@@ -1564,7 +1562,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       const values = [targetUserId, ...Object.values(updateData)];
       
       result = await pool.query(`
-        UPDATE document_verification 
+        UPDATE document_verifications 
         SET ${setClause}
         WHERE user_id = $1
         RETURNING *;
@@ -1576,7 +1574,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       const values = [targetUserId, ...Object.values(updateData)];
       
       result = await pool.query(`
-        INSERT INTO document_verification (${columns.join(', ')})
+        INSERT INTO document_verifications (${columns.join(', ')})
         VALUES (${placeholders})
         RETURNING *;
       `, values);
@@ -1740,7 +1738,7 @@ app.get("/api/document-verification", async (req, res) => {
 
     // Get document verification record for the user
     const result = await pool.query(`
-      SELECT * FROM document_verification WHERE user_id = $1
+      SELECT * FROM document_verifications WHERE user_id = $1
     `, [userId]);
 
     if (result.rows.length === 0) {
