@@ -19,9 +19,19 @@ type DocumentVerificationContextType = {
 
 // Helper function for file uploads
 const apiRequestFormData = async (method: string, url: string, data?: FormData) => {
+  // Always include user ID from localStorage if available (for production compatibility)
+  const userId = localStorage.getItem('userId');
+  const headers: Record<string, string> = {};
+
+  if (userId) {
+    headers['X-User-ID'] = userId;
+    console.log('Including userId in FormData request headers:', userId);
+  }
+
   const response = await fetch(url, {
     method,
     credentials: 'include',
+    headers,
     body: data,
   });
 
@@ -35,12 +45,21 @@ const apiRequestFormData = async (method: string, url: string, data?: FormData) 
 
 // Helper function for JSON requests
 const apiRequestJSON = async (method: string, url: string, data?: any) => {
+  // Always include user ID from localStorage if available (for production compatibility)
+  const userId = localStorage.getItem('userId');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (userId) {
+    headers['X-User-ID'] = userId;
+    console.log('Including userId in JSON request headers:', userId);
+  }
+
   const response = await fetch(url, {
     method,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
   });
 
@@ -64,8 +83,18 @@ export function useDocumentVerification() {
   } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
+      // Always include user ID from localStorage if available (for production compatibility)
+      const userId = localStorage.getItem('userId');
+      const headers: Record<string, string> = {};
+
+      if (userId) {
+        headers['X-User-ID'] = userId;
+        console.log('Including userId in applications query headers:', userId);
+      }
+
       const response = await fetch(queryKey[0] as string, {
         credentials: 'include',
+        headers,
       });
 
       if (!response.ok) {
