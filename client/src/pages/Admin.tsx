@@ -51,7 +51,14 @@ function AdminDashboard() {
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
     queryKey: ["/api/applications"],
     queryFn: async ({ queryKey }) => {
-      const headers: Record<string, string> = {};
+      console.log('Admin: Fetching applications data...');
+      
+      const headers: Record<string, string> = {
+        // Add cache busting headers to ensure fresh data
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      };
 
       // Include user ID in header for authentication
       if (user?.id) {
@@ -69,7 +76,7 @@ function AdminDashboard() {
       }
 
       const rawData = await response.json();
-      console.log('Raw admin application data:', rawData);
+      console.log('Admin: Fresh data fetched', rawData);
 
       // Convert snake_case to camelCase for database fields
       const normalizedData = rawData.map((app: any) => ({
@@ -95,10 +102,45 @@ function AdminDashboard() {
         documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
       }));
 
-      console.log('Normalized admin application data:', normalizedData);
+      console.log('Admin: Normalized application data', normalizedData);
       return normalizedData;
     },
     enabled: !!user, // Only run query when user is authenticated
+    // Intelligent auto-refresh for admin dashboard
+    refetchInterval: (data) => {
+      if (!data || !Array.isArray(data)) return 20000; // 20 seconds if no data or invalid data
+
+      // Check for any pending document reviews across all applications
+      const hasPendingDocumentReviews = data.some(app => 
+        app.status === "approved" && (
+          app.foodSafetyLicenseStatus === "pending" ||
+          app.foodEstablishmentCertStatus === "pending"
+        )
+      );
+
+      // Check for new applications awaiting review
+      const hasNewApplications = data.some(app => 
+        app.status === "new" || app.status === "inReview"
+      );
+
+      if (hasPendingDocumentReviews) {
+        // Very frequent updates when documents need admin review
+        return 5000; // 5 seconds - match other components
+      } else if (hasNewApplications) {
+        // Moderate frequency for general application reviews
+        return 15000; // 15 seconds
+      } else {
+        // Default case - still refresh frequently
+        return 30000; // 30 seconds
+      }
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnReconnect: true, // Refetch when network reconnects
+    // Enhanced cache invalidation strategy
+    staleTime: 0, // Consider data stale immediately - always check for updates
+    gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
   // Mutation to update application status
@@ -123,8 +165,16 @@ function AdminDashboard() {
         throw error;
       }
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+    onSuccess: async (data) => {
+      // Force comprehensive refresh after status update
+      await forceAdminRefresh();
+      
+      // Additional immediate refresh for other components that might be listening
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
+      ]);
+      
       toast({
         title: "Status updated",
         description: `Application status changed to ${data.status}. Email notification sent.`,
@@ -172,12 +222,31 @@ function AdminDashboard() {
       const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData, customHeaders);
       return response.json();
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
+    onSuccess: async (data, variables) => {
+      // Force comprehensive refresh after document status update
+      await forceAdminRefresh();
+      
+      // Additional immediate refresh for other components that might be listening
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
+      ]);
+      
+      // Additional delayed refresh to catch any async database updates
+      setTimeout(async () => {
+        await forceAdminRefresh();
+      }, 1000);
+      
       toast({
         title: "Document status updated",
-        description: "Document verification status has been updated.",
+        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. User will be notified automatically.`,
+      });
+      
+      console.log('Admin: Document status updated', {
+        applicationId: variables.id,
+        field: variables.field,
+        newStatus: variables.status,
+        timestamp: new Date().toISOString()
       });
     },
     onError: (error) => {
@@ -297,6 +366,53 @@ function AdminDashboard() {
     rejected: applications.filter(app => app.status === "rejected").length,
     cancelled: applications.filter(app => app.status === "cancelled").length,
     total: applications.length
+  };
+
+  // Enhanced force refresh function for admin
+  const forceAdminRefresh = async () => {
+    console.log('Admin: Forcing comprehensive refresh...');
+    
+    try {
+      // 1. Clear all application-related caches more aggressively
+      const cacheKeys = [
+        ["/api/applications"],
+        ["/api/applications/my-applications"],
+        ["/api/user"]
+      ];
+      
+      // Remove all related queries from cache
+      await Promise.all(cacheKeys.map(key => 
+        queryClient.removeQueries({ queryKey: key })
+      ));
+      
+      // 2. Invalidate all related queries
+      await Promise.all(cacheKeys.map(key => 
+        queryClient.invalidateQueries({ queryKey: key })
+      ));
+      
+      // 3. Force immediate refetch with fresh network requests
+      await Promise.all([
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/applications"],
+          type: 'all'
+        }),
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/applications/my-applications"],
+          type: 'all'
+        })
+      ]);
+      
+      console.log('Admin: Comprehensive refresh completed');
+    } catch (error) {
+      console.error('Admin: Force refresh failed', error);
+      // Fallback: try to refresh just the admin query
+      try {
+        await queryClient.refetchQueries({ queryKey: ["/api/applications"] });
+        console.log('Admin: Fallback refresh completed');
+      } catch (fallbackError) {
+        console.error('Admin: Fallback refresh also failed', fallbackError);
+      }
+    }
   };
 
   return (

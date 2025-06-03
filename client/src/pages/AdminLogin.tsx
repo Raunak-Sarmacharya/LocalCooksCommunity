@@ -64,6 +64,7 @@ export default function AdminLogin() {
       
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Admin login failed:', errorData);
         throw new Error(errorData.error || 'Admin login failed');
       }
       
@@ -79,8 +80,9 @@ export default function AdminLogin() {
         queryClient.setQueryData(["/api/user"], userData);
         console.log('Updated query client with user data');
         
-        // Navigate to admin dashboard
-        navigate("/admin");
+        // Force a complete page reload to ensure clean state
+        console.log('Reloading page to ensure clean authentication state...');
+        window.location.href = '/admin';
       } else {
         throw new Error('Invalid admin user data returned');
       }
@@ -94,7 +96,12 @@ export default function AdminLogin() {
 
   // Redirect if already logged in
   if (user && !isLoading) {
-    return <Redirect to="/admin" />;
+    if (user.role === 'admin') {
+      return <Redirect to="/admin" />;
+    } else {
+      // Non-admin users should be redirected away from admin login
+      return <Redirect to="/dashboard" />;
+    }
   }
 
   return (

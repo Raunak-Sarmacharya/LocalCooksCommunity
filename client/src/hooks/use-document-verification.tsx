@@ -6,6 +6,7 @@ import {
 import { Application } from "@shared/schema";
 import { queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect, useRef } from "react";
 
 type DocumentVerificationContextType = {
   verification: Application | null;
@@ -15,6 +16,7 @@ type DocumentVerificationContextType = {
   updateMutation: UseMutationResult<Application, Error, FormData | Record<string, string>>;
   adminUpdateMutation: UseMutationResult<Application, Error, any>;
   refetch: () => void;
+  forceRefresh: () => void;
 };
 
 // Helper function for file uploads
@@ -73,6 +75,7 @@ const apiRequestJSON = async (method: string, url: string, data?: any) => {
 
 export function useDocumentVerification() {
   const { toast } = useToast();
+  const prevVerificationRef = useRef<Application | null>(null);
 
   // Get user's applications to find the one for document verification
   const {
@@ -83,9 +86,16 @@ export function useDocumentVerification() {
   } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
+      console.log('Document verification: Fetching applications data...');
+      
       // Always include user ID from localStorage if available (for production compatibility)
       const userId = localStorage.getItem('userId');
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        // Add cache busting headers to ensure fresh data
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      };
 
       if (userId) {
         headers['X-User-ID'] = userId;
@@ -103,6 +113,7 @@ export function useDocumentVerification() {
       }
 
       const rawData = await response.json();
+      console.log('Document verification: Fresh data fetched', rawData);
       
       // Convert snake_case to camelCase for database fields
       const normalizedData = rawData.map((app: any) => ({
@@ -129,13 +140,153 @@ export function useDocumentVerification() {
 
       return normalizedData;
     },
-    // Add polling to ensure real-time updates
-    refetchInterval: 30000, // Refetch every 30 seconds
+    // Enhanced auto-refresh logic for document verification with more aggressive refresh
+    refetchInterval: (data) => {
+      if (!data || !Array.isArray(data)) {
+        // No data or invalid data, check frequently
+        return 20000; // 20 seconds
+      }
+
+      // Find the approved application for document verification
+      const verification = data.find(app => app.status === "approved");
+      
+      if (!verification) {
+        // No approved application, check moderately
+        return 30000; // 30 seconds
+      }
+
+      // Check if any documents are pending review
+      const hasPendingDocuments = 
+        verification.foodSafetyLicenseStatus === "pending" ||
+        verification.foodEstablishmentCertStatus === "pending";
+      
+      // Check if documents need attention (rejected)
+      const hasRejectedDocuments = 
+        verification.foodSafetyLicenseStatus === "rejected" ||
+        verification.foodEstablishmentCertStatus === "rejected";
+
+      // Check if all uploaded documents are approved
+      const isFullyApproved = 
+        verification.foodSafetyLicenseStatus === "approved" && 
+        (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
+
+      if (hasPendingDocuments) {
+        // Very frequent updates when documents are under review (admin might be reviewing)
+        console.log('Document verification: Using aggressive refresh for pending documents');
+        return 5000; // 5 seconds - very aggressive for immediate updates
+      } else if (hasRejectedDocuments) {
+        // Moderate frequency when documents need resubmission
+        return 15000; // 15 seconds
+      } else if (isFullyApproved) {
+        // Still refresh frequently even when approved to catch any admin changes
+        return 30000; // 30 seconds
+      } else {
+        // Default case - moderate refresh
+        return 20000; // 20 seconds
+      }
+    },
     refetchIntervalInBackground: true, // Keep refetching even when tab is not active
+    refetchOnWindowFocus: true, // Refetch when user comes back to the tab
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnReconnect: true, // Refetch when network reconnects
+    // Enhanced cache invalidation strategy
+    staleTime: 0, // Consider data stale immediately - always check for updates
+    gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
   // Find the most recent approved application for document verification
   const verification = applications?.find(app => app.status === "approved") || null;
+
+  // Check for status changes and show subtle notifications
+  useEffect(() => {
+    if (verification && prevVerificationRef.current) {
+      const prev = prevVerificationRef.current;
+      
+      // Check for status changes
+      if (prev.foodSafetyLicenseStatus !== verification.foodSafetyLicenseStatus) {
+        if (verification.foodSafetyLicenseStatus === "approved") {
+          toast({
+            title: "Document Approved ✅",
+            description: "Your Food Safety License has been approved!",
+          });
+        } else if (verification.foodSafetyLicenseStatus === "rejected") {
+          toast({
+            title: "Document Needs Attention",
+            description: "Your Food Safety License requires resubmission.",
+            variant: "destructive",
+          });
+        }
+      }
+      
+      if (prev.foodEstablishmentCertStatus !== verification.foodEstablishmentCertStatus) {
+        if (verification.foodEstablishmentCertStatus === "approved") {
+          toast({
+            title: "Document Approved ✅",
+            description: "Your Food Establishment Certificate has been approved!",
+          });
+        } else if (verification.foodEstablishmentCertStatus === "rejected") {
+          toast({
+            title: "Document Needs Attention",
+            description: "Your Food Establishment Certificate requires resubmission.",
+            variant: "destructive",
+          });
+        }
+      }
+    }
+    
+    // Update the ref for next comparison
+    prevVerificationRef.current = verification;
+  }, [verification, toast]);
+
+  // Enhanced force refresh function that ensures fresh data
+  const forceRefresh = async () => {
+    console.log('Document verification: Forcing comprehensive refresh...');
+    
+    try {
+      // 1. Clear all application-related caches more aggressively
+      const cacheKeys = [
+        ["/api/applications/my-applications"],
+        ["/api/applications"],
+        ["/api/user"]
+      ];
+      
+      // Remove all related queries from cache
+      await Promise.all(cacheKeys.map(key => 
+        queryClient.removeQueries({ queryKey: key })
+      ));
+      
+      // 2. Invalidate all related queries
+      await Promise.all(cacheKeys.map(key => 
+        queryClient.invalidateQueries({ queryKey: key })
+      ));
+      
+      // 3. Force immediate refetch with fresh network requests
+      await Promise.all([
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/applications/my-applications"],
+          type: 'all'
+        }),
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/applications"],
+          type: 'all'
+        })
+      ]);
+      
+      // 4. Also trigger a direct refetch of this specific query
+      await refetch();
+      
+      console.log('Document verification: Comprehensive refresh completed');
+    } catch (error) {
+      console.error('Document verification: Force refresh failed', error);
+      // Fallback: try individual refresh
+      try {
+        await refetch();
+        console.log('Document verification: Fallback refresh completed');
+      } catch (fallbackError) {
+        console.error('Document verification: Fallback refresh also failed', fallbackError);
+      }
+    }
+  };
 
   // Update document verification for an application
   const updateMutation = useMutation({
@@ -155,12 +306,19 @@ export function useDocumentVerification() {
         return await res.json();
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
+    onSuccess: async () => {
+      // Immediate comprehensive refresh after document update
+      await forceRefresh();
+      
       toast({
         title: "Documents updated successfully",
         description: "Your updated documents have been submitted for review.",
       });
+      
+      // Additional delayed refresh to catch any async database updates
+      setTimeout(async () => {
+        await forceRefresh();
+      }, 2000);
     },
     onError: (error: Error) => {
       toast({
@@ -180,9 +338,10 @@ export function useDocumentVerification() {
       const res = await apiRequestJSON("PATCH", `/api/applications/${id}/document-verification`, data);
       return await res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
+    onSuccess: async () => {
+      // Comprehensive refresh for admin actions
+      await forceRefresh();
+      
       toast({
         title: "Verification updated",
         description: "Document verification status has been updated.",
@@ -205,5 +364,6 @@ export function useDocumentVerification() {
     updateMutation,
     adminUpdateMutation,
     refetch,
+    forceRefresh,
   };
 } 
