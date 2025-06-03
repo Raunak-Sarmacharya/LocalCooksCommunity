@@ -326,17 +326,25 @@ async function initializeDatabase() {
           kitchen_preference kitchen_preference NOT NULL,
           feedback TEXT,
           status application_status NOT NULL DEFAULT 'new',
-          
-          -- Document verification fields
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // Create document_verification table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS document_verification (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
           food_safety_license_url TEXT,
           food_establishment_cert_url TEXT,
           food_safety_license_status document_verification_status DEFAULT 'pending',
           food_establishment_cert_status document_verification_status DEFAULT 'pending',
-          documents_admin_feedback TEXT,
-          documents_reviewed_by INTEGER REFERENCES users(id),
-          documents_reviewed_at TIMESTAMP,
-          
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          admin_feedback TEXT,
+          reviewed_by INTEGER REFERENCES users(id),
+          reviewed_at TIMESTAMP WITH TIME ZONE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id)
         );
       `);
 
@@ -390,17 +398,25 @@ async function initializeDatabase() {
             kitchen_preference kitchen_preference NOT NULL,
             feedback TEXT,
             status application_status NOT NULL DEFAULT 'new',
-            
-            -- Document verification fields
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        // Create document_verification table
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS document_verification (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             food_safety_license_url TEXT,
             food_establishment_cert_url TEXT,
             food_safety_license_status document_verification_status DEFAULT 'pending',
             food_establishment_cert_status document_verification_status DEFAULT 'pending',
-            documents_admin_feedback TEXT,
-            documents_reviewed_by INTEGER REFERENCES users(id),
-            documents_reviewed_at TIMESTAMP,
-            
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            admin_feedback TEXT,
+            reviewed_by INTEGER REFERENCES users(id),
+            reviewed_at TIMESTAMP WITH TIME ZONE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id)
           );
         `);
 
@@ -962,10 +978,19 @@ app.get('/api/applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
+      // Join with document_verification table to get document data
       const result = await pool.query(`
-        SELECT a.*, u.username as applicant_username
+        SELECT a.*, u.username as applicant_username,
+               dv.food_safety_license_url,
+               dv.food_establishment_cert_url,
+               dv.food_safety_license_status,
+               dv.food_establishment_cert_status,
+               dv.admin_feedback as documents_admin_feedback,
+               dv.reviewed_by as documents_reviewed_by,
+               dv.reviewed_at as documents_reviewed_at
         FROM applications a
         JOIN users u ON a.user_id = u.id
+        LEFT JOIN document_verification dv ON a.user_id = dv.user_id
         ORDER BY a.created_at DESC;
       `);
 
@@ -1021,10 +1046,20 @@ app.get('/api/applications/my-applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
+      // Join with document_verification table to get document data
       const result = await pool.query(`
-        SELECT * FROM applications
-        WHERE user_id = $1
-        ORDER BY created_at DESC;
+        SELECT a.*, 
+               dv.food_safety_license_url,
+               dv.food_establishment_cert_url,
+               dv.food_safety_license_status,
+               dv.food_establishment_cert_status,
+               dv.admin_feedback as documents_admin_feedback,
+               dv.reviewed_by as documents_reviewed_by,
+               dv.reviewed_at as documents_reviewed_at
+        FROM applications a
+        LEFT JOIN document_verification dv ON a.user_id = dv.user_id
+        WHERE a.user_id = $1
+        ORDER BY a.created_at DESC;
       `, [req.session.userId]);
 
       return res.status(200).json(result.rows);
@@ -1344,11 +1379,22 @@ app.get("/api/files/documents/:filename", async (req, res) => {
 // Update application documents endpoint (for approved applicants)
 app.patch("/api/applications/:id/documents", async (req, res) => {
   try {
+    console.log("Document upload request received:", {
+      method: req.method,
+      applicationId: req.params.id,
+      contentType: req.headers['content-type'],
+      bodyKeys: Object.keys(req.body || {}),
+      body: req.body
+    });
+
     // Check if user is authenticated
     const userId = req.session.userId || req.headers['x-user-id'];
     if (!userId) {
+      console.log("Authentication failed - no userId found");
       return res.status(401).json({ message: "Not authenticated" });
     }
+
+    console.log("User authenticated with ID:", userId);
 
     const applicationId = parseInt(req.params.id);
     if (isNaN(applicationId)) {
@@ -1376,6 +1422,11 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    // Check if application is approved (required for document verification)
+    if (application.status !== 'approved') {
+      return res.status(400).json({ message: "Application must be approved before documents can be uploaded" });
+    }
+
     const updateData = {};
 
     // Handle URL inputs only (file uploads not supported in serverless environment)
@@ -1396,24 +1447,60 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       });
     }
 
-    // Update the application documents in database
-    if (pool) {
-      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-      const values = [applicationId, ...Object.values(updateData)];
-      
-      const result = await pool.query(`
-        UPDATE applications 
-        SET ${setClause}
-        WHERE id = $1
-        RETURNING *;
-      `, values);
+    // Add updated_at timestamp
+    updateData.updated_at = new Date();
 
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: "Failed to update application documents" });
+    // Update or insert into document_verification table
+    if (pool) {
+      // Check if document verification record exists for this user
+      const existingVerification = await pool.query(`
+        SELECT * FROM document_verification WHERE user_id = $1
+      `, [application.user_id]);
+
+      let result;
+      if (existingVerification.rows.length > 0) {
+        // Update existing record
+        const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+        const values = [application.user_id, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          UPDATE document_verification 
+          SET ${setClause}
+          WHERE user_id = $1
+          RETURNING *;
+        `, values);
+      } else {
+        // Insert new record
+        const columns = ['user_id', ...Object.keys(updateData)];
+        const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+        const values = [application.user_id, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          INSERT INTO document_verification (${columns.join(', ')})
+          VALUES (${placeholders})
+          RETURNING *;
+        `, values);
       }
 
-      const updatedApplication = result.rows[0];
-      return res.status(200).json(updatedApplication);
+      if (result.rowCount === 0) {
+        return res.status(500).json({ message: "Failed to update document verification" });
+      }
+
+      const updatedVerification = result.rows[0];
+      
+      // Return the verification record with application context
+      const responseData = {
+        ...application,
+        food_safety_license_url: updatedVerification.food_safety_license_url,
+        food_establishment_cert_url: updatedVerification.food_establishment_cert_url,
+        food_safety_license_status: updatedVerification.food_safety_license_status,
+        food_establishment_cert_status: updatedVerification.food_establishment_cert_status,
+        documents_admin_feedback: updatedVerification.admin_feedback,
+        documents_reviewed_by: updatedVerification.reviewed_by,
+        documents_reviewed_at: updatedVerification.reviewed_at
+      };
+      
+      return res.status(200).json(responseData);
     }
 
     return res.status(500).json({ message: "Database not available" });
@@ -1446,49 +1533,93 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       return res.status(500).json({ message: "Database not available" });
     }
 
-    // Build update data
-    const updateData = {
-      ...req.body,
-      documents_reviewed_by: parseInt(userId),
-      documents_reviewed_at: new Date()
-    };
+    // Get the application to find the user_id
+    const appResult = await pool.query(`
+      SELECT user_id FROM applications WHERE id = $1
+    `, [applicationId]);
 
-    const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-    const values = [applicationId, ...Object.values(updateData)];
-
-    // Update the application document verification
-    const result = await pool.query(`
-      UPDATE applications 
-      SET ${setClause}
-      WHERE id = $1
-      RETURNING *;
-    `, values);
-
-    if (result.rowCount === 0) {
+    if (appResult.rows.length === 0) {
       return res.status(404).json({ message: "Application not found" });
     }
 
-    const updatedApplication = result.rows[0];
+    const targetUserId = appResult.rows[0].user_id;
+
+    // Build update data for document_verification table
+    const updateData = {
+      ...req.body,
+      reviewed_by: parseInt(userId),
+      reviewed_at: new Date(),
+      updated_at: new Date()
+    };
+
+    // Check if document verification record exists
+    const existingVerification = await pool.query(`
+      SELECT * FROM document_verification WHERE user_id = $1
+    `, [targetUserId]);
+
+    let result;
+    if (existingVerification.rows.length > 0) {
+      // Update existing record
+      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+      const values = [targetUserId, ...Object.values(updateData)];
+      
+      result = await pool.query(`
+        UPDATE document_verification 
+        SET ${setClause}
+        WHERE user_id = $1
+        RETURNING *;
+      `, values);
+    } else {
+      // Insert new record with admin data
+      const columns = ['user_id', ...Object.keys(updateData)];
+      const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+      const values = [targetUserId, ...Object.values(updateData)];
+      
+      result = await pool.query(`
+        INSERT INTO document_verification (${columns.join(', ')})
+        VALUES (${placeholders})
+        RETURNING *;
+      `, values);
+    }
+
+    if (result.rowCount === 0) {
+      return res.status(500).json({ message: "Failed to update document verification" });
+    }
+
+    const updatedVerification = result.rows[0];
 
     console.log(`Document verification updated for application ${applicationId}:`, {
-      foodSafetyLicenseStatus: updatedApplication.food_safety_license_status,
-      foodEstablishmentCertStatus: updatedApplication.food_establishment_cert_status,
+      foodSafetyLicenseStatus: updatedVerification.food_safety_license_status,
+      foodEstablishmentCertStatus: updatedVerification.food_establishment_cert_status,
       reviewedBy: userId,
       timestamp: new Date().toISOString()
     });
 
     // Check if both documents are approved, then update user verification status
-    if (updatedApplication.food_safety_license_status === "approved" && 
-        (!updatedApplication.food_establishment_cert_url || updatedApplication.food_establishment_cert_status === "approved")) {
+    if (updatedVerification.food_safety_license_status === "approved" && 
+        (!updatedVerification.food_establishment_cert_url || updatedVerification.food_establishment_cert_status === "approved")) {
       
       await pool.query(`
         UPDATE users SET is_verified = true WHERE id = $1
-      `, [updatedApplication.user_id]);
+      `, [targetUserId]);
       
-      console.log(`User ${updatedApplication.user_id} has been fully verified`);
+      console.log(`User ${targetUserId} has been fully verified`);
     }
 
-    return res.status(200).json(updatedApplication);
+    // Return the verification data in the format expected by the frontend
+    const responseData = {
+      id: applicationId,
+      user_id: targetUserId,
+      food_safety_license_url: updatedVerification.food_safety_license_url,
+      food_establishment_cert_url: updatedVerification.food_establishment_cert_url,
+      food_safety_license_status: updatedVerification.food_safety_license_status,
+      food_establishment_cert_status: updatedVerification.food_establishment_cert_status,
+      documents_admin_feedback: updatedVerification.admin_feedback,
+      documents_reviewed_by: updatedVerification.reviewed_by,
+      documents_reviewed_at: updatedVerification.reviewed_at
+    };
+
+    return res.status(200).json(responseData);
   } catch (error) {
     console.error("Error updating application document verification:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -1591,6 +1722,52 @@ app.get('/api/debug-admin', async (req, res) => {
       error: 'Failed to debug admin user',
       message: error.message
     });
+  }
+});
+
+// Get document verification data for a user
+app.get("/api/document-verification", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const userId = req.session.userId || req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    // Get document verification record for the user
+    const result = await pool.query(`
+      SELECT * FROM document_verification WHERE user_id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(200).json(null);
+    }
+
+    const verification = result.rows[0];
+    
+    // Convert to frontend-expected format
+    const responseData = {
+      id: verification.id,
+      user_id: verification.user_id,
+      foodSafetyLicenseUrl: verification.food_safety_license_url,
+      foodEstablishmentCertUrl: verification.food_establishment_cert_url,
+      foodSafetyLicenseStatus: verification.food_safety_license_status,
+      foodEstablishmentCertStatus: verification.food_establishment_cert_status,
+      documentsAdminFeedback: verification.admin_feedback,
+      documentsReviewedBy: verification.reviewed_by,
+      documentsReviewedAt: verification.reviewed_at,
+      createdAt: verification.created_at,
+      updatedAt: verification.updated_at
+    };
+
+    return res.status(200).json(responseData);
+  } catch (error) {
+    console.error("Error getting document verification:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 

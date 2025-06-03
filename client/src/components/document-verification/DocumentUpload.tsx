@@ -140,31 +140,37 @@ export default function DocumentUpload() {
 
     setErrors({});
 
-    // Prepare form data
-    const formData = new FormData();
-
     if (uploadMethod === 'file' && !isProduction) {
+      // Prepare form data for file uploads (development only)
+      const formData = new FormData();
       if (foodSafetyFile) {
         formData.append('foodSafetyLicense', foodSafetyFile);
       }
       if (foodEstablishmentFile) {
         formData.append('foodEstablishmentCert', foodEstablishmentFile);
       }
-    } else {
-      if (foodSafetyLicenseUrl.trim()) {
-        formData.append('foodSafetyLicenseUrl', foodSafetyLicenseUrl.trim());
-      }
-      if (foodEstablishmentCertUrl.trim()) {
-        formData.append('foodEstablishmentCertUrl', foodEstablishmentCertUrl.trim());
-      }
-    }
 
-    if (verification) {
-      // Update existing verification
-      updateMutation.mutate(formData as any);
+      if (verification) {
+        // Update existing verification
+        updateMutation.mutate(formData as any);
+      } else {
+        // Create new verification
+        createMutation.mutate(formData as any);
+      }
     } else {
-      // Create new verification
-      createMutation.mutate(formData as any);
+      // Prepare JSON data for URL submissions
+      const urlData = {
+        ...(foodSafetyLicenseUrl.trim() && { foodSafetyLicenseUrl: foodSafetyLicenseUrl.trim() }),
+        ...(foodEstablishmentCertUrl.trim() && { foodEstablishmentCertUrl: foodEstablishmentCertUrl.trim() })
+      };
+
+      if (verification) {
+        // Update existing verification with URLs
+        updateMutation.mutate(urlData as any);
+      } else {
+        // Create new verification with URLs
+        createMutation.mutate(urlData as any);
+      }
     }
   };
 

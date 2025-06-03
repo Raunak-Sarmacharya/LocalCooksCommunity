@@ -11,8 +11,8 @@ type DocumentVerificationContextType = {
   verification: Application | null;
   isLoading: boolean;
   error: Error | null;
-  createMutation: UseMutationResult<Application, Error, FormData>;
-  updateMutation: UseMutationResult<Application, Error, FormData>;
+  createMutation: UseMutationResult<Application, Error, FormData | Record<string, string>>;
+  updateMutation: UseMutationResult<Application, Error, FormData | Record<string, string>>;
   adminUpdateMutation: UseMutationResult<Application, Error, any>;
   refetch: () => void;
 };
@@ -139,13 +139,21 @@ export function useDocumentVerification() {
 
   // Update document verification for an application
   const updateMutation = useMutation({
-    mutationFn: async (data: FormData) => {
+    mutationFn: async (data: FormData | Record<string, string>) => {
       if (!verification) {
         throw new Error("No approved application found for document upload");
       }
       
-      const res = await apiRequestFormData("PATCH", `/api/applications/${verification.id}/documents`, data);
-      return await res.json();
+      // Check if data is FormData (file upload) or JSON object (URL submission)
+      if (data instanceof FormData) {
+        // Handle file uploads with FormData
+        const res = await apiRequestFormData("PATCH", `/api/applications/${verification.id}/documents`, data);
+        return await res.json();
+      } else {
+        // Handle URL submissions with JSON
+        const res = await apiRequestJSON("PATCH", `/api/applications/${verification.id}/documents`, data);
+        return await res.json();
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
