@@ -31,6 +31,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { motion } from "framer-motion";
+import { useEffect, useRef } from "react";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -66,6 +67,7 @@ const itemVariants = {
 
 export default function ApplicantDashboard() {
   const { user, logoutMutation } = useAuth();
+  const prevApplicationsRef = useRef<Application[] | null>(null);
 
   // Debug authentication state
   console.log('ApplicantDashboard - Authentication state:', {
@@ -83,8 +85,14 @@ export default function ApplicantDashboard() {
         throw new Error("User not authenticated");
       }
 
+      console.log('ApplicantDashboard: Fetching applications data...');
+
       const headers: Record<string, string> = {
-        'X-User-ID': user.id.toString()
+        'X-User-ID': user.id.toString(),
+        // Add cache busting headers to ensure fresh data
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       };
 
       const response = await fetch(queryKey[0] as string, {
@@ -98,7 +106,7 @@ export default function ApplicantDashboard() {
       }
 
       const rawData = await response.json();
-      console.log('Raw application data:', rawData);
+      console.log('ApplicantDashboard: Fresh data fetched', rawData);
 
       // Convert snake_case to camelCase for database fields
       const normalizedData = rawData.map((app: any) => ({
@@ -123,11 +131,191 @@ export default function ApplicantDashboard() {
         documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
       }));
 
-      console.log('Normalized application data:', normalizedData);
+      console.log('ApplicantDashboard: Normalized application data', normalizedData);
       return normalizedData;
     },
     enabled: !!user,
+    // Intelligent auto-refresh logic for user applications
+    refetchInterval: (data) => {
+      if (!data || !Array.isArray(data)) {
+        // No data or invalid data, check frequently
+        return 20000; // 20 seconds
+      }
+
+      // Check if user has applications under review
+      const hasApplicationsUnderReview = data.some(app => 
+        app.status === "new" || app.status === "inReview"
+      );
+
+      // Check if user has approved applications with pending document verification
+      const hasPendingDocumentVerification = data.some(app => 
+        app.status === "approved" && (
+          app.foodSafetyLicenseStatus === "pending" ||
+          app.foodEstablishmentCertStatus === "pending"
+        )
+      );
+
+      // Check if user has rejected documents that might be updated
+      const hasRejectedDocuments = data.some(app => 
+        app.status === "approved" && (
+          app.foodSafetyLicenseStatus === "rejected" ||
+          app.foodEstablishmentCertStatus === "rejected"
+        )
+      );
+
+      // Check if user has fully verified applications
+      const hasFullyVerifiedApplications = data.some(app => 
+        app.status === "approved" && 
+        app.foodSafetyLicenseStatus === "approved" && 
+        (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved")
+      );
+
+      if (hasApplicationsUnderReview) {
+        // More frequent updates when applications are being reviewed
+        return 15000; // 15 seconds
+      } else if (hasPendingDocumentVerification) {
+        // Very frequent updates for document verification status
+        return 5000; // 5 seconds - match document verification hook
+      } else if (hasRejectedDocuments) {
+        // Moderate updates for rejected documents
+        return 15000; // 15 seconds
+      } else if (hasFullyVerifiedApplications) {
+        // Still refresh frequently even when verified to catch any admin changes
+        return 30000; // 30 seconds
+      } else {
+        // Default case
+        return 20000; // 20 seconds
+      }
+    },
+    refetchIntervalInBackground: true, // Keep refetching when tab is not active
+    refetchOnWindowFocus: true, // Refetch when user comes back to the tab
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnReconnect: true, // Refetch when network reconnects
+    // Enhanced cache invalidation strategy
+    staleTime: 0, // Consider data stale immediately - always check for updates
+    gcTime: 10000, // Keep in cache for only 10 seconds
   });
+
+  // Monitor application status changes and show notifications
+  useEffect(() => {
+    if (applications && prevApplicationsRef.current) {
+      const prevApps = prevApplicationsRef.current;
+      
+      applications.forEach((currentApp) => {
+        const prevApp = prevApps.find(app => app.id === currentApp.id);
+        
+        if (prevApp && prevApp.status !== currentApp.status) {
+          // Application status changed
+          switch (currentApp.status) {
+            case "approved":
+              toast({
+                title: "🎉 Application Approved!",
+                description: "Congratulations! Your application has been approved. You can now upload your documents for verification.",
+              });
+              break;
+            case "rejected":
+              toast({
+                title: "Application Update",
+                description: "Your application status has been updated. Please check your dashboard for details.",
+                variant: "destructive",
+              });
+              break;
+            case "inReview":
+              toast({
+                title: "📋 Application Under Review",
+                description: "Your application is now being reviewed by our team.",
+              });
+              break;
+          }
+        }
+        
+        // Check for document verification status changes (only for approved applications)
+        if (prevApp && currentApp.status === "approved") {
+          // Food Safety License status change
+          if (prevApp.foodSafetyLicenseStatus !== currentApp.foodSafetyLicenseStatus) {
+            if (currentApp.foodSafetyLicenseStatus === "approved") {
+              toast({
+                title: "✅ Food Safety License Approved",
+                description: "Your Food Safety License has been approved!",
+              });
+            } else if (currentApp.foodSafetyLicenseStatus === "rejected") {
+              toast({
+                title: "📄 Document Update Required",
+                description: "Your Food Safety License needs to be updated. Please check the feedback and resubmit.",
+                variant: "destructive",
+              });
+            }
+          }
+          
+          // Food Establishment Certificate status change
+          if (prevApp.foodEstablishmentCertStatus !== currentApp.foodEstablishmentCertStatus) {
+            if (currentApp.foodEstablishmentCertStatus === "approved") {
+              toast({
+                title: "✅ Food Establishment Certificate Approved",
+                description: "Your Food Establishment Certificate has been approved!",
+              });
+            } else if (currentApp.foodEstablishmentCertStatus === "rejected") {
+              toast({
+                title: "📄 Document Update Required",
+                description: "Your Food Establishment Certificate needs to be updated. Please check the feedback and resubmit.",
+                variant: "destructive",
+              });
+            }
+          }
+        }
+      });
+    }
+    
+    // Update the ref for next comparison
+    prevApplicationsRef.current = applications;
+  }, [applications]);
+
+  // Enhanced force refresh function for applicant dashboard
+  const forceApplicantRefresh = async () => {
+    console.log('ApplicantDashboard: Forcing comprehensive refresh...');
+    
+    try {
+      // 1. Clear all application-related caches more aggressively
+      const cacheKeys = [
+        ["/api/applications/my-applications"],
+        ["/api/applications"],
+        ["/api/user"]
+      ];
+      
+      // Remove all related queries from cache
+      await Promise.all(cacheKeys.map(key => 
+        queryClient.removeQueries({ queryKey: key })
+      ));
+      
+      // 2. Invalidate all related queries
+      await Promise.all(cacheKeys.map(key => 
+        queryClient.invalidateQueries({ queryKey: key })
+      ));
+      
+      // 3. Force immediate refetch with fresh network requests
+      await Promise.all([
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/applications/my-applications"],
+          type: 'all'
+        }),
+        queryClient.refetchQueries({ 
+          queryKey: ["/api/applications"],
+          type: 'all'
+        })
+      ]);
+      
+      console.log('ApplicantDashboard: Comprehensive refresh completed');
+    } catch (error) {
+      console.error('ApplicantDashboard: Force refresh failed', error);
+      // Fallback: try to refresh just the applicant query
+      try {
+        await queryClient.refetchQueries({ queryKey: ["/api/applications/my-applications"] });
+        console.log('ApplicantDashboard: Fallback refresh completed');
+      } catch (fallbackError) {
+        console.error('ApplicantDashboard: Fallback refresh also failed', fallbackError);
+      }
+    }
+  };
 
   // Mutation to cancel an application
   const cancelMutation = useMutation({
@@ -141,14 +329,15 @@ export default function ApplicantDashboard() {
       const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Force comprehensive refresh after cancellation
+      await forceApplicantRefresh();
+      
       toast({
         title: "Application Cancelled",
         description: "Your application has been successfully cancelled.",
         variant: "default",
       });
-      // Refresh the applications list
-      queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
     },
     onError: (error: Error) => {
       toast({
@@ -294,6 +483,22 @@ export default function ApplicantDashboard() {
                                         </Badge>
                                       )}
                                     </div>
+                                  </div>
+                                  <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                                    <Button
+                                      asChild
+                                      size="sm"
+                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                    >
+                                      <Link href="/document-verification">
+                                        <BadgeCheck className="mr-2 h-4 w-4" />
+                                        Manage Documents
+                                      </Link>
+                                    </Button>
+                                    <span className="text-xs text-green-600 flex items-center">
+                                      <Info className="mr-1 h-3 w-3" />
+                                      Update documents anytime
+                                    </span>
                                   </div>
                                   {application.documentsReviewedAt && (
                                     <p className="text-xs text-green-600 mt-2">

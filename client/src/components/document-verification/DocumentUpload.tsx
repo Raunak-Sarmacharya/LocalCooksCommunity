@@ -24,7 +24,7 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 
 export default function DocumentUpload() {
-  const { verification, isLoading, createMutation, updateMutation, refetch } = useDocumentVerification();
+  const { verification, isLoading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
   
   // File states
   const [foodSafetyFile, setFoodSafetyFile] = useState<File | null>(null);
@@ -36,11 +36,8 @@ export default function DocumentUpload() {
   
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Detect if we're in production environment (deployed app)
-  const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-  
-  // Default to URL mode in production, file mode in development
-  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>(isProduction ? 'url' : 'file');
+  // Use URL method by default for consistency across all environments
+  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('url');
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -109,7 +106,7 @@ export default function DocumentUpload() {
     const newErrors: Record<string, string> = {};
     
     // Prevent file uploads in production
-    if (isProduction && uploadMethod === 'file') {
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && uploadMethod === 'file') {
       newErrors.production = "File uploads are not supported in production. Please use the URL tab to provide document links.";
       setErrors(newErrors);
       return;
@@ -140,7 +137,7 @@ export default function DocumentUpload() {
 
     setErrors({});
 
-    if (uploadMethod === 'file' && !isProduction) {
+    if (uploadMethod === 'file' && window.location.hostname === 'localhost') {
       // Prepare form data for file uploads (development only)
       const formData = new FormData();
       if (foodSafetyFile) {
@@ -354,35 +351,28 @@ export default function DocumentUpload() {
               
               <Button 
                 variant="outline" 
-                onClick={() => refetch()}
-                disabled={isLoading}
+                onClick={() => {
+                  // Force refresh and stay on current page to show document management
+                  forceRefresh();
+                  // Small delay to allow data to refresh, then scroll to top
+                  setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }, 1000);
+                }}
                 className="flex-1"
               >
-                <Clock className="h-4 w-4 mr-2" />
-                Refresh Status
+                <Upload className="h-4 w-4 mr-2" />
+                Manage Documents
               </Button>
             </div>
 
-            {/* Optional: Allow updating documents even when verified */}
-            <details className="mt-6">
-              <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-800">
-                Need to update your documents? Click here
-              </summary>
-              <div className="mt-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800 mb-3">
-                  <strong>Note:</strong> Uploading new documents will reset your verification status to "pending review".
-                </p>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => window.location.reload()}
-                  className="text-yellow-700 border-yellow-300 hover:bg-yellow-100"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Update My Documents
-                </Button>
-              </div>
-            </details>
+            {/* Note about document updates */}
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Update Documents:</strong> You can update your verified documents anytime. 
+                New uploads will reset your verification status to "pending review" for security.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
@@ -431,7 +421,7 @@ export default function DocumentUpload() {
             </TabsList>
 
             {/* Production warning for file uploads */}
-            {isProduction && uploadMethod === 'file' && (
+            {window.location.hostname !== 'localhost' && uploadMethod === 'file' && (
               <Alert className="mt-4 border-amber-200 bg-amber-50">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-amber-800">
@@ -691,17 +681,15 @@ export default function DocumentUpload() {
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium">Verification Status</h4>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => refetch()}
-                  disabled={isLoading}
-                  className="text-xs"
-                >
-                  <Clock className="h-3 w-3 mr-1" />
-                  Refresh Status
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <Clock className="h-3 w-3" />
+                    <span>Auto-updating</span>
+                    {isLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  </div>
+                </div>
               </div>
+              
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Food Safety License:</span>
@@ -740,7 +728,7 @@ export default function DocumentUpload() {
                       <p className="text-sm font-medium text-blue-800">Under Review</p>
                     </div>
                     <p className="text-xs text-blue-700 mt-1">
-                      Your documents are being reviewed. You can still upload new documents if needed - they will replace the current ones.
+                      Your documents are being reviewed. Status updates automatically - you can still upload new documents if needed.
                     </p>
                   </div>
                 )}
