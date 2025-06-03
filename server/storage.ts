@@ -56,6 +56,26 @@ export class MemStorage implements IStorage {
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // 24hrs
     });
+
+    // Initialize with a default admin user for development
+    this.initializeDefaultAdmin();
+  }
+
+  private async initializeDefaultAdmin() {
+    // Create default admin user: username "admin", password "localcooks"
+    // Using the same password hash as in the production setup
+    const adminUser: User = {
+      id: this.userCurrentId++,
+      username: "admin",
+      password: "fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668", // "localcooks"
+      role: "admin",
+      twitterId: null,
+      googleId: null,
+      facebookId: null,
+      instagramId: null,
+    };
+    this.users.set(adminUser.id, adminUser);
+    console.log("Development: Default admin user created (username: admin, password: localcooks)");
   }
 
   // User-related methods
