@@ -22,32 +22,15 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { storage } from "../../../firebase"; // adjust path if needed
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export default function DocumentUpload() {
   const { verification, isLoading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
   
-  // File states
-  const [foodSafetyFile, setFoodSafetyFile] = useState<File | null>(null);
-  const [foodEstablishmentFile, setFoodEstablishmentFile] = useState<File | null>(null);
-  
-  // URL states (alternative to file upload)
+  // URL states (keep these)
   const [foodSafetyLicenseUrl, setFoodSafetyLicenseUrl] = useState("");
   const [foodEstablishmentCertUrl, setFoodEstablishmentCertUrl] = useState("");
   
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
-  // Use URL method by default for consistency across all environments
-  const [uploadMethod, setUploadMethod] = useState<'file' | 'url'>('url');
-  const [uploading, setUploading] = useState(false);
-
-  // Firebase upload helper
-  async function uploadToFirebase(file: File): Promise<string> {
-    const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
-  }
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -58,120 +41,18 @@ export default function DocumentUpload() {
     }
   };
 
-  const validateFileSize = (file: File): boolean => {
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    return file.size <= maxSize;
-  };
-
-  const validateFileType = (file: File): boolean => {
-    const allowedTypes = [
-      'application/pdf',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/webp'
-    ];
-    return allowedTypes.includes(file.type);
-  };
-
-  const handleFileChange = (type: 'foodSafety' | 'foodEstablishment', file: File | null) => {
-    if (!file) {
-      if (type === 'foodSafety') {
-        setFoodSafetyFile(null);
-      } else {
-        setFoodEstablishmentFile(null);
-      }
-      return;
-    }
-
-    // Validate file
-    const newErrors: Record<string, string> = { ...errors };
-    
-    if (!validateFileType(file)) {
-      newErrors[type] = "Invalid file type. Only PDF, JPG, JPEG, PNG, and WebP files are allowed.";
-      setErrors(newErrors);
-      return;
-    }
-
-    if (!validateFileSize(file)) {
-      newErrors[type] = "File size must be less than 10MB.";
-      setErrors(newErrors);
-      return;
-    }
-
-    // Clear errors and set file
-    delete newErrors[type];
-    setErrors(newErrors);
-    
-    if (type === 'foodSafety') {
-      setFoodSafetyFile(file);
-    } else {
-      setFoodEstablishmentFile(file);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: Record<string, string> = {};
-
-    if (uploadMethod === 'file') {
-      // Validate files
-      if (!foodSafetyFile && !verification?.foodSafetyLicenseUrl) {
-        newErrors.foodSafety = "Food Safety License file is required";
-      }
-    } else {
-      // Validate URLs
-      if (!foodSafetyLicenseUrl.trim() && !verification?.foodSafetyLicenseUrl) {
-        newErrors.foodSafetyUrl = "Food Safety License URL is required";
-      } else if (foodSafetyLicenseUrl.trim() && !validateUrl(foodSafetyLicenseUrl)) {
-        newErrors.foodSafetyUrl = "Please enter a valid URL";
-      }
-      if (foodEstablishmentCertUrl.trim() && !validateUrl(foodEstablishmentCertUrl)) {
-        newErrors.foodEstablishmentUrl = "Please enter a valid URL";
-      }
-    }
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
     setErrors({});
-
-    if (uploadMethod === 'file') {
-      try {
-        setUploading(true);
-        let foodSafetyUrl = verification?.foodSafetyLicenseUrl || "";
-        let foodEstablishmentUrl = verification?.foodEstablishmentCertUrl || "";
-        if (foodSafetyFile) {
-          foodSafetyUrl = await uploadToFirebase(foodSafetyFile);
-        }
-        if (foodEstablishmentFile) {
-          foodEstablishmentUrl = await uploadToFirebase(foodEstablishmentFile);
-        }
-        const urlData = {
-          ...(foodSafetyUrl && { foodSafetyLicenseUrl: foodSafetyUrl }),
-          ...(foodEstablishmentUrl && { foodEstablishmentCertUrl: foodEstablishmentUrl })
-        };
-        if (verification) {
-          updateMutation.mutate(urlData as any);
-        } else {
-          createMutation.mutate(urlData as any);
-        }
-      } catch (err: any) {
-        setErrors({ production: "Failed to upload file(s) to cloud storage. Please try again or use the URL method." });
-      } finally {
-        setUploading(false);
-      }
+    // Prepare JSON data for URL submissions
+    const urlData = {
+      ...(foodSafetyLicenseUrl.trim() && { foodSafetyLicenseUrl: foodSafetyLicenseUrl.trim() }),
+      ...(foodEstablishmentCertUrl.trim() && { foodEstablishmentCertUrl: foodEstablishmentCertUrl.trim() })
+    };
+    if (verification) {
+      updateMutation.mutate(urlData as any);
     } else {
-      // Prepare JSON data for URL submissions
-      const urlData = {
-        ...(foodSafetyLicenseUrl.trim() && { foodSafetyLicenseUrl: foodSafetyLicenseUrl.trim() }),
-        ...(foodEstablishmentCertUrl.trim() && { foodEstablishmentCertUrl: foodEstablishmentCertUrl.trim() })
-      };
-      if (verification) {
-        updateMutation.mutate(urlData as any);
-      } else {
-        createMutation.mutate(urlData as any);
-      }
+      createMutation.mutate(urlData as any);
     }
   };
 
@@ -412,139 +293,15 @@ export default function DocumentUpload() {
             </Alert>
           )}
 
-          <Tabs value={uploadMethod} onValueChange={(value) => setUploadMethod(value as 'file' | 'url')} className="w-full">
+          <Tabs value="url" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="file" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                {verification ? "Replace Files" : "Upload Files"}
-              </TabsTrigger>
               <TabsTrigger value="url" className="flex items-center gap-2">
                 <LinkIcon className="h-4 w-4" />
                 {verification ? "Update URLs" : "Provide URLs"}
               </TabsTrigger>
             </TabsList>
 
-            {/* Production warning for file uploads */}
-            {false && window.location.hostname !== 'localhost' && uploadMethod === 'file' && (
-              <Alert className="mt-4 border-amber-200 bg-amber-50">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-800">
-                  <strong>File uploads are not available in production.</strong> Please use the "Provide URLs" tab to submit links to your documents stored on cloud services (Google Drive, Dropbox, etc.). Make sure your document links are publicly accessible.
-                </AlertDescription>
-              </Alert>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-              <TabsContent value="file" className="space-y-6 mt-0">
-                {/* Food Safety License File Upload */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="foodSafetyFile" className="text-sm font-medium">
-                      Food Safety License * {verification && "(Replace current document)"}
-                    </Label>
-                    {verification?.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
-                  </div>
-                  
-                  {/* Show current document if exists */}
-                  {verification?.foodSafetyLicenseUrl && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Current Document:</p>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        <a 
-                          href={verification.foodSafetyLicenseUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          {getFileDisplayName(verification.foodSafetyLicenseUrl)}
-                        </a>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Upload a new file below to replace this document
-                      </p>
-                    </div>
-                  )}
-                  
-                  <Input
-                    id="foodSafetyFile"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    onChange={(e) => handleFileChange('foodSafety', e.target.files?.[0] || null)}
-                    className={errors.foodSafety ? "border-red-500" : ""}
-                  />
-                  {errors.foodSafety && (
-                    <p className="text-sm text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {errors.foodSafety}
-                    </p>
-                  )}
-                  {foodSafetyFile && (
-                    <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2 flex items-center gap-2">
-                      <ImageIcon className="h-4 w-4" />
-                      New file selected: {foodSafetyFile.name} ({(foodSafetyFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Upload PDF, JPG, PNG, or WebP file (max 10MB). This document is required for verification.
-                  </p>
-                </div>
-
-                {/* Food Establishment Certificate File Upload */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="foodEstablishmentFile" className="text-sm font-medium">
-                      Food Establishment Certificate (Optional) {verification && verification.foodEstablishmentCertUrl && "(Replace current document)"}
-                    </Label>
-                    {verification?.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                  </div>
-                  
-                  {/* Show current document if exists */}
-                  {verification?.foodEstablishmentCertUrl && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Current Document:</p>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        <a 
-                          href={verification.foodEstablishmentCertUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          {getFileDisplayName(verification.foodEstablishmentCertUrl)}
-                        </a>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Upload a new file below to replace this document
-                      </p>
-                    </div>
-                  )}
-                  
-                  <Input
-                    id="foodEstablishmentFile"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    onChange={(e) => handleFileChange('foodEstablishment', e.target.files?.[0] || null)}
-                    className={errors.foodEstablishment ? "border-red-500" : ""}
-                  />
-                  {errors.foodEstablishment && (
-                    <p className="text-sm text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {errors.foodEstablishment}
-                    </p>
-                  )}
-                  {foodEstablishmentFile && (
-                    <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2 flex items-center gap-2">
-                      <ImageIcon className="h-4 w-4" />
-                      New file selected: {foodEstablishmentFile.name} ({(foodEstablishmentFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Upload PDF, JPG, PNG, or WebP file (max 10MB). This document is optional but recommended.
-                  </p>
-                </div>
-              </TabsContent>
-
               <TabsContent value="url" className="space-y-6 mt-0">
                 {/* Food Safety License URL */}
                 <div className="space-y-3">
@@ -649,23 +406,13 @@ export default function DocumentUpload() {
                 </Alert>
               )}
 
-              {/* Production error */}
-              {errors.production && (
-                <Alert className="border-red-200 bg-red-50">
-                  <AlertTriangle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800">
-                    {errors.production}
-                  </AlertDescription>
-                </Alert>
-              )}
-
               {/* Submit Button */}
               <Button 
                 type="submit" 
                 className="w-full"
-                disabled={createMutation.isPending || updateMutation.isPending || uploading}
+                disabled={createMutation.isPending || updateMutation.isPending}
               >
-                {(createMutation.isPending || updateMutation.isPending || uploading) ? (
+                {(createMutation.isPending || updateMutation.isPending) ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {verification ? "Updating..." : "Uploading..."}

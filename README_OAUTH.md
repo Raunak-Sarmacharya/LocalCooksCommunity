@@ -7,12 +7,12 @@ This document explains how to set up and configure Google and Facebook OAuth aut
 Your OAuth credentials have been configured:
 
 ### Google OAuth
-- **Client ID**: `1011866743102-rm1te9mdtgu8ka0fgp45cli29c7g5r39.apps.googleusercontent.com`
-- **Client Secret**: `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`
+- **Client ID**: `<YOUR_GOOGLE_CLIENT_ID>`
+- **Client Secret**: `<YOUR_GOOGLE_CLIENT_SECRET>`
 
 ### Facebook OAuth
-- **Client ID**: `1254643292905414`
-- **Client Secret**: `1e34ec175ad9caf4933db8ee1a38c7b9`
+- **Client ID**: `<YOUR_FACEBOOK_CLIENT_ID>`
+- **Client Secret**: `<YOUR_FACEBOOK_CLIENT_SECRET>`
 
 ## 🔧 Configuration Setup
 
@@ -23,26 +23,26 @@ The OAuth credentials are automatically configured in your environment files:
 #### Development (.env)
 ```bash
 # Google OAuth
-GOOGLE_CLIENT_ID=1011866743102-rm1te9mdtgu8ka0fgp45cli29c7g5r39.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=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
+GOOGLE_CLIENT_ID=<YOUR_GOOGLE_CLIENT_ID>
+GOOGLE_CLIENT_SECRET=<YOUR_GOOGLE_CLIENT_SECRET>
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
 
 # Facebook OAuth
-FACEBOOK_CLIENT_ID=1254643292905414
-FACEBOOK_CLIENT_SECRET=1e34ec175ad9caf4933db8ee1a38c7b9
+FACEBOOK_CLIENT_ID=<YOUR_FACEBOOK_CLIENT_ID>
+FACEBOOK_CLIENT_SECRET=<YOUR_FACEBOOK_CLIENT_SECRET>
 FACEBOOK_CALLBACK_URL=http://localhost:5000/api/auth/facebook/callback
 ```
 
 #### Production (.env.production)
 ```bash
 # Google OAuth
-GOOGLE_CLIENT_ID=1011866743102-rm1te9mdtgu8ka0fgp45cli29c7g5r39.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=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
+GOOGLE_CLIENT_ID=<YOUR_GOOGLE_CLIENT_ID>
+GOOGLE_CLIENT_SECRET=<YOUR_GOOGLE_CLIENT_SECRET>
 GOOGLE_CALLBACK_URL=https://your-domain.com/api/auth/google/callback
 
 # Facebook OAuth
-FACEBOOK_CLIENT_ID=1254643292905414
-FACEBOOK_CLIENT_SECRET=1e34ec175ad9caf4933db8ee1a38c7b9
+FACEBOOK_CLIENT_ID=<YOUR_FACEBOOK_CLIENT_ID>
+FACEBOOK_CLIENT_SECRET=<YOUR_FACEBOOK_CLIENT_SECRET>
 FACEBOOK_CALLBACK_URL=https://your-domain.com/api/auth/facebook/callback
 ```
 
