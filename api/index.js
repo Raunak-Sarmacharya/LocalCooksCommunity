@@ -1200,10 +1200,9 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
       const cancelledApp = result.rows[0];
       const cancelledUserId = cancelledApp.user_id;
 
-      // Clear document URLs in document_verifications for this user
+      // Delete document_verifications record for this user
       await pool.query(`
-        UPDATE document_verifications
-        SET food_safety_license_url = NULL, food_establishment_cert_url = NULL
+        DELETE FROM document_verifications
         WHERE user_id = $1
       `, [cancelledUserId]);
 
