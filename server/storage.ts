@@ -6,6 +6,7 @@ import { db } from "./db";
 import createMemoryStore from "memorystore";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
+import { cleanupApplicationDocuments } from "./fileUpload";
 
 // Memory store implementation for in-memory sessions
 const MemoryStore = createMemoryStore(session);
@@ -186,6 +187,11 @@ export class MemStorage implements IStorage {
 
     if (!application) {
       return undefined;
+    }
+
+    // Clean up documents if application is being cancelled
+    if (update.status === "cancelled") {
+      cleanupApplicationDocuments(application);
     }
 
     const updatedApplication: Application = {
@@ -379,6 +385,14 @@ export class DatabaseStorage implements IStorage {
 
   async updateApplicationStatus(update: UpdateApplicationStatus): Promise<Application | undefined> {
     const { id, status } = update;
+
+    // Fetch the application before updating
+    const [application] = await db.select().from(applications).where(eq(applications.id, id));
+
+    // Clean up documents if application is being cancelled
+    if (application && status === "cancelled") {
+      cleanupApplicationDocuments(application);
+    }
 
     const [updatedApplication] = await db
       .update(applications)
