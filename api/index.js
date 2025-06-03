@@ -1196,7 +1196,18 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
         return res.status(404).json({ error: 'Application not found or not owned by you' });
       }
 
-      return res.status(200).json(result.rows[0]);
+      // Get the user_id for the cancelled application
+      const cancelledApp = result.rows[0];
+      const cancelledUserId = cancelledApp.user_id;
+
+      // Clear document URLs in document_verifications for this user
+      await pool.query(`
+        UPDATE document_verifications
+        SET food_safety_license_url = NULL, food_establishment_cert_url = NULL
+        WHERE user_id = $1
+      `, [cancelledUserId]);
+
+      return res.status(200).json(cancelledApp);
     }
 
     // Fallback error - no storage
