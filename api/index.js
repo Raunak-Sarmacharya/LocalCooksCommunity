@@ -299,6 +299,33 @@ async function initializeDatabase() {
         );
       `);
 
+      // Create applications table
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS applications (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          full_name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT NOT NULL,
+          food_safety_license certification_status NOT NULL,
+          food_establishment_cert certification_status NOT NULL,
+          kitchen_preference kitchen_preference NOT NULL,
+          feedback TEXT,
+          status application_status NOT NULL DEFAULT 'new',
+          
+          -- Document verification fields
+          food_safety_license_url TEXT,
+          food_establishment_cert_url TEXT,
+          food_safety_license_status document_verification_status DEFAULT 'pending',
+          food_establishment_cert_status document_verification_status DEFAULT 'pending',
+          documents_admin_feedback TEXT,
+          documents_reviewed_by INTEGER REFERENCES users(id),
+          documents_reviewed_at TIMESTAMP,
+          
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
       // Create an admin user
       const hashedPassword = 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668'; // localcooks
       await pool.query(`
@@ -308,6 +335,89 @@ async function initializeDatabase() {
       `, [hashedPassword]);
 
       console.log('Database initialized successfully');
+    } else {
+      // Users table exists, but check if applications table exists and create it if needed
+      const appTableCheck = await pool.query(`
+        SELECT to_regclass('public.applications') as table_exists;
+      `);
+
+      if (!appTableCheck.rows[0].table_exists) {
+        console.log('Applications table does not exist, creating...');
+        
+        // Ensure enums exist
+        await pool.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'kitchen_preference') THEN
+              CREATE TYPE kitchen_preference AS ENUM ('commercial', 'home', 'notSure');
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'certification_status') THEN
+              CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'application_status') THEN
+              CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'document_verification_status') THEN
+              CREATE TYPE document_verification_status AS ENUM ('pending', 'approved', 'rejected');
+            END IF;
+          END$$;
+        `);
+
+        // Create applications table
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS applications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            full_name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            food_safety_license certification_status NOT NULL,
+            food_establishment_cert certification_status NOT NULL,
+            kitchen_preference kitchen_preference NOT NULL,
+            feedback TEXT,
+            status application_status NOT NULL DEFAULT 'new',
+            
+            -- Document verification fields
+            food_safety_license_url TEXT,
+            food_establishment_cert_url TEXT,
+            food_safety_license_status document_verification_status DEFAULT 'pending',
+            food_establishment_cert_status document_verification_status DEFAULT 'pending',
+            documents_admin_feedback TEXT,
+            documents_reviewed_by INTEGER REFERENCES users(id),
+            documents_reviewed_at TIMESTAMP,
+            
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        console.log('Applications table created successfully');
+      }
+
+      // Check if users table has required fields and add them if missing
+      try {
+        const columnCheck = await pool.query(`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name IN ('is_verified', 'created_at')
+        `);
+        
+        const existingColumns = columnCheck.rows.map(row => row.column_name);
+        
+        if (!existingColumns.includes('is_verified')) {
+          console.log('Adding is_verified column to users table...');
+          await pool.query(`
+            ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT false NOT NULL;
+          `);
+        }
+        
+        if (!existingColumns.includes('created_at')) {
+          console.log('Adding created_at column to users table...');
+          await pool.query(`
+            ALTER TABLE users ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+          `);
+        }
+      } catch (columnError) {
+        console.error('Error checking/adding user table columns:', columnError);
+      }
     }
   } catch (error) {
     console.error('Database initialization error:', error);
@@ -667,56 +777,6 @@ app.post('/api/applications', async (req, res) => {
     // Store in database if available
     if (pool) {
       try {
-        // Create application table if it doesn't exist
-        const tableCheck = await pool.query(`
-          SELECT to_regclass('public.applications') as table_exists;
-        `);
-
-        if (!tableCheck.rows[0].table_exists) {
-          // Create enums if they don't exist
-          await pool.query(`
-            DO $$
-            BEGIN
-              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'kitchen_preference') THEN
-                CREATE TYPE kitchen_preference AS ENUM ('commercial', 'home', 'notSure');
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'certification_status') THEN
-                CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'application_status') THEN
-                CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
-              END IF;
-            END$$;
-          `);
-
-          // Create applications table
-          await pool.query(`
-            CREATE TABLE IF NOT EXISTS applications (
-              id SERIAL PRIMARY KEY,
-              user_id INTEGER NOT NULL REFERENCES users(id),
-              full_name TEXT NOT NULL,
-              email TEXT NOT NULL,
-              phone TEXT NOT NULL,
-              food_safety_license certification_status NOT NULL,
-              food_establishment_cert certification_status NOT NULL,
-              kitchen_preference kitchen_preference NOT NULL,
-              feedback TEXT,
-              status application_status NOT NULL DEFAULT 'new',
-              
-              -- Document verification fields
-              food_safety_license_url TEXT,
-              food_establishment_cert_url TEXT,
-              food_safety_license_status document_verification_status DEFAULT 'pending',
-              food_establishment_cert_status document_verification_status DEFAULT 'pending',
-              documents_admin_feedback TEXT,
-              documents_reviewed_by INTEGER REFERENCES users(id),
-              documents_reviewed_at TIMESTAMP,
-              
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-          `);
-        }
-
         // Make sure the user exists
         const userCheckQuery = await pool.query(`
           SELECT id FROM users WHERE id = $1
