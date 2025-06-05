@@ -1050,18 +1050,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // MICROLEARNING ROUTES
   // ===============================
 
-  // Get user's microlearning progress
+  // Get user's microlearning progress - PUBLIC ACCESS
   app.get("/api/microlearning/progress/:userId", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
-
       const userId = parseInt(req.params.userId);
       
-      // Verify user can access this data (either their own or admin)
-      if (req.user!.id !== userId && req.user!.role !== 'admin') {
-        return res.status(403).json({ message: 'Access denied' });
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID' });
       }
 
       const progress = await storage.getMicrolearningProgress(userId);
@@ -1079,18 +1074,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update video progress
+  // Update video progress - PUBLIC ACCESS
   app.post("/api/microlearning/progress", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
-
       const { userId, videoId, progress, completed, completedAt } = req.body;
       
-      // Verify user can update this data (either their own or admin)
-      if (req.user!.id !== userId && req.user!.role !== 'admin') {
-        return res.status(403).json({ message: 'Access denied' });
+      if (!userId || !videoId || progress === undefined) {
+        return res.status(400).json({ message: 'Missing required fields: userId, videoId, progress' });
       }
 
       const progressData = {
@@ -1114,22 +1104,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Complete microlearning and integrate with Always Food Safe
+  // Complete microlearning and integrate with Always Food Safe - PUBLIC ACCESS
   app.post("/api/microlearning/complete", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
-
-      const { userId, completionDate, videoProgress } = req.body;
+      const { userId, completionDate, videoProgress, participantName, participantEmail } = req.body;
       
-      // Verify user can complete this (either their own or admin)
-      if (req.user!.id !== userId && req.user!.role !== 'admin') {
-        return res.status(403).json({ message: 'Access denied' });
+      if (!userId || !completionDate || !videoProgress) {
+        return res.status(400).json({ message: 'Missing required fields: userId, completionDate, videoProgress' });
       }
 
-      // Verify all required videos are completed
-      const requiredVideos = ['food-handling', 'contamination-prevention', 'allergen-awareness'];
+      // Verify all required videos are completed (updated video IDs for Canada content)
+      const requiredVideos = ['canada-food-handling', 'canada-contamination-prevention', 'canada-allergen-awareness'];
       const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
       const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
 
@@ -1140,10 +1125,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get user details for certificate generation
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+      // For public access, we may not have a user record, so use provided participant info
+      let userName = participantName || `Participant-${userId}`;
+      let userEmail = participantEmail || `participant-${userId}@localcooks.com`;
+
+      // Try to get user details if available, but don't fail if not found
+      try {
+        const user = await storage.getUser(userId);
+        if (user) {
+          userName = user.username;
+          // User type doesn't have email property, so we keep the provided email
+        }
+      } catch (error) {
+        console.log('User not found in database, using provided participant info');
       }
 
       // Create completion record
@@ -1163,8 +1157,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           alwaysFoodSafeResult = await submitToAlwaysFoodSafe({
             userId,
-            userName: user.username,
-            email: `${user.username}@localcooks.com`, // Placeholder email since User type doesn't have email
+            userName,
+            email: userEmail,
             completionDate: new Date(completionDate),
             videoProgress
           });
@@ -1188,28 +1182,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Generate and download certificate
+  // Generate and download certificate - PUBLIC ACCESS
   app.get("/api/microlearning/certificate/:userId", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
-
       const userId = parseInt(req.params.userId);
       
-      // Verify user can access this certificate (either their own or admin)
-      if (req.user!.id !== userId && req.user!.role !== 'admin') {
-        return res.status(403).json({ message: 'Access denied' });
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID' });
       }
 
       const completion = await storage.getMicrolearningCompletion(userId);
       if (!completion || !completion.confirmed) {
         return res.status(404).json({ message: 'No confirmed completion found' });
-      }
-
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
       }
 
       // For now, return a placeholder certificate URL
@@ -1218,7 +1202,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         success: true,
         certificateUrl,
-        completionDate: completion.completedAt
+        completionDate: completion.completedAt,
+        message: 'Certificate for Government of Canada approved food safety training'
       });
     } catch (error) {
       console.error('Error generating certificate:', error);
