@@ -113,6 +113,11 @@ export default function AuthPage() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (!auth) {
+      setGoogleError("Sorry, Google authentication is not configured for development environment!");
+      return;
+    }
+    
     setGoogleLoading(true);
     setGoogleError(null);
     try {
@@ -136,7 +141,11 @@ export default function AuthPage() {
     setGooglePasswordLoading(true);
     setGooglePasswordError(null);
     
-    const credentials = { username: googleDisplayName, password };
+    const credentials = { 
+      username: googleDisplayName, 
+      password,
+      role: "applicant" as const
+    };
     
     if (googleIsSignup) {
       // Use registerMutation from useAuth

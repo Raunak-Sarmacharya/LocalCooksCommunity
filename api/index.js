@@ -26,7 +26,7 @@ try {
   }
 
   // Configure multer for file storage
-  const storage = multer.diskStorage({
+  const diskStorage = multer.diskStorage({
     destination: (req, file, cb) => {
       cb(null, uploadsDir);
     },
@@ -42,6 +42,12 @@ try {
       cb(null, filename);
     }
   });
+
+  // Memory storage for production (Vercel Blob)
+  const memoryStorage = multer.memoryStorage();
+  
+  // Check if we're in production
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
   // File filter to only allow certain file types
   const fileFilter = (req, file, cb) => {
@@ -62,7 +68,7 @@ try {
   };
 
   upload = multer({
-    storage: storage,
+    storage: isProduction ? memoryStorage : diskStorage,
     fileFilter: fileFilter,
     limits: {
       fileSize: 10 * 1024 * 1024, // 10MB limit
@@ -1676,6 +1682,95 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// Generic file upload endpoint (for use with new upload components)
+app.post("/api/upload-file", 
+  upload.single('file'), 
+  async (req, res) => {
+    try {
+      // Check if user is authenticated
+      const userId = req.session.userId || req.headers['x-user-id'];
+      if (!userId) {
+        // Clean up uploaded file
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (e) {
+            console.error('Error cleaning up file:', e);
+          }
+        }
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      let fileUrl;
+      let fileName;
+
+      if (isProduction) {
+        // Upload to Vercel Blob in production
+        try {
+          // Import Vercel Blob
+          const { put } = await import('@vercel/blob');
+          
+          const timestamp = Date.now();
+          const documentType = req.file.fieldname || 'file';
+          const ext = path.extname(req.file.originalname);
+          const baseName = path.basename(req.file.originalname, ext);
+          
+          const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+          
+          const blob = await put(filename, req.file.buffer, {
+            access: 'public',
+            contentType: req.file.mimetype,
+          });
+          
+          console.log(`File uploaded to Vercel Blob: ${filename} -> ${blob.url}`);
+          fileUrl = blob.url;
+          fileName = filename;
+        } catch (error) {
+          console.error('Error uploading to Vercel Blob:', error);
+          return res.status(500).json({ 
+            error: "File upload failed",
+            details: "Failed to upload file to cloud storage"
+          });
+        }
+      } else {
+        // In development, return a local file path (note: file serving is limited in this environment)
+        fileUrl = `/api/files/documents/${req.file.filename}`;
+        fileName = req.file.filename;
+      }
+
+      // Return success response with file information
+      return res.status(200).json({
+        success: true,
+        url: fileUrl,
+        fileName: fileName,
+        size: req.file.size,
+        type: req.file.mimetype
+      });
+    } catch (error) {
+      console.error("File upload error:", error);
+      
+      // Clean up uploaded file on error
+      if (req.file && req.file.path) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (e) {
+          console.error('Error cleaning up file:', e);
+        }
+      }
+      
+      return res.status(500).json({ 
+        error: "File upload failed",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  }
+);
 
 // Force admin user creation endpoint
 app.post('/api/force-create-admin', async (req, res) => {

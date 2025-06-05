@@ -10,5 +10,19 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app); 
+// Check if Firebase is properly configured
+const isFirebaseConfigured = firebaseConfig.apiKey && 
+  firebaseConfig.authDomain && 
+  firebaseConfig.projectId;
+
+let app: any = null;
+let auth: any = null;
+
+if (isFirebaseConfigured) {
+  app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  auth = getAuth(app);
+} else {
+  console.warn('Firebase is not configured. Google authentication will be disabled.');
+}
+
+export { auth }; 
