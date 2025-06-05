@@ -56,11 +56,18 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   };
 
   // Determine current step and progress
-  const hasSubmittedApplication = applications.length > 0;
-  const latestApplication = applications[0];
+  // Only consider active applications (not cancelled or rejected)
+  const activeApplications = applications.filter(app => 
+    app.status !== 'cancelled' && app.status !== 'rejected'
+  );
+  const hasSubmittedApplication = activeApplications.length > 0;
+  const latestApplication = activeApplications[0];
   const isApplicationApproved = hasApprovedApplication;
   const isApplicationPending = latestApplication?.status === 'new' || latestApplication?.status === 'inReview';
-  const isApplicationRejected = latestApplication?.status === 'rejected';
+  
+  // Check if user has any rejected applications (for messaging purposes)
+  const hasRejectedApplications = applications.some(app => app.status === 'rejected');
+  const hasCancelledApplications = applications.some(app => app.status === 'cancelled');
 
   // Calculate progress percentage
   let progressPercentage = 20; // Account created
@@ -76,10 +83,12 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     } else if (isApplicationPending) {
       progressPercentage = 75;
       currentStep = 3;
-    } else if (isApplicationRejected) {
-      progressPercentage = 40; // Submitted but needs revision
-      currentStep = 2; // Back to application step
     }
+  } else if (hasRejectedApplications || hasCancelledApplications) {
+    // User had applications before but they were rejected/cancelled
+    // Keep them at the "submit application" step but show they need to reapply
+    progressPercentage = 20;
+    currentStep = 2;
   }
 
   const steps = [
@@ -95,7 +104,9 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     {
       id: 2,
       title: "Submit Application",
-      description: "Complete your chef application",
+      description: hasRejectedApplications ? "Submit a new application" : 
+                   hasCancelledApplications ? "Submit a new application" :
+                   "Complete your chef application",
       status: hasSubmittedApplication ? "completed" : "current",
       icon: hasSubmittedApplication ? CheckCircle : FileText,
       color: hasSubmittedApplication ? "text-green-600" : "text-blue-600",
@@ -163,15 +174,17 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                 <h3 className="font-medium text-blue-900 mb-1">
                   {isApplicationApproved ? "🎉 Full Access Unlocked!" :
                    isApplicationPending ? "⏳ Application Under Review" :
-                   hasSubmittedApplication && isApplicationRejected ? "❌ Application Needs Update" :
                    hasSubmittedApplication ? "✅ Application Submitted" :
+                   hasRejectedApplications ? "🔄 Ready to Reapply" :
+                   hasCancelledApplications ? "🔄 Ready to Apply Again" :
                    "🚀 Ready to Apply"}
                 </h3>
                 <p className="text-blue-700 text-sm">
                   {isApplicationApproved ? "You now have access to all 10 training modules!" :
                    isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved." :
-                   hasSubmittedApplication && isApplicationRejected ? "Please review feedback and resubmit your application." :
                    hasSubmittedApplication ? "Great! Your application is in our system." :
+                   hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime." :
+                   hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!" :
                    "Complete your chef application to unlock all training modules."}
                 </p>
               </div>
@@ -253,14 +266,9 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                   <Button asChild className="flex-1">
                     <Link href="/apply">
                       <FileText className="h-4 w-4 mr-2" />
-                      Start Application Now
-                    </Link>
-                  </Button>
-                ) : isApplicationRejected ? (
-                  <Button asChild className="flex-1">
-                    <Link href="/apply">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Update Application
+                      {hasRejectedApplications || hasCancelledApplications ? 
+                        "Submit New Application" : 
+                        "Start Application Now"}
                     </Link>
                   </Button>
                 ) : (
@@ -277,6 +285,24 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                     Learn More About LocalCooks
                   </Link>
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Previous Application Notice */}
+          {(hasRejectedApplications || hasCancelledApplications) && !hasSubmittedApplication && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <div className="flex items-start gap-2 text-yellow-800 text-sm">
+                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="font-medium">Fresh Start:</span>
+                  <span className="ml-1">
+                    {hasRejectedApplications ? 
+                      "Your previous application was not approved, but you can submit a new one anytime with updated information." :
+                      "Your previous application was cancelled. You're welcome to submit a new application whenever you're ready!"
+                    }
+                  </span>
+                </div>
               </div>
             </div>
           )}
