@@ -69,7 +69,7 @@ function GooglePasswordDialog({
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user, loginMutation, registerMutation } = useAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
@@ -135,36 +135,37 @@ export default function AuthPage() {
   const handleGooglePasswordSubmit = async (password: string) => {
     setGooglePasswordLoading(true);
     setGooglePasswordError(null);
-    try {
-      if (googleIsSignup) {
-        // Register
-        const res = await fetch("/api/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: googleDisplayName, password }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Registration failed");
+    
+    const credentials = { username: googleDisplayName, password };
+    
+    if (googleIsSignup) {
+      // Use registerMutation from useAuth
+      registerMutation.mutate(credentials, {
+        onSuccess: () => {
+          setGoogleDialogOpen(false);
+          handleSuccess();
+        },
+        onError: (error) => {
+          setGooglePasswordError(error.message);
+        },
+        onSettled: () => {
+          setGooglePasswordLoading(false);
         }
-      } else {
-        // Login
-        const res = await fetch("/api/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: googleDisplayName, password }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || "Login failed");
+      });
+    } else {
+      // Use loginMutation from useAuth
+      loginMutation.mutate(credentials, {
+        onSuccess: () => {
+          setGoogleDialogOpen(false);
+          handleSuccess();
+        },
+        onError: (error) => {
+          setGooglePasswordError(error.message);
+        },
+        onSettled: () => {
+          setGooglePasswordLoading(false);
         }
-      }
-      setGoogleDialogOpen(false);
-      handleSuccess();
-    } catch (err: any) {
-      setGooglePasswordError(err.message);
-    } finally {
-      setGooglePasswordLoading(false);
+      });
     }
   };
 
