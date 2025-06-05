@@ -397,6 +397,16 @@ async function initializeDatabase() {
             kitchen_preference kitchen_preference NOT NULL,
             feedback TEXT,
             status application_status NOT NULL DEFAULT 'new',
+            
+            -- Document verification fields
+            food_safety_license_url TEXT,
+            food_establishment_cert_url TEXT,
+            food_safety_license_status document_verification_status DEFAULT 'pending',
+            food_establishment_cert_status document_verification_status DEFAULT 'pending',
+            documents_admin_feedback TEXT,
+            documents_reviewed_by INTEGER REFERENCES users(id),
+            documents_reviewed_at TIMESTAMP,
+            
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
         `);
@@ -419,6 +429,41 @@ async function initializeDatabase() {
         `);
 
         console.log('Applications table created successfully');
+      }
+
+      // Check if applications table has document fields and add them if missing
+      try {
+        const appColumnCheck = await pool.query(`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'applications' AND column_name IN (
+            'food_safety_license_url', 
+            'food_establishment_cert_url', 
+            'food_safety_license_status',
+            'food_establishment_cert_status',
+            'documents_admin_feedback',
+            'documents_reviewed_by',
+            'documents_reviewed_at'
+          )
+        `);
+        
+        const existingAppColumns = appColumnCheck.rows.map(row => row.column_name);
+        
+        if (!existingAppColumns.includes('food_safety_license_url')) {
+          console.log('Adding document verification fields to applications table...');
+          await pool.query(`
+            ALTER TABLE applications 
+            ADD COLUMN IF NOT EXISTS food_safety_license_url TEXT,
+            ADD COLUMN IF NOT EXISTS food_establishment_cert_url TEXT,
+            ADD COLUMN IF NOT EXISTS food_safety_license_status document_verification_status DEFAULT 'pending',
+            ADD COLUMN IF NOT EXISTS food_establishment_cert_status document_verification_status DEFAULT 'pending',
+            ADD COLUMN IF NOT EXISTS documents_admin_feedback TEXT,
+            ADD COLUMN IF NOT EXISTS documents_reviewed_by INTEGER REFERENCES users(id),
+            ADD COLUMN IF NOT EXISTS documents_reviewed_at TIMESTAMP;
+          `);
+          console.log('Document verification fields added to applications table');
+        }
+      } catch (appColumnError) {
+        console.error('Error checking/adding application table columns:', appColumnError);
       }
 
       // Check if users table has required fields and add them if missing
@@ -976,19 +1021,11 @@ app.get('/api/applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
-      // Join with document_verifications table to get document data
+      // Get applications with document data from applications table itself
       const result = await pool.query(`
-        SELECT a.*, u.username as applicant_username,
-               dv.food_safety_license_url,
-               dv.food_establishment_cert_url,
-               dv.food_safety_license_status,
-               dv.food_establishment_cert_status,
-               dv.admin_feedback as documents_admin_feedback,
-               dv.reviewed_by as documents_reviewed_by,
-               dv.reviewed_at as documents_reviewed_at
+        SELECT a.*, u.username as applicant_username
         FROM applications a
         JOIN users u ON a.user_id = u.id
-        LEFT JOIN document_verifications dv ON a.user_id = dv.user_id
         ORDER BY a.created_at DESC;
       `);
 
@@ -1044,18 +1081,10 @@ app.get('/api/applications/my-applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
-      // Join with document_verifications table to get document data
+      // Get applications with document data from applications table itself
       const result = await pool.query(`
-        SELECT a.*, 
-               dv.food_safety_license_url,
-               dv.food_establishment_cert_url,
-               dv.food_safety_license_status,
-               dv.food_establishment_cert_status,
-               dv.admin_feedback as documents_admin_feedback,
-               dv.reviewed_by as documents_reviewed_by,
-               dv.reviewed_at as documents_reviewed_at
+        SELECT a.*
         FROM applications a
-        LEFT JOIN document_verifications dv ON a.user_id = dv.user_id
         WHERE a.user_id = $1
         ORDER BY a.created_at DESC;
       `, [req.session.userId]);

@@ -7,7 +7,7 @@ import { setupAuth } from "./auth";
 import passport from "passport";
 import { sendEmail, generateStatusChangeEmail } from "./email";
 import { hashPassword, comparePasswords } from "./passwordUtils";
-import { upload, deleteFile, getFileUrl } from "./fileUpload";
+import { upload, deleteFile, getFileUrl, uploadToBlob } from "./fileUpload";
 import path from "path";
 import fs from "fs";
 import type { User } from "@shared/schema";
@@ -141,63 +141,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // Application submission endpoint
-  app.post("/api/applications", async (req: Request, res: Response) => {
-    try {
-      // Require authentication to submit an application
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "You must be logged in to submit an application" });
-      }
-
-      // Validate the request body using Zod schema
-      const parsedData = insertApplicationSchema.safeParse(req.body);
-
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
-        });
-      }
-
-      // Ensure the application is associated with the current user
-      // Override any userId in the request to prevent spoofing
-      const applicationData = {
-        ...parsedData.data,
-        userId: req.user!.id
-      };
-
-      // Create the application in storage
-      const application = await storage.createApplication(applicationData);
-
-      // Fetch the full application record to ensure all fields are present
-      const fullApplication = await storage.getApplicationById(application.id);
-
-      // Send email notification about new application
+  // Application submission endpoint (supports both JSON and multipart form data)
+  app.post("/api/applications", 
+    upload.fields([
+      { name: 'foodSafetyLicense', maxCount: 1 },
+      { name: 'foodEstablishmentCert', maxCount: 1 }
+    ]), 
+    async (req: Request, res: Response) => {
       try {
-        if (fullApplication && fullApplication.email) {
-          const emailContent = generateStatusChangeEmail({
-            fullName: fullApplication.fullName || "Applicant",
-            email: fullApplication.email,
-            status: "new"
-          });
-
-          await sendEmail(emailContent);
-          console.log(`New application email sent to ${fullApplication.email} for application ${fullApplication.id}`);
-        } else {
-          console.warn(`Cannot send new application email: Application record not found or missing email.`);
+        // Require authentication to submit an application
+        if (!req.isAuthenticated()) {
+          // Clean up uploaded files on error
+          if (req.files) {
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+            Object.values(files).flat().forEach(file => {
+              try {
+                fs.unlinkSync(file.path);
+              } catch (e) {
+                console.error('Error cleaning up file:', e);
+              }
+            });
+          }
+          return res.status(401).json({ message: "You must be logged in to submit an application" });
         }
-      } catch (emailError) {
-        // Log the error but don't fail the request
-        console.error("Error sending new application email:", emailError);
-      }
 
-      return res.status(201).json(application);
-    } catch (error) {
-      console.error("Error creating application:", error);
-      return res.status(500).json({ message: "Internal server error" });
+        // Validate the request body using Zod schema
+        const parsedData = insertApplicationSchema.safeParse(req.body);
+
+        if (!parsedData.success) {
+          // Clean up uploaded files on validation error
+          if (req.files) {
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+            Object.values(files).flat().forEach(file => {
+              try {
+                fs.unlinkSync(file.path);
+              } catch (e) {
+                console.error('Error cleaning up file:', e);
+              }
+            });
+          }
+          
+          const validationError = fromZodError(parsedData.error);
+          return res.status(400).json({
+            message: "Validation error",
+            errors: validationError.details
+          });
+        }
+
+        // Ensure the application is associated with the current user
+        // Override any userId in the request to prevent spoofing
+        const applicationData = {
+          ...parsedData.data,
+          userId: req.user!.id
+        };
+
+        // Handle uploaded files
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        if (files) {
+          const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+          
+          if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+            if (isProduction) {
+              applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user!.id);
+            } else {
+              applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
+            }
+          }
+          if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+            if (isProduction) {
+              applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user!.id);
+            } else {
+              applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
+            }
+          }
+        }
+
+        // Create the application in storage
+        const application = await storage.createApplication(applicationData);
+
+        // Fetch the full application record to ensure all fields are present
+        const fullApplication = await storage.getApplicationById(application.id);
+
+        // Send email notification about new application
+        try {
+          if (fullApplication && fullApplication.email) {
+            const emailContent = generateStatusChangeEmail({
+              fullName: fullApplication.fullName || "Applicant",
+              email: fullApplication.email,
+              status: "new"
+            });
+
+            await sendEmail(emailContent);
+            console.log(`New application email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+          } else {
+            console.warn(`Cannot send new application email: Application record not found or missing email.`);
+          }
+        } catch (emailError) {
+          // Log the error but don't fail the request
+          console.error("Error sending new application email:", emailError);
+        }
+
+        return res.status(201).json(application);
+      } catch (error) {
+        console.error("Error creating application:", error);
+        
+        // Clean up uploaded files on error (development only)
+        if (req.files) {
+          const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+          Object.values(files).flat().forEach(file => {
+            try {
+              // Only clean up files if they have a path (development mode)
+              if (file.path) {
+                fs.unlinkSync(file.path);
+              }
+            } catch (e) {
+              console.error('Error cleaning up file:', e);
+            }
+          });
+        }
+        
+        return res.status(500).json({ message: "Internal server error" });
+      }
     }
-  });
+  );
 
   // Get all applications endpoint (for admin view)
   app.get("/api/applications", async (req: Request, res: Response) => {
@@ -564,6 +630,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===============================
+  // FILE UPLOAD ROUTES
+  // ===============================
+
+  // Generic file upload endpoint (for use with new upload components)
+  app.post("/api/upload-file", 
+    upload.single('file'), 
+    async (req: Request, res: Response) => {
+      try {
+        // Check if user is authenticated
+        if (!req.isAuthenticated()) {
+          // Clean up uploaded file (development only)
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (e) {
+              console.error('Error cleaning up file:', e);
+            }
+          }
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        if (!req.file) {
+          return res.status(400).json({ error: "No file uploaded" });
+        }
+
+        const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+        let fileUrl: string;
+        let fileName: string;
+
+        if (isProduction) {
+          // Upload to Vercel Blob in production
+          fileUrl = await uploadToBlob(req.file, req.user!.id);
+          // Extract filename from Vercel Blob URL for response
+          fileName = fileUrl.split('/').pop() || req.file.originalname;
+        } else {
+          // Use local storage in development
+          fileUrl = getFileUrl(req.file.filename);
+          fileName = req.file.filename;
+        }
+
+        // Return success response with file information
+        return res.status(200).json({
+          success: true,
+          url: fileUrl,
+          fileName: fileName,
+          size: req.file.size,
+          type: req.file.mimetype
+        });
+      } catch (error) {
+        console.error("File upload error:", error);
+        
+        // Clean up uploaded file on error (development only)
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (e) {
+            console.error('Error cleaning up file:', e);
+          }
+        }
+        
+        return res.status(500).json({ 
+          error: "File upload failed",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    }
+  );
+
   // FILE SERVING ROUTES
   // ===============================
 
@@ -626,10 +760,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update application documents endpoint (for approved applicants)
   app.patch("/api/applications/:id/documents", 
-    upload.fields([
-      { name: 'foodSafetyLicense', maxCount: 1 },
-      { name: 'foodEstablishmentCert', maxCount: 1 }
-    ]), 
+    (req, res, next) => {
+      // Check content type to decide whether to use multer
+      const contentType = req.get('Content-Type') || '';
+      
+      if (contentType.includes('multipart/form-data')) {
+        // Use multer for file uploads
+        const fileUploadMiddleware = upload.fields([
+          { name: 'foodSafetyLicense', maxCount: 1 },
+          { name: 'foodEstablishmentCert', maxCount: 1 }
+        ]);
+        fileUploadMiddleware(req, res, next);
+      } else {
+        // Skip multer for JSON requests
+        next();
+      }
+    },
     async (req: Request, res: Response) => {
       try {
         // Check if user is authenticated
@@ -675,48 +821,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ message: "Access denied" });
         }
 
-        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
         const updateData: any = {
           id: applicationId,
         };
 
-        // Handle food safety license file
-        if (files && files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-          // Delete old file if it exists and is a file path (not URL)
-          if (application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith('/api/files/')) {
-            const oldFilename = application.foodSafetyLicenseUrl.split('/').pop();
-            if (oldFilename) {
-              const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
-              deleteFile(oldFilePath);
+        // Check if this is a file upload request or JSON request
+        const contentType = req.get('Content-Type') || '';
+        const isFileUpload = contentType.includes('multipart/form-data');
+
+        if (isFileUpload) {
+          // Handle multipart file uploads
+          const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+          const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+          // Handle food safety license file
+          if (files && files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+            // Delete old file if it exists and is a file path (not URL) - development only
+            if (!isProduction && application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith('/api/files/')) {
+              const oldFilename = application.foodSafetyLicenseUrl.split('/').pop();
+              if (oldFilename) {
+                const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
+                deleteFile(oldFilePath);
+              }
+            }
+            
+            if (isProduction) {
+              updateData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user!.id);
+            } else {
+              const filename = files.foodSafetyLicense[0].filename;
+              updateData.foodSafetyLicenseUrl = getFileUrl(filename);
             }
           }
-          
-          const filename = files.foodSafetyLicense[0].filename;
-          updateData.foodSafetyLicenseUrl = getFileUrl(filename);
-        }
 
-        // Handle food establishment cert file  
-        if (files && files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-          // Delete old file if it exists and is a file path (not URL)
-          if (application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith('/api/files/')) {
-            const oldFilename = application.foodEstablishmentCertUrl.split('/').pop();
-            if (oldFilename) {
-              const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
-              deleteFile(oldFilePath);
+          // Handle food establishment cert file  
+          if (files && files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+            // Delete old file if it exists and is a file path (not URL) - development only
+            if (!isProduction && application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith('/api/files/')) {
+              const oldFilename = application.foodEstablishmentCertUrl.split('/').pop();
+              if (oldFilename) {
+                const oldFilePath = path.join(process.cwd(), 'uploads', 'documents', oldFilename);
+                deleteFile(oldFilePath);
+              }
+            }
+            
+            if (isProduction) {
+              updateData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user!.id);
+            } else {
+              const filename = files.foodEstablishmentCert[0].filename;
+              updateData.foodEstablishmentCertUrl = getFileUrl(filename);
             }
           }
-          
-          const filename = files.foodEstablishmentCert[0].filename;
-          updateData.foodEstablishmentCertUrl = getFileUrl(filename);
-        }
 
-        // Handle URL inputs if no files uploaded
-        if (req.body.foodSafetyLicenseUrl && !updateData.foodSafetyLicenseUrl) {
-          updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-        }
+          // Handle URL inputs from form data if no files uploaded
+          if (req.body.foodSafetyLicenseUrl && !updateData.foodSafetyLicenseUrl) {
+            updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+          }
 
-        if (req.body.foodEstablishmentCertUrl && !updateData.foodEstablishmentCertUrl) {
-          updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          if (req.body.foodEstablishmentCertUrl && !updateData.foodEstablishmentCertUrl) {
+            updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          }
+        } else {
+          // Handle JSON requests (from our new upload system)
+          if (req.body.foodSafetyLicenseUrl) {
+            updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+          }
+
+          if (req.body.foodEstablishmentCertUrl) {
+            updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          }
         }
 
         // Update the application documents
