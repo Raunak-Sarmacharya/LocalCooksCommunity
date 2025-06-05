@@ -334,3 +334,8 @@ local-settings.json
 !.gitkeep
 !docs/
 !README.md
+
+# Route Sync System
+.sync-manifest.json
+api/*.backup.*
+scripts/.sync-cache/
