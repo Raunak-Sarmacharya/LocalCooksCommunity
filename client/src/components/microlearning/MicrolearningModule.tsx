@@ -1,12 +1,5 @@
-import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
-import { motion } from 'framer-motion';
-import { AlertCircle, ArrowRight, Award, CheckCircle, ChevronLeft, ChevronRight, Clock, Download, FileText, Lock, Shield, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'wouter';
-import CompletionTracker from './CompletionTracker';
-import UnlockProgress from './UnlockProgress';
-import VideoPlayer from './VideoPlayer';
 
 interface VideoData {
   id: string;
@@ -146,6 +139,15 @@ export default function MicrolearningModule({
     userProgress.every(p => p.completed);
   const overallProgress = (userProgress.filter(p => p.completed).length / videos.length) * 100;
 
+  // Debug log
+  console.log('MicrolearningModule rendering:', {
+    isLoading,
+    applicationInfo,
+    hasApprovedApplication,
+    accessLevel,
+    userProgress: userProgress.length
+  });
+
   useEffect(() => {
     loadUserProgress();
   }, [userId]);
@@ -161,11 +163,14 @@ export default function MicrolearningModule({
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Progress data received:', data);
         setUserProgress(data.progress || []);
         setCompletionConfirmed(data.completionConfirmed || false);
         setAccessLevel(data.accessLevel || 'limited');
         setHasApprovedApplication(data.hasApprovedApplication || false);
         setApplicationInfo(data.applicationInfo || null);
+      } else {
+        console.error('Failed to load progress:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Failed to load progress:', error);
@@ -288,548 +293,77 @@ export default function MicrolearningModule({
     return (
       <div className="flex items-center justify-center p-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <span className="ml-2">Loading training modules...</span>
       </div>
     );
   }
 
+  // Simplified initial render to test
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-white overflow-x-hidden ${className}`}>
-      <div className="w-full">
-        {/* Modern Header - Fixed container */}
-        <div className="w-full bg-white/80 backdrop-blur-sm border-b border-gray-100">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.6 }}
-              className="text-center space-y-6"
-            >
-              <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full text-primary font-medium text-sm">
-                <Shield className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Government Certified Training</span>
-                {completionConfirmed && (
-                  <>
-                    <span className="w-1 h-1 bg-primary/60 rounded-full flex-shrink-0"></span>
-                    <div className="flex items-center gap-1 text-green-600">
-                      <Award className="h-3 w-3 flex-shrink-0" />
-                      <span className="text-xs">Completed</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight px-4">
-                Food Safety Certification
-                <span className="block text-primary">Training Program</span>
-              </h1>
-              
-              <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
-                Master food safety fundamentals with our comprehensive 10-module program designed 
-                specifically for Newfoundland & Labrador chefs and food handlers.
-              </p>
-
-              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2 px-4">
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs sm:text-sm">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">Health Canada Approved</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs sm:text-sm">
-                  <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">NL Licensed Content</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs sm:text-sm">
-                  <span className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">HACCP Certified</span>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-
-        {/* Clean notification system */}
-        <div className="w-full">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
-            
-            {/* Application Status Notification */}
-            {applicationInfo && (
-              <motion.div 
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className={`rounded-lg border p-4 ${
-                  applicationInfo.hasRejected || applicationInfo.hasCancelled
-                    ? 'bg-orange-50 border-orange-200'
-                    : applicationInfo.hasPending
-                    ? 'bg-blue-50 border-blue-200'
-                    : !hasApprovedApplication
-                    ? 'bg-yellow-50 border-yellow-200'
-                    : 'bg-green-50 border-green-200'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`p-1 rounded-full flex-shrink-0 ${
-                    applicationInfo.hasRejected || applicationInfo.hasCancelled
-                      ? 'bg-orange-100'
-                      : applicationInfo.hasPending
-                      ? 'bg-blue-100'
-                      : !hasApprovedApplication
-                      ? 'bg-yellow-100'
-                      : 'bg-green-100'
-                  }`}>
-                    {applicationInfo.hasRejected || applicationInfo.hasCancelled ? (
-                      <AlertCircle className="h-4 w-4 text-orange-600" />
-                    ) : applicationInfo.hasPending ? (
-                      <Clock className="h-4 w-4 text-blue-600" />
-                    ) : !hasApprovedApplication ? (
-                      <FileText className="h-4 w-4 text-yellow-600" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium ${
-                      applicationInfo.hasRejected || applicationInfo.hasCancelled
-                        ? 'text-orange-800'
-                        : applicationInfo.hasPending
-                        ? 'text-blue-800'
-                        : !hasApprovedApplication
-                        ? 'text-yellow-800'
-                        : 'text-green-800'
-                    }`}>
-                      {applicationInfo.message}
-                    </p>
-                    {applicationInfo.canApply && (
-                      <div className="mt-2">
-                        <button
-                          onClick={() => window.location.href = '/apply'}
-                          className="text-xs px-3 py-1 bg-primary text-white rounded-full hover:bg-primary/90 transition-colors"
-                        >
-                          Submit Application
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Demo Notice - Subtle */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
-              className="bg-white/80 backdrop-blur-sm border border-orange-200/50 rounded-xl p-4"
-            >
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 text-orange-700">
-                <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1.5 sm:mt-0"></div>
-                <span className="text-sm font-medium">Demo Environment</span>
-                <span className="text-sm opacity-75 break-words">Sample videos for demonstration purposes</span>
-              </div>
-            </motion.div>
-
-            {/* Access Level Notification - Clean & Modern */}
-            {accessLevel === 'limited' && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7 }}
-                className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100"
-              >
-                <div className="flex flex-col sm:flex-row items-start gap-4">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-yellow-600 text-lg">🔒</span>
-                  </div>
-                  <div className="flex-1 space-y-3 min-w-0">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                        Free Preview Available
-                      </h3>
-                      <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                        Experience Module 1 for free. Complete your application to unlock all 10 comprehensive modules and earn your certification.
-                      </p>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-                      <div className="flex items-center gap-2 text-sm text-green-700">
-                        <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
-                        <span className="whitespace-nowrap">Module 1 Available</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <div className="w-2 h-2 bg-gray-300 rounded-full flex-shrink-0"></div>
-                        <span className="whitespace-nowrap">9 More Modules</span>
-                      </div>
-                    </div>
-
-                    <Button
-                      asChild
-                      size="sm"
-                      className="bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 w-full sm:w-auto"
-                    >
-                      <Link href="/apply">
-                        Unlock Full Training
-                        <ArrowRight className="h-4 w-4 ml-2 flex-shrink-0" />
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="w-full">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-              {/* Video Player Section - Modern Design */}
-              <div className="xl:col-span-2 order-2 xl:order-1">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="space-y-4 lg:space-y-6"
-                >
-                  {/* Video Header */}
-                  <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
-                    <div className="flex flex-col gap-4 mb-4">
-                      <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary rounded-xl flex items-center justify-center text-white font-semibold text-base sm:text-lg flex-shrink-0">
-                          {currentVideoIndex + 1}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 leading-tight break-words">{currentVideo.title}</h2>
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <span className="text-sm text-gray-600 whitespace-nowrap">{currentVideo.duration}</span>
-                            <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
-                            <span className="text-sm text-gray-600 break-all">{currentVideo.source}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {accessLevel === 'limited' && currentVideoIndex === 0 && (
-                          <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                            Free Preview
-                          </div>
-                        )}
-                        {currentVideo.required && (
-                          <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                            Required
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-sm sm:text-base text-gray-600 leading-relaxed break-words">{currentVideo.description}</p>
-                  </div>
-
-                  {/* Video Player */}
-                  <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-                    <div className="aspect-video w-full">
-                      <VideoPlayer
-                        videoUrl={currentVideo.url}
-                        title={currentVideo.title}
-                        onStart={() => handleVideoStart(currentVideo.id)}
-                        onProgress={(progress) => handleVideoProgress(currentVideo.id, progress)}
-                        onComplete={() => handleVideoComplete(currentVideo.id)}
-                        isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
-                        requireFullWatch={true}
-                      />
-                    </div>
-
-                    {/* Modern Video Navigation */}
-                    <div className="p-4 sm:p-6 bg-gray-50/50 border-t">
-                      <div className="flex flex-col gap-3 sm:gap-4">
-                        <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                          <span className="whitespace-nowrap">Module {currentVideoIndex + 1} of {videos.length}</span>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
-                            disabled={currentVideoIndex === 0}
-                            className="flex items-center justify-center gap-2 w-full"
-                          >
-                            <ChevronLeft className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">Previous</span>
-                          </Button>
-
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
-                            disabled={currentVideoIndex === videos.length - 1 || (accessLevel === 'limited' && currentVideoIndex === 0)}
-                            className="flex items-center justify-center gap-2 w-full"
-                          >
-                            {accessLevel === 'limited' && currentVideoIndex === 0 ? (
-                              <>
-                                <Lock className="h-4 w-4 flex-shrink-0" />
-                                <span className="truncate">Locked</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="truncate">Next</span>
-                                <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Modern Module Grid */}
-                <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Training Modules</h3>
-                    {accessLevel === 'limited' && (
-                      <div className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs sm:text-sm font-medium">
-                        1 of 10 Available
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Module Grid */}
-                  <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-5 gap-2 sm:gap-3 mb-6">
-                    {videos.map((video, index) => {
-                      const progress = getVideoProgress(video.id);
-                      const isLocked = accessLevel === 'limited' && index > 0;
-                      const isCurrent = currentVideoIndex === index;
-                      
-                      return (
-                        <button
-                          key={video.id}
-                          onClick={() => !isLocked && setCurrentVideoIndex(index)}
-                          disabled={isLocked}
-                          className={`relative p-2 sm:p-3 rounded-xl border transition-all duration-200 ${
-                            isCurrent
-                              ? 'border-primary bg-primary/5 shadow-sm'
-                              : isLocked
-                              ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                              : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                          }`}
-                        >
-                          {progress?.completed && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full flex items-center justify-center">
-                              <CheckCircle className="h-2 w-2 sm:h-3 sm:w-3 text-white" />
-                            </div>
-                          )}
-                          {isLocked && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-gray-400 rounded-full flex items-center justify-center">
-                              <Lock className="h-2 w-2 sm:h-3 sm:w-3 text-white" />
-                            </div>
-                          )}
-                          
-                          <div className="text-center">
-                            <div className={`w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-1 sm:mb-2 rounded-lg flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                              isCurrent
-                                ? 'bg-primary text-white'
-                                : isLocked
-                                ? 'bg-gray-300 text-gray-500'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              {index + 1}
-                            </div>
-                            <div className="text-xs text-gray-600 hidden sm:block">
-                              Module {index + 1}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Current Module Details */}
-                  <div className="border-t pt-4 sm:pt-6">
-                    <div className="space-y-3">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex items-start gap-2">
-                          <h4 className="font-medium text-gray-900 flex-1 leading-tight break-words">
-                            {currentVideo.title}
-                          </h4>
-                          {accessLevel === 'limited' && currentVideoIndex > 0 && (
-                            <span className="text-yellow-600 flex-shrink-0">🔒</span>
-                          )}
-                        </div>
-                        
-                        <div className="px-3 py-2 bg-green-50 text-green-700 rounded-lg text-xs font-medium text-center break-words">
-                          {currentVideo.certification}
-                        </div>
-                        
-                        <p className="text-sm text-gray-600 leading-relaxed break-words">
-                          {currentVideo.description}
-                        </p>
-                      </div>
-                      
-                      {accessLevel === 'limited' && currentVideoIndex > 0 && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-600" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-yellow-800 font-medium text-sm">
-                                Application Approval Required
-                              </p>
-                              <p className="text-yellow-700 text-xs">
-                                Complete your chef application to unlock this module
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                        <span className="whitespace-nowrap">Duration: {currentVideo.duration}</span>
-                        <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
-                        <span className="break-all">Source: {currentVideo.source}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Modern Sidebar */}
-              <div className="xl:col-span-1 order-1 xl:order-2">
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 }}
-                                      className="space-y-4 lg:space-y-6 xl:sticky xl:top-6"
-                >
-                  {/* Unlock Progress for Limited Users */}
-                  {accessLevel === 'limited' && (
-                    <UnlockProgress 
-                      hasApprovedApplication={hasApprovedApplication}
-                    />
-                  )}
-                  
-                  {/* Modern Progress Card */}
-                  <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-3 mb-4 lg:mb-6">
-                      <div className="w-8 h-8 lg:w-10 lg:h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <TrendingUp className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-semibold text-gray-900">Your Progress</h3>
-                        <p className="text-sm text-gray-600 hidden sm:block">Track your learning journey</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 lg:space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xl lg:text-2xl font-bold text-primary">{Math.round(overallProgress)}%</span>
-                        <span className="text-xs lg:text-sm text-gray-600">{userProgress.filter(p => p.completed).length} of {videos.length} complete</span>
-                      </div>
-                      
-                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <motion.div
-                          className="bg-gradient-to-r from-primary to-blue-600 h-2 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${overallProgress}%` }}
-                          transition={{ duration: 1, ease: "easeOut" }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Detailed Progress Tracker */}
-                  <CompletionTracker
-                    videos={videoProgressData}
-                    overallProgress={overallProgress}
-                    completedCount={userProgress.filter(p => p.completed).length}
-                    totalCount={videos.length}
-                  />
-
-                  {/* Modern Completion Card */}
-                  {allVideosCompleted && !completionConfirmed && (
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
-                      <div className="text-center space-y-4">
-                        <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mx-auto">
-                          <Award className="h-8 w-8 text-white" />
-                        </div>
-                        
-                        <div>
-                          <h3 className="font-semibold text-green-900 mb-2">
-                            Ready for Certification!
-                          </h3>
-                          <p className="text-sm text-green-700 leading-relaxed">
-                            Congratulations! You've completed all training modules. Confirm to receive your certificate.
-                          </p>
-                        </div>
-                        
-                        <Button
-                          onClick={confirmCompletion}
-                          disabled={isSubmitting}
-                          className="w-full bg-green-600 hover:bg-green-700"
-                        >
-                          {isSubmitting ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              Processing...
-                            </>
-                          ) : (
-                            'Confirm Completion'
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Modern Certificate Card */}
-                  {completionConfirmed && (
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
-                      <div className="text-center space-y-4">
-                        <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mx-auto">
-                          <Award className="h-8 w-8 text-white" />
-                        </div>
-                        
-                        <div>
-                          <h3 className="font-semibold text-green-900 mb-2">
-                            Certification Complete!
-                          </h3>
-                          <p className="text-sm text-green-700 leading-relaxed mb-4">
-                            You've successfully completed all NL Food Handler Certification requirements.
-                          </p>
-                        </div>
-                        
-                        <Button 
-                          variant="outline" 
-                          className="w-full border-green-300 text-green-700 hover:bg-green-100"
-                          onClick={async () => {
-                            try {
-                              const response = await fetch(`/api/microlearning/certificate/${userId || user?.id}`);
-                              if (response.ok) {
-                                const data = await response.json();
-                                alert(`Certificate generated! Your completion has been recorded for ${new Date(data.completionDate).toLocaleDateString()}`);
-                              }
-                            } catch (error) {
-                              console.error('Error downloading certificate:', error);
-                            }
-                          }}
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Download Certificate
-                        </Button>
-                        
-                        <div className="space-y-1 text-xs text-green-600">
-                          <div className="flex items-center justify-center gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            <span>Health Canada Approved</span>
-                          </div>
-                          <div className="flex items-center justify-center gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            <span>CFIA Compliant</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              </div>
+    <div className={`min-h-screen bg-gray-50 p-4 ${className}`}>
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Food Safety Training</h1>
+        
+        {/* Application Status */}
+        {applicationInfo && (
+          <div className="bg-white p-4 rounded-lg shadow mb-4">
+            <h2 className="font-semibold mb-2">Application Status</h2>
+            <p className="text-sm">{applicationInfo.message}</p>
+            <div className="mt-2 text-xs text-gray-600">
+              <div>Has Active: {applicationInfo.hasActive ? 'Yes' : 'No'}</div>
+              <div>Has Pending: {applicationInfo.hasPending ? 'Yes' : 'No'}</div>
+              <div>Has Rejected: {applicationInfo.hasRejected ? 'Yes' : 'No'}</div>
+              <div>Has Cancelled: {applicationInfo.hasCancelled ? 'Yes' : 'No'}</div>
+              <div>Can Apply: {applicationInfo.canApply ? 'Yes' : 'No'}</div>
+              <div>Latest Status: {applicationInfo.latestStatus}</div>
             </div>
+            {applicationInfo.canApply && (
+              <button
+                onClick={() => window.location.href = '/apply'}
+                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Submit Application
+              </button>
+            )}
           </div>
+        )}
+
+        {/* Progress Info */}
+        <div className="bg-white p-4 rounded-lg shadow mb-4">
+          <h2 className="font-semibold mb-2">Your Progress</h2>
+          <div>Access Level: {accessLevel}</div>
+          <div>Has Approved Application: {hasApprovedApplication ? 'Yes' : 'No'}</div>
+          <div>Overall Progress: {Math.round(overallProgress)}%</div>
+          <div>Videos Completed: {userProgress.filter(p => p.completed).length} / {videos.length}</div>
+          
+          <div className="mt-4">
+            <h3 className="font-medium mb-2">Current Progress:</h3>
+            {userProgress.map(progress => (
+              <div key={progress.videoId} className="text-sm">
+                Video: {progress.videoId} - {progress.progress}% 
+                {progress.completed && ' ✓ Completed'}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Current Video Info */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h2 className="font-semibold mb-2">Current Video: {currentVideo.title}</h2>
+          <p className="text-sm text-gray-600 mb-2">{currentVideo.description}</p>
+          <div className="text-xs text-gray-500">
+            Duration: {currentVideo.duration} | Source: {currentVideo.source}
+          </div>
+          
+          {accessLevel === 'limited' && currentVideoIndex > 0 ? (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-yellow-800 text-sm">🔒 This video is locked. Submit an application to unlock all modules.</p>
+            </div>
+          ) : (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded">
+              <p className="text-green-800 text-sm">✅ This video is available for viewing.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
