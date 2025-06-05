@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, RotateCcw, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { AlertCircle, CheckCircle, Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface VideoPlayerProps {
   videoUrl: string;
@@ -259,14 +259,14 @@ export default function VideoPlayer({
       </div>
 
       {/* Video Controls */}
-      <div className="bg-gray-900 text-white p-4">
+      <div className="bg-gray-900 text-white p-3 sm:p-4">
         {/* Title and Status */}
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-sm truncate flex-1">{title}</h3>
+        <div className="flex items-start gap-2 mb-3">
+          <h3 className="font-medium text-sm leading-tight flex-1 break-words">{title}</h3>
           {videoCompleted && (
-            <div className="flex items-center ml-2 text-green-400">
-              <CheckCircle className="h-4 w-4 mr-1" />
-              <span className="text-xs">Complete</span>
+            <div className="flex items-center text-green-400 flex-shrink-0">
+              <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
+              <span className="text-xs whitespace-nowrap">Complete</span>
             </div>
           )}
         </div>
@@ -287,21 +287,23 @@ export default function VideoPlayer({
               className="h-2 bg-gray-700"
             />
           </div>
-          <div className="flex justify-between text-xs text-gray-400 mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{requireFullWatch && `${Math.round(watchPercentage)}% watched`}</span>
-            <span>{formatTime(videoDuration)}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400 mt-2">
+            <span className="whitespace-nowrap">{formatTime(currentTime)}</span>
+            {requireFullWatch && (
+              <span className="text-center flex-shrink-0">{Math.round(watchPercentage)}% watched</span>
+            )}
+            <span className="whitespace-nowrap">{formatTime(videoDuration)}</span>
           </div>
         </div>
 
         {/* Control Buttons */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        <div className="flex flex-col sm:flex-row items-center gap-3 sm:justify-between">
+          <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
             <Button
               variant="ghost"
               size="sm"
               onClick={togglePlayPause}
-              className="text-white hover:bg-white/20"
+              className="text-white hover:bg-white/20 flex-shrink-0"
             >
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
@@ -310,7 +312,7 @@ export default function VideoPlayer({
               variant="ghost"
               size="sm"
               onClick={restart}
-              className="text-white hover:bg-white/20"
+              className="text-white hover:bg-white/20 flex-shrink-0"
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -319,13 +321,13 @@ export default function VideoPlayer({
               variant="ghost"
               size="sm"
               onClick={toggleMute}
-              className="text-white hover:bg-white/20"
+              className="text-white hover:bg-white/20 flex-shrink-0"
             >
               {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </Button>
           </div>
 
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
             {requireFullWatch ? 
               `${Math.round(watchPercentage)}% required` : 
               `${Math.round(progress)}% progress`

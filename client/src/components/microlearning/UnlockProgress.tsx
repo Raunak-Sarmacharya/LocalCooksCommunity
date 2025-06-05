@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'wouter';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle, Clock, AlertCircle, FileText, Award, ChefHat, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
+import { AlertCircle, ArrowRight, Award, CheckCircle, ChefHat, Clock, FileText } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'wouter';
 
 interface Application {
   id: number;
@@ -151,27 +151,27 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Progress Bar */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="font-medium">Progress to Full Access</span>
-              <span className="text-gray-600">{progressPercentage}% Complete</span>
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
+              <span className="font-medium text-sm">Progress to Full Access</span>
+              <span className="text-gray-600 text-sm">{progressPercentage}% Complete</span>
             </div>
             <Progress value={progressPercentage} className="h-3" />
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>Account Created</span>
-              <span>Application Submitted</span>
-              <span>Approved</span>
+            <div className="grid grid-cols-3 gap-2 text-xs text-gray-500 text-center">
+              <span className="break-words">Account Created</span>
+              <span className="break-words">Application Submitted</span>
+              <span className="break-words">Approved</span>
             </div>
           </div>
 
           {/* Current Status */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-2 rounded-full">
+              <div className="bg-blue-100 p-2 rounded-full flex-shrink-0">
                 <ChefHat className="h-5 w-5 text-blue-600" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-medium text-blue-900 mb-1">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-blue-900 mb-2 break-words">
                   {isApplicationApproved ? "🎉 Full Access Unlocked!" :
                    isApplicationPending ? "⏳ Application Under Review" :
                    hasSubmittedApplication ? "✅ Application Submitted" :
@@ -179,7 +179,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                    hasCancelledApplications ? "🔄 Ready to Apply Again" :
                    "🚀 Ready to Apply"}
                 </h3>
-                <p className="text-blue-700 text-sm">
+                <p className="text-blue-700 text-sm leading-relaxed break-words">
                   {isApplicationApproved ? "You now have access to all 10 training modules!" :
                    isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved." :
                    hasSubmittedApplication ? "Great! Your application is in our system." :
