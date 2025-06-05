@@ -196,6 +196,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
 
         console.log('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
+        console.log('Request details:', {
+          method: req.method,
+          contentType: req.headers['content-type'],
+          hasFiles: !!req.files,
+          fileKeys: req.files ? Object.keys(req.files) : [],
+          bodyKeys: Object.keys(req.body || {}),
+          bodyData: {
+            foodSafetyLicense: req.body.foodSafetyLicense,
+            foodEstablishmentCert: req.body.foodEstablishmentCert,
+            foodSafetyLicenseUrl: req.body.foodSafetyLicenseUrl,
+            foodEstablishmentCertUrl: req.body.foodEstablishmentCertUrl,
+            userId: req.body.userId
+          }
+        });
         console.log('Form data:', {
           foodSafetyLicense: applicationData.foodSafetyLicense,
           foodEstablishmentCert: applicationData.foodEstablishmentCert,

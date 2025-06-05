@@ -78,12 +78,21 @@ export default function CertificationsForm() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: ApplicationFormData & { files?: Record<string, File> }) => {
-      console.log("Submitting application with data:", data);
+      console.log("🚀 Submitting application with data:", data);
 
-      // Create FormData for multipart submission if files are included
-      const hasFiles = data.files && Object.keys(data.files).length > 0;
+      // Check if we have any file uploads to handle
+      const hasFileUploads = data.files && Object.keys(data.files).length > 0;
+      const hasUploadedUrls = data.foodSafetyLicenseUrl || data.foodEstablishmentCertUrl;
       
-      if (hasFiles) {
+      console.log("📋 Submission method decision:", {
+        hasFileUploads,
+        hasUploadedUrls,
+        willUseFormData: hasFileUploads,
+        willUseJSON: !hasFileUploads
+      });
+      
+      if (hasFileUploads) {
+        // Use FormData for file uploads - backend will handle file upload to blob
         const formData = new FormData();
         
         // Add all form fields
@@ -103,6 +112,7 @@ export default function CertificationsForm() {
           headers["X-User-ID"] = user.id.toString();
         }
 
+        console.log("📤 Submitting via FormData with files");
         const response = await fetch("/api/applications", {
           method: "POST",
           headers,
@@ -117,11 +127,16 @@ export default function CertificationsForm() {
 
         return response.json();
       } else {
-        // JSON submission for non-file data
+        // Use JSON submission - for pre-uploaded file URLs or no files
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (user?.id) {
           headers["X-User-ID"] = user.id.toString();
         }
+
+        console.log("📤 Submitting via JSON with document URLs:", {
+          foodSafetyLicenseUrl: data.foodSafetyLicenseUrl || null,
+          foodEstablishmentCertUrl: data.foodEstablishmentCertUrl || null
+        });
 
         const response = await fetch("/api/applications", {
           method: "POST",
@@ -203,39 +218,57 @@ export default function CertificationsForm() {
     }
 
     try {
-      let uploadedFileUrls: Record<string, string> = {};
+      // Determine submission method based on what we have
+      const hasFiles = Object.keys(fileUploads).length > 0;
+      const hasUrls = documentUrls.foodSafetyLicenseUrl.trim() || documentUrls.foodEstablishmentCertUrl.trim();
+      
+      console.log("🎯 Form submission strategy:", {
+        hasFiles,
+        hasUrls,
+        fileCount: Object.keys(fileUploads).length,
+        urls: documentUrls
+      });
 
-      // Upload files to cloud storage if any
-      if (Object.keys(fileUploads).length > 0) {
-        for (const [fieldName, file] of Object.entries(fileUploads)) {
-          const result = await uploadFile(file);
-          if (result) {
-            // Store the uploaded file URL for the application
-            uploadedFileUrls[`${fieldName}Url`] = result.url;
-          } else {
-            throw new Error(`Failed to upload ${fieldName}`);
-          }
-        }
+      if (hasFiles) {
+        // Use direct file upload via FormData - backend will handle blob upload
+        const completeFormData = {
+          ...formData,
+          ...data,
+          userId: user.id,
+          files: fileUploads // Include files for FormData submission
+        } as ApplicationFormData & { files: Record<string, File> };
+
+        console.log("📁 Submitting with files directly to backend");
+        mutate(completeFormData);
+        
+      } else if (hasUrls) {
+        // Use pre-uploaded URLs via JSON submission
+        const completeFormData = {
+          ...formData,
+          ...data,
+          ...documentUrls, // Add the URL inputs
+          userId: user.id,
+        } as ApplicationFormData;
+
+        console.log("🔗 Submitting with pre-uploaded URLs");
+        mutate(completeFormData);
+        
+      } else {
+        // No documents - just submit the application
+        const completeFormData = {
+          ...formData,
+          ...data,
+          userId: user.id,
+        } as ApplicationFormData;
+
+        console.log("📝 Submitting without documents");
+        mutate(completeFormData);
       }
-
-      // Combine all data and submit the complete form with user ID
-      const completeFormData = {
-        ...formData,
-        ...data,
-        ...uploadedFileUrls, // Add uploaded file URLs
-        ...documentUrls, // Add direct URLs
-        userId: user.id,
-      } as ApplicationFormData;
-
-      // Log for debugging
-      console.log("Submitting application:", completeFormData);
-
-      mutate(completeFormData);
       
     } catch (error) {
       toast({
-        title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload files",
+        title: "Submission failed",
+        description: error instanceof Error ? error.message : "Failed to submit application",
         variant: "destructive",
       });
     }
@@ -274,8 +307,6 @@ export default function CertificationsForm() {
       return updated;
     });
   };
-
-
 
   return (
     <Form {...form}>
