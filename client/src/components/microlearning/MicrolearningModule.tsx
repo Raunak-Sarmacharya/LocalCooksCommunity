@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle, ExternalLink, Download, Award, AlertCircle, Shield, ArrowRight, TrendingUp, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
-import VideoPlayer from './VideoPlayer';
-import CompletionTracker from './CompletionTracker';
-import UnlockProgress from './UnlockProgress';
 import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
+import { ArrowRight, Award, CheckCircle, ChevronLeft, ChevronRight, Download, Lock, Shield, TrendingUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'wouter';
+import CompletionTracker from './CompletionTracker';
+import UnlockProgress from './UnlockProgress';
+import VideoPlayer from './VideoPlayer';
 
 interface VideoData {
   id: string;
@@ -411,10 +408,10 @@ export default function MicrolearningModule({
 
         {/* Main Content Area */}
         <div className="w-full">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
               {/* Video Player Section - Modern Design */}
-              <div className="lg:col-span-2 order-2 lg:order-1">
+              <div className="xl:col-span-2 order-2 xl:order-1">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -423,34 +420,34 @@ export default function MicrolearningModule({
                 >
                   {/* Video Header */}
                   <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-                      <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                    <div className="flex flex-col gap-4 mb-4">
+                      <div className="flex items-start gap-3 sm:gap-4 min-w-0">
                         <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary rounded-xl flex items-center justify-center text-white font-semibold text-base sm:text-lg flex-shrink-0">
                           {currentVideoIndex + 1}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">{currentVideo.title}</h2>
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mt-1">
-                            <span className="text-sm text-gray-600">{currentVideo.duration}</span>
-                            <span className="hidden sm:block w-1 h-1 bg-gray-400 rounded-full"></span>
-                            <span className="text-sm text-gray-600 truncate">{currentVideo.source}</span>
+                          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 leading-tight break-words">{currentVideo.title}</h2>
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <span className="text-sm text-gray-600 whitespace-nowrap">{currentVideo.duration}</span>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                            <span className="text-sm text-gray-600 break-all">{currentVideo.source}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         {accessLevel === 'limited' && currentVideoIndex === 0 && (
-                          <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium">
+                          <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
                             Free Preview
                           </div>
                         )}
                         {currentVideo.required && (
-                          <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium">
+                          <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
                             Required
                           </div>
                         )}
                       </div>
                     </div>
-                    <p className="text-sm sm:text-base text-gray-600 leading-relaxed">{currentVideo.description}</p>
+                    <p className="text-sm sm:text-base text-gray-600 leading-relaxed break-words">{currentVideo.description}</p>
                   </div>
 
                   {/* Video Player */}
@@ -469,41 +466,43 @@ export default function MicrolearningModule({
 
                     {/* Modern Video Navigation */}
                     <div className="p-4 sm:p-6 bg-gray-50/50 border-t">
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
-                          disabled={currentVideoIndex === 0}
-                          className="flex items-center gap-2 w-full sm:w-auto"
-                        >
-                          <ChevronLeft className="h-4 w-4 flex-shrink-0" />
-                          <span>Previous</span>
-                        </Button>
-                        
-                        <div className="flex items-center gap-2 text-sm text-gray-600 order-first sm:order-none">
+                      <div className="flex flex-col gap-3 sm:gap-4">
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
                           <span className="whitespace-nowrap">Module {currentVideoIndex + 1} of {videos.length}</span>
                         </div>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
+                            disabled={currentVideoIndex === 0}
+                            className="flex items-center justify-center gap-2 w-full"
+                          >
+                            <ChevronLeft className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">Previous</span>
+                          </Button>
 
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
-                          disabled={currentVideoIndex === videos.length - 1 || (accessLevel === 'limited' && currentVideoIndex === 0)}
-                          className="flex items-center gap-2 w-full sm:w-auto"
-                        >
-                          {accessLevel === 'limited' && currentVideoIndex === 0 ? (
-                            <>
-                              <Lock className="h-4 w-4 flex-shrink-0" />
-                              <span>Locked</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Next</span>
-                              <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                            </>
-                          )}
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
+                            disabled={currentVideoIndex === videos.length - 1 || (accessLevel === 'limited' && currentVideoIndex === 0)}
+                            className="flex items-center justify-center gap-2 w-full"
+                          >
+                            {accessLevel === 'limited' && currentVideoIndex === 0 ? (
+                              <>
+                                <Lock className="h-4 w-4 flex-shrink-0" />
+                                <span className="truncate">Locked</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="truncate">Next</span>
+                                <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -521,7 +520,7 @@ export default function MicrolearningModule({
                   </div>
 
                   {/* Module Grid */}
-                  <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 mb-6">
+                  <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-5 gap-2 sm:gap-3 mb-6">
                     {videos.map((video, index) => {
                       const progress = getVideoProgress(video.id);
                       const isLocked = accessLevel === 'limited' && index > 0;
@@ -573,21 +572,23 @@ export default function MicrolearningModule({
                   {/* Current Module Details */}
                   <div className="border-t pt-4 sm:pt-6">
                     <div className="space-y-3">
-                      <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-medium text-gray-900 mb-1 flex items-center gap-2">
-                            <span className="truncate">{currentVideo.title}</span>
-                            {accessLevel === 'limited' && currentVideoIndex > 0 && (
-                              <span className="text-yellow-600 flex-shrink-0">🔒</span>
-                            )}
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-start gap-2">
+                          <h4 className="font-medium text-gray-900 flex-1 leading-tight break-words">
+                            {currentVideo.title}
                           </h4>
-                          <p className="text-sm text-gray-600 leading-relaxed">
-                            {currentVideo.description}
-                          </p>
+                          {accessLevel === 'limited' && currentVideoIndex > 0 && (
+                            <span className="text-yellow-600 flex-shrink-0">🔒</span>
+                          )}
                         </div>
-                        <div className="px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-medium flex-shrink-0">
+                        
+                        <div className="px-3 py-2 bg-green-50 text-green-700 rounded-lg text-xs font-medium text-center break-words">
                           {currentVideo.certification}
                         </div>
+                        
+                        <p className="text-sm text-gray-600 leading-relaxed break-words">
+                          {currentVideo.description}
+                        </p>
                       </div>
                       
                       {accessLevel === 'limited' && currentVideoIndex > 0 && (
@@ -608,9 +609,9 @@ export default function MicrolearningModule({
                         </div>
                       )}
                       
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-xs text-gray-500">
-                        <span>Duration: {currentVideo.duration}</span>
-                        <span className="hidden sm:block w-1 h-1 bg-gray-400 rounded-full"></span>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                        <span className="whitespace-nowrap">Duration: {currentVideo.duration}</span>
+                        <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
                         <span className="break-all">Source: {currentVideo.source}</span>
                       </div>
                     </div>
@@ -619,12 +620,12 @@ export default function MicrolearningModule({
               </div>
 
               {/* Modern Sidebar */}
-              <div className="lg:col-span-1 order-1 lg:order-2">
+              <div className="xl:col-span-1 order-1 xl:order-2">
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 }}
-                  className="space-y-4 lg:space-y-6 lg:sticky lg:top-6"
+                                      className="space-y-4 lg:space-y-6 xl:sticky xl:top-6"
                 >
                   {/* Unlock Progress for Limited Users */}
                   {accessLevel === 'limited' && (

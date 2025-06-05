@@ -1,8 +1,7 @@
-import React from 'react';
-import { CheckCircle, Circle, Clock, Award } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { Award, CheckCircle, Circle, Clock } from 'lucide-react';
 
 interface VideoProgress {
   id: string;
@@ -50,49 +49,49 @@ export default function CompletionTracker({
   return (
     <div className={cn("bg-white rounded-lg border shadow-sm", className)}>
       {/* Header */}
-      <div className="p-6 border-b">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">
+      <div className="p-4 sm:p-6 border-b">
+        <div className="flex flex-col gap-4 mb-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-gray-900 break-words">
               Food Safety Training Progress
             </h3>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-gray-600 mt-1 break-words">
               Complete all videos to earn your food safety certification
             </p>
           </div>
           {allCompleted && (
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              <Award className="h-4 w-4 mr-1" />
-              Completed
+            <Badge variant="secondary" className="bg-green-100 text-green-800 self-start">
+              <Award className="h-4 w-4 mr-1 flex-shrink-0" />
+              <span className="whitespace-nowrap">Completed</span>
             </Badge>
           )}
         </div>
 
         {/* Overall Progress */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="font-medium">Overall Progress</span>
-            <span className="text-gray-600">
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
+            <span className="font-medium text-sm">Overall Progress</span>
+            <span className="text-gray-600 text-sm">
               {completedCount} of {totalCount} videos completed
             </span>
           </div>
           <Progress value={overallProgress} className="h-3" />
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>{Math.round(overallProgress)}% complete</span>
-            <span>~{formatWatchTime(totalWatchTime)} total</span>
+          <div className="flex flex-wrap justify-between gap-2 text-xs text-gray-500">
+            <span className="whitespace-nowrap">{Math.round(overallProgress)}% complete</span>
+            <span className="whitespace-nowrap">~{formatWatchTime(totalWatchTime)} total</span>
           </div>
         </div>
       </div>
 
       {/* Video List */}
       {showDetailed && (
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="space-y-3">
             {videos.map((video, index) => (
               <div
                 key={video.id}
                 className={cn(
-                  "flex items-center p-3 rounded-lg border transition-colors",
+                  "flex items-start p-3 rounded-lg border transition-colors",
                   video.completed 
                     ? "bg-green-50 border-green-200" 
                     : video.progress > 0 
@@ -101,10 +100,10 @@ export default function CompletionTracker({
                 )}
               >
                 {/* Video Number & Status Icon */}
-                <div className="flex items-center mr-4">
+                <div className="flex items-center gap-3 flex-shrink-0 mr-3">
                   <div 
                     className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium mr-3",
+                      "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium",
                       video.completed 
                         ? "bg-green-500 text-white"
                         : video.progress > 0
@@ -115,24 +114,24 @@ export default function CompletionTracker({
                     {index + 1}
                   </div>
                   {video.completed ? (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0" />
                   ) : video.progress > 0 ? (
-                    <Clock className="h-5 w-5 text-blue-500" />
+                    <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500 flex-shrink-0" />
                   ) : (
-                    <Circle className="h-5 w-5 text-gray-400" />
+                    <Circle className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
                   )}
                 </div>
 
                 {/* Video Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0 sm:justify-between">
                     <h4 className={cn(
-                      "font-medium text-sm truncate",
+                      "font-medium text-sm break-words leading-tight",
                       video.completed ? "text-green-900" : "text-gray-900"
                     )}>
                       {video.title}
                     </h4>
-                    <span className="text-xs text-gray-500 ml-2">
+                    <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
                       {video.duration}
                     </span>
                   </div>
@@ -141,7 +140,7 @@ export default function CompletionTracker({
                   {video.progress > 0 && !video.completed && (
                     <div className="mt-2">
                       <Progress value={video.progress} className="h-1.5" />
-                      <span className="text-xs text-gray-500 mt-1">
+                      <span className="text-xs text-gray-500 mt-1 block">
                         {Math.round(video.progress)}% watched
                       </span>
                     </div>
@@ -149,14 +148,14 @@ export default function CompletionTracker({
 
                   {/* Completion Info */}
                   {video.completed && video.completedAt && (
-                    <p className="text-xs text-green-600 mt-1">
+                    <p className="text-xs text-green-600 mt-1 break-words">
                       Completed on {video.completedAt.toLocaleDateString()}
                     </p>
                   )}
 
                   {/* In Progress Info */}
                   {video.progress > 0 && !video.completed && video.startedAt && (
-                    <p className="text-xs text-blue-600 mt-1">
+                    <p className="text-xs text-blue-600 mt-1 break-words">
                       Started on {video.startedAt.toLocaleDateString()}
                     </p>
                   )}
@@ -169,15 +168,15 @@ export default function CompletionTracker({
 
       {/* Completion Message */}
       {allCompleted && (
-        <div className="px-6 pb-6">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6">
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <Award className="h-5 w-5 text-green-500 mr-2" />
-              <div>
-                <h4 className="font-medium text-green-900">
+            <div className="flex items-start gap-3">
+              <Award className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium text-green-900 break-words">
                   Congratulations! Training Complete
                 </h4>
-                <p className="text-sm text-green-700 mt-1">
+                <p className="text-sm text-green-700 mt-1 break-words leading-relaxed">
                   You've successfully completed all food safety training videos. 
                   You can now proceed with your certification.
                 </p>
