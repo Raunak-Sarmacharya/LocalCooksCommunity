@@ -295,9 +295,19 @@ function AdminDashboard() {
   // Filter applications based on status and search term
   const filteredApplications = applications ? applications.filter((app) => {
     const matchesStatus = filterStatus === "all" || app.status === filterStatus;
+    
+    // Enhanced search to include name, email, application ID, and submission date
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch = searchTerm === "" ||
-      app.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.email.toLowerCase().includes(searchTerm.toLowerCase());
+      app.fullName.toLowerCase().includes(searchLower) ||
+      app.email.toLowerCase().includes(searchLower) ||
+      app.id.toString().includes(searchLower) ||
+      new Date(app.createdAt).toLocaleDateString().includes(searchLower) ||
+      new Date(app.createdAt).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      }).toLowerCase().includes(searchLower);
 
     return matchesStatus && matchesSearch;
   }) : [];
@@ -590,7 +600,7 @@ function AdminDashboard() {
                         <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                           type="text"
-                          placeholder="Search applications..."
+                          placeholder="Search by name, email, ID, or date..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                           className="pl-8 pr-4 py-2"
@@ -745,36 +755,6 @@ function AdminDashboard() {
 
                       {/* Right side: CTA Button and Expand Arrow */}
                       <div className="flex items-center space-x-2">
-                        {/* View Documents Button for applications with documents */}
-                        {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && (
-                          <div className="flex items-center space-x-1">
-                            {app.foodSafetyLicenseUrl && (
-                              <a 
-                                href={app.foodSafetyLicenseUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-xs px-2 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition-colors"
-                                title="View Food Safety License"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                FSL Doc
-                              </a>
-                            )}
-                            {app.foodEstablishmentCertUrl && (
-                              <a 
-                                href={app.foodEstablishmentCertUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-xs px-2 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition-colors"
-                                title="View Food Establishment Certificate"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                FEC Doc
-                              </a>
-                            )}
-                          </div>
-                        )}
-
                         {getCtaButton(app)}
                         
                         <Button
