@@ -40,6 +40,12 @@ export interface IStorage {
   updateApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<Application | undefined>;
   updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined>;
 
+  // Microlearning-related methods
+  getMicrolearningProgress(userId: number): Promise<any[]>;
+  getMicrolearningCompletion(userId: number): Promise<any | undefined>;
+  updateVideoProgress(progressData: any): Promise<void>;
+  createMicrolearningCompletion(completionData: any): Promise<any>;
+
   // Session store for authentication
   sessionStore: session.Store;
 }
@@ -47,6 +53,8 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private applications: Map<number, Application>;
+  private videoProgress: Map<string, any>; // key: userId-videoId
+  private microlearningCompletions: Map<number, any>; // key: userId
   private userCurrentId: number;
   private applicationCurrentId: number;
   sessionStore: session.Store;
@@ -55,6 +63,8 @@ export class MemStorage implements IStorage {
   constructor() {
     this.users = new Map();
     this.applications = new Map();
+    this.videoProgress = new Map();
+    this.microlearningCompletions = new Map();
     this.userCurrentId = 1;
     this.applicationCurrentId = 1;
     this.sessionStore = new MemoryStore({
@@ -293,6 +303,31 @@ export class MemStorage implements IStorage {
     this.users.set(userId, updatedUser);
     return updatedUser;
   }
+
+  // Microlearning methods
+  async getMicrolearningProgress(userId: number): Promise<any[]> {
+    const progress = [];
+    for (const [key, value] of this.videoProgress.entries()) {
+      if (key.startsWith(`${userId}-`)) {
+        progress.push(value);
+      }
+    }
+    return progress;
+  }
+
+  async getMicrolearningCompletion(userId: number): Promise<any | undefined> {
+    return this.microlearningCompletions.get(userId);
+  }
+
+  async updateVideoProgress(progressData: any): Promise<void> {
+    const key = `${progressData.userId}-${progressData.videoId}`;
+    this.videoProgress.set(key, progressData);
+  }
+
+  async createMicrolearningCompletion(completionData: any): Promise<any> {
+    this.microlearningCompletions.set(completionData.userId, completionData);
+    return completionData;
+  }
 }
 
 // PostgreSQL-based database storage implementation
@@ -482,6 +517,29 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return updatedUser || undefined;
+  }
+
+  // Microlearning methods - For now, these are placeholder implementations
+  // In a real implementation, you would create proper database tables for these
+  async getMicrolearningProgress(userId: number): Promise<any[]> {
+    // Placeholder implementation - would query a video_progress table
+    return [];
+  }
+
+  async getMicrolearningCompletion(userId: number): Promise<any | undefined> {
+    // Placeholder implementation - would query a microlearning_completions table
+    return undefined;
+  }
+
+  async updateVideoProgress(progressData: any): Promise<void> {
+    // Placeholder implementation - would insert/update in video_progress table
+    console.log('Video progress update (placeholder):', progressData);
+  }
+
+  async createMicrolearningCompletion(completionData: any): Promise<any> {
+    // Placeholder implementation - would insert into microlearning_completions table
+    console.log('Microlearning completion (placeholder):', completionData);
+    return completionData;
   }
 }
 

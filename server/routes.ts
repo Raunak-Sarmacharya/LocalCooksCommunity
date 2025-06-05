@@ -8,6 +8,7 @@ import passport from "passport";
 import { sendEmail, generateStatusChangeEmail } from "./email";
 import { hashPassword, comparePasswords } from "./passwordUtils";
 import { upload, deleteFile, getFileUrl, uploadToBlob } from "./fileUpload";
+import { submitToAlwaysFoodSafe, isAlwaysFoodSafeConfigured } from "./alwaysFoodSafeAPI";
 import path from "path";
 import fs from "fs";
 import type { User } from "@shared/schema";
@@ -1042,6 +1043,186 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating application document verification:", error);
       return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ===============================
+  // MICROLEARNING ROUTES
+  // ===============================
+
+  // Get user's microlearning progress
+  app.get("/api/microlearning/progress/:userId", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const userId = parseInt(req.params.userId);
+      
+      // Verify user can access this data (either their own or admin)
+      if (req.user!.id !== userId && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const progress = await storage.getMicrolearningProgress(userId);
+      const completionStatus = await storage.getMicrolearningCompletion(userId);
+
+      res.json({
+        success: true,
+        progress: progress || [],
+        completionConfirmed: completionStatus?.confirmed || false,
+        completedAt: completionStatus?.completedAt
+      });
+    } catch (error) {
+      console.error('Error fetching microlearning progress:', error);
+      res.status(500).json({ message: 'Failed to fetch progress' });
+    }
+  });
+
+  // Update video progress
+  app.post("/api/microlearning/progress", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const { userId, videoId, progress, completed, completedAt } = req.body;
+      
+      // Verify user can update this data (either their own or admin)
+      if (req.user!.id !== userId && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const progressData = {
+        userId,
+        videoId,
+        progress: Math.max(0, Math.min(100, progress)), // Clamp between 0-100
+        completed: completed || false,
+        completedAt: completed ? (completedAt ? new Date(completedAt) : new Date()) : null,
+        updatedAt: new Date()
+      };
+
+      await storage.updateVideoProgress(progressData);
+
+      res.json({
+        success: true,
+        message: 'Progress updated successfully'
+      });
+    } catch (error) {
+      console.error('Error updating video progress:', error);
+      res.status(500).json({ message: 'Failed to update progress' });
+    }
+  });
+
+  // Complete microlearning and integrate with Always Food Safe
+  app.post("/api/microlearning/complete", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const { userId, completionDate, videoProgress } = req.body;
+      
+      // Verify user can complete this (either their own or admin)
+      if (req.user!.id !== userId && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Verify all required videos are completed
+      const requiredVideos = ['food-handling', 'contamination-prevention', 'allergen-awareness'];
+      const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
+      const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
+
+      if (!allRequired) {
+        return res.status(400).json({ 
+          message: 'All required videos must be completed before certification',
+          missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
+        });
+      }
+
+      // Get user details for certificate generation
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Create completion record
+      const completionData = {
+        userId,
+        completedAt: new Date(completionDate),
+        videoProgress,
+        confirmed: true,
+        certificateGenerated: false
+      };
+
+      await storage.createMicrolearningCompletion(completionData);
+
+      // Integration with Always Food Safe API (if configured)
+      let alwaysFoodSafeResult = null;
+      if (isAlwaysFoodSafeConfigured()) {
+        try {
+          alwaysFoodSafeResult = await submitToAlwaysFoodSafe({
+            userId,
+            userName: user.username,
+            email: `${user.username}@localcooks.com`, // Placeholder email since User type doesn't have email
+            completionDate: new Date(completionDate),
+            videoProgress
+          });
+        } catch (afsError) {
+          console.error('Always Food Safe API error:', afsError);
+          // Don't fail the request, just log the error
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: 'Microlearning completed successfully',
+        completionConfirmed: true,
+        alwaysFoodSafeIntegration: alwaysFoodSafeResult?.success ? 'success' : 'not_configured',
+        certificateId: alwaysFoodSafeResult?.certificateId,
+        certificateUrl: alwaysFoodSafeResult?.certificateUrl
+      });
+    } catch (error) {
+      console.error('Error completing microlearning:', error);
+      res.status(500).json({ message: 'Failed to complete microlearning' });
+    }
+  });
+
+  // Generate and download certificate
+  app.get("/api/microlearning/certificate/:userId", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const userId = parseInt(req.params.userId);
+      
+      // Verify user can access this certificate (either their own or admin)
+      if (req.user!.id !== userId && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const completion = await storage.getMicrolearningCompletion(userId);
+      if (!completion || !completion.confirmed) {
+        return res.status(404).json({ message: 'No confirmed completion found' });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // For now, return a placeholder certificate URL
+      const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
+
+      res.json({
+        success: true,
+        certificateUrl,
+        completionDate: completion.completedAt
+      });
+    } catch (error) {
+      console.error('Error generating certificate:', error);
+      res.status(500).json({ message: 'Failed to generate certificate' });
     }
   });
 
