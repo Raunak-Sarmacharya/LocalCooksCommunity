@@ -1,11 +1,9 @@
-import { applications, type Application, type InsertApplication, applicationStatusEnum, type UpdateApplicationStatus, type UpdateApplicationDocuments, type UpdateDocumentVerification } from "@shared/schema";
-import { users, type User, type InsertUser } from "@shared/schema";
-import session from "express-session";
-import { eq } from "drizzle-orm";
-import { db } from "./db";
-import createMemoryStore from "memorystore";
+import { applications, users, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
 import connectPg from "connect-pg-simple";
-import { pool } from "./db";
+import { eq } from "drizzle-orm";
+import session from "express-session";
+import createMemoryStore from "memorystore";
+import { db, pool } from "./db";
 import { cleanupApplicationDocuments } from "./fileUpload";
 
 // Memory store implementation for in-memory sessions
@@ -104,7 +102,7 @@ export class MemStorage implements IStorage {
 
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     if (!googleId) return undefined;
-    for (const user of this.users.values()) {
+    for (const user of Array.from(this.users.values())) {
       if (user.googleId === googleId) return user;
     }
     return undefined;
@@ -112,7 +110,7 @@ export class MemStorage implements IStorage {
 
   async getUserByFacebookId(facebookId: string): Promise<User | undefined> {
     if (!facebookId) return undefined;
-    for (const user of this.users.values()) {
+    for (const user of Array.from(this.users.values())) {
       if (user.facebookId === facebookId) return user;
     }
     return undefined;
@@ -307,7 +305,7 @@ export class MemStorage implements IStorage {
   // Microlearning methods
   async getMicrolearningProgress(userId: number): Promise<any[]> {
     const progress = [];
-    for (const [key, value] of this.videoProgress.entries()) {
+    for (const [key, value] of Array.from(this.videoProgress.entries())) {
       if (key.startsWith(`${userId}-`)) {
         progress.push(value);
       }

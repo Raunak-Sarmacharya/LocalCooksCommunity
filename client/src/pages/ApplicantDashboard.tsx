@@ -1,37 +1,47 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/use-auth";
-import { Link } from "wouter";
-import { Application } from "@shared/schema";
-import {
-  formatCertificationStatus,
-  formatKitchenPreference,
-  getStatusBadgeColor,
-  formatApplicationStatus
-} from "@/lib/applicationSchema";
-import {
-  Loader2, AlertCircle, Clock, CheckCircle, XCircle,
-  CalendarDays, ChefHat, UtensilsCrossed, Building,
-  HomeIcon, Award, FileText, BadgeCheck, Info, LogOut, GraduationCap
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import Header from "@/components/layout/Header";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+    formatApplicationStatus,
+    formatCertificationStatus,
+    formatKitchenPreference,
+    getStatusBadgeColor
+} from "@/lib/applicationSchema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Application } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import {
+    AlertCircle,
+    Award,
+    BadgeCheck,
+    CalendarDays,
+    CheckCircle,
+    ChefHat,
+    Clock,
+    FileText,
+    GraduationCap,
+    Info,
+    Loader2,
+    LogOut,
+    XCircle
+} from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Link } from "wouter";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -267,7 +277,7 @@ export default function ApplicantDashboard() {
     }
     
     // Update the ref for next comparison
-    prevApplicationsRef.current = applications;
+    prevApplicationsRef.current = applications || null;
   }, [applications]);
 
   // Enhanced force refresh function for applicant dashboard

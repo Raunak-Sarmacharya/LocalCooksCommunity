@@ -1,34 +1,28 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
+import { useAuth } from "@/hooks/use-auth";
+import {
+    formatApplicationStatus,
+    formatCertificationStatus,
+    formatKitchenPreference,
+    getStatusBadgeColor
+} from "@/lib/applicationSchema";
 import { apiRequest } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
-import {
-  formatCertificationStatus,
-  formatKitchenPreference,
-  formatApplicationStatus,
-  getStatusBadgeColor
-} from "@/lib/applicationSchema";
-import { useAuth } from "@/hooks/use-auth";
-import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { useState } from "react";
+import { useLocation } from "wouter";
 
-import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import Header from "@/components/layout/Header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger
-} from "@/components/ui/accordion";
-import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, Shield, ExternalLink, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, ChevronDown, ChevronRight, Clock, ExternalLink, Search, Shield, User as UserIcon, XCircle } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -909,8 +903,7 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
-                                      disabled={app.status === "cancelled"}
-                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-green-600 border-green-200 hover:bg-green-50"}`}
+                                      className="text-xs px-2 py-1 h-auto text-green-600 border-green-200 hover:bg-green-50"
                                     >
                                       Approve
                                     </Button>
@@ -918,8 +911,7 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
-                                      disabled={app.status === "cancelled"}
-                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-red-600 border-red-200 hover:bg-red-50"}`}
+                                      className="text-xs px-2 py-1 h-auto text-red-600 border-red-200 hover:bg-red-50"
                                     >
                                       Reject
                                     </Button>
@@ -953,8 +945,7 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
-                                      disabled={app.status === "cancelled"}
-                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-green-600 border-green-200 hover:bg-green-50"}`}
+                                      className="text-xs px-2 py-1 h-auto text-green-600 border-green-200 hover:bg-green-50"
                                     >
                                       Approve
                                     </Button>
@@ -962,8 +953,7 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
-                                      disabled={app.status === "cancelled"}
-                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-red-600 border-red-200 hover:bg-red-50"}`}
+                                      className="text-xs px-2 py-1 h-auto text-red-600 border-red-200 hover:bg-red-50"
                                     >
                                       Reject
                                     </Button>
