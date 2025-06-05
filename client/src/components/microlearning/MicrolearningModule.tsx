@@ -16,7 +16,7 @@ import {
     TrendingUp
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'wouter';
 import CompletionTracker from './CompletionTracker';
 import UnlockProgress from './UnlockProgress';
 import VideoPlayer from './VideoPlayer';

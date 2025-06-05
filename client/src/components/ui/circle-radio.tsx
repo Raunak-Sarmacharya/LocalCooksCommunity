@@ -30,8 +30,8 @@ export function CircleRadioGroup({
 
   // Clone children with selected state
   const enhancedChildren = React.Children.map(children, child => {
-    if (React.isValidElement(child)) {
-      return React.cloneElement(child, {
+    if (React.isValidElement(child) && child.type === CircleRadioItem) {
+      return React.cloneElement(child as React.ReactElement<CircleRadioItemProps>, {
         selected: selectedValue === child.props.value,
         onClick: () => handleChange(child.props.value),
       });

@@ -1,8 +1,8 @@
-import React from 'react';
-import { useAuth } from '@/hooks/use-auth';
-import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import Header from '@/components/layout/Header';
 import MicrolearningModule from '@/components/microlearning/MicrolearningModule';
+import { useAuth } from '@/hooks/use-auth';
+import React from 'react';
 import { useLocation } from 'wouter';
 
 export default function Microlearning() {
@@ -25,7 +25,11 @@ export default function Microlearning() {
   }
 
   if (!user) {
-    return null; // Will redirect to login
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-600">Redirecting to login...</div>
+      </div>
+    ); // Will redirect to login
   }
 
   const handleComplete = () => {
