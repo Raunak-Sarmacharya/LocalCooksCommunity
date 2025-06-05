@@ -1571,10 +1571,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       });
     }
 
-    // Add updated_at timestamp
-    updateData.updated_at = new Date();
-
-    console.log("🔄 Final update data with timestamp:", updateData);
+    console.log("🔄 Final update data:", updateData);
 
     // Update the application record directly with document URLs
     if (pool) {
@@ -1692,8 +1689,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
     // Build update data for applications table (document verification fields)
     const updateData = {
       reviewed_by: parseInt(userId),
-      reviewed_at: new Date(),
-      updated_at: new Date()
+      reviewed_at: new Date()
     };
 
     // Map camelCase field names to snake_case database column names
@@ -1770,7 +1766,7 @@ app.get("/api/debug/applications/:id/documents", async (req, res) => {
       SELECT id, user_id, status, 
              food_safety_license_url, food_establishment_cert_url,
              food_safety_license_status, food_establishment_cert_status,
-             created_at, updated_at
+             created_at
       FROM applications 
       WHERE id = $1
     `, [applicationId]);
@@ -1797,8 +1793,7 @@ app.get("/api/debug/applications/:id/documents", async (req, res) => {
         },
         hasDocuments: !!(app.food_safety_license_url || app.food_establishment_cert_url),
         timestamps: {
-          created: app.created_at,
-          updated: app.updated_at
+          created: app.created_at
         }
       },
       rawDatabaseRow: app
@@ -1823,7 +1818,7 @@ app.get("/api/debug/applications", async (req, res) => {
       SELECT id, user_id, status, full_name, email,
              food_safety_license_url, food_establishment_cert_url,
              food_safety_license_status, food_establishment_cert_status,
-             created_at, updated_at
+             created_at
       FROM applications 
       ORDER BY created_at DESC
       LIMIT 20
@@ -1845,8 +1840,7 @@ app.get("/api/debug/applications", async (req, res) => {
         foodEstablishmentCert: app.food_establishment_cert_status || "Not set"
       },
       timestamps: {
-        created: app.created_at,
-        updated: app.updated_at
+        created: app.created_at
       }
     }));
 
@@ -2135,8 +2129,7 @@ app.get("/api/document-verification", async (req, res) => {
       documentsAdminFeedback: application.documents_admin_feedback,
       documentsReviewedBy: application.documents_reviewed_by,
       documentsReviewedAt: application.documents_reviewed_at,
-      createdAt: application.created_at,
-      updatedAt: application.updated_at
+      createdAt: application.created_at
     };
 
     return res.status(200).json(responseData);
