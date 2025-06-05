@@ -14,6 +14,13 @@ lerna-debug.log*
 # Environment Variables & Secrets
 # ===================================
 .env
+.env.*
+!.env.example
+!.env.*.example
+!.env.production.example
+!.env.development.example
+
+# Specific environment files
 .env.local
 .env.development
 .env.development.local
@@ -22,6 +29,11 @@ lerna-debug.log*
 .env.test
 .env.test.local
 
+# Firebase configuration (extra protection)
+**/firebase-config*.json
+**/.firebaserc
+**/firebase.json
+
 # OAuth and API Keys (extra protection)
 **/client_secret*.json
 **/credentials*.json
@@ -29,10 +41,22 @@ lerna-debug.log*
 **/*_secret.json
 **/oauth_*.json
 **/service-account*.json
+**/*-key.json
+**/*-secret.json
+
+# API keys and tokens
+*.token
+*.secret
+api-keys.json
+secrets.json
 
 # Vercel environment files
+.vercel/
 .vercel/.env*
 .vercel/project.json
+
+# Railway deployment
+.railway/
 
 # ===================================
 # Build Outputs & Distribution
@@ -48,6 +72,14 @@ client/build/
 
 # Vite build artifacts
 vite.config.ts.*
+vite.config.*.timestamp-*
+
+# TypeScript build cache
+*.tsbuildinfo
+.tsc-cache/
+
+# Turbo
+.turbo/
 
 # ===================================
 # File Uploads & User Content
@@ -258,6 +290,8 @@ api-docs/generated/
 documents/
 certificates/
 licenses/
+food-safety-licenses/
+establishment-certificates/
 
 # Local admin uploads
 admin-uploads/
@@ -265,17 +299,33 @@ admin-uploads/
 # Test files
 test-files/
 sample-documents/
+test-uploads/
 
 # Local configuration overrides
-config/local.js
-config/development.js
-config/production.js
+config/local.*
+config/development.*
+config/production.*
 
 # Email templates cache
 email-cache/
 
 # Session files (if using file store)
 session-store/
+sessions/
+
+# Local database files
+*.db-journal
+*.sqlite-journal
+local-cooks.db
+localcooks.db
+
+# Auth provider configs (if downloaded)
+google-oauth-*.json
+facebook-app-*.json
+
+# Local development overrides
+.env.local.override
+local-settings.json
 
 # ===================================
 # Keep These Files (Negative Patterns)
