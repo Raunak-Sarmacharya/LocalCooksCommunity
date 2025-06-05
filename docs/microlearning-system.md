@@ -1,213 +1,243 @@
-# Microlearning System - Government of Canada Food Safety Training
+# Microlearning System - Newfoundland Food Safety Certification Training
 
 ## Overview
 
-The Local Cooks microlearning system provides free, comprehensive food safety training featuring official content from Health Canada and the Canadian Food Inspection Agency (CFIA). The system is designed to be accessible to everyone, regardless of food safety certification status.
+The Local Cooks microlearning system provides comprehensive food safety training designed specifically for new chefs in Newfoundland and Labrador. The system features official content from Health Canada, the Canadian Food Inspection Agency (CFIA), and the NL Department of Health & Community Services to prepare users for Food Handler Certification and licensing requirements.
 
 ### Key Features
 
-- **Government of Canada Approved Content**: Official training materials from Health Canada and CFIA
-- **Public Access**: No registration or authentication required
+- **Government Approved Content**: Official training materials from federal and provincial sources
+- **Newfoundland-Specific Training**: Tailored to NL Food Premises Regulations and certification requirements
+- **Comprehensive Curriculum**: 10 training modules covering all essential food safety topics
+- **Authenticated Access**: Requires LocalCooks registration and login
 - **Self-Paced Learning**: Complete training at your own pace with automatic progress saving
 - **Mobile Responsive**: Works on desktop, tablet, and mobile devices
-- **Certificate Generation**: Official completion certificates aligned with Safe Food for Canadians Regulations
-- **Progress Tracking**: Real-time progress monitoring and completion status
+- **Certificate Generation**: Official completion certificates for NL Food Handler Certification preparation
+- **Progress Tracking**: Real-time progress monitoring across all 10 modules
 
 ## Training Modules
 
-The system includes three core modules featuring official Canadian government content:
+The system includes ten comprehensive modules covering federal and Newfoundland-specific requirements:
 
-### 1. Safe Food Handling Basics (8:45)
+### Core Federal Modules
+
+#### 1. Safe Food Handling Basics (8:45)
 - **Source**: Health Canada
 - **Certification**: Government of Canada Approved
 - **Content**: Fundamentals of safe food handling, temperature control, and personal hygiene
-- **URL**: Health Canada approved training materials
 
-### 2. Preventing Food Contamination (6:30)
+#### 2. Preventing Food Contamination (6:30)
 - **Source**: Canadian Food Inspection Agency (CFIA)
 - **Certification**: Federal Government Standards
 - **Content**: CFIA guidelines for preventing cross-contamination and maintaining food safety standards
-- **URL**: CFIA official training content
 
-### 3. Allergen Awareness and Management (5:15)
+#### 3. Allergen Awareness and Management (5:15)
 - **Source**: Canadian Food Inspection Agency (CFIA)
 - **Certification**: Safe Food for Canadians Regulations
 - **Content**: Safe Food for Canadians Regulations compliance for allergen identification and control
-- **URL**: CFIA allergen management training
+
+### Newfoundland-Specific Modules
+
+#### 4. Temperature Danger Zone & Time Control (7:20)
+- **Source**: Health Canada + NL Department of Health
+- **Certification**: NL Food Premises Regulations
+- **Content**: Master the 2-hour rule and temperature danger zone (4°C-60°C) for compliance
+
+#### 5. Personal Hygiene for Food Handlers (6:45)
+- **Source**: NL Department of Health & Community Services
+- **Certification**: NL Food Handler Certification Required
+- **Content**: Hand washing, uniform standards, illness reporting, and hygiene protocols
+
+#### 6. Cleaning and Sanitizing Procedures (8:15)
+- **Source**: CFIA + NL Public Health
+- **Certification**: Food Premises Act Compliance
+- **Content**: Proper cleaning vs sanitizing, chemical safety, and equipment maintenance
+
+#### 7. HACCP Principles for Small Kitchens (9:30)
+- **Source**: Canadian Food Inspection Agency (CFIA)
+- **Certification**: HACCP Foundation Knowledge
+- **Content**: Introduction to Hazard Analysis Critical Control Points for new chefs
+
+#### 8. Proper Food Storage & Receiving (7:50)
+- **Source**: Health Canada
+- **Certification**: Safe Food for Canadians Regulations
+- **Content**: Cold storage, dry storage, FIFO rotation, and delivery inspection procedures
+
+#### 9. Safe Cooking Temperatures & Methods (6:20)
+- **Source**: Health Canada
+- **Certification**: Government of Canada Approved
+- **Content**: Internal temperatures for meat, poultry, seafood, and proper cooking techniques
+
+#### 10. Health Inspection Readiness (8:00)
+- **Source**: NL Department of Health & Community Services
+- **Certification**: Food Premises Regulations
+- **Content**: What inspectors look for, documentation requirements, and preparation procedures
+
+## Newfoundland Food Safety Requirements
+
+### Legal Requirements (Effective May 1, 2021)
+- **At least one certified food handler** must be present during all operating hours
+- **Food Handler Certification** required for all licensed food premises
+- **Certificate renewal** required every five years
+- **Compliance verification** must be provided to inspectors upon request
+
+### Covered Business Types
+- Restaurants and take-outs
+- Grocery stores and convenience stores
+- Butcher shops and food manufacturing facilities
+- Mobile food premises
+- Commercial catering kitchens
+- Institutional food services (schools, care facilities)
+
+### Compliance Benefits
+- **Pass health inspections** with confidence
+- **Avoid significant fines** and business closures
+- **Meet licensing requirements** for new food businesses
+- **Prepare for certification exams** with comprehensive knowledge
+- **Build professional competency** as a new chef
 
 ## Architecture
 
 ### Frontend Components
 
 #### MicrolearningModule.tsx
-- Main orchestrator component
-- Manages video progression and completion workflow
-- Handles participant information collection for certification
-- Integrates with video player and progress tracking
-- Removed authentication dependencies for public access
+- Main orchestrator component managing 10 training modules
+- Enhanced navigation for comprehensive curriculum
+- Responsive tab layout for mobile and desktop
+- Newfoundland-specific branding and certification messaging
+- Progress tracking across all modules
 
 #### VideoPlayer.tsx
 - Custom video player with 90% completion requirement
-- Real-time progress tracking
+- Real-time progress tracking for each module
 - Play/pause/seek/volume controls
 - Visual completion overlays
 - Mobile-responsive design
 
 #### CompletionTracker.tsx
-- Real-time progress visualization
+- Comprehensive progress visualization across 10 modules
 - Individual video status with timestamps
 - Overall progress indicators
-- Visual status badges
+- Visual status badges for each certification area
 
 #### Microlearning.tsx (Page)
-- Public landing page with no authentication required
-- Hero section highlighting government approval
-- Feature showcase
-- Self-contained user ID generation for progress tracking
+- Protected page requiring LocalCooks authentication
+- Uses Header and Footer layout components
+- Redirects unauthenticated users to login
+- Integrates with user dashboard navigation
 
 ### Backend Implementation
 
-#### API Endpoints (Public Access)
+#### API Endpoints (Authenticated Access)
 
-All microlearning endpoints are now publicly accessible:
+All microlearning endpoints require LocalCooks authentication:
 
 **GET `/api/microlearning/progress/:userId`**
-- Retrieves user progress for any user ID
-- No authentication required
-- Returns progress array and completion status
+- Retrieves user progress across all 10 modules
+- Authentication required via session
+- Users can only access their own data (unless admin)
 
 **POST `/api/microlearning/progress`**
-- Updates video progress for any user
-- No authentication required
-- Accepts: userId, videoId, progress, completed, completedAt
+- Updates video progress for individual modules
+- Authentication required via session
+- Users can only update their own progress (unless admin)
 
 **POST `/api/microlearning/complete`**
-- Completes microlearning with participant information
-- No authentication required
-- Accepts: userId, completionDate, videoProgress, participantName, participantEmail
-- Updated video IDs for Canadian content: 'canada-food-handling', 'canada-contamination-prevention', 'canada-allergen-awareness'
+- Completes comprehensive training certification
+- Requires completion of all 10 modules
+- Authentication required via session
+- Updated video IDs include all federal and NL-specific content
 
 **GET `/api/microlearning/certificate/:userId`**
-- Generates completion certificate
-- No authentication required
-- Returns certificate URL and completion information
+- Generates completion certificate for comprehensive training
+- Authentication required via session
+- Users can only access their own certificates (unless admin)
 
-### Anonymous User Handling
+### Enhanced Completion Requirements
 
-The system generates temporary user IDs for anonymous users:
-- IDs are stored in localStorage for progress persistence
-- Format: Random 7-digit number (1000000-1999999)
-- Allows progress tracking without user accounts
-- Participant information collected at completion for certification
-
-## Configuration
-
-### Environment Variables
-
-```bash
-# Optional - for enhanced certificate integration
-ALWAYS_FOOD_SAFE_API_KEY=your_api_key_here
-ALWAYS_FOOD_SAFE_API_URL=https://api.alwaysfoodsafe.com
-```
-
-### Video Content Sources
-
-The system references official Canadian government video content:
-
-```typescript
-const videos = [
-  {
-    id: 'canada-food-handling',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/food-handling-basics.mp4',
-    source: 'Health Canada',
-    certification: 'Government of Canada Approved'
-  },
-  // ... additional videos
+The system now requires completion of all 10 modules:
+```javascript
+const requiredVideos = [
+  'canada-food-handling', 
+  'canada-contamination-prevention', 
+  'canada-allergen-awareness',
+  'nl-temperature-control',
+  'nl-personal-hygiene',
+  'nl-cleaning-sanitizing',
+  'nl-haccp-principles',
+  'nl-food-storage',
+  'nl-cooking-temperatures',
+  'nl-inspection-preparation'
 ];
 ```
 
 ## Usage
 
-### Accessing the Training
+### For New Chefs in Newfoundland
 
-1. **Navigate to `/microlearning`** - No login required
-2. **Automatic Progress Tracking** - System generates temporary user ID
-3. **Complete Videos** - Watch each video to 90% completion
-4. **Provide Information** - Enter name and email for certification
-5. **Receive Certificate** - Download official completion certificate
+1. **Register with LocalCooks** - Create an account on the platform
+2. **Login to Your Account** - Authenticate to access protected features
+3. **Navigate to `/microlearning`** - Access the comprehensive training module
+4. **Complete All 10 Modules** - Watch each video to 90% completion
+5. **Confirm Completion** - Complete the training and receive certificate
+6. **Use for Certification** - Present completion for NL Food Handler Certification
 
-### Integration Options
+### Training Path Recommendation
 
-#### Standalone Access
-- Direct access via `/microlearning` route
-- No authentication barriers
-- Self-contained progress tracking
+**Phase 1: Federal Foundations (Modules 1-3)**
+- Essential federal requirements and standards
+- Core food safety principles
+- Foundation knowledge for all subsequent modules
 
-#### Application Integration
-- Link from certification forms for users selecting "Not yet, but I'd like to learn"
-- Seamless integration with existing user flows
-- Optional enhanced tracking for registered users
+**Phase 2: Operational Essentials (Modules 4-6)**
+- Temperature control and time management
+- Personal hygiene and sanitation procedures
+- Daily operational food safety practices
+
+**Phase 3: Advanced Practices (Modules 7-9)**
+- HACCP principles and implementation
+- Food storage and receiving procedures
+- Cooking safety and temperature management
+
+**Phase 4: Professional Readiness (Module 10)**
+- Health inspection preparation
+- Documentation and compliance requirements
+- Professional certification readiness
 
 ## Compliance and Certification
 
 ### Government Approval
-- Content sourced from Health Canada and CFIA
+- Content sourced from Health Canada, CFIA, and NL Department of Health
 - Aligned with Safe Food for Canadians Regulations
-- Federal government standards compliance
+- Meets NL Food Premises Regulations requirements
+- Covers all areas tested in Food Handler Certification exams
 
 ### Certificate Features
-- Official completion certification
-- Participant name and completion date
-- Government source attribution
-- Regulatory compliance notation
+- Comprehensive completion certification for 10 modules
+- Federal and provincial compliance verification
+- NL Food Handler Certification preparation certificate
+- Professional development documentation
 
-## Technical Requirements
-
-### Frontend Dependencies
-- React with TypeScript
-- Wouter for routing
-- Framer Motion for animations
-- Lucide React for icons
-- Custom UI components (shadcn/ui)
-
-### Backend Dependencies
-- Express.js server
-- Storage interface (MemStorage/DatabaseStorage)
-- Optional Always Food Safe API integration
+### Exam Preparation Benefits
+- **Complete coverage** of all certification exam topics
+- **Practical knowledge** for real-world kitchen applications
+- **Regulatory compliance** understanding for inspections
+- **Professional confidence** for new chef licensing
 
 ## Future Enhancements
 
 ### Planned Features
-1. **PDF Certificate Generation** - Automated certificate PDF creation
-2. **Email Delivery** - Certificate delivery via email
-3. **Progress Analytics** - Detailed completion analytics
-4. **Multi-language Support** - French language support for bilingual compliance
-5. **Offline Capability** - Progressive Web App features for offline access
-6. **Enhanced Integration** - Integration with provincial food safety databases
+1. **Interactive Quizzes** - Knowledge checks after each module
+2. **Practice Exams** - Mock certification tests
+3. **French Language Support** - Bilingual compliance for NL requirements
+4. **Advanced HACCP Training** - Extended modules for management roles
+5. **Industry-Specific Modules** - Specialized training for different food service types
+6. **Inspector Interview Prep** - Simulation training for health inspections
 
-### Scalability Considerations
-- CDN integration for video delivery
-- Caching strategies for progress data
-- Load balancing for high traffic periods
-- Performance monitoring and optimization
+### Integration Opportunities
+- **NL Certification Database** - Direct integration with provincial systems
+- **Employer Verification** - Automated certificate verification for employers
+- **Continuing Education** - Advanced modules for career progression
+- **Professional Networks** - Connection with NL chef associations
 
-## Support and Maintenance
-
-### Monitoring
-- Track completion rates and user engagement
-- Monitor video playback performance
-- Certificate generation success rates
-
-### Updates
-- Regular content updates from government sources
-- Security patches and dependency updates
-- Performance optimizations
-
-### Troubleshooting
-- Video playback issues: Check network connectivity and video URLs
-- Progress not saving: Verify localStorage availability
-- Certificate generation: Check API endpoint availability
-
-## License
-
-This microlearning system is part of the Local Cooks platform and follows the same licensing terms. 
+This comprehensive training system ensures new chefs in Newfoundland are fully prepared for Food Handler Certification, licensing requirements, and professional success in the food service industry. 
