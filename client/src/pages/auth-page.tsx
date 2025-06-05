@@ -8,6 +8,64 @@ import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useForm } from "react-hook-form";
+
+function GooglePasswordDialog({
+  open,
+  onOpenChange,
+  displayName,
+  onSubmit,
+  loading,
+  error,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  displayName: string;
+  onSubmit: (password: string) => void;
+  loading: boolean;
+  error: string | null;
+}) {
+  const { register, handleSubmit } = useForm<{ password: string }>();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enter Password</DialogTitle>
+          <DialogDescription>
+            {`Welcome, ${displayName}. Please enter your password to continue.`}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={handleSubmit((data) => onSubmit(data.password))}
+          className="space-y-4"
+        >
+          <Input
+            type="password"
+            placeholder="Password"
+            {...register("password", { required: true })}
+            disabled={loading}
+          />
+          {error && <div className="text-red-500 text-sm">{error}</div>}
+          <DialogFooter>
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Processing..." : "Continue"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
@@ -15,6 +73,11 @@ export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [googleDialogOpen, setGoogleDialogOpen] = useState(false);
+  const [googleDisplayName, setGoogleDisplayName] = useState("");
+  const [googlePasswordLoading, setGooglePasswordLoading] = useState(false);
+  const [googlePasswordError, setGooglePasswordError] = useState<string | null>(null);
+  const [googleIsSignup, setGoogleIsSignup] = useState(false);
   
   // Get redirect path from URL if it exists
   const getRedirectPath = () => {
@@ -55,13 +118,53 @@ export default function AuthPage() {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      // You can access the user info here: result.user
-      // Optionally, send the ID token to your backend for session management
-      handleSuccess();
+      const displayName = result.user.displayName || result.user.email || "";
+      setGoogleDisplayName(displayName);
+      // Check if user exists
+      const existsRes = await fetch(`/api/user-exists?username=${encodeURIComponent(displayName)}`);
+      const existsData = await existsRes.json();
+      setGoogleIsSignup(!existsData.exists);
+      setGoogleDialogOpen(true);
     } catch (error: any) {
       setGoogleError(error.message || "Google sign-in failed");
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleGooglePasswordSubmit = async (password: string) => {
+    setGooglePasswordLoading(true);
+    setGooglePasswordError(null);
+    try {
+      if (googleIsSignup) {
+        // Register
+        const res = await fetch("/api/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: googleDisplayName, password }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Registration failed");
+        }
+      } else {
+        // Login
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: googleDisplayName, password }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Login failed");
+        }
+      }
+      setGoogleDialogOpen(false);
+      handleSuccess();
+    } catch (err: any) {
+      setGooglePasswordError(err.message);
+    } finally {
+      setGooglePasswordLoading(false);
     }
   };
 
@@ -123,6 +226,14 @@ export default function AuthPage() {
             {googleError && (
               <div className="rounded-md bg-red-50 p-3 text-sm text-red-500">{googleError}</div>
             )}
+            <GooglePasswordDialog
+              open={googleDialogOpen}
+              onOpenChange={setGoogleDialogOpen}
+              displayName={googleDisplayName}
+              onSubmit={handleGooglePasswordSubmit}
+              loading={googlePasswordLoading}
+              error={googlePasswordError}
+            />
             <Button asChild variant="outline" className="w-full border-[#1877F3] text-[#1877F3] hover:bg-[#1877F3]/10">
               <a href="/api/auth/facebook">
                 <svg width="20" height="20" viewBox="0 0 32 32" className="mr-2"><path fill="#1877F3" d="M29 0H3C1.3 0 0 1.3 0 3v26c0 1.7 1.3 3 3 3h13V20h-4v-5h4v-3.6C16 7.7 18.4 6 21.2 6c1.3 0 2.6.1 2.8.1v4h-2c-1.6 0-2 .8-2 2v3h4l-1 5h-3v12h6c1.7 0 3-1.3 3-3V3c0-1.7-1.3-3-3-3z"/></svg>

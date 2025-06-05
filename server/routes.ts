@@ -553,6 +553,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check if user exists by username (for Google+password flow)
+  app.get("/api/user-exists", async (req, res) => {
+    const username = req.query.username as string;
+    if (!username) {
+      return res.status(400).json({ error: "Username required" });
+    }
+    const user = await storage.getUserByUsername(username);
+    res.json({ exists: !!user });
+  });
+
   // ===============================
   // FILE SERVING ROUTES
   // ===============================
