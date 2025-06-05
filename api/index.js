@@ -1,14 +1,14 @@
 // Minimal Express server for Vercel
+import { Pool } from '@neondatabase/serverless';
+import connectPgSimple from 'connect-pg-simple';
+import { randomBytes, scrypt } from 'crypto';
 import express from 'express';
 import session from 'express-session';
-import { Pool } from '@neondatabase/serverless';
-import { scrypt, randomBytes, timingSafeEqual } from 'crypto';
-import { promisify } from 'util';
-import createMemoryStore from 'memorystore';
-import connectPgSimple from 'connect-pg-simple';
-import path from 'path';
 import fs from 'fs';
+import createMemoryStore from 'memorystore';
 import multer from 'multer';
+import path from 'path';
+import { promisify } from 'util';
 
 // Setup
 const app = express();
@@ -2471,6 +2471,54 @@ async function hasApprovedApplication(userId) {
   }
 }
 
+// Enhanced function to get detailed application status
+async function getApplicationStatus(userId) {
+  try {
+    if (!pool) {
+      console.log('No database available for application check');
+      return {
+        hasApproved: false,
+        hasActive: false,
+        hasPending: false,
+        hasRejected: false,
+        hasCancelled: false,
+        latestStatus: null,
+        applications: []
+      };
+    }
+
+    const result = await pool.query(`
+      SELECT status, created_at FROM applications WHERE user_id = $1 ORDER BY created_at DESC
+    `, [userId]);
+
+    const applications = result.rows;
+    const activeApplications = applications.filter(app => 
+      app.status !== 'cancelled' && app.status !== 'rejected'
+    );
+
+    return {
+      hasApproved: applications.some(app => app.status === 'approved'),
+      hasActive: activeApplications.length > 0,
+      hasPending: applications.some(app => app.status === 'new' || app.status === 'inReview'),
+      hasRejected: applications.some(app => app.status === 'rejected'),
+      hasCancelled: applications.some(app => app.status === 'cancelled'),
+      latestStatus: applications.length > 0 ? applications[0].status : null,
+      applications: applications
+    };
+  } catch (error) {
+    console.error('Error checking application status:', error);
+    return {
+      hasApproved: false,
+      hasActive: false,
+      hasPending: false,
+      hasRejected: false,
+      hasCancelled: false,
+      latestStatus: null,
+      applications: []
+    };
+  }
+}
+
 // In-memory storage for microlearning data (fallback when no DB)
 const microlearningProgress = new Map();
 const microlearningCompletions = new Map();
@@ -2660,8 +2708,26 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
   try {
     // Check if user is authenticated
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    
+    // Debug logging for session issues
+    console.log('Microlearning progress request:', {
+      sessionId: req.session.id,
+      sessionUserId: req.session.userId,
+      headerUserId: req.headers['x-user-id'],
+      requestedUserId: req.params.userId,
+      cookiePresent: !!req.headers.cookie
+    });
+    
     if (!sessionUserId) {
+      console.log('Authentication failed - no session userId or header userId');
       return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    // Store user ID in session if it's not there but provided via header
+    if (!req.session.userId && req.headers['x-user-id']) {
+      console.log('Storing userId in session from header:', req.headers['x-user-id']);
+      req.session.userId = req.headers['x-user-id'];
+      await new Promise(resolve => req.session.save(resolve));
     }
 
     const userId = parseInt(req.params.userId);
@@ -2674,15 +2740,33 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
 
     const progress = await getMicrolearningProgress(userId);
     const completionStatus = await getMicrolearningCompletion(userId);
-    const hasApproval = await hasApprovedApplication(userId);
+    const applicationStatus = await getApplicationStatus(userId);
 
+    // Determine access level and provide detailed application info
+    const accessLevel = applicationStatus.hasApproved ? 'full' : 'limited';
+    
     res.json({
       success: true,
       progress: progress || [],
       completionConfirmed: completionStatus?.confirmed || false,
       completedAt: completionStatus?.completedAt,
-      hasApprovedApplication: hasApproval,
-      accessLevel: hasApproval ? 'full' : 'limited' // limited = first video only
+      hasApprovedApplication: applicationStatus.hasApproved,
+      accessLevel: accessLevel,
+      applicationInfo: {
+        hasActive: applicationStatus.hasActive,
+        hasPending: applicationStatus.hasPending,
+        hasRejected: applicationStatus.hasRejected,
+        hasCancelled: applicationStatus.hasCancelled,
+        latestStatus: applicationStatus.latestStatus,
+        canApply: !applicationStatus.hasActive, // Can apply if no active applications
+        message: applicationStatus.hasApproved 
+          ? "✅ Application approved - Full access granted!" 
+          : applicationStatus.hasPending 
+          ? "⏳ Application under review - Limited access while pending"
+          : applicationStatus.hasRejected || applicationStatus.hasCancelled
+          ? "🔄 Previous application was not approved - You can submit a new application"
+          : "🚀 Submit an application to unlock full training access"
+      }
     });
   } catch (error) {
     console.error('Error fetching microlearning progress:', error);
@@ -2695,8 +2779,26 @@ app.post("/api/microlearning/progress", async (req, res) => {
   try {
     // Check if user is authenticated
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    
+    // Debug logging for session issues
+    console.log('Microlearning progress update request:', {
+      sessionId: req.session.id,
+      sessionUserId: req.session.userId,
+      headerUserId: req.headers['x-user-id'],
+      bodyUserId: req.body.userId,
+      cookiePresent: !!req.headers.cookie
+    });
+    
     if (!sessionUserId) {
+      console.log('Authentication failed - no session userId or header userId');
       return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    // Store user ID in session if it's not there but provided via header
+    if (!req.session.userId && req.headers['x-user-id']) {
+      console.log('Storing userId in session from header:', req.headers['x-user-id']);
+      req.session.userId = req.headers['x-user-id'];
+      await new Promise(resolve => req.session.save(resolve));
     }
 
     const { userId, videoId, progress, completed, completedAt } = req.body;
@@ -2708,14 +2810,27 @@ app.post("/api/microlearning/progress", async (req, res) => {
     }
 
     // Check if user has approved application for videos beyond the first one
-    const hasApproval = await hasApprovedApplication(userId);
+    const applicationStatus = await getApplicationStatus(userId);
     const firstVideoId = 'canada-food-handling'; // First video that everyone can access
     
-    if (!hasApproval && sessionUser?.role !== 'admin' && videoId !== firstVideoId) {
+    if (!applicationStatus.hasApproved && sessionUser?.role !== 'admin' && videoId !== firstVideoId) {
+      const message = applicationStatus.hasPending 
+        ? 'Your application is under review. Full access will be granted once approved.'
+        : applicationStatus.hasRejected || applicationStatus.hasCancelled
+        ? 'Your previous application was not approved. Please submit a new application for full access.'
+        : 'Please submit an application to access all training videos.';
+        
       return res.status(403).json({ 
-        message: 'Application approval required to access this video',
+        message: message,
         accessLevel: 'limited',
-        firstVideoOnly: true
+        firstVideoOnly: true,
+        applicationInfo: {
+          hasActive: applicationStatus.hasActive,
+          hasPending: applicationStatus.hasPending,
+          hasRejected: applicationStatus.hasRejected,
+          hasCancelled: applicationStatus.hasCancelled,
+          canApply: !applicationStatus.hasActive
+        }
       });
     }
 
@@ -2758,12 +2873,25 @@ app.post("/api/microlearning/complete", async (req, res) => {
     }
 
     // Check if user has approved application to complete full training
-    const hasApproval = await hasApprovedApplication(userId);
-    if (!hasApproval && sessionUser?.role !== 'admin') {
+    const applicationStatus = await getApplicationStatus(userId);
+    if (!applicationStatus.hasApproved && sessionUser?.role !== 'admin') {
+      const message = applicationStatus.hasPending 
+        ? 'Your application is under review. Certification will be available once approved.'
+        : applicationStatus.hasRejected || applicationStatus.hasCancelled
+        ? 'Your previous application was not approved. Please submit a new application to complete certification.'
+        : 'Please submit an application to complete full certification.';
+        
       return res.status(403).json({ 
-        message: 'Application approval required to complete full certification',
+        message: message,
         accessLevel: 'limited',
-        requiresApproval: true
+        requiresApproval: true,
+        applicationInfo: {
+          hasActive: applicationStatus.hasActive,
+          hasPending: applicationStatus.hasPending,
+          hasRejected: applicationStatus.hasRejected,
+          hasCancelled: applicationStatus.hasCancelled,
+          canApply: !applicationStatus.hasActive
+        }
       });
     }
 
