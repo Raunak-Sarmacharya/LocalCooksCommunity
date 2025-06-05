@@ -103,8 +103,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.document_verification": {
-      "name": "document_verification",
+    "public.document_verifications": {
+      "name": "document_verifications",
       "schema": "",
       "columns": {
         "id": {
@@ -184,7 +184,7 @@
       "foreignKeys": {
         "document_verification_user_id_users_id_fk": {
           "name": "document_verification_user_id_users_id_fk",
-          "tableFrom": "document_verification",
+          "tableFrom": "document_verifications",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
@@ -197,7 +197,7 @@
         },
         "document_verification_reviewed_by_users_id_fk": {
           "name": "document_verification_reviewed_by_users_id_fk",
-          "tableFrom": "document_verification",
+          "tableFrom": "document_verifications",
           "tableTo": "users",
           "columnsFrom": [
             "reviewed_by"
