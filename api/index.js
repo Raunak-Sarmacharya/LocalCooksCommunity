@@ -117,7 +117,11 @@ try {
     // Create PG session store
     sessionStore = new PgStore({
       pool: pool,
-      createTableIfMissing: true
+      createTableIfMissing: true,
+      // Add automatic cleanup configuration
+      pruneSessionInterval: 60 * 15, // Prune every 15 minutes (in seconds)
+      errorLog: console.error,
+      debugLog: console.log
     });
 
     console.log('Connected to database and initialized session store');
@@ -137,6 +141,24 @@ try {
         console.log('Session table created or verified');
       } catch (err) {
         console.error('Error setting up session table:', err);
+      }
+    })();
+
+    // Run initial session cleanup on startup
+    (async () => {
+      try {
+        console.log('Running startup session cleanup...');
+        const cleanupResult = await cleanupExpiredSessions();
+        console.log(`Startup cleanup: Removed ${cleanupResult.cleaned} expired sessions`);
+        
+        const stats = await getSessionStats();
+        console.log('Session stats after startup cleanup:', {
+          total: stats.total_sessions,
+          active: stats.active_sessions,
+          expired: stats.expired_sessions
+        });
+      } catch (err) {
+        console.error('Error during startup session cleanup:', err);
       }
     })();
 
@@ -2269,6 +2291,161 @@ app.use((err, req, res, next) => {
     error: 'Server error',
     message: process.env.NODE_ENV === 'production' ? 'An unexpected error occurred' : err.message
   });
+});
+
+// Session cleanup functions
+async function cleanupExpiredSessions() {
+  if (!pool) {
+    console.log('No database available for session cleanup');
+    return { cleaned: 0, error: 'No database connection' };
+  }
+
+  try {
+    const result = await pool.query(`
+      DELETE FROM session 
+      WHERE expire < NOW()
+      RETURNING sid;
+    `);
+    
+    console.log(`Cleaned up ${result.rowCount} expired sessions`);
+    return { cleaned: result.rowCount };
+  } catch (error) {
+    console.error('Error cleaning up expired sessions:', error);
+    return { cleaned: 0, error: error.message };
+  }
+}
+
+async function getSessionStats() {
+  if (!pool) {
+    return { error: 'No database connection' };
+  }
+
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_sessions,
+        COUNT(CASE WHEN expire > NOW() THEN 1 END) as active_sessions,
+        COUNT(CASE WHEN expire <= NOW() THEN 1 END) as expired_sessions,
+        MIN(expire) as oldest_session,
+        MAX(expire) as newest_session
+      FROM session;
+    `);
+
+    return stats.rows[0];
+  } catch (error) {
+    console.error('Error getting session stats:', error);
+    return { error: error.message };
+  }
+}
+
+// ===============================
+// SESSION MANAGEMENT ENDPOINTS
+// ===============================
+
+// Get session statistics (admin only)
+app.get("/api/admin/sessions/stats", async (req, res) => {
+  try {
+    // Check if user is authenticated and is an admin
+    const userId = req.session.userId || req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const user = await getUser(userId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+
+    const stats = await getSessionStats();
+    
+    return res.status(200).json({
+      message: "Session statistics",
+      stats: stats,
+      recommendations: {
+        shouldCleanup: stats.expired_sessions > 100,
+        cleanupRecommended: stats.total_sessions > 1000,
+        criticalLevel: stats.total_sessions > 5000
+      }
+    });
+  } catch (error) {
+    console.error("Error getting session stats:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Manual session cleanup (admin only)
+app.post("/api/admin/sessions/cleanup", async (req, res) => {
+  try {
+    // Check if user is authenticated and is an admin
+    const userId = req.session.userId || req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const user = await getUser(userId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+
+    const beforeStats = await getSessionStats();
+    const cleanupResult = await cleanupExpiredSessions();
+    const afterStats = await getSessionStats();
+
+    return res.status(200).json({
+      message: "Session cleanup completed",
+      before: beforeStats,
+      after: afterStats,
+      cleaned: cleanupResult.cleaned,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Error during session cleanup:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Aggressive session cleanup (admin only) - removes sessions older than X days
+app.post("/api/admin/sessions/cleanup-old", async (req, res) => {
+  try {
+    // Check if user is authenticated and is an admin
+    const userId = req.session.userId || req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const user = await getUser(userId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+
+    const { days = 30 } = req.body; // Default to 30 days
+    
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    const beforeStats = await getSessionStats();
+    
+    const result = await pool.query(`
+      DELETE FROM session 
+      WHERE expire < NOW() - INTERVAL '${days} days'
+      RETURNING sid;
+    `);
+
+    const afterStats = await getSessionStats();
+
+    return res.status(200).json({
+      message: `Cleaned up sessions older than ${days} days`,
+      before: beforeStats,
+      after: afterStats,
+      cleaned: result.rowCount,
+      days: days,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Error during aggressive session cleanup:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 export default app;
