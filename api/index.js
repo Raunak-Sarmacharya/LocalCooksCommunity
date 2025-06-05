@@ -16,39 +16,13 @@ const scryptAsync = promisify(scrypt);
 const MemoryStore = createMemoryStore(session);
 const PgStore = connectPgSimple(session);
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
+// Configure multer for file uploads
 let upload;
 
 try {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-
-  // Configure multer for file storage
-  const diskStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-      // Generate unique filename: userId_documentType_timestamp_originalname
-      const userId = req.session.userId || req.headers['x-user-id'] || 'unknown';
-      const timestamp = Date.now();
-      const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
-      const ext = path.extname(file.originalname);
-      const baseName = path.basename(file.originalname, ext);
-      
-      const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
-      cb(null, filename);
-    }
-  });
-
-  // Memory storage for production (Vercel Blob)
-  const memoryStorage = multer.memoryStorage();
-  
   // Check if we're in production
-  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-
+  const uploadIsProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
   // File filter to only allow certain file types
   const fileFilter = (req, file, cb) => {
     // Allow PDF, JPG, JPEG, PNG files
@@ -67,22 +41,65 @@ try {
     }
   };
 
-  upload = multer({
-    storage: isProduction ? memoryStorage : diskStorage,
-    fileFilter: fileFilter,
-    limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB limit
-    },
-  });
+  if (uploadIsProduction) {
+    // Production: Use memory storage for Vercel Blob
+    const memoryStorage = multer.memoryStorage();
+    upload = multer({
+      storage: memoryStorage,
+      fileFilter: fileFilter,
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+      },
+    });
+  } else {
+    // Development: Use disk storage
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
+    
+    // Only create directory in development
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const diskStorage = multer.diskStorage({
+      destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+      },
+      filename: (req, file, cb) => {
+        // Generate unique filename: userId_documentType_timestamp_originalname
+        const userId = req.session.userId || req.headers['x-user-id'] || 'unknown';
+        const timestamp = Date.now();
+        const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
+        const ext = path.extname(file.originalname);
+        const baseName = path.basename(file.originalname, ext);
+        
+        const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+        cb(null, filename);
+      }
+    });
+
+    upload = multer({
+      storage: diskStorage,
+      fileFilter: fileFilter,
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+      },
+    });
+  }
 
   console.log('File upload configuration initialized successfully');
 } catch (error) {
   console.error('Failed to initialize file upload configuration:', error);
-  // Create a dummy upload middleware that returns an error
+  // Create a proper dummy upload middleware with all required methods
+  const dummyMiddleware = (req, res, next) => {
+    res.status(500).json({ message: "File upload not available in this environment" });
+  };
+  
   upload = {
-    fields: () => (req, res, next) => {
-      res.status(500).json({ message: "File upload not available in this environment" });
-    }
+    single: () => dummyMiddleware,
+    fields: () => dummyMiddleware,
+    array: () => dummyMiddleware,
+    any: () => dummyMiddleware,
+    none: () => dummyMiddleware
   };
 }
 
