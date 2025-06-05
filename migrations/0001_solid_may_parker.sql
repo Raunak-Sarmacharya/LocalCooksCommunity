@@ -1,7 +1,7 @@
 CREATE TYPE "public"."document_verification_status" AS ENUM('pending', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('admin', 'applicant');--> statement-breakpoint
 ALTER TYPE "public"."application_status" ADD VALUE 'cancelled';--> statement-breakpoint
-CREATE TABLE "document_verification" (
+CREATE TABLE "document_verifications" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
 	"food_safety_license_url" text,
