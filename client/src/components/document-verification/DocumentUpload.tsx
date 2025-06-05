@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
+import { useFileUpload } from "@/hooks/useFileUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FileUpload } from "@/components/ui/file-upload";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Upload, 
   FileText, 
@@ -25,12 +28,38 @@ import { Link } from "wouter";
 
 export default function DocumentUpload() {
   const { verification, isLoading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
+  const { toast } = useToast();
+  
+  // Check if we're in production (Vercel)
+  const isProduction = process.env.NODE_ENV === 'production';
   
   // URL states (keep these)
   const [foodSafetyLicenseUrl, setFoodSafetyLicenseUrl] = useState("");
   const [foodEstablishmentCertUrl, setFoodEstablishmentCertUrl] = useState("");
   
+  // File upload states
+  const [fileUploads, setFileUploads] = useState<Record<string, File>>({});
+  
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Initialize file upload hook
+  const { uploadFile, isUploading, uploadProgress, error: uploadError } = useFileUpload({
+    maxSize: 10 * 1024 * 1024, // 10MB
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+    onSuccess: (response) => {
+      toast({
+        title: "File uploaded successfully",
+        description: `${response.fileName} has been uploaded.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Upload failed",
+        description: error,
+        variant: "destructive",
+      });
+    }
+  });
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -41,18 +70,82 @@ export default function DocumentUpload() {
     }
   };
 
+  // File upload handlers
+  const handleFileUpload = (fieldName: string, file: File | null) => {
+    setFileUploads(prev => {
+      const updated = { ...prev };
+      if (file) {
+        updated[fieldName] = file;
+      } else {
+        delete updated[fieldName];
+      }
+      return updated;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    // Prepare JSON data for URL submissions
-    const urlData = {
-      ...(foodSafetyLicenseUrl.trim() && { foodSafetyLicenseUrl: foodSafetyLicenseUrl.trim() }),
-      ...(foodEstablishmentCertUrl.trim() && { foodEstablishmentCertUrl: foodEstablishmentCertUrl.trim() })
-    };
-    if (verification) {
-      updateMutation.mutate(urlData as any);
-    } else {
-      createMutation.mutate(urlData as any);
+    
+    // Check if we have files to upload
+    const hasFiles = Object.keys(fileUploads).length > 0;
+    const hasUrls = foodSafetyLicenseUrl.trim() || foodEstablishmentCertUrl.trim();
+    
+    if (!hasFiles && !hasUrls) {
+      toast({
+        title: "No documents provided",
+        description: "Please upload files or provide URLs for your documents.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      let finalData: Record<string, string> = {};
+      
+      if (hasFiles) {
+        // Upload files to storage first
+        for (const [fieldName, file] of Object.entries(fileUploads)) {
+          const result = await uploadFile(file);
+          if (result) {
+            // Map field names to the expected URL field names
+            if (fieldName === 'foodSafetyLicense') {
+              finalData.foodSafetyLicenseUrl = result.url;
+            } else if (fieldName === 'foodEstablishmentCert') {
+              finalData.foodEstablishmentCertUrl = result.url;
+            }
+          } else {
+            throw new Error(`Failed to upload ${fieldName}`);
+          }
+        }
+      }
+      
+      // Add URL fields if provided
+      if (foodSafetyLicenseUrl.trim()) {
+        finalData.foodSafetyLicenseUrl = foodSafetyLicenseUrl.trim();
+      }
+      if (foodEstablishmentCertUrl.trim()) {
+        finalData.foodEstablishmentCertUrl = foodEstablishmentCertUrl.trim();
+      }
+      
+      // Submit the combined data (files + URLs) to the document verification system
+      if (verification) {
+        updateMutation.mutate(finalData);
+      } else {
+        createMutation.mutate(finalData);
+      }
+      
+      // Clear form after successful submission
+      setFileUploads({});
+      setFoodSafetyLicenseUrl("");
+      setFoodEstablishmentCertUrl("");
+      
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload files",
+        variant: "destructive",
+      });
     }
   };
 
@@ -277,8 +370,7 @@ export default function DocumentUpload() {
             Document Verification
           </CardTitle>
           <CardDescription>
-            Upload your required documents for verification. You can either upload files directly 
-            or provide URLs to your documents stored elsewhere.
+            Upload your required documents for verification. You can upload files directly from your device or provide URLs to documents you've stored in cloud services (Google Drive, Dropbox, OneDrive, etc.).
           </CardDescription>
         </CardHeader>
         
@@ -287,14 +379,27 @@ export default function DocumentUpload() {
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
-                <strong>Update your documents:</strong> You can upload new files to replace your current documents. 
-                The status will reset to "Pending Review" when you upload new files.
+                <strong>Update your documents:</strong> You can upload new files or provide new URLs to replace your current documents. 
+                The status will reset to "Pending Review" when you submit new documents.
               </AlertDescription>
             </Alert>
           )}
+          
+          <Alert className="mb-4">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Two Ways to Submit Documents:</strong> 
+              <br />• <strong>Upload Files:</strong> Select files directly from your device
+              <br />• <strong>Provide URLs:</strong> Share links from Google Drive, Dropbox, OneDrive, etc. (make sure links allow public viewing)
+            </AlertDescription>
+          </Alert>
 
-          <Tabs value="url" className="w-full">
+          <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upload" className="flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                {verification ? "Upload New Files" : "Upload Files"}
+              </TabsTrigger>
               <TabsTrigger value="url" className="flex items-center gap-2">
                 <LinkIcon className="h-4 w-4" />
                 {verification ? "Update URLs" : "Provide URLs"}
@@ -302,6 +407,87 @@ export default function DocumentUpload() {
             </TabsList>
 
             <form onSubmit={handleSubmit} className="space-y-6 mt-6">
+              {/* File Upload Tab - Always available */}
+              <TabsContent value="upload" className="space-y-6 mt-0">
+                {/* Food Safety License File Upload */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Food Safety License * {verification && "(Upload new file)"}
+                    </Label>
+                    {verification?.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
+                  </div>
+                  
+                  {/* Show current document if exists */}
+                  {verification?.foodSafetyLicenseUrl && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                      <p className="text-sm font-medium text-blue-800 mb-1">Current document:</p>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm text-blue-700">
+                          {getFileDisplayName(verification.foodSafetyLicenseUrl) || 'Document uploaded'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Upload a new file below to replace this document
+                      </p>
+                    </div>
+                  )}
+                  
+                  <FileUpload
+                    fieldName="foodSafetyLicense"
+                    label=""
+                    required={true}
+                    currentFile={fileUploads.foodSafetyLicense}
+                    onFileChange={(file) => handleFileUpload("foodSafetyLicense", file)}
+                    className="mt-0"
+                  />
+                  
+                  <p className="text-xs text-gray-500">
+                    Upload a clear photo or scan of your Food Safety License certificate.
+                  </p>
+                </div>
+
+                {/* Food Establishment Certificate File Upload */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Food Establishment Certificate (Optional) {verification && verification.foodEstablishmentCertUrl && "(Upload new file)"}
+                    </Label>
+                    {verification?.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
+                  </div>
+                  
+                  {/* Show current document if exists */}
+                  {verification?.foodEstablishmentCertUrl && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                      <p className="text-sm font-medium text-blue-800 mb-1">Current document:</p>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm text-blue-700">
+                          {getFileDisplayName(verification.foodEstablishmentCertUrl) || 'Document uploaded'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Upload a new file below to replace this document
+                      </p>
+                    </div>
+                  )}
+                  
+                  <FileUpload
+                    fieldName="foodEstablishmentCert"
+                    label=""
+                    required={false}
+                    currentFile={fileUploads.foodEstablishmentCert}
+                    onFileChange={(file) => handleFileUpload("foodEstablishmentCert", file)}
+                    className="mt-0"
+                  />
+                  
+                  <p className="text-xs text-gray-500">
+                    Upload your Food Establishment Certificate (optional but recommended).
+                  </p>
+                </div>
+              </TabsContent>
+
               <TabsContent value="url" className="space-y-6 mt-0">
                 {/* Food Safety License URL */}
                 <div className="space-y-3">
@@ -410,12 +596,17 @@ export default function DocumentUpload() {
               <Button 
                 type="submit" 
                 className="w-full"
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || isUploading}
               >
-                {(createMutation.isPending || updateMutation.isPending) ? (
+                {isUploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {verification ? "Updating..." : "Uploading..."}
+                    Uploading files... {uploadProgress > 0 && `${Math.round(uploadProgress)}%`}
+                  </>
+                ) : (createMutation.isPending || updateMutation.isPending) ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {verification ? "Updating..." : "Submitting..."}
                   </>
                 ) : (
                   <>
@@ -424,6 +615,16 @@ export default function DocumentUpload() {
                   </>
                 )}
               </Button>
+              
+              {/* Upload Error Display */}
+              {uploadError && (
+                <Alert className="mt-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="text-red-600">
+                    <strong>Upload Error:</strong> {uploadError}
+                  </AlertDescription>
+                </Alert>
+              )}
             </form>
           </Tabs>
 

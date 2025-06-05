@@ -1,10 +1,14 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { put } from '@vercel/blob';
 
-// Ensure uploads directory exists
+// Check if we're in production (Vercel)
+const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+// Ensure uploads directory exists (for development)
 const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
-if (!fs.existsSync(uploadsDir)) {
+if (!isProduction && !fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
@@ -26,6 +30,9 @@ const storage = multer.diskStorage({
   }
 });
 
+// Memory storage for production (Vercel Blob)
+const memoryStorage = multer.memoryStorage();
+
 // File filter to only allow certain file types
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   // Allow PDF, JPG, JPEG, PNG files
@@ -44,14 +51,37 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
-// Configure multer
+// Configure multer based on environment
 export const upload = multer({
-  storage: storage,
+  storage: isProduction ? memoryStorage : storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: fileFilter
 });
+
+// Helper function to upload file to Vercel Blob (production)
+export const uploadToBlob = async (file: Express.Multer.File, userId: number): Promise<string> => {
+  try {
+    const timestamp = Date.now();
+    const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    
+    const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+    
+    const blob = await put(filename, file.buffer, {
+      access: 'public',
+      contentType: file.mimetype,
+    });
+    
+    console.log(`File uploaded to Vercel Blob: ${filename} -> ${blob.url}`);
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading to Vercel Blob:', error);
+    throw new Error('Failed to upload file to cloud storage');
+  }
+};
 
 // Helper function to delete old files when user uploads new ones
 export const deleteFile = (filePath: string): void => {
@@ -65,9 +95,15 @@ export const deleteFile = (filePath: string): void => {
   }
 };
 
-// Helper function to get file URL
+// Helper function to get file URL (environment aware)
 export const getFileUrl = (filename: string): string => {
-  return `/api/files/documents/${filename}`;
+  if (isProduction) {
+    // In production, this should be the actual Vercel Blob URL
+    // This function is mainly used for development
+    return `/api/files/documents/${filename}`;
+  } else {
+    return `/api/files/documents/${filename}`;
+  }
 };
 
 // Helper function to clean up application documents when application is cancelled
@@ -76,6 +112,12 @@ export const cleanupApplicationDocuments = (application: {
   foodEstablishmentCertUrl?: string | null 
 }): void => {
   try {
+    // Only clean up local files in development
+    if (isProduction) {
+      console.log('Skipping file cleanup in production (Vercel Blob files are managed externally)');
+      return;
+    }
+
     // Clean up food safety license file
     if (application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith('/api/files/')) {
       const filename = application.foodSafetyLicenseUrl.split('/').pop();
