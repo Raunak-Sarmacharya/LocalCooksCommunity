@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
-import { ArrowRight, Award, CheckCircle, ChevronLeft, ChevronRight, Download, Lock, Shield, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowRight, Award, CheckCircle, ChevronLeft, ChevronRight, Clock, Download, FileText, Lock, Shield, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import CompletionTracker from './CompletionTracker';
@@ -139,6 +139,7 @@ export default function MicrolearningModule({
   const [completionConfirmed, setCompletionConfirmed] = useState(false);
   const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('limited');
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
+  const [applicationInfo, setApplicationInfo] = useState<any>(null);
 
   const currentVideo = videos[currentVideoIndex];
   const allVideosCompleted = userProgress.length === videos.length && 
@@ -152,7 +153,10 @@ export default function MicrolearningModule({
   const loadUserProgress = async () => {
     try {
       const response = await fetch(`/api/microlearning/progress/${userId || user?.id}`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'X-User-ID': String(userId || user?.id || '')
+        }
       });
       
       if (response.ok) {
@@ -161,6 +165,7 @@ export default function MicrolearningModule({
         setCompletionConfirmed(data.completionConfirmed || false);
         setAccessLevel(data.accessLevel || 'limited');
         setHasApprovedApplication(data.hasApprovedApplication || false);
+        setApplicationInfo(data.applicationInfo || null);
       }
     } catch (error) {
       console.error('Failed to load progress:', error);
@@ -174,7 +179,8 @@ export default function MicrolearningModule({
       const response = await fetch('/api/microlearning/progress', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-User-ID': String(userId || user?.id || '')
         },
         body: JSON.stringify({
           userId: userId || user?.id,
@@ -237,7 +243,8 @@ export default function MicrolearningModule({
       const response = await fetch('/api/microlearning/complete', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-User-ID': String(userId || user?.id || '')
         },
         body: JSON.stringify({
           userId: userId || user?.id,
@@ -342,6 +349,70 @@ export default function MicrolearningModule({
         {/* Clean notification system */}
         <div className="w-full">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
+            
+            {/* Application Status Notification */}
+            {applicationInfo && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className={`rounded-lg border p-4 ${
+                  applicationInfo.hasRejected || applicationInfo.hasCancelled
+                    ? 'bg-orange-50 border-orange-200'
+                    : applicationInfo.hasPending
+                    ? 'bg-blue-50 border-blue-200'
+                    : !hasApprovedApplication
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : 'bg-green-50 border-green-200'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`p-1 rounded-full flex-shrink-0 ${
+                    applicationInfo.hasRejected || applicationInfo.hasCancelled
+                      ? 'bg-orange-100'
+                      : applicationInfo.hasPending
+                      ? 'bg-blue-100'
+                      : !hasApprovedApplication
+                      ? 'bg-yellow-100'
+                      : 'bg-green-100'
+                  }`}>
+                    {applicationInfo.hasRejected || applicationInfo.hasCancelled ? (
+                      <AlertCircle className="h-4 w-4 text-orange-600" />
+                    ) : applicationInfo.hasPending ? (
+                      <Clock className="h-4 w-4 text-blue-600" />
+                    ) : !hasApprovedApplication ? (
+                      <FileText className="h-4 w-4 text-yellow-600" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${
+                      applicationInfo.hasRejected || applicationInfo.hasCancelled
+                        ? 'text-orange-800'
+                        : applicationInfo.hasPending
+                        ? 'text-blue-800'
+                        : !hasApprovedApplication
+                        ? 'text-yellow-800'
+                        : 'text-green-800'
+                    }`}>
+                      {applicationInfo.message}
+                    </p>
+                    {applicationInfo.canApply && (
+                      <div className="mt-2">
+                        <button
+                          onClick={() => window.location.href = '/apply'}
+                          className="text-xs px-3 py-1 bg-primary text-white rounded-full hover:bg-primary/90 transition-colors"
+                        >
+                          Submit Application
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
             {/* Demo Notice - Subtle */}
             <motion.div 
               initial={{ opacity: 0 }}
