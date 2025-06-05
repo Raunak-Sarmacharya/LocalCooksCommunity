@@ -28,7 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger
 } from "@/components/ui/accordion";
-import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, Shield, ExternalLink, AlertTriangle } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, Shield, ExternalLink, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -36,6 +36,7 @@ function AdminDashboard() {
   const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
   const { user } = useAuth();
 
@@ -315,11 +316,72 @@ function AdminDashboard() {
   const { logoutMutation } = useAuth();
 
   const handleLogout = () => {
-    logoutMutation.mutate(undefined, {
-      onSuccess: () => {
-        navigate("/");
+    logoutMutation.mutate();
+  };
+
+  // Helper function to toggle card expansion
+  const toggleCardExpansion = (appId: number) => {
+    setExpandedCards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(appId)) {
+        newSet.delete(appId);
+      } else {
+        newSet.add(appId);
       }
+      return newSet;
     });
+  };
+
+  // Helper function to get the correct CTA button for each application
+  const getCtaButton = (app: Application) => {
+    // Quick Approve: User said yes to both and uploaded documents
+    if (app.status !== "approved" && 
+        app.foodSafetyLicense === "yes" && 
+        app.foodEstablishmentCert === "yes" && 
+        app.foodSafetyLicenseUrl && 
+        app.foodEstablishmentCertUrl) {
+      return (
+        <Button
+          size="sm"
+          onClick={() => handleStatusChange(app.id, "approved")}
+          className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 h-auto"
+        >
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Quick Approve
+        </Button>
+      );
+    }
+
+    // Regular Approve: For other cases where user said yes to at least one cert
+    if (app.status !== "approved" && app.status !== "rejected") {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => handleStatusChange(app.id, "approved")}
+          className="text-blue-600 border-blue-200 hover:bg-blue-50 text-xs px-3 py-1.5 h-auto"
+        >
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Approve
+        </Button>
+      );
+    }
+
+    return null;
+  };
+
+  // Helper function to get certification status icons
+  const getCertificationIcon = (status: string) => {
+    switch (status) {
+      case "yes":
+        return <CheckCircle className="h-4 w-4 text-green-600" />;
+      case "no":
+        return <XCircle className="h-4 w-4 text-red-600" />;
+      case "notSure":
+        return <AlertTriangle className="h-4 w-4 text-amber-600" />;
+      default:
+        return <XCircle className="h-4 w-4 text-gray-400" />;
+    }
   };
 
   // Animation variants
@@ -592,290 +654,330 @@ function AdminDashboard() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="space-y-4"
+        className="space-y-2"
       >
-        {apps.map((app: Application) => (
-          <motion.div key={app.id} variants={itemVariants} className="w-full">
-            <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
-              <CardContent className="p-0">
-                <div className="flex flex-col md:flex-row">
-                  <div className={`p-6 border-l-4 ${getStatusBadgeColor(app.status)} flex-grow`}>
-                    <div className="flex flex-col md:flex-row justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold flex items-center">
-                          <UserIcon className="h-4 w-4 mr-2 text-gray-500" />
-                          {app.fullName}
-                        </h3>
-                        <p className="text-sm text-gray-500">{app.email} • {app.phone}</p>
+        {apps.map((app: Application) => {
+          const isExpanded = expandedCards.has(app.id);
+          
+          return (
+            <motion.div key={app.id} variants={itemVariants} className="w-full">
+              <Card className="overflow-hidden hover:shadow-md transition-all duration-300">
+                
+                {/* COMPACT VIEW - Always Visible */}
+                <CardContent className="p-0">
+                  <div className={`p-4 border-l-4 ${getStatusBadgeColor(app.status)}`}>
+                    <div className="flex items-center justify-between">
+                      
+                      {/* Left side: Name and Certifications */}
+                      <div className="flex items-center space-x-4 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <UserIcon className="h-4 w-4 text-gray-500" />
+                          <h3 className="font-semibold text-lg">{app.fullName}</h3>
+                        </div>
+                        
+                        {/* Certification Status Indicators */}
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-1" title="Food Safety License">
+                            {getCertificationIcon(app.foodSafetyLicense)}
+                            <span className="text-xs text-gray-600">FSL</span>
+                            {app.foodSafetyLicenseUrl && (
+                              <ExternalLink className="h-3 w-3 text-blue-500" title="Document uploaded" />
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center space-x-1" title="Food Establishment Certificate">
+                            {getCertificationIcon(app.foodEstablishmentCert)}
+                            <span className="text-xs text-gray-600">FEC</span>
+                            {app.foodEstablishmentCertUrl && (
+                              <ExternalLink className="h-3 w-3 text-blue-500" title="Document uploaded" />
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="mt-2 md:mt-0">
+
+                      {/* Center: Status Badge */}
+                      <div className="flex items-center space-x-3">
                         <Badge className={`${getStatusBadgeColor(app.status)} flex items-center gap-1.5 px-2 py-1`}>
                           {getStatusIcon(app.status)}
                           {formatApplicationStatus(app.status)}
                         </Badge>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                          Food Safety License
-                        </h4>
-                        <p className="font-medium text-sm">{formatCertificationStatus(app.foodSafetyLicense)}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                          Food Establishment Certificate
-                        </h4>
-                        <p className="font-medium text-sm">{formatCertificationStatus(app.foodEstablishmentCert)}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                          Kitchen Preference
-                        </h4>
-                        <p className="font-medium text-sm">{formatKitchenPreference(app.kitchenPreference)}</p>
-                      </div>
-                    </div>
-
-                    {/* Application-specific features */}
-                    {app.status !== "approved" && 
-                     app.foodSafetyLicense === "yes" && 
-                     app.foodEstablishmentCert === "yes" && 
-                     app.foodSafetyLicenseUrl && 
-                     app.foodEstablishmentCertUrl && (
-                      <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="text-sm font-semibold text-green-800 flex items-center gap-2">
-                              <CheckCircle className="h-4 w-4" />
-                              Ready for Quick Approval
-                            </h4>
-                            <p className="text-xs text-green-700 mt-1">
-                              Applicant has both certifications and documents uploaded
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            onClick={() => handleStatusChange(app.id, "approved")}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 h-auto"
-                          >
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Quick Approve
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Notice for applications that will need documents later */}
-                    {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" || 
-                      app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") && 
-                     app.status !== "approved" && (
-                      <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                        <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4" />
-                          Document Upload Required After Approval
-                        </h4>
-                        <p className="text-xs text-amber-700 mt-1">
-                          {app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" ? 
-                            "• Food Safety License: " + formatCertificationStatus(app.foodSafetyLicense) : ""}
-                          {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure") && 
-                           (app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") ? 
-                            "\n" : ""}
-                          {app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure" ? 
-                            "• Food Establishment Cert: " + formatCertificationStatus(app.foodEstablishmentCert) : ""}
-                        </p>
-                        <p className="text-xs text-amber-600 mt-2 font-medium">
-                          This applicant will need to upload documents after approval and wait for document verification.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Document Verification Section */}
-                    {app.status === "approved" && (
-                      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <h4 className="text-sm font-semibold mb-3 text-blue-800 flex items-center gap-2">
-                          <Shield className="h-4 w-4" />
-                          Document Verification
-                        </h4>
+                      {/* Right side: CTA Button and Expand Arrow */}
+                      <div className="flex items-center space-x-2">
+                        {getCtaButton(app)}
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          {/* Food Safety License Document */}
-                          <div className="space-y-2">
-                            <h5 className="text-xs font-medium text-gray-600">Food Safety License</h5>
-                            {app.foodSafetyLicenseUrl ? (
-                              <div className="space-y-2">
-                                <a 
-                                  href={app.foodSafetyLicenseUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline text-sm flex items-center gap-1"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  {app.foodSafetyLicenseUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
-                                </a>
-                                <div>
-                                  {getDocumentStatusBadge(app.foodSafetyLicenseStatus)}
-                                </div>
-                                {/* FSL Approval Controls */}
-                                <div className="flex gap-1 pt-1">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
-                                    className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
-                                    className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
-                                  >
-                                    Reject
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-500 text-sm">No document uploaded</span>
-                            )}
-                          </div>
-
-                          {/* Food Establishment Certificate Document */}
-                          <div className="space-y-2">
-                            <h5 className="text-xs font-medium text-gray-600">Food Establishment Certificate</h5>
-                            {app.foodEstablishmentCertUrl ? (
-                              <div className="space-y-2">
-                                <a 
-                                  href={app.foodEstablishmentCertUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline text-sm flex items-center gap-1"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  {app.foodEstablishmentCertUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
-                                </a>
-                                <div>
-                                  {getDocumentStatusBadge(app.foodEstablishmentCertStatus)}
-                                </div>
-                                {/* FEC Approval Controls */}
-                                <div className="flex gap-1 pt-1">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
-                                    className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
-                                    className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
-                                  >
-                                    Reject
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-500 text-sm">No document uploaded</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Admin Feedback */}
-                        {app.documentsAdminFeedback && (
-                          <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                            <strong>Admin Feedback:</strong> {app.documentsAdminFeedback}
-                          </div>
-                        )}
-
-                        {app.documentsReviewedAt && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            Last reviewed: {new Date(app.documentsReviewedAt).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-4 pt-4 border-t w-full">
-                      <h3 className="text-sm font-medium mb-3">Application Details</h3>
-                      <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Full Name</h4>
-                            <p className="font-medium text-sm">{app.fullName || "No name provided"}</p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Email</h4>
-                            <p className="font-medium text-sm">{app.email || "No email provided"}</p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Phone</h4>
-                            <p className="font-medium text-sm">{app.phone || "No phone provided"}</p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Created Date</h4>
-                            <p className="font-medium text-sm">{app.createdAt ? new Date(app.createdAt).toLocaleDateString() : "N/A"}</p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Food Safety License</h4>
-                            <p className="font-medium text-sm">{formatCertificationStatus(app.foodSafetyLicense)}</p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Food Establishment Cert</h4>
-                            <p className="font-medium text-sm">{formatCertificationStatus(app.foodEstablishmentCert)}</p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Status</h4>
-                            <Badge className={`${getStatusBadgeColor(app.status)}`}>
-                              {formatApplicationStatus(app.status)}
-                            </Badge>
-                          </div>
-                          <div className="col-span-2 mt-2">
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Feedback/Questions</h4>
-                            <p className="font-medium text-sm bg-gray-50 p-3 rounded-md border border-gray-200">
-                              {app.feedback || "No feedback or questions provided"}
-                            </p>
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Application ID</h4>
-                            <p className="font-medium text-sm">#{app.id}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t flex flex-col md:flex-row justify-between items-center">
-                      <div className="flex items-center text-xs text-muted-foreground">
-                        <CalendarDays className="h-3 w-3 mr-1" />
-                        Submitted on {new Date(app.createdAt).toLocaleDateString()}
-                      </div>
-                      <div className="mt-2 md:mt-0">
-                        <Select
-                          defaultValue={app.status}
-                          onValueChange={(value) => handleStatusChange(app.id, value)}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleCardExpansion(app.id)}
+                          className="h-8 w-8 p-0"
                         >
-                          <SelectTrigger className="h-8 w-[140px]">
-                            <SelectValue placeholder="Update Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="new">New</SelectItem>
-                            <SelectItem value="inReview">In Review</SelectItem>
-                            <SelectItem value="approved">Approve</SelectItem>
-                            <SelectItem value="rejected">Reject</SelectItem>
-                            <SelectItem value="cancelled">Cancel</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+
+                  {/* EXPANDED VIEW - Only visible when expanded */}
+                  {isExpanded && (
+                    <div className="p-6 bg-gray-50 border-t">
+                      {/* Contact Information */}
+                      <div className="mb-4">
+                        <h4 className="text-sm font-semibold mb-2">Contact Information</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-600">Email:</span> {app.email}
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Phone:</span> {app.phone}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Detailed Certification Status */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div className="bg-white p-3 rounded-md border">
+                          <h4 className="text-xs font-medium text-gray-600 mb-1">
+                            Food Safety License
+                          </h4>
+                          <div className="flex items-center space-x-2">
+                            {getCertificationIcon(app.foodSafetyLicense)}
+                            <span className="font-medium text-sm">{formatCertificationStatus(app.foodSafetyLicense)}</span>
+                          </div>
+                        </div>
+                        <div className="bg-white p-3 rounded-md border">
+                          <h4 className="text-xs font-medium text-gray-600 mb-1">
+                            Food Establishment Certificate
+                          </h4>
+                          <div className="flex items-center space-x-2">
+                            {getCertificationIcon(app.foodEstablishmentCert)}
+                            <span className="font-medium text-sm">{formatCertificationStatus(app.foodEstablishmentCert)}</span>
+                          </div>
+                        </div>
+                        <div className="bg-white p-3 rounded-md border">
+                          <h4 className="text-xs font-medium text-gray-600 mb-1">
+                            Kitchen Preference
+                          </h4>
+                          <p className="font-medium text-sm">{formatKitchenPreference(app.kitchenPreference)}</p>
+                        </div>
+                      </div>
+
+                      {/* Application-specific notices */}
+                      {app.status !== "approved" && 
+                       app.foodSafetyLicense === "yes" && 
+                       app.foodEstablishmentCert === "yes" && 
+                       app.foodSafetyLicenseUrl && 
+                       app.foodEstablishmentCertUrl && (
+                        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                                <CheckCircle className="h-4 w-4" />
+                                Ready for Quick Approval
+                              </h4>
+                              <p className="text-xs text-green-700 mt-1">
+                                Applicant has both certifications and documents uploaded
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notice for applications that will need documents later */}
+                      {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" || 
+                        app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") && 
+                       app.status !== "approved" && (
+                        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                          <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4" />
+                            Document Upload Required After Approval
+                          </h4>
+                          <p className="text-xs text-amber-700 mt-1">
+                            {app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" ? 
+                              "• Food Safety License: " + formatCertificationStatus(app.foodSafetyLicense) : ""}
+                            {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure") && 
+                             (app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") ? 
+                              "\n" : ""}
+                            {app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure" ? 
+                              "• Food Establishment Cert: " + formatCertificationStatus(app.foodEstablishmentCert) : ""}
+                          </p>
+                          <p className="text-xs text-amber-600 mt-2 font-medium">
+                            This applicant will need to upload documents after approval and wait for document verification.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Document Verification Section */}
+                      {app.status === "approved" && (
+                        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                          <h4 className="text-sm font-semibold mb-3 text-blue-800 flex items-center gap-2">
+                            <Shield className="h-4 w-4" />
+                            Document Verification
+                          </h4>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            {/* Food Safety License Document */}
+                            <div className="space-y-2">
+                              <h5 className="text-xs font-medium text-gray-600">Food Safety License</h5>
+                              {app.foodSafetyLicenseUrl ? (
+                                <div className="space-y-2">
+                                  <a 
+                                    href={app.foodSafetyLicenseUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    {app.foodSafetyLicenseUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
+                                  </a>
+                                  <div>
+                                    {getDocumentStatusBadge(app.foodSafetyLicenseStatus)}
+                                  </div>
+                                  {/* FSL Approval Controls */}
+                                  <div className="flex gap-1 pt-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
+                                      className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
+                                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
+                                    >
+                                      Reject
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-gray-500 text-sm">No document uploaded</span>
+                              )}
+                            </div>
+
+                            {/* Food Establishment Certificate Document */}
+                            <div className="space-y-2">
+                              <h5 className="text-xs font-medium text-gray-600">Food Establishment Certificate</h5>
+                              {app.foodEstablishmentCertUrl ? (
+                                <div className="space-y-2">
+                                  <a 
+                                    href={app.foodEstablishmentCertUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                    {app.foodEstablishmentCertUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
+                                  </a>
+                                  <div>
+                                    {getDocumentStatusBadge(app.foodEstablishmentCertStatus)}
+                                  </div>
+                                  {/* FEC Approval Controls */}
+                                  <div className="flex gap-1 pt-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
+                                      className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
+                                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
+                                    >
+                                      Reject
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-gray-500 text-sm">No document uploaded</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Admin Feedback */}
+                          {app.documentsAdminFeedback && (
+                            <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                              <strong>Admin Feedback:</strong> {app.documentsAdminFeedback}
+                            </div>
+                          )}
+
+                          {app.documentsReviewedAt && (
+                            <p className="text-xs text-gray-500 mt-2">
+                              Last reviewed: {new Date(app.documentsReviewedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Full Application Details */}
+                      <div className="pt-4 border-t">
+                        <h4 className="text-sm font-semibold mb-3">Complete Application Details</h4>
+                        <div className="bg-white p-4 rounded-lg border">
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-600 mb-1">Application ID</h5>
+                              <p className="font-medium text-sm">#{app.id}</p>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-600 mb-1">Submitted</h5>
+                              <p className="font-medium text-sm">{new Date(app.createdAt).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          
+                          {app.feedback && (
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-600 mb-1">Feedback/Questions</h5>
+                              <p className="font-medium text-sm bg-gray-50 p-3 rounded-md border">
+                                {app.feedback}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Status Change Dropdown */}
+                        <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                          <div className="flex items-center text-xs text-gray-600">
+                            <CalendarDays className="h-3 w-3 mr-1" />
+                            Submitted on {new Date(app.createdAt).toLocaleDateString()}
+                          </div>
+                          <div>
+                            <Select
+                              defaultValue={app.status}
+                              onValueChange={(value) => handleStatusChange(app.id, value)}
+                            >
+                              <SelectTrigger className="h-8 w-[140px]">
+                                <SelectValue placeholder="Update Status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="new">New</SelectItem>
+                                <SelectItem value="inReview">In Review</SelectItem>
+                                <SelectItem value="approved">Approve</SelectItem>
+                                <SelectItem value="rejected">Reject</SelectItem>
+                                <SelectItem value="cancelled">Cancel</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
       </motion.div>
     );
   }
