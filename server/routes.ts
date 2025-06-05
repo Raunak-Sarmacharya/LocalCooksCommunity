@@ -195,32 +195,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: req.user!.id
         };
 
-        // Handle uploaded files
+        console.log('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
+        console.log('Form data:', {
+          foodSafetyLicense: applicationData.foodSafetyLicense,
+          foodEstablishmentCert: applicationData.foodEstablishmentCert,
+          hasFiles: !!req.files,
+          fileKeys: req.files ? Object.keys(req.files) : []
+        });
+
+        // Handle uploaded files and URL inputs
         const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        
+        // Handle file uploads
         if (files) {
           const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
           
           if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+            console.log('📄 Uploading food safety license file...');
             if (isProduction) {
               applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user!.id);
             } else {
               applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
             }
+            console.log('✅ Food safety license uploaded:', applicationData.foodSafetyLicenseUrl);
           }
+          
           if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+            console.log('📄 Uploading food establishment cert file...');
             if (isProduction) {
               applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user!.id);
             } else {
               applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
             }
+            console.log('✅ Food establishment cert uploaded:', applicationData.foodEstablishmentCertUrl);
           }
         }
+
+        // Handle URL inputs from form (fallback if no files uploaded)
+        if (req.body.foodSafetyLicenseUrl && !applicationData.foodSafetyLicenseUrl) {
+          applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+          console.log('📄 Using provided food safety license URL:', applicationData.foodSafetyLicenseUrl);
+        }
+        
+        if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
+          applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          console.log('📄 Using provided food establishment cert URL:', applicationData.foodEstablishmentCertUrl);
+        }
+
+        // Set initial document status based on what was provided and user responses
+        if (applicationData.foodSafetyLicenseUrl) {
+          applicationData.foodSafetyLicenseStatus = "pending";
+          console.log('✅ Food safety license document provided, status set to pending');
+        }
+        
+        if (applicationData.foodEstablishmentCertUrl) {
+          applicationData.foodEstablishmentCertStatus = "pending";
+          console.log('✅ Food establishment cert document provided, status set to pending');
+        }
+
+        console.log('Final application data:', {
+          userId: applicationData.userId,
+          hasDocuments: !!(applicationData.foodSafetyLicenseUrl || applicationData.foodEstablishmentCertUrl),
+          documentUrls: {
+            foodSafetyLicense: applicationData.foodSafetyLicenseUrl || null,
+            foodEstablishmentCert: applicationData.foodEstablishmentCertUrl || null
+          }
+        });
 
         // Create the application in storage
         const application = await storage.createApplication(applicationData);
 
         // Fetch the full application record to ensure all fields are present
         const fullApplication = await storage.getApplicationById(application.id);
+
+        console.log('✅ Application created successfully:', {
+          id: fullApplication?.id,
+          hasDocuments: !!(fullApplication?.foodSafetyLicenseUrl || fullApplication?.foodEstablishmentCertUrl)
+        });
 
         // Send email notification about new application
         try {
@@ -241,6 +292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("Error sending new application email:", emailError);
         }
 
+        console.log('=== APPLICATION SUBMISSION COMPLETE ===');
         return res.status(201).json(application);
       } catch (error) {
         console.error("Error creating application:", error);

@@ -28,7 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger
 } from "@/components/ui/accordion";
-import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, Shield, ExternalLink } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, XCircle, CalendarDays, Filter, Search, User as UserIcon, Shield, ExternalLink, AlertTriangle } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -636,6 +636,59 @@ function AdminDashboard() {
                         <p className="font-medium text-sm">{formatKitchenPreference(app.kitchenPreference)}</p>
                       </div>
                     </div>
+
+                    {/* Application-specific features */}
+                    {app.status !== "approved" && 
+                     app.foodSafetyLicense === "yes" && 
+                     app.foodEstablishmentCert === "yes" && 
+                     app.foodSafetyLicenseUrl && 
+                     app.foodEstablishmentCertUrl && (
+                      <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" />
+                              Ready for Quick Approval
+                            </h4>
+                            <p className="text-xs text-green-700 mt-1">
+                              Applicant has both certifications and documents uploaded
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleStatusChange(app.id, "approved")}
+                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 h-auto"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Quick Approve
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notice for applications that will need documents later */}
+                    {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" || 
+                      app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") && 
+                     app.status !== "approved" && (
+                      <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4" />
+                          Document Upload Required After Approval
+                        </h4>
+                        <p className="text-xs text-amber-700 mt-1">
+                          {app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" ? 
+                            "• Food Safety License: " + formatCertificationStatus(app.foodSafetyLicense) : ""}
+                          {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure") && 
+                           (app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") ? 
+                            "\n" : ""}
+                          {app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure" ? 
+                            "• Food Establishment Cert: " + formatCertificationStatus(app.foodEstablishmentCert) : ""}
+                        </p>
+                        <p className="text-xs text-amber-600 mt-2 font-medium">
+                          This applicant will need to upload documents after approval and wait for document verification.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Document Verification Section */}
                     {app.status === "approved" && (
