@@ -107,6 +107,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
         });
 
         xhr.open('POST', '/api/upload-file');
+        xhr.withCredentials = true; // Include cookies and session
         xhr.send(formData);
       });
 
