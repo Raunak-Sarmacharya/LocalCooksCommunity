@@ -501,51 +501,46 @@ async function initializeDatabase() {
         
         const existingAppColumns = appColumnCheck.rows.map(row => row.column_name);
         
-        // Check if document_verifications table exists and has proper structure
+        // Check if document_verifications table exists and add application_id if needed
         const docVerifTableCheck = await pool.query(`
-          SELECT to_regclass('public.document_verification') as table_exists;
+          SELECT to_regclass('public.document_verifications') as table_exists;
         `);
         
         if (docVerifTableCheck.rows[0].table_exists) {
-          // Check if application_id column exists in document_verification table
+          // Check if application_id column exists in document_verifications table
           const docVerifColumnCheck = await pool.query(`
             SELECT column_name FROM information_schema.columns 
-            WHERE table_name = 'document_verification' AND column_name = 'application_id'
+            WHERE table_name = 'document_verifications' AND column_name = 'application_id'
           `);
           
           if (docVerifColumnCheck.rows.length === 0) {
-            console.log('Fixing document_verification table to use application_id...');
-            
-            // Drop existing user_id foreign key
-            await pool.query(`
-              ALTER TABLE document_verification DROP CONSTRAINT IF EXISTS document_verification_user_id_users_id_fk;
-            `);
+            console.log('Adding application_id column to document_verifications table...');
             
             // Add application_id column
             await pool.query(`
-              ALTER TABLE document_verification ADD COLUMN IF NOT EXISTS application_id INTEGER;
+              ALTER TABLE document_verifications ADD COLUMN IF NOT EXISTS application_id INTEGER;
             `);
             
             // Add foreign key constraint with CASCADE DELETE
             await pool.query(`
-              ALTER TABLE document_verification ADD CONSTRAINT document_verification_application_id_applications_id_fk 
+              ALTER TABLE document_verifications ADD CONSTRAINT document_verifications_application_id_applications_id_fk 
               FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE;
             `);
             
-            // Migrate existing data
+            // Migrate existing data from user_id to application_id
             await pool.query(`
-              UPDATE document_verification 
+              UPDATE document_verifications 
               SET application_id = (
                 SELECT a.id 
                 FROM applications a 
-                WHERE a.user_id = document_verification.user_id 
+                WHERE a.user_id = document_verifications.user_id 
                 ORDER BY a.created_at DESC 
                 LIMIT 1
               )
               WHERE application_id IS NULL AND user_id IS NOT NULL;
             `);
             
-            console.log('Document verification table structure fixed');
+            console.log('Document verifications table migration completed - added application_id');
           }
         }
       } catch (appColumnError) {
@@ -1107,21 +1102,64 @@ app.get('/api/applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
-      // Get applications with document verification data
-      const result = await pool.query(`
-        SELECT a.*, u.username as applicant_username,
-               dv.food_safety_license_url,
-               dv.food_establishment_cert_url,
-               dv.food_safety_license_status,
-               dv.food_establishment_cert_status,
-               dv.admin_feedback as documents_admin_feedback,
-               dv.reviewed_by as documents_reviewed_by,
-               dv.reviewed_at as documents_reviewed_at
-        FROM applications a
-        JOIN users u ON a.user_id = u.id
-        LEFT JOIN document_verification dv ON a.id = dv.application_id
-        ORDER BY a.created_at DESC;
+      // Check if document_verifications table exists
+      const docTableCheck = await pool.query(`
+        SELECT to_regclass('public.document_verifications') as table_exists;
       `);
+      
+      let query;
+      if (docTableCheck.rows[0].table_exists) {
+        // Check if document_verifications table has application_id column
+        const appIdColumnCheck = await pool.query(`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'document_verifications' AND column_name = 'application_id'
+        `);
+        
+        if (appIdColumnCheck.rows.length > 0) {
+          // Table has application_id column, use it
+          query = `
+            SELECT a.*, u.username as applicant_username,
+                   dv.food_safety_license_url,
+                   dv.food_establishment_cert_url,
+                   dv.food_safety_license_status,
+                   dv.food_establishment_cert_status,
+                   dv.admin_feedback as documents_admin_feedback,
+                   dv.reviewed_by as documents_reviewed_by,
+                   dv.reviewed_at as documents_reviewed_at
+            FROM applications a
+            JOIN users u ON a.user_id = u.id
+            LEFT JOIN document_verifications dv ON a.id = dv.application_id
+            ORDER BY a.created_at DESC;
+          `;
+        } else {
+          // Table exists but still uses user_id
+          query = `
+            SELECT a.*, u.username as applicant_username,
+                   dv.food_safety_license_url,
+                   dv.food_establishment_cert_url,
+                   dv.food_safety_license_status,
+                   dv.food_establishment_cert_status,
+                   dv.admin_feedback as documents_admin_feedback,
+                   dv.reviewed_by as documents_reviewed_by,
+                   dv.reviewed_at as documents_reviewed_at
+            FROM applications a
+            JOIN users u ON a.user_id = u.id
+            LEFT JOIN document_verifications dv ON a.user_id = dv.user_id
+            ORDER BY a.created_at DESC;
+          `;
+        }
+      } else {
+        // No document table exists, get applications without document data
+        query = `
+          SELECT a.*, u.username as applicant_username
+          FROM applications a
+          JOIN users u ON a.user_id = u.id
+          ORDER BY a.created_at DESC;
+        `;
+      }
+
+      // Get applications with document verification data
+      const result = await pool.query(query);
 
       // Log the first application to see what fields are available
       if (result.rows.length > 0) {
@@ -1616,36 +1654,74 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     // Add updated_at timestamp
     updateData.updated_at = new Date();
 
-    // Update or insert into document_verification table with application_id
-    if (pool) {
-      // Check if document verification record exists for this application
-      const existingVerification = await pool.query(`
-        SELECT * FROM document_verification WHERE application_id = $1
-      `, [application.id]);
+    // Check if document_verifications table has application_id column
+    const hasAppIdColumn = await pool.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'document_verifications' AND column_name = 'application_id'
+    `);
 
+    // Update or insert into document_verifications table
+    if (pool) {
       let result;
-      if (existingVerification.rows.length > 0) {
-        // Update existing record
-        const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-        const values = [application.id, ...Object.values(updateData)];
-        
-        result = await pool.query(`
-          UPDATE document_verification 
-          SET ${setClause}
-          WHERE application_id = $1
-          RETURNING *;
-        `, values);
+      
+      if (hasAppIdColumn.rows.length > 0) {
+        // Table has application_id column, use it
+        const existingVerification = await pool.query(`
+          SELECT * FROM document_verifications WHERE application_id = $1
+        `, [application.id]);
+
+        if (existingVerification.rows.length > 0) {
+          // Update existing record
+          const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+          const values = [application.id, ...Object.values(updateData)];
+          
+          result = await pool.query(`
+            UPDATE document_verifications 
+            SET ${setClause}
+            WHERE application_id = $1
+            RETURNING *;
+          `, values);
+        } else {
+          // Insert new record with application_id
+          const columns = ['application_id', ...Object.keys(updateData)];
+          const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+          const values = [application.id, ...Object.values(updateData)];
+          
+          result = await pool.query(`
+            INSERT INTO document_verifications (${columns.join(', ')})
+            VALUES (${placeholders})
+            RETURNING *;
+          `, values);
+        }
       } else {
-        // Insert new record with application_id
-        const columns = ['application_id', ...Object.keys(updateData)];
-        const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
-        const values = [application.id, ...Object.values(updateData)];
-        
-        result = await pool.query(`
-          INSERT INTO document_verification (${columns.join(', ')})
-          VALUES (${placeholders})
-          RETURNING *;
-        `, values);
+        // Table still uses user_id, use it
+        const existingVerification = await pool.query(`
+          SELECT * FROM document_verifications WHERE user_id = $1
+        `, [application.user_id]);
+
+        if (existingVerification.rows.length > 0) {
+          // Update existing record
+          const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+          const values = [application.user_id, ...Object.values(updateData)];
+          
+          result = await pool.query(`
+            UPDATE document_verifications 
+            SET ${setClause}
+            WHERE user_id = $1
+            RETURNING *;
+          `, values);
+        } else {
+          // Insert new record with user_id
+          const columns = ['user_id', ...Object.keys(updateData)];
+          const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+          const values = [application.user_id, ...Object.values(updateData)];
+          
+          result = await pool.query(`
+            INSERT INTO document_verifications (${columns.join(', ')})
+            VALUES (${placeholders})
+            RETURNING *;
+          `, values);
+        }
       }
 
       if (result.rowCount === 0) {
@@ -1751,34 +1827,71 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       updateData[mappedKey] = req.body[key];
     });
 
-    // Check if document verification record exists for this application
-    const existingVerification = await pool.query(`
-      SELECT * FROM document_verification WHERE application_id = $1
-    `, [applicationId]);
+    // Check if document_verifications table has application_id column
+    const hasAppIdColumn = await pool.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'document_verifications' AND column_name = 'application_id'
+    `);
 
     let result;
-    if (existingVerification.rows.length > 0) {
-      // Update existing record
-      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-      const values = [applicationId, ...Object.values(updateData)];
-      
-      result = await pool.query(`
-        UPDATE document_verification 
-        SET ${setClause}
-        WHERE application_id = $1
-        RETURNING *;
-      `, values);
+    if (hasAppIdColumn.rows.length > 0) {
+      // Table has application_id column, use it
+      const existingVerification = await pool.query(`
+        SELECT * FROM document_verifications WHERE application_id = $1
+      `, [applicationId]);
+
+      if (existingVerification.rows.length > 0) {
+        // Update existing record
+        const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+        const values = [applicationId, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          UPDATE document_verifications 
+          SET ${setClause}
+          WHERE application_id = $1
+          RETURNING *;
+        `, values);
+      } else {
+        // Insert new record with application_id
+        const columns = ['application_id', ...Object.keys(updateData)];
+        const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+        const values = [applicationId, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          INSERT INTO document_verifications (${columns.join(', ')})
+          VALUES (${placeholders})
+          RETURNING *;
+        `, values);
+      }
     } else {
-      // Insert new record with application_id
-      const columns = ['application_id', ...Object.keys(updateData)];
-      const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
-      const values = [applicationId, ...Object.values(updateData)];
-      
-      result = await pool.query(`
-        INSERT INTO document_verification (${columns.join(', ')})
-        VALUES (${placeholders})
-        RETURNING *;
-      `, values);
+      // Table still uses user_id, use it
+      const existingVerification = await pool.query(`
+        SELECT * FROM document_verifications WHERE user_id = $1
+      `, [targetUserId]);
+
+      if (existingVerification.rows.length > 0) {
+        // Update existing record
+        const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+        const values = [targetUserId, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          UPDATE document_verifications 
+          SET ${setClause}
+          WHERE user_id = $1
+          RETURNING *;
+        `, values);
+      } else {
+        // Insert new record with user_id
+        const columns = ['user_id', ...Object.keys(updateData)];
+        const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+        const values = [targetUserId, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          INSERT INTO document_verifications (${columns.join(', ')})
+          VALUES (${placeholders})
+          RETURNING *;
+        `, values);
+      }
     }
 
     if (result.rowCount === 0) {
@@ -2052,10 +2165,24 @@ app.get("/api/document-verification", async (req, res) => {
 
     const applicationId = appResult.rows[0].id;
 
-    // Get document verification record for this application
-    const result = await pool.query(`
-      SELECT * FROM document_verification WHERE application_id = $1
-    `, [applicationId]);
+    // Check if document_verifications table has application_id column
+    const hasAppIdColumn = await pool.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'document_verifications' AND column_name = 'application_id'
+    `);
+
+    let result;
+    if (hasAppIdColumn.rows.length > 0) {
+      // Table has application_id column, use it
+      result = await pool.query(`
+        SELECT * FROM document_verifications WHERE application_id = $1
+      `, [applicationId]);
+    } else {
+      // Table still uses user_id, use it
+      result = await pool.query(`
+        SELECT * FROM document_verifications WHERE user_id = $1
+      `, [userId]);
+    }
 
     if (result.rows.length === 0) {
       return res.status(200).json(null);
