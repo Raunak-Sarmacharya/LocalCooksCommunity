@@ -334,6 +334,21 @@ function AdminDashboard() {
 
   // Helper function to get the correct CTA button for each application
   const getCtaButton = (app: Application) => {
+    // Cancelled applications cannot be modified
+    if (app.status === "cancelled") {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled
+          className="text-gray-400 border-gray-200 text-xs px-3 py-1.5 h-auto cursor-not-allowed"
+        >
+          <XCircle className="h-3 w-3 mr-1" />
+          Cancelled
+        </Button>
+      );
+    }
+
     // Quick Approve: User said yes to both and uploaded documents
     if (app.status !== "approved" && 
         app.foodSafetyLicense === "yes" && 
@@ -672,7 +687,14 @@ function AdminDashboard() {
                       <div className="flex items-center space-x-4 flex-1">
                         <div className="flex items-center space-x-2">
                           <UserIcon className="h-4 w-4 text-gray-500" />
-                          <h3 className="font-semibold text-lg">{app.fullName}</h3>
+                          <div>
+                            <h3 className="font-semibold text-lg">{app.fullName}</h3>
+                            <div className="flex items-center space-x-3 text-xs text-gray-500">
+                              <span>ID: #{app.id}</span>
+                              <span>•</span>
+                              <span>Submitted: {new Date(app.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
                         </div>
                         
                         {/* Certification Status Indicators */}
@@ -681,7 +703,16 @@ function AdminDashboard() {
                             {getCertificationIcon(app.foodSafetyLicense)}
                             <span className="text-xs text-gray-600">FSL</span>
                             {app.foodSafetyLicenseUrl && (
-                              <ExternalLink className="h-3 w-3 text-blue-500" title="Document uploaded" />
+                              <a 
+                                href={app.foodSafetyLicenseUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:text-blue-700 transition-colors"
+                                title="View Food Safety License Document"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
                             )}
                           </div>
                           
@@ -689,7 +720,16 @@ function AdminDashboard() {
                             {getCertificationIcon(app.foodEstablishmentCert)}
                             <span className="text-xs text-gray-600">FEC</span>
                             {app.foodEstablishmentCertUrl && (
-                              <ExternalLink className="h-3 w-3 text-blue-500" title="Document uploaded" />
+                              <a 
+                                href={app.foodEstablishmentCertUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:text-blue-700 transition-colors"
+                                title="View Food Establishment Certificate Document"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
                             )}
                           </div>
                         </div>
@@ -705,6 +745,36 @@ function AdminDashboard() {
 
                       {/* Right side: CTA Button and Expand Arrow */}
                       <div className="flex items-center space-x-2">
+                        {/* View Documents Button for applications with documents */}
+                        {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && (
+                          <div className="flex items-center space-x-1">
+                            {app.foodSafetyLicenseUrl && (
+                              <a 
+                                href={app.foodSafetyLicenseUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs px-2 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition-colors"
+                                title="View Food Safety License"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                FSL Doc
+                              </a>
+                            )}
+                            {app.foodEstablishmentCertUrl && (
+                              <a 
+                                href={app.foodEstablishmentCertUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs px-2 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-blue-200 transition-colors"
+                                title="View Food Establishment Certificate"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                FEC Doc
+                              </a>
+                            )}
+                          </div>
+                        )}
+
                         {getCtaButton(app)}
                         
                         <Button
@@ -726,6 +796,21 @@ function AdminDashboard() {
                   {/* EXPANDED VIEW - Only visible when expanded */}
                   {isExpanded && (
                     <div className="p-6 bg-gray-50 border-t">
+                      {/* Cancelled Application Notice */}
+                      {app.status === "cancelled" && (
+                        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <XCircle className="h-5 w-5 text-red-600" />
+                            <div>
+                              <h4 className="text-sm font-semibold text-red-800">Application Cancelled</h4>
+                              <p className="text-xs text-red-700 mt-1">
+                                This application has been cancelled and cannot be modified. All controls are disabled.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Contact Information */}
                       <div className="mb-4">
                         <h4 className="text-sm font-semibold mb-2">Contact Information</h4>
@@ -844,7 +929,8 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
-                                      className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
+                                      disabled={app.status === "cancelled"}
+                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-green-600 border-green-200 hover:bg-green-50"}`}
                                     >
                                       Approve
                                     </Button>
@@ -852,7 +938,8 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
-                                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
+                                      disabled={app.status === "cancelled"}
+                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-red-600 border-red-200 hover:bg-red-50"}`}
                                     >
                                       Reject
                                     </Button>
@@ -886,7 +973,8 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
-                                      className="text-green-600 border-green-200 hover:bg-green-50 text-xs px-2 py-1 h-auto"
+                                      disabled={app.status === "cancelled"}
+                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-green-600 border-green-200 hover:bg-green-50"}`}
                                     >
                                       Approve
                                     </Button>
@@ -894,7 +982,8 @@ function AdminDashboard() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
-                                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs px-2 py-1 h-auto"
+                                      disabled={app.status === "cancelled"}
+                                      className={`text-xs px-2 py-1 h-auto ${app.status === "cancelled" ? "text-gray-400 border-gray-200 cursor-not-allowed" : "text-red-600 border-red-200 hover:bg-red-50"}`}
                                     >
                                       Reject
                                     </Button>
@@ -953,21 +1042,28 @@ function AdminDashboard() {
                             Submitted on {new Date(app.createdAt).toLocaleDateString()}
                           </div>
                           <div>
-                            <Select
-                              defaultValue={app.status}
-                              onValueChange={(value) => handleStatusChange(app.id, value)}
-                            >
-                              <SelectTrigger className="h-8 w-[140px]">
-                                <SelectValue placeholder="Update Status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="new">New</SelectItem>
-                                <SelectItem value="inReview">In Review</SelectItem>
-                                <SelectItem value="approved">Approve</SelectItem>
-                                <SelectItem value="rejected">Reject</SelectItem>
-                                <SelectItem value="cancelled">Cancel</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            {app.status === "cancelled" ? (
+                              <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                <XCircle className="h-3 w-3" />
+                                <span>Application Cancelled - No modifications allowed</span>
+                              </div>
+                            ) : (
+                              <Select
+                                defaultValue={app.status}
+                                onValueChange={(value) => handleStatusChange(app.id, value)}
+                              >
+                                <SelectTrigger className="h-8 w-[140px]">
+                                  <SelectValue placeholder="Update Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="new">New</SelectItem>
+                                  <SelectItem value="inReview">In Review</SelectItem>
+                                  <SelectItem value="approved">Approve</SelectItem>
+                                  <SelectItem value="rejected">Reject</SelectItem>
+                                  <SelectItem value="cancelled">Cancel</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
                           </div>
                         </div>
                       </div>
