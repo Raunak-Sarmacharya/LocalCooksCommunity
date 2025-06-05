@@ -1538,13 +1538,10 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
 
     console.log("✅ Access check passed");
 
-    // Check if application is approved (required for document verification)
-    if (application.status !== 'approved') {
-      console.log("❌ Application not approved:", application.status);
-      return res.status(400).json({ message: "Application must be approved before documents can be uploaded" });
-    }
-
-    console.log("✅ Application is approved, proceeding with document update");
+    // ✅ OVERRIDE: Allow document uploads for any application status
+    // Previously restricted to only approved applications, but now allowing all statuses
+    // This enables users to upload documents during form submission
+    console.log("✅ Document upload allowed for application status:", application.status);
 
     const updateData = {};
 

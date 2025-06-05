@@ -66,12 +66,13 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   // Document fields are optional during initial application submission
   foodSafetyLicenseUrl: z.string().optional(),
   foodEstablishmentCertUrl: z.string().optional(),
+  // Allow setting document status during creation
+  foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
 }).omit({ 
   id: true, 
   status: true, 
   createdAt: true,
-  foodSafetyLicenseStatus: true,
-  foodEstablishmentCertStatus: true,
   documentsAdminFeedback: true,
   documentsReviewedBy: true,
   documentsReviewedAt: true,
