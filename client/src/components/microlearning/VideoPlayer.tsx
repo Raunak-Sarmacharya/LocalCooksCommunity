@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, RotateCcw, CheckCircle } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, RotateCcw, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,9 @@ export default function VideoPlayer({
   const [hasStarted, setHasStarted] = useState(false);
   const [watchPercentage, setWatchPercentage] = useState(0);
   const [videoCompleted, setVideoCompleted] = useState(isCompleted);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const video = videoRef.current;
@@ -46,6 +49,23 @@ export default function VideoPlayer({
 
     const handleLoadedMetadata = () => {
       setVideoDuration(video.duration);
+      setIsLoading(false);
+      setHasError(false);
+    };
+
+    const handleLoadStart = () => {
+      setIsLoading(true);
+      setHasError(false);
+    };
+
+    const handleCanPlay = () => {
+      setIsLoading(false);
+    };
+
+    const handleError = () => {
+      setIsLoading(false);
+      setHasError(true);
+      setErrorMessage('Failed to load video. Please check your internet connection and try again.');
     };
 
     const handleTimeUpdate = () => {
@@ -94,14 +114,20 @@ export default function VideoPlayer({
       }
     };
 
+    video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('error', handleError);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
 
     return () => {
+      video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('error', handleError);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
@@ -174,8 +200,44 @@ export default function VideoPlayer({
           preload="metadata"
         />
         
+        {/* Loading Overlay */}
+        {isLoading && !hasError && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+            <div className="text-center text-white">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold mb-2">Loading Video...</h3>
+              <p className="text-sm opacity-90">Please wait while the video loads</p>
+            </div>
+          </div>
+        )}
+
+        {/* Error Overlay */}
+        {hasError && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+            <div className="text-center text-white p-4">
+              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-red-400" />
+              <h3 className="text-xl font-semibold mb-2">Video Unavailable</h3>
+              <p className="text-sm opacity-90 mb-4">{errorMessage}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setHasError(false);
+                  setIsLoading(true);
+                  if (videoRef.current) {
+                    videoRef.current.load();
+                  }
+                }}
+                className="text-white border-white hover:bg-white hover:text-black"
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        )}
+        
         {/* Video Completion Overlay */}
-        {videoCompleted && (
+        {videoCompleted && !isLoading && !hasError && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <div className="text-center text-white">
               <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-400" />
@@ -186,7 +248,7 @@ export default function VideoPlayer({
         )}
 
         {/* Play/Pause Overlay */}
-        {!isPlaying && !videoCompleted && (
+        {!isPlaying && !videoCompleted && !isLoading && !hasError && (
           <div 
             className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer transition-opacity hover:bg-black/40"
             onClick={togglePlayPause}
@@ -211,16 +273,20 @@ export default function VideoPlayer({
 
         {/* Progress Bar */}
         <div className="mb-3">
-          <Progress 
-            value={progress} 
-            className="h-2 bg-gray-700 cursor-pointer"
+          <div 
+            className="relative cursor-pointer"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const x = e.clientX - rect.left;
               const percentage = (x / rect.width) * 100;
               seekTo(percentage);
             }}
-          />
+          >
+            <Progress 
+              value={progress} 
+              className="h-2 bg-gray-700"
+            />
+          </div>
           <div className="flex justify-between text-xs text-gray-400 mt-1">
             <span>{formatTime(currentTime)}</span>
             <span>{requireFullWatch && `${Math.round(watchPercentage)}% watched`}</span>

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle, ExternalLink, Download, Award, AlertCircle, Shield } from 'lucide-react';
+import { CheckCircle, ExternalLink, Download, Award, AlertCircle, Shield, ArrowRight } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import CompletionTracker from './CompletionTracker';
+import UnlockProgress from './UnlockProgress';
 import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
 
@@ -40,7 +42,7 @@ const videos = [
     title: 'Safe Food Handling Basics',
     description: 'Health Canada approved fundamentals of safe food handling, temperature control, and personal hygiene',
     duration: '8:45',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/food-handling-basics.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     source: 'Health Canada',
     certification: 'Government of Canada Approved'
   },
@@ -49,7 +51,7 @@ const videos = [
     title: 'Preventing Food Contamination',
     description: 'CFIA guidelines for preventing cross-contamination and maintaining food safety standards',
     duration: '6:30',
-    url: 'https://inspection.canada.ca/content/dam/cfia/videos/food-safety/contamination-prevention.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
     certification: 'Federal Government Standards'
   },
@@ -58,7 +60,7 @@ const videos = [
     title: 'Allergen Awareness and Management',
     description: 'Safe Food for Canadians Regulations compliance for allergen identification and control',
     duration: '5:15',
-    url: 'https://inspection.canada.ca/content/dam/cfia/videos/food-safety/allergen-management.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
     certification: 'Safe Food for Canadians Regulations'
   },
@@ -67,7 +69,7 @@ const videos = [
     title: 'Temperature Danger Zone & Time Control',
     description: 'Master the 2-hour rule and temperature danger zone (4°C-60°C) for Newfoundland food premises compliance',
     duration: '7:20',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/temperature-control-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
     source: 'Health Canada + NL Department of Health',
     certification: 'NL Food Premises Regulations'
   },
@@ -76,7 +78,7 @@ const videos = [
     title: 'Personal Hygiene for Food Handlers',
     description: 'Hand washing, uniform standards, illness reporting, and hygiene protocols for Newfoundland certification',
     duration: '6:45',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/personal-hygiene-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
     source: 'NL Department of Health & Community Services',
     certification: 'NL Food Handler Certification Required'
   },
@@ -85,7 +87,7 @@ const videos = [
     title: 'Cleaning and Sanitizing Procedures',
     description: 'Proper cleaning vs sanitizing, chemical safety, and equipment maintenance for food premises',
     duration: '8:15',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/cleaning-sanitizing-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
     source: 'CFIA + NL Public Health',
     certification: 'Food Premises Act Compliance'
   },
@@ -94,7 +96,7 @@ const videos = [
     title: 'HACCP Principles for Small Kitchens',
     description: 'Introduction to Hazard Analysis Critical Control Points for new chefs and kitchen managers',
     duration: '9:30',
-    url: 'https://inspection.canada.ca/content/dam/cfia/videos/food-safety/haccp-basics-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
     certification: 'HACCP Foundation Knowledge'
   },
@@ -103,7 +105,7 @@ const videos = [
     title: 'Proper Food Storage & Receiving',
     description: 'Cold storage, dry storage, FIFO rotation, and delivery inspection procedures',
     duration: '7:50',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/food-storage-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     source: 'Health Canada',
     certification: 'Safe Food for Canadians Regulations'
   },
@@ -112,7 +114,7 @@ const videos = [
     title: 'Safe Cooking Temperatures & Methods',
     description: 'Internal temperatures for meat, poultry, seafood, and proper cooking techniques',
     duration: '6:20',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/cooking-temperatures-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4',
     source: 'Health Canada',
     certification: 'Government of Canada Approved'
   },
@@ -121,7 +123,7 @@ const videos = [
     title: 'Health Inspection Readiness',
     description: 'What inspectors look for, documentation requirements, and how to prepare for NL health inspections',
     duration: '8:00',
-    url: 'https://www.canada.ca/content/dam/hc-sc/videos/health/food-safety/inspection-prep-nl.mp4',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
     source: 'NL Department of Health & Community Services',
     certification: 'Food Premises Regulations'
   }
@@ -138,6 +140,8 @@ export default function MicrolearningModule({
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completionConfirmed, setCompletionConfirmed] = useState(false);
+  const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('limited');
+  const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
 
   const currentVideo = videos[currentVideoIndex];
   const allVideosCompleted = userProgress.length === videos.length && 
@@ -158,6 +162,8 @@ export default function MicrolearningModule({
         const data = await response.json();
         setUserProgress(data.progress || []);
         setCompletionConfirmed(data.completionConfirmed || false);
+        setAccessLevel(data.accessLevel || 'limited');
+        setHasApprovedApplication(data.hasApprovedApplication || false);
       }
     } catch (error) {
       console.error('Failed to load progress:', error);
@@ -332,7 +338,78 @@ export default function MicrolearningModule({
               </span>
             </div>
           </div>
+
+          {/* Demo Notice */}
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center gap-2 text-orange-800 text-sm">
+              <AlertCircle className="h-4 w-4" />
+              <span className="font-medium">Demo Mode:</span>
+              <span>Sample videos are used for demonstration. In production, these would be official government training videos.</span>
+            </div>
+          </div>
+
+          {/* Access Level Notification */}
+          {accessLevel === 'limited' && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-medium text-yellow-800 mb-1">
+                    Limited Access - Application Approval Required
+                  </h3>
+                  <p className="text-yellow-700 text-sm mb-3">
+                    You currently have access to the first training module only. To unlock all 10 comprehensive modules 
+                    and earn your Food Handler Certification, please submit and get approval for your LocalCooks application.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 w-fit">
+                      ✓ Module 1: Safe Food Handling Basics (Available Now)
+                    </Badge>
+                    <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300 w-fit">
+                      🔒 Modules 2-10: Requires Application Approval
+                    </Badge>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      asChild
+                      size="sm"
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                    >
+                      <Link href="/apply">Submit Application to Unlock Full Training</Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Quick Action Banner for Limited Users */}
+        {accessLevel === 'limited' && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-r from-primary/10 to-blue-100 border border-primary/20 rounded-lg p-4 mb-6"
+          >
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary/20 p-2 rounded-full">
+                  <Award className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-gray-900">Unlock 9 More Training Modules</h3>
+                  <p className="text-sm text-gray-600">Complete your chef application to access the full certification program</p>
+                </div>
+              </div>
+              <Button asChild size="sm" className="shrink-0">
+                <Link href="/apply">
+                  Get Full Access
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+            </div>
+          </motion.div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Video Player Section */}
@@ -345,6 +422,11 @@ export default function MicrolearningModule({
                       {currentVideoIndex + 1}
                     </span>
                     {currentVideo.title}
+                    {accessLevel === 'limited' && currentVideoIndex === 0 && (
+                      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
+                        Free Preview
+                      </Badge>
+                    )}
                   </CardTitle>
                   {currentVideo.required && (
                     <Badge variant="outline">Required</Badge>
@@ -375,9 +457,9 @@ export default function MicrolearningModule({
                   <Button
                     variant="outline"
                     onClick={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
-                    disabled={currentVideoIndex === videos.length - 1}
+                    disabled={currentVideoIndex === videos.length - 1 || (accessLevel === 'limited' && currentVideoIndex === 0)}
                   >
-                    Next Video
+                    {accessLevel === 'limited' && currentVideoIndex === 0 ? '🔒 Locked' : 'Next Video'}
                   </Button>
                 </div>
               </CardContent>
@@ -386,7 +468,14 @@ export default function MicrolearningModule({
             {/* Video Selection Tabs */}
             <Card className="mt-6">
               <CardHeader>
-                <CardTitle>Training Modules</CardTitle>
+                <CardTitle className="flex items-center justify-between">
+                  Training Modules
+                  {accessLevel === 'limited' && (
+                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                      1 of 10 Available
+                    </Badge>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Tabs value={currentVideo.id} onValueChange={(videoId) => {
@@ -396,14 +485,19 @@ export default function MicrolearningModule({
                   <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 gap-1">
                     {videos.map((video, index) => {
                       const progress = getVideoProgress(video.id);
+                      const isLocked = accessLevel === 'limited' && index > 0;
                       return (
                         <TabsTrigger 
                           key={video.id} 
                           value={video.id}
-                          className="relative text-xs p-2"
+                          className={`relative text-xs p-2 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          disabled={isLocked}
                         >
                           {progress?.completed && (
                             <CheckCircle className="h-3 w-3 text-green-500 absolute -top-1 -right-1" />
+                          )}
+                          {isLocked && (
+                            <span className="absolute -top-1 -right-1 text-gray-400">🔒</span>
                           )}
                           <span className="hidden sm:inline">Module</span> {index + 1}
                         </TabsTrigger>
@@ -411,23 +505,39 @@ export default function MicrolearningModule({
                     })}
                   </TabsList>
                   
-                  {videos.map((video) => (
-                    <TabsContent key={video.id} value={video.id} className="space-y-4">
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-lg font-semibold">{video.title}</h3>
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                            {video.certification}
-                          </Badge>
+                  {videos.map((video, index) => {
+                    const isLocked = accessLevel === 'limited' && index > 0;
+                    return (
+                      <TabsContent key={video.id} value={video.id} className="space-y-4">
+                        <div className={`bg-gray-50 p-4 rounded-lg ${isLocked ? 'border-2 border-yellow-200' : ''}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                              {video.title}
+                              {isLocked && <span className="text-yellow-600">🔒</span>}
+                            </h3>
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              {video.certification}
+                            </Badge>
+                          </div>
+                          <p className="text-gray-600 mb-2">{video.description}</p>
+                          {isLocked && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-2">
+                              <p className="text-yellow-800 text-sm font-medium mb-1">
+                                🔒 Application Approval Required
+                              </p>
+                              <p className="text-yellow-700 text-xs">
+                                This module is locked. Submit and get approval for your LocalCooks application to access all training modules.
+                              </p>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-4 text-sm text-gray-500">
+                            <span>Duration: {video.duration}</span>
+                            <span>Source: {video.source}</span>
+                          </div>
                         </div>
-                        <p className="text-gray-600 mb-2">{video.description}</p>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>Duration: {video.duration}</span>
-                          <span>Source: {video.source}</span>
-                        </div>
-                      </div>
-                    </TabsContent>
-                  ))}
+                      </TabsContent>
+                    );
+                  })}
                 </Tabs>
               </CardContent>
             </Card>
@@ -435,6 +545,13 @@ export default function MicrolearningModule({
 
           {/* Progress Tracker Section */}
           <div className="lg:col-span-1">
+            {accessLevel === 'limited' ? (
+              <UnlockProgress 
+                hasApprovedApplication={hasApprovedApplication}
+                className="mb-6"
+              />
+            ) : null}
+            
             <CompletionTracker
               videos={videoProgressData}
               overallProgress={overallProgress}

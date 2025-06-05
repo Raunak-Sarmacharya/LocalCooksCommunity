@@ -11,7 +11,7 @@ import {
 import {
   Loader2, AlertCircle, Clock, CheckCircle, XCircle,
   CalendarDays, ChefHat, UtensilsCrossed, Building,
-  HomeIcon, Award, FileText, BadgeCheck, Info, LogOut
+  HomeIcon, Award, FileText, BadgeCheck, Info, LogOut, GraduationCap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -399,6 +399,62 @@ export default function ApplicantDashboard() {
             </div>
           </div>
         </div>
+
+        {/* Food Safety Training Promotion */}
+        <motion.div
+          className="mb-6 md:mb-8 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-4 md:p-6"
+          variants={itemVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+            <div className="bg-green-100 p-3 rounded-full">
+              <GraduationCap className="h-6 w-6 text-green-600" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                Food Safety Training
+                <Badge className="bg-green-100 text-green-800 border-green-300 text-xs">
+                  Government Approved
+                </Badge>
+              </h2>
+              <p className="text-sm md:text-base text-gray-600 mb-4">
+                Get certified with our comprehensive 10-module training program designed specifically for Newfoundland chefs. 
+                Start with the first module immediately - unlock all 10 modules once your application is approved!
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  asChild
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <Link href="/microlearning">
+                    <GraduationCap className="mr-2 h-4 w-4" />
+                    Start Training
+                  </Link>
+                </Button>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4 text-xs text-gray-600">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3 text-green-600" />
+                      1st Module Free
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3 text-blue-600" />
+                      Full Access: Approved Apps
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3 text-green-600" />
+                      NL Certification Prep
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    <span className="font-medium">Interactive Progress System:</span> See exactly what steps you need to unlock full training access
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
         {isLoading ? (
           <div className="flex justify-center py-12">
