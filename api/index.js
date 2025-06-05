@@ -1382,7 +1382,7 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
       // Get document URLs before deletion for blob cleanup
       const docResult = await pool.query(`
         SELECT food_safety_license_url, food_establishment_cert_url 
-        FROM document_verification 
+        FROM document_verifications
         WHERE application_id = $1
       `, [result.rows[0].id]);
 
@@ -1395,7 +1395,6 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
         ]);
       }
 
-      // Note: document_verification records will be automatically deleted 
       // due to CASCADE DELETE foreign key constraint
 
       return res.status(200).json(cancelledApp);
