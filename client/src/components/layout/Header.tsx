@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, User, LogOut } from "lucide-react";
+import { Menu, X, User, LogOut, GraduationCap } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -143,6 +143,17 @@ export default function Header() {
                 About Us
               </a>
             </li>
+            {user && (
+              <li>
+                <Link 
+                  href="/microlearning" 
+                  className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors"
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  Food Safety Training
+                </Link>
+              </li>
+            )}
             {!user && (
               <li>
                 <Button
@@ -206,6 +217,13 @@ export default function Header() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/microlearning" className="flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4" />
+                    Food Safety Training
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="gap-2">
                   <LogOut className="h-4 w-4" />
                   Logout
@@ -268,6 +286,18 @@ export default function Header() {
                 About Us
               </a>
             </li>
+            {user && (
+              <li>
+                <Link 
+                  href="/microlearning" 
+                  className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                  onClick={closeMenu}
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  Food Safety Training
+                </Link>
+              </li>
+            )}
             {!user && (
               <li className="pt-2">
                 <Button

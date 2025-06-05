@@ -1050,7 +1050,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // MICROLEARNING ROUTES
   // ===============================
 
-  // Get user's microlearning progress
+  // Helper function to check if user has approved application
+  const hasApprovedApplication = async (userId: number): Promise<boolean> => {
+    try {
+      const applications = await storage.getApplicationsByUserId(userId);
+      return applications.some(app => app.status === 'approved');
+    } catch (error) {
+      console.error('Error checking application status:', error);
+      return false;
+    }
+  };
+
+  // Get user's microlearning access level and progress
   app.get("/api/microlearning/progress/:userId", async (req: Request, res: Response) => {
     try {
       if (!req.isAuthenticated()) {
@@ -1066,12 +1077,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const progress = await storage.getMicrolearningProgress(userId);
       const completionStatus = await storage.getMicrolearningCompletion(userId);
+      const hasApproval = await hasApprovedApplication(userId);
 
       res.json({
         success: true,
         progress: progress || [],
         completionConfirmed: completionStatus?.confirmed || false,
-        completedAt: completionStatus?.completedAt
+        completedAt: completionStatus?.completedAt,
+        hasApprovedApplication: hasApproval,
+        accessLevel: hasApproval ? 'full' : 'limited' // limited = first video only
       });
     } catch (error) {
       console.error('Error fetching microlearning progress:', error);
@@ -1091,6 +1105,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Verify user can update this data (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Check if user has approved application for videos beyond the first one
+      const hasApproval = await hasApprovedApplication(userId);
+      const firstVideoId = 'canada-food-handling'; // First video that everyone can access
+      
+      if (!hasApproval && req.user!.role !== 'admin' && videoId !== firstVideoId) {
+        return res.status(403).json({ 
+          message: 'Application approval required to access this video',
+          accessLevel: 'limited',
+          firstVideoOnly: true
+        });
       }
 
       const progressData = {
@@ -1126,6 +1152,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Verify user can complete this (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Check if user has approved application to complete full training
+      const hasApproval = await hasApprovedApplication(userId);
+      if (!hasApproval && req.user!.role !== 'admin') {
+        return res.status(403).json({ 
+          message: 'Application approval required to complete full certification',
+          accessLevel: 'limited',
+          requiresApproval: true
+        });
       }
 
       // Verify all required videos are completed (comprehensive training for Newfoundland chefs)
