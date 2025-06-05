@@ -15,6 +15,9 @@ export const applicationSchema = z.object({
   kitchenPreference: z.enum(["commercial", "home", "notSure"], {
     required_error: "Please select an option",
   }),
+  // Document URL fields (optional)
+  foodSafetyLicenseUrl: z.string().optional(),
+  foodEstablishmentCertUrl: z.string().optional(),
 });
 
 export type ApplicationFormData = z.infer<typeof applicationSchema>;

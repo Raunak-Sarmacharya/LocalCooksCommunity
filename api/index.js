@@ -855,16 +855,51 @@ app.post('/api/applications', async (req, res) => {
   try {
     console.log('User authenticated, processing application for user ID:', req.session.userId);
 
+    // DEBUG: Log the entire request body to see what we're receiving
+    console.log('=== APPLICATION SUBMISSION DEBUG (api/index.js) ===');
+    console.log('Request method:', req.method);
+    console.log('Content-Type:', req.headers['content-type']);
+    console.log('Request body keys:', Object.keys(req.body || {}));
+    console.log('Full request body:', JSON.stringify(req.body, null, 2));
+    console.log('Required fields check:');
+
     // Validate required fields
     const { fullName, email, phone, foodSafetyLicense, foodEstablishmentCert, kitchenPreference } = req.body;
 
+    console.log('Extracted fields:', {
+      fullName: fullName || 'MISSING',
+      email: email || 'MISSING', 
+      phone: phone || 'MISSING',
+      foodSafetyLicense: foodSafetyLicense || 'MISSING',
+      foodEstablishmentCert: foodEstablishmentCert || 'MISSING',
+      kitchenPreference: kitchenPreference || 'MISSING'
+    });
+
     if (!fullName || !email || !phone || !foodSafetyLicense || !foodEstablishmentCert || !kitchenPreference) {
-      console.log('Missing required fields in request');
+      console.log('❌ Missing required fields in request - VALIDATION FAILED');
+      console.log('Missing fields analysis:', {
+        fullName: !fullName ? 'MISSING' : 'OK',
+        email: !email ? 'MISSING' : 'OK',
+        phone: !phone ? 'MISSING' : 'OK', 
+        foodSafetyLicense: !foodSafetyLicense ? 'MISSING' : 'OK',
+        foodEstablishmentCert: !foodEstablishmentCert ? 'MISSING' : 'OK',
+        kitchenPreference: !kitchenPreference ? 'MISSING' : 'OK'
+      });
       return res.status(400).json({
         error: 'Missing required fields',
         message: 'Please provide all required application information'
       });
     }
+
+    console.log('✅ All required fields present - proceeding with application creation');
+
+    // Handle document URLs from request body
+    const documentData = {
+      foodSafetyLicenseUrl: req.body.foodSafetyLicenseUrl || null,
+      foodEstablishmentCertUrl: req.body.foodEstablishmentCertUrl || null
+    };
+
+    console.log('📄 Document data received:', documentData);
 
     // Store in database if available
     if (pool) {
@@ -881,11 +916,12 @@ app.post('/api/applications', async (req, res) => {
 
         console.log(`User with ID ${userId} verified in database, proceeding with application insertion`);
 
-        // Insert application
+        // Insert application with document URLs
         const result = await pool.query(`
           INSERT INTO applications
-          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference, feedback)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference, feedback, 
+           food_safety_license_url, food_establishment_cert_url, food_safety_license_status, food_establishment_cert_status)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING *;
         `, [
           userId, // Use the userId from session or header
@@ -895,10 +931,23 @@ app.post('/api/applications', async (req, res) => {
           foodSafetyLicense,
           foodEstablishmentCert,
           kitchenPreference,
-          req.body.feedback || null // Include feedback field, default to null if not provided
+          req.body.feedback || null, // Include feedback field, default to null if not provided
+          documentData.foodSafetyLicenseUrl, // Document URL
+          documentData.foodEstablishmentCertUrl, // Document URL  
+          documentData.foodSafetyLicenseUrl ? 'pending' : null, // Status based on URL presence
+          documentData.foodEstablishmentCertUrl ? 'pending' : null // Status based on URL presence
         ]);
 
         const createdApplication = result.rows[0];
+
+        console.log('✅ Application created with document URLs:', {
+          id: createdApplication.id,
+          hasDocuments: !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url),
+          documentUrls: {
+            foodSafetyLicense: createdApplication.food_safety_license_url,
+            foodEstablishmentCert: createdApplication.food_establishment_cert_url
+          }
+        });
 
         // Send email notification about new application
         try {
@@ -947,8 +996,22 @@ app.post('/api/applications', async (req, res) => {
       kitchenPreference,
       feedback: req.body.feedback || null, // Include feedback field
       status: 'new',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      // Include document URLs
+      foodSafetyLicenseUrl: documentData.foodSafetyLicenseUrl,
+      foodEstablishmentCertUrl: documentData.foodEstablishmentCertUrl,
+      foodSafetyLicenseStatus: documentData.foodSafetyLicenseUrl ? 'pending' : null,
+      foodEstablishmentCertStatus: documentData.foodEstablishmentCertUrl ? 'pending' : null
     };
+
+    console.log('✅ Application created in memory with document URLs:', {
+      id: application.id,
+      hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
+      documentUrls: {
+        foodSafetyLicense: application.foodSafetyLicenseUrl,
+        foodEstablishmentCert: application.foodEstablishmentCertUrl
+      }
+    });
 
     // Send email notification about new application (for memory storage case)
     try {
