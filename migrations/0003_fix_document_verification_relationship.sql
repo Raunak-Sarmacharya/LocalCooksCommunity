@@ -4,7 +4,7 @@
 ALTER TABLE document_verifications DROP CONSTRAINT IF EXISTS document_verification_user_id_users_id_fk;
 
 -- Add application_id column
-ALTER TABLE s ADD COLUMN IF NOT EXISTS application_id INTEGER;
+ALTER TABLE document_verifications ADD COLUMN IF NOT EXISTS application_id INTEGER;
 
 -- Add foreign key constraint for application_id
 ALTER TABLE document_verifications ADD CONSTRAINT document_verification_application_id_applications_id_fk 
