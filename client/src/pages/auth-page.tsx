@@ -244,12 +244,7 @@ export default function AuthPage() {
               loading={googlePasswordLoading}
               error={googlePasswordError}
             />
-            <Button asChild variant="outline" className="w-full border-[#1877F3] text-[#1877F3] hover:bg-[#1877F3]/10">
-              <a href="/api/auth/facebook">
-                <svg width="20" height="20" viewBox="0 0 32 32" className="mr-2"><path fill="#1877F3" d="M29 0H3C1.3 0 0 1.3 0 3v26c0 1.7 1.3 3 3 3h13V20h-4v-5h4v-3.6C16 7.7 18.4 6 21.2 6c1.3 0 2.6.1 2.8.1v4h-2c-1.6 0-2 .8-2 2v3h4l-1 5h-3v12h6c1.7 0 3-1.3 3-3V3c0-1.7-1.3-3-3-3z"/></svg>
-                Continue with Facebook
-              </a>
-            </Button>
+
           </div>
         </div>
       </div>
