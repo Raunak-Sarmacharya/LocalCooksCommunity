@@ -1460,6 +1460,7 @@ app.get("/api/files/documents/:filename", async (req, res) => {
 // Update application documents endpoint (for approved applicants)
 app.patch("/api/applications/:id/documents", async (req, res) => {
   try {
+    console.log("=== DOCUMENT UPLOAD DEBUG START ===");
     console.log("Document upload request received:", {
       method: req.method,
       applicationId: req.params.id,
@@ -1475,42 +1476,75 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     // Check if user is authenticated
     const userId = req.session.userId || req.headers['x-user-id'];
     if (!userId) {
-      console.log("Authentication failed - no userId found");
+      console.log("❌ Authentication failed - no userId found");
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    console.log("User authenticated with ID:", userId);
+    console.log("✅ User authenticated with ID:", userId);
 
     const applicationId = parseInt(req.params.id);
     if (isNaN(applicationId)) {
+      console.log("❌ Invalid application ID:", req.params.id);
       return res.status(400).json({ message: "Invalid application ID" });
     }
+
+    console.log("✅ Application ID parsed:", applicationId);
 
     // Get the application to verify ownership and status
     let application = null;
     if (pool) {
+      console.log("📊 Querying database for application...");
       const result = await pool.query(`
         SELECT * FROM applications WHERE id = $1
       `, [applicationId]);
       application = result.rows[0];
+      console.log("📊 Database query result:", {
+        found: !!application,
+        applicationStatus: application?.status,
+        userId: application?.user_id
+      });
+    } else {
+      console.log("❌ No database pool available");
     }
 
     if (!application) {
+      console.log("❌ Application not found in database");
       return res.status(404).json({ message: "Application not found" });
     }
 
+    console.log("✅ Application found:", {
+      id: application.id,
+      status: application.status,
+      userId: application.user_id,
+      currentDocUrls: {
+        foodSafety: application.food_safety_license_url,
+        foodEstablishment: application.food_establishment_cert_url
+      }
+    });
+
     // Get user to check if admin
     const user = await getUser(userId);
+    console.log("👤 User details:", {
+      found: !!user,
+      role: user?.role,
+      isAdmin: user?.role === "admin"
+    });
     
     // Check if user owns the application or is admin
     if (application.user_id !== parseInt(userId) && user?.role !== "admin") {
+      console.log("❌ Access denied - user doesn't own application and is not admin");
       return res.status(403).json({ message: "Access denied" });
     }
 
+    console.log("✅ Access check passed");
+
     // Check if application is approved (required for document verification)
     if (application.status !== 'approved') {
+      console.log("❌ Application not approved:", application.status);
       return res.status(400).json({ message: "Application must be approved before documents can be uploaded" });
     }
+
+    console.log("✅ Application is approved, proceeding with document update");
 
     const updateData = {};
 
@@ -1518,15 +1552,20 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     if (req.body.foodSafetyLicenseUrl) {
       updateData.food_safety_license_url = req.body.foodSafetyLicenseUrl;
       updateData.food_safety_license_status = 'pending';
+      console.log("📄 Adding food safety license URL:", req.body.foodSafetyLicenseUrl);
     }
 
     if (req.body.foodEstablishmentCertUrl) {
       updateData.food_establishment_cert_url = req.body.foodEstablishmentCertUrl;
       updateData.food_establishment_cert_status = 'pending';
+      console.log("📄 Adding food establishment cert URL:", req.body.foodEstablishmentCertUrl);
     }
+
+    console.log("🔄 Update data prepared:", updateData);
 
     // Check if any document data was provided
     if (Object.keys(updateData).length === 0) {
+      console.log("❌ No document URLs provided in request body");
       return res.status(400).json({ 
         message: "No document URLs provided. Please provide document URLs for upload." 
       });
@@ -1535,10 +1574,19 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     // Add updated_at timestamp
     updateData.updated_at = new Date();
 
+    console.log("🔄 Final update data with timestamp:", updateData);
+
     // Update the application record directly with document URLs
     if (pool) {
+      console.log("💾 Starting database update...");
       const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
       const values = [applicationId, ...Object.values(updateData)];
+      
+      console.log("💾 SQL Update query:", {
+        setClause,
+        values,
+        query: `UPDATE applications SET ${setClause} WHERE id = $1 RETURNING *;`
+      });
       
       const result = await pool.query(`
         UPDATE applications 
@@ -1547,13 +1595,19 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
         RETURNING *;
       `, values);
 
+      console.log("💾 Database update result:", {
+        rowCount: result.rowCount,
+        success: result.rowCount > 0
+      });
+
       if (result.rowCount === 0) {
+        console.log("❌ Database update failed - no rows affected");
         return res.status(500).json({ message: "Failed to update application documents" });
       }
 
       const updatedApplication = result.rows[0];
       
-      console.log("Application document URLs updated:", {
+      console.log("✅ Application document URLs updated successfully:", {
         applicationId: updatedApplication.id,
         urls: {
           foodSafetyLicense: updatedApplication.food_safety_license_url,
@@ -1565,7 +1619,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
         }
       });
       
-      console.log("Returning response data with URLs:", {
+      console.log("📤 Returning response data with URLs:", {
         responseHasUrls: !!(updatedApplication.food_safety_license_url || updatedApplication.food_establishment_cert_url),
         urls: {
           foodSafetyLicense: updatedApplication.food_safety_license_url,
@@ -1573,13 +1627,31 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
         }
       });
       
+      // Verify the data was actually saved by querying again
+      const verifyResult = await pool.query(`
+        SELECT food_safety_license_url, food_establishment_cert_url, 
+               food_safety_license_status, food_establishment_cert_status 
+        FROM applications WHERE id = $1
+      `, [applicationId]);
+      
+      console.log("🔍 Verification query result:", {
+        found: verifyResult.rows.length > 0,
+        data: verifyResult.rows[0] || "No data"
+      });
+      
+      console.log("=== DOCUMENT UPLOAD DEBUG END (SUCCESS) ===");
       return res.status(200).json(updatedApplication);
+    } else {
+      console.log("❌ No database pool available for update");
+      console.log("=== DOCUMENT UPLOAD DEBUG END (ERROR) ===");
+      return res.status(500).json({ message: "Database not available" });
     }
 
-    return res.status(500).json({ message: "Database not available" });
   } catch (error) {
-    console.error("Error updating application documents:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error("❌ ERROR in document upload endpoint:", error);
+    console.error("Error stack:", error.stack);
+    console.log("=== DOCUMENT UPLOAD DEBUG END (ERROR) ===");
+    return res.status(500).json({ message: "Internal server error", error: error.message });
   }
 });
 
@@ -1682,22 +1754,139 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
   }
 });
 
+// Debug endpoint to check application document URLs
+app.get("/api/debug/applications/:id/documents", async (req, res) => {
+  try {
+    const applicationId = parseInt(req.params.id);
+    if (isNaN(applicationId)) {
+      return res.status(400).json({ message: "Invalid application ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    const result = await pool.query(`
+      SELECT id, user_id, status, 
+             food_safety_license_url, food_establishment_cert_url,
+             food_safety_license_status, food_establishment_cert_status,
+             created_at, updated_at
+      FROM applications 
+      WHERE id = $1
+    `, [applicationId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    const app = result.rows[0];
+    
+    return res.status(200).json({
+      debug: true,
+      application: {
+        id: app.id,
+        userId: app.user_id,
+        status: app.status,
+        documentUrls: {
+          foodSafetyLicense: app.food_safety_license_url,
+          foodEstablishmentCert: app.food_establishment_cert_url
+        },
+        documentStatuses: {
+          foodSafetyLicense: app.food_safety_license_status,
+          foodEstablishmentCert: app.food_establishment_cert_status
+        },
+        hasDocuments: !!(app.food_safety_license_url || app.food_establishment_cert_url),
+        timestamps: {
+          created: app.created_at,
+          updated: app.updated_at
+        }
+      },
+      rawDatabaseRow: app
+    });
+  } catch (error) {
+    console.error("Error in debug endpoint:", error);
+    return res.status(500).json({ 
+      message: "Internal server error", 
+      error: error.message 
+    });
+  }
+});
+
+// Debug endpoint to list all applications with document info
+app.get("/api/debug/applications", async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    const result = await pool.query(`
+      SELECT id, user_id, status, full_name, email,
+             food_safety_license_url, food_establishment_cert_url,
+             food_safety_license_status, food_establishment_cert_status,
+             created_at, updated_at
+      FROM applications 
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+
+    const applications = result.rows.map(app => ({
+      id: app.id,
+      userId: app.user_id,
+      status: app.status,
+      fullName: app.full_name,
+      email: app.email,
+      hasDocuments: !!(app.food_safety_license_url || app.food_establishment_cert_url),
+      documentUrls: {
+        foodSafetyLicense: app.food_safety_license_url ? "✅ Present" : "❌ Missing",
+        foodEstablishmentCert: app.food_establishment_cert_url ? "✅ Present" : "❌ Missing"
+      },
+      documentStatuses: {
+        foodSafetyLicense: app.food_safety_license_status || "Not set",
+        foodEstablishmentCert: app.food_establishment_cert_status || "Not set"
+      },
+      timestamps: {
+        created: app.created_at,
+        updated: app.updated_at
+      }
+    }));
+
+    return res.status(200).json({
+      debug: true,
+      totalApplications: applications.length,
+      applicationsWithDocuments: applications.filter(app => app.hasDocuments).length,
+      applications: applications
+    });
+  } catch (error) {
+    console.error("Error in debug applications endpoint:", error);
+    return res.status(500).json({ 
+      message: "Internal server error", 
+      error: error.message 
+    });
+  }
+});
+
 // Generic file upload endpoint (for use with new upload components)
 app.post("/api/upload-file", 
   upload.single('file'), 
   async (req, res) => {
     try {
-      console.log('Upload: Session data:', {
+      console.log('🔄 === FILE UPLOAD DEBUG START ===');
+      console.log('📤 Upload: Session data:', {
         sessionId: req.session.id,
         sessionUserId: req.session.userId,
         headerUserId: req.headers['x-user-id'],
-        hasFile: !!req.file
+        hasFile: !!req.file,
+        fileDetails: req.file ? {
+          originalname: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        } : null
       });
       
       // Check if user is authenticated
       const userId = req.session.userId || req.headers['x-user-id'];
       if (!userId) {
-        console.log('Upload: No userId in session or header, returning 401');
+        console.log('❌ Upload: No userId in session or header, returning 401');
         // Clean up uploaded file
         if (req.file && req.file.path) {
           try {
@@ -1709,24 +1898,32 @@ app.post("/api/upload-file",
         return res.status(401).json({ error: "Not authenticated" });
       }
 
+      console.log('✅ Upload: User authenticated:', userId);
+
       // Store user ID in session as a backup (for Vercel session persistence)
       if (!req.session.userId && userId) {
-        console.log('Upload: Storing userId in session from header:', userId);
+        console.log('🔄 Upload: Storing userId in session from header:', userId);
         req.session.userId = userId;
         await new Promise((resolve) => req.session.save(resolve));
       }
 
       if (!req.file) {
+        console.log('❌ Upload: No file in request');
         return res.status(400).json({ error: "No file uploaded" });
       }
 
+      console.log('✅ Upload: File received successfully');
+
       const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      console.log('🌍 Environment:', isProduction ? 'Production (Vercel)' : 'Development');
+      
       let fileUrl;
       let fileName;
 
       if (isProduction) {
         // Upload to Vercel Blob in production
         try {
+          console.log('☁️ Starting Vercel Blob upload...');
           // Import Vercel Blob
           const { put } = await import('@vercel/blob');
           
@@ -1737,16 +1934,22 @@ app.post("/api/upload-file",
           
           const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
           
+          console.log('☁️ Uploading to Vercel Blob:', {
+            filename,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+          });
+          
           const blob = await put(filename, req.file.buffer, {
             access: 'public',
             contentType: req.file.mimetype,
           });
           
-          console.log(`File uploaded to Vercel Blob: ${filename} -> ${blob.url}`);
+          console.log(`✅ File uploaded to Vercel Blob successfully: ${filename} -> ${blob.url}`);
           fileUrl = blob.url;
           fileName = filename;
         } catch (error) {
-          console.error('Error uploading to Vercel Blob:', error);
+          console.error('❌ Error uploading to Vercel Blob:', error);
           return res.status(500).json({ 
             error: "File upload failed",
             details: "Failed to upload file to cloud storage"
@@ -1756,18 +1959,28 @@ app.post("/api/upload-file",
         // In development, return a local file path (note: file serving is limited in this environment)
         fileUrl = `/api/files/documents/${req.file.filename}`;
         fileName = req.file.filename;
+        console.log('💻 Development upload - file saved locally:', {
+          fileUrl,
+          fileName
+        });
       }
 
       // Return success response with file information
-      return res.status(200).json({
+      const response = {
         success: true,
         url: fileUrl,
         fileName: fileName,
         size: req.file.size,
         type: req.file.mimetype
-      });
+      };
+      
+      console.log('📤 Upload successful, returning response:', response);
+      console.log('🔄 === FILE UPLOAD DEBUG END (SUCCESS) ===');
+      
+      return res.status(200).json(response);
     } catch (error) {
-      console.error("File upload error:", error);
+      console.error("❌ File upload error:", error);
+      console.error("Error stack:", error.stack);
       
       // Clean up uploaded file on error
       if (req.file && req.file.path) {
@@ -1778,6 +1991,7 @@ app.post("/api/upload-file",
         }
       }
       
+      console.log('🔄 === FILE UPLOAD DEBUG END (ERROR) ===');
       return res.status(500).json({ 
         error: "File upload failed",
         details: error instanceof Error ? error.message : "Unknown error"
