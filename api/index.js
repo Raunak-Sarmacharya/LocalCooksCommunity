@@ -826,7 +826,10 @@ app.get('/api/session-test', (req, res) => {
 });
 
 // Applications API endpoints
-app.post('/api/applications', async (req, res) => {
+app.post('/api/applications', upload.fields([
+  { name: 'foodSafetyLicense', maxCount: 1 },
+  { name: 'foodEstablishmentCert', maxCount: 1 }
+]), async (req, res) => {
   console.log('Application submission attempt');
   console.log('Session ID:', req.session.id);
   console.log('Cookie:', req.headers.cookie);
@@ -836,6 +839,7 @@ app.post('/api/applications', async (req, res) => {
     user: req.session.user ? { id: req.session.user.id, username: req.session.user.username } : null
   });
   console.log('Request body (first field):', req.body ? req.body.fullName : 'No data');
+  console.log('Files received:', req.files ? Object.keys(req.files) : 'No files');
 
   // Get userId from session OR from header if session is not working
   const userId = req.session.userId || req.headers['x-user-id'];
@@ -861,6 +865,15 @@ app.post('/api/applications', async (req, res) => {
     console.log('Content-Type:', req.headers['content-type']);
     console.log('Request body keys:', Object.keys(req.body || {}));
     console.log('Full request body:', JSON.stringify(req.body, null, 2));
+    console.log('Files info:', req.files ? {
+      fileCount: Object.keys(req.files).length,
+      fields: Object.keys(req.files),
+      details: Object.entries(req.files).map(([field, files]) => ({
+        field,
+        count: files.length,
+        names: files.map(f => f.originalname)
+      }))
+    } : 'No files');
     console.log('Required fields check:');
 
     // Validate required fields
@@ -893,13 +906,63 @@ app.post('/api/applications', async (req, res) => {
 
     console.log('✅ All required fields present - proceeding with application creation');
 
-    // Handle document URLs from request body
-    const documentData = {
+    // Handle file uploads if present
+    let uploadedFileUrls = {
       foodSafetyLicenseUrl: req.body.foodSafetyLicenseUrl || null,
       foodEstablishmentCertUrl: req.body.foodEstablishmentCertUrl || null
     };
 
-    console.log('📄 Document data received:', documentData);
+    // Process uploaded files if any
+    if (req.files) {
+      console.log('📁 Processing uploaded files...');
+      
+      // Import put function for Vercel Blob
+      try {
+        const { put } = await import('@vercel/blob');
+        
+        // Upload food safety license file
+        if (req.files.foodSafetyLicense && req.files.foodSafetyLicense[0]) {
+          const file = req.files.foodSafetyLicense[0];
+          console.log('⬆️ Uploading food safety license:', file.originalname);
+          
+          const blob = await put(`food-safety-license-${userId}-${Date.now()}-${file.originalname}`, file.buffer, {
+            access: 'public',
+            contentType: file.mimetype
+          });
+          
+          uploadedFileUrls.foodSafetyLicenseUrl = blob.url;
+          console.log('✅ Food safety license uploaded:', blob.url);
+        }
+
+        // Upload food establishment cert file
+        if (req.files.foodEstablishmentCert && req.files.foodEstablishmentCert[0]) {
+          const file = req.files.foodEstablishmentCert[0];
+          console.log('⬆️ Uploading food establishment cert:', file.originalname);
+          
+          const blob = await put(`food-establishment-cert-${userId}-${Date.now()}-${file.originalname}`, file.buffer, {
+            access: 'public',
+            contentType: file.mimetype
+          });
+          
+          uploadedFileUrls.foodEstablishmentCertUrl = blob.url;
+          console.log('✅ Food establishment cert uploaded:', blob.url);
+        }
+        
+        console.log('📄 Final document URLs:', uploadedFileUrls);
+        
+      } catch (uploadError) {
+        console.error('❌ File upload error:', uploadError);
+        return res.status(500).json({
+          error: 'File upload failed',
+          message: uploadError.message
+        });
+      }
+    } else {
+      console.log('📄 No files to upload, using URL inputs if provided');
+    }
+
+    // Handle document URLs from request body or uploads
+    const documentData = uploadedFileUrls;
 
     // Store in database if available
     if (pool) {
