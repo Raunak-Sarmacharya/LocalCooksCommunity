@@ -27,7 +27,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
       <ProtectedRoute path="/document-verification" component={DocumentVerification} />
-      <Route path="/microlearning" component={Microlearning} />
+      <ProtectedRoute path="/microlearning" component={Microlearning} />
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin">
         <AdminProtectedRoute>
