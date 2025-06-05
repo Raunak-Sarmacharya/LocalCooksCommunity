@@ -1811,15 +1811,15 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
 
     // Build update data for applications table (document verification fields)
     const updateData = {
-      reviewed_by: parseInt(userId),
-      reviewed_at: new Date()
+      documents_reviewed_by: parseInt(userId),
+      documents_reviewed_at: new Date()
     };
 
     // Map camelCase field names to snake_case database column names
     const fieldMapping = {
       'foodSafetyLicenseStatus': 'food_safety_license_status',
       'foodEstablishmentCertStatus': 'food_establishment_cert_status',
-      'documentsAdminFeedback': 'admin_feedback'
+      'documentsAdminFeedback': 'documents_admin_feedback'
     };
 
     // Apply field mapping and add to update data
