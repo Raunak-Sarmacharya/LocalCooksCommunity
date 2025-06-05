@@ -1705,9 +1705,17 @@ app.post("/api/upload-file",
   upload.single('file'), 
   async (req, res) => {
     try {
+      console.log('Upload: Session data:', {
+        sessionId: req.session.id,
+        sessionUserId: req.session.userId,
+        headerUserId: req.headers['x-user-id'],
+        hasFile: !!req.file
+      });
+      
       // Check if user is authenticated
       const userId = req.session.userId || req.headers['x-user-id'];
       if (!userId) {
+        console.log('Upload: No userId in session or header, returning 401');
         // Clean up uploaded file
         if (req.file && req.file.path) {
           try {
@@ -1717,6 +1725,13 @@ app.post("/api/upload-file",
           }
         }
         return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      // Store user ID in session as a backup (for Vercel session persistence)
+      if (!req.session.userId && userId) {
+        console.log('Upload: Storing userId in session from header:', userId);
+        req.session.userId = userId;
+        await new Promise((resolve) => req.session.save(resolve));
       }
 
       if (!req.file) {
