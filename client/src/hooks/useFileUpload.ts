@@ -108,6 +108,14 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
 
         xhr.open('POST', '/api/upload-file');
         xhr.withCredentials = true; // Include cookies and session
+        
+        // Add X-User-ID header if userId is available in localStorage
+        const userId = localStorage.getItem('userId');
+        if (userId) {
+          xhr.setRequestHeader('X-User-ID', userId);
+          console.log('Including userId in upload request headers:', userId);
+        }
+        
         xhr.send(formData);
       });
 
