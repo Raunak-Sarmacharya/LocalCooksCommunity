@@ -265,6 +265,36 @@ async function getUser(id) {
   return users.get(parseInt(id));
 }
 
+// Helper function to clean up Vercel blob files
+async function cleanupBlobFiles(urls) {
+  if (!urls || !Array.isArray(urls)) return;
+  
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
+  if (!isProduction) {
+    console.log('Development mode: Skipping blob cleanup for URLs:', urls);
+    return;
+  }
+
+  try {
+    // Import Vercel Blob delete function
+    const { del } = await import('@vercel/blob');
+    
+    for (const url of urls) {
+      if (url && typeof url === 'string' && url.includes('blob.vercel-storage.com')) {
+        try {
+          await del(url);
+          console.log(`Successfully deleted blob file: ${url}`);
+        } catch (error) {
+          console.error(`Failed to delete blob file ${url}:`, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error during blob cleanup:', error);
+  }
+}
+
 async function createUser(userData) {
   // Try database first
   if (pool) {
@@ -471,19 +501,52 @@ async function initializeDatabase() {
         
         const existingAppColumns = appColumnCheck.rows.map(row => row.column_name);
         
-        if (!existingAppColumns.includes('food_safety_license_url')) {
-          console.log('Adding document verification fields to applications table...');
-          await pool.query(`
-            ALTER TABLE applications 
-            ADD COLUMN IF NOT EXISTS food_safety_license_url TEXT,
-            ADD COLUMN IF NOT EXISTS food_establishment_cert_url TEXT,
-            ADD COLUMN IF NOT EXISTS food_safety_license_status document_verification_status DEFAULT 'pending',
-            ADD COLUMN IF NOT EXISTS food_establishment_cert_status document_verification_status DEFAULT 'pending',
-            ADD COLUMN IF NOT EXISTS documents_admin_feedback TEXT,
-            ADD COLUMN IF NOT EXISTS documents_reviewed_by INTEGER REFERENCES users(id),
-            ADD COLUMN IF NOT EXISTS documents_reviewed_at TIMESTAMP;
+        // Check if document_verifications table exists and has proper structure
+        const docVerifTableCheck = await pool.query(`
+          SELECT to_regclass('public.document_verification') as table_exists;
+        `);
+        
+        if (docVerifTableCheck.rows[0].table_exists) {
+          // Check if application_id column exists in document_verification table
+          const docVerifColumnCheck = await pool.query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'document_verification' AND column_name = 'application_id'
           `);
-          console.log('Document verification fields added to applications table');
+          
+          if (docVerifColumnCheck.rows.length === 0) {
+            console.log('Fixing document_verification table to use application_id...');
+            
+            // Drop existing user_id foreign key
+            await pool.query(`
+              ALTER TABLE document_verification DROP CONSTRAINT IF EXISTS document_verification_user_id_users_id_fk;
+            `);
+            
+            // Add application_id column
+            await pool.query(`
+              ALTER TABLE document_verification ADD COLUMN IF NOT EXISTS application_id INTEGER;
+            `);
+            
+            // Add foreign key constraint with CASCADE DELETE
+            await pool.query(`
+              ALTER TABLE document_verification ADD CONSTRAINT document_verification_application_id_applications_id_fk 
+              FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE;
+            `);
+            
+            // Migrate existing data
+            await pool.query(`
+              UPDATE document_verification 
+              SET application_id = (
+                SELECT a.id 
+                FROM applications a 
+                WHERE a.user_id = document_verification.user_id 
+                ORDER BY a.created_at DESC 
+                LIMIT 1
+              )
+              WHERE application_id IS NULL AND user_id IS NOT NULL;
+            `);
+            
+            console.log('Document verification table structure fixed');
+          }
         }
       } catch (appColumnError) {
         console.error('Error checking/adding application table columns:', appColumnError);
@@ -1044,17 +1107,38 @@ app.get('/api/applications', async (req, res) => {
         return res.status(200).json([]);
       }
 
-      // Get applications with document data from applications table itself
+      // Get applications with document verification data
       const result = await pool.query(`
-        SELECT a.*, u.username as applicant_username
+        SELECT a.*, u.username as applicant_username,
+               dv.food_safety_license_url,
+               dv.food_establishment_cert_url,
+               dv.food_safety_license_status,
+               dv.food_establishment_cert_status,
+               dv.admin_feedback as documents_admin_feedback,
+               dv.reviewed_by as documents_reviewed_by,
+               dv.reviewed_at as documents_reviewed_at
         FROM applications a
         JOIN users u ON a.user_id = u.id
+        LEFT JOIN document_verification dv ON a.id = dv.application_id
         ORDER BY a.created_at DESC;
       `);
 
       // Log the first application to see what fields are available
       if (result.rows.length > 0) {
-        console.log('Sample application data:', result.rows[0]);
+        console.log('Sample application data with document verification:', {
+          id: result.rows[0].id,
+          status: result.rows[0].status,
+          user_id: result.rows[0].user_id,
+          document_urls: {
+            food_safety_license_url: result.rows[0].food_safety_license_url,
+            food_establishment_cert_url: result.rows[0].food_establishment_cert_url
+          },
+          document_statuses: {
+            food_safety_license_status: result.rows[0].food_safety_license_status,
+            food_establishment_cert_status: result.rows[0].food_establishment_cert_status
+          },
+          hasDocumentData: !!(result.rows[0].food_safety_license_url || result.rows[0].food_establishment_cert_url)
+        });
       }
 
       return res.status(200).json(result.rows);
@@ -1257,8 +1341,24 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
       const cancelledApp = result.rows[0];
       const cancelledUserId = cancelledApp.user_id;
 
-      // Note: Document data is now part of the applications table,
-      // so cancelling the application automatically removes the document data
+      // Get document URLs before deletion for blob cleanup
+      const docResult = await pool.query(`
+        SELECT food_safety_license_url, food_establishment_cert_url 
+        FROM document_verification 
+        WHERE application_id = $1
+      `, [result.rows[0].id]);
+
+      // Clean up Vercel blob files if they exist
+      if (docResult.rows.length > 0) {
+        const docUrls = docResult.rows[0];
+        await cleanupBlobFiles([
+          docUrls.food_safety_license_url,
+          docUrls.food_establishment_cert_url
+        ]);
+      }
+
+      // Note: document_verification records will be automatically deleted 
+      // due to CASCADE DELETE foreign key constraint
 
       return res.status(200).json(cancelledApp);
     }
@@ -1446,7 +1546,11 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       applicationId: req.params.id,
       contentType: req.headers['content-type'],
       bodyKeys: Object.keys(req.body || {}),
-      body: req.body
+      body: req.body,
+      headers: {
+        'x-user-id': req.headers['x-user-id'],
+        'content-length': req.headers['content-length']
+      }
     });
 
     // Check if user is authenticated
@@ -1512,27 +1616,78 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     // Add updated_at timestamp
     updateData.updated_at = new Date();
 
-    // Update the applications table directly with document data
+    // Update or insert into document_verification table with application_id
     if (pool) {
-      // Update the existing application record with document URLs
-      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-      const values = [application.id, ...Object.values(updateData)];
-      
-      const result = await pool.query(`
-        UPDATE applications 
-        SET ${setClause}
-        WHERE id = $1
-        RETURNING *;
-      `, values);
+      // Check if document verification record exists for this application
+      const existingVerification = await pool.query(`
+        SELECT * FROM document_verification WHERE application_id = $1
+      `, [application.id]);
+
+      let result;
+      if (existingVerification.rows.length > 0) {
+        // Update existing record
+        const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+        const values = [application.id, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          UPDATE document_verification 
+          SET ${setClause}
+          WHERE application_id = $1
+          RETURNING *;
+        `, values);
+      } else {
+        // Insert new record with application_id
+        const columns = ['application_id', ...Object.keys(updateData)];
+        const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+        const values = [application.id, ...Object.values(updateData)];
+        
+        result = await pool.query(`
+          INSERT INTO document_verification (${columns.join(', ')})
+          VALUES (${placeholders})
+          RETURNING *;
+        `, values);
+      }
 
       if (result.rowCount === 0) {
         return res.status(500).json({ message: "Failed to update application documents" });
       }
 
-      const updatedApplication = result.rows[0];
+      const updatedVerification = result.rows[0];
       
-      // Return the updated application data
-      return res.status(200).json(updatedApplication);
+      console.log("Document verification record updated:", {
+        applicationId: application.id,
+        verificationId: updatedVerification.id,
+        urls: {
+          foodSafetyLicense: updatedVerification.food_safety_license_url,
+          foodEstablishmentCert: updatedVerification.food_establishment_cert_url
+        },
+        statuses: {
+          foodSafetyLicense: updatedVerification.food_safety_license_status,
+          foodEstablishmentCert: updatedVerification.food_establishment_cert_status
+        }
+      });
+      
+      // Return the verification record with application context
+      const responseData = {
+        ...application,
+        food_safety_license_url: updatedVerification.food_safety_license_url,
+        food_establishment_cert_url: updatedVerification.food_establishment_cert_url,
+        food_safety_license_status: updatedVerification.food_safety_license_status,
+        food_establishment_cert_status: updatedVerification.food_establishment_cert_status,
+        documents_admin_feedback: updatedVerification.admin_feedback,
+        documents_reviewed_by: updatedVerification.reviewed_by,
+        documents_reviewed_at: updatedVerification.reviewed_at
+      };
+      
+      console.log("Returning response data with URLs:", {
+        responseHasUrls: !!(responseData.food_safety_license_url || responseData.food_establishment_cert_url),
+        urls: {
+          foodSafetyLicense: responseData.food_safety_license_url,
+          foodEstablishmentCert: responseData.food_establishment_cert_url
+        }
+      });
+      
+      return res.status(200).json(responseData);
     }
 
     return res.status(500).json({ message: "Database not available" });
@@ -1576,17 +1731,18 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
 
     const targetUserId = appResult.rows[0].user_id;
 
-    // Build update data for applications table (document fields are now part of applications)
+    // Build update data for document_verifications table
     const updateData = {
-      documents_reviewed_by: parseInt(userId),
-      documents_reviewed_at: new Date()
+      reviewed_by: parseInt(userId),
+      reviewed_at: new Date(),
+      updated_at: new Date()
     };
 
-    // Map camelCase field names to snake_case database column names for applications table
+    // Map camelCase field names to snake_case database column names
     const fieldMapping = {
       'foodSafetyLicenseStatus': 'food_safety_license_status',
       'foodEstablishmentCertStatus': 'food_establishment_cert_status',
-      'documentsAdminFeedback': 'documents_admin_feedback'
+      'documentsAdminFeedback': 'admin_feedback'
     };
 
     // Apply field mapping and add to update data
@@ -1595,33 +1751,52 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       updateData[mappedKey] = req.body[key];
     });
 
-    // Update the applications table directly
-    const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
-    const values = [applicationId, ...Object.values(updateData)];
-    
-    const result = await pool.query(`
-      UPDATE applications 
-      SET ${setClause}
-      WHERE id = $1
-      RETURNING *;
-    `, values);
+    // Check if document verification record exists for this application
+    const existingVerification = await pool.query(`
+      SELECT * FROM document_verification WHERE application_id = $1
+    `, [applicationId]);
+
+    let result;
+    if (existingVerification.rows.length > 0) {
+      // Update existing record
+      const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+      const values = [applicationId, ...Object.values(updateData)];
+      
+      result = await pool.query(`
+        UPDATE document_verification 
+        SET ${setClause}
+        WHERE application_id = $1
+        RETURNING *;
+      `, values);
+    } else {
+      // Insert new record with application_id
+      const columns = ['application_id', ...Object.keys(updateData)];
+      const placeholders = columns.map((_, index) => `$${index + 1}`).join(', ');
+      const values = [applicationId, ...Object.values(updateData)];
+      
+      result = await pool.query(`
+        INSERT INTO document_verification (${columns.join(', ')})
+        VALUES (${placeholders})
+        RETURNING *;
+      `, values);
+    }
 
     if (result.rowCount === 0) {
       return res.status(500).json({ message: "Failed to update document verification" });
     }
 
-    const updatedApplication = result.rows[0];
+    const updatedVerification = result.rows[0];
 
     console.log(`Document verification updated for application ${applicationId}:`, {
-      foodSafetyLicenseStatus: updatedApplication.food_safety_license_status,
-      foodEstablishmentCertStatus: updatedApplication.food_establishment_cert_status,
+      foodSafetyLicenseStatus: updatedVerification.food_safety_license_status,
+      foodEstablishmentCertStatus: updatedVerification.food_establishment_cert_status,
       reviewedBy: userId,
       timestamp: new Date().toISOString()
     });
 
     // Check if both documents are approved, then update user verification status
-    if (updatedApplication.food_safety_license_status === "approved" && 
-        (!updatedApplication.food_establishment_cert_url || updatedApplication.food_establishment_cert_status === "approved")) {
+    if (updatedVerification.food_safety_license_status === "approved" && 
+        (!updatedVerification.food_establishment_cert_url || updatedVerification.food_establishment_cert_status === "approved")) {
       
       await pool.query(`
         UPDATE users SET is_verified = true WHERE id = $1
@@ -1630,17 +1805,17 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       console.log(`User ${targetUserId} has been fully verified`);
     }
 
-    // Return the application data in the format expected by the frontend
+    // Return the verification data in the format expected by the frontend
     const responseData = {
       id: applicationId,
       user_id: targetUserId,
-      food_safety_license_url: updatedApplication.food_safety_license_url,
-      food_establishment_cert_url: updatedApplication.food_establishment_cert_url,
-      food_safety_license_status: updatedApplication.food_safety_license_status,
-      food_establishment_cert_status: updatedApplication.food_establishment_cert_status,
-      documents_admin_feedback: updatedApplication.documents_admin_feedback,
-      documents_reviewed_by: updatedApplication.documents_reviewed_by,
-      documents_reviewed_at: updatedApplication.documents_reviewed_at
+      food_safety_license_url: updatedVerification.food_safety_license_url,
+      food_establishment_cert_url: updatedVerification.food_establishment_cert_url,
+      food_safety_license_status: updatedVerification.food_safety_license_status,
+      food_establishment_cert_status: updatedVerification.food_establishment_cert_status,
+      documents_admin_feedback: updatedVerification.admin_feedback,
+      documents_reviewed_by: updatedVerification.reviewed_by,
+      documents_reviewed_at: updatedVerification.reviewed_at
     };
 
     return res.status(200).json(responseData);
@@ -1866,30 +2041,42 @@ app.get("/api/document-verification", async (req, res) => {
       return res.status(500).json({ message: "Database not available" });
     }
 
-    // Get document verification data from the user's application (now stored in applications table)
-    const result = await pool.query(`
-      SELECT * FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1
+    // Get the user's most recent application
+    const appResult = await pool.query(`
+      SELECT id FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1
     `, [userId]);
+
+    if (appResult.rows.length === 0) {
+      return res.status(200).json(null);
+    }
+
+    const applicationId = appResult.rows[0].id;
+
+    // Get document verification record for this application
+    const result = await pool.query(`
+      SELECT * FROM document_verification WHERE application_id = $1
+    `, [applicationId]);
 
     if (result.rows.length === 0) {
       return res.status(200).json(null);
     }
 
-    const application = result.rows[0];
+    const verification = result.rows[0];
     
     // Convert to frontend-expected format
     const responseData = {
-      id: application.id,
-      user_id: application.user_id,
-      foodSafetyLicenseUrl: application.food_safety_license_url,
-      foodEstablishmentCertUrl: application.food_establishment_cert_url,
-      foodSafetyLicenseStatus: application.food_safety_license_status,
-      foodEstablishmentCertStatus: application.food_establishment_cert_status,
-      documentsAdminFeedback: application.documents_admin_feedback,
-      documentsReviewedBy: application.documents_reviewed_by,
-      documentsReviewedAt: application.documents_reviewed_at,
-      createdAt: application.created_at,
-      updatedAt: application.updated_at
+      id: verification.id,
+      user_id: userId,
+      application_id: applicationId,
+      foodSafetyLicenseUrl: verification.food_safety_license_url,
+      foodEstablishmentCertUrl: verification.food_establishment_cert_url,
+      foodSafetyLicenseStatus: verification.food_safety_license_status,
+      foodEstablishmentCertStatus: verification.food_establishment_cert_status,
+      documentsAdminFeedback: verification.admin_feedback,
+      documentsReviewedBy: verification.reviewed_by,
+      documentsReviewedAt: verification.reviewed_at,
+      createdAt: verification.created_at,
+      updatedAt: verification.updated_at
     };
 
     return res.status(200).json(responseData);
