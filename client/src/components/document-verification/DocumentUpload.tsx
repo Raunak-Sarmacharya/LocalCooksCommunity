@@ -106,13 +106,24 @@ export default function DocumentUpload() {
       if (hasFiles) {
         // Upload files to storage first
         for (const [fieldName, file] of Object.entries(fileUploads)) {
+          console.log(`Uploading file for field ${fieldName}:`, {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type
+          });
+          
           const result = await uploadFile(file);
+          
+          console.log(`Upload result for ${fieldName}:`, result);
+          
           if (result) {
             // Map field names to the expected URL field names
             if (fieldName === 'foodSafetyLicense') {
               finalData.foodSafetyLicenseUrl = result.url;
+              console.log('Set foodSafetyLicenseUrl:', result.url);
             } else if (fieldName === 'foodEstablishmentCert') {
               finalData.foodEstablishmentCertUrl = result.url;
+              console.log('Set foodEstablishmentCertUrl:', result.url);
             }
           } else {
             throw new Error(`Failed to upload ${fieldName}`);
@@ -129,6 +140,12 @@ export default function DocumentUpload() {
       }
       
       // Submit the combined data (files + URLs) to the document verification system
+      console.log('Submitting document data to API:', {
+        verificationExists: !!verification,
+        finalData,
+        applicationId: verification?.id
+      });
+      
       if (verification) {
         updateMutation.mutate(finalData);
       } else {
