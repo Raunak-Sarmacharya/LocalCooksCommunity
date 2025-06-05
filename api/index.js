@@ -2448,4 +2448,417 @@ app.post("/api/admin/sessions/cleanup-old", async (req, res) => {
   }
 });
 
+// ===============================
+// MICROLEARNING ROUTES
+// ===============================
+
+// Helper function to check if user has approved application
+async function hasApprovedApplication(userId) {
+  try {
+    if (!pool) {
+      console.log('No database available for application check');
+      return false;
+    }
+
+    const result = await pool.query(`
+      SELECT status FROM applications WHERE user_id = $1 ORDER BY created_at DESC
+    `, [userId]);
+
+    return result.rows.some(app => app.status === 'approved');
+  } catch (error) {
+    console.error('Error checking application status:', error);
+    return false;
+  }
+}
+
+// In-memory storage for microlearning data (fallback when no DB)
+const microlearningProgress = new Map();
+const microlearningCompletions = new Map();
+
+// Storage functions for microlearning
+async function getMicrolearningProgress(userId) {
+  if (pool) {
+    try {
+      // Create table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS video_progress (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL,
+          video_id VARCHAR(100) NOT NULL,
+          progress INTEGER NOT NULL DEFAULT 0,
+          completed BOOLEAN NOT NULL DEFAULT FALSE,
+          completed_at TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT NOW(),
+          UNIQUE(user_id, video_id)
+        );
+      `);
+
+      const result = await pool.query(`
+        SELECT video_id, progress, completed, completed_at, updated_at 
+        FROM video_progress WHERE user_id = $1
+      `, [userId]);
+
+      return result.rows.map(row => ({
+        videoId: row.video_id,
+        progress: row.progress,
+        completed: row.completed,
+        completedAt: row.completed_at,
+        updatedAt: row.updated_at
+      }));
+    } catch (error) {
+      console.error('Error getting microlearning progress:', error);
+      return [];
+    }
+  } else {
+    // In-memory fallback
+    const progress = [];
+    for (const [key, value] of microlearningProgress.entries()) {
+      if (key.startsWith(`${userId}-`)) {
+        progress.push(value);
+      }
+    }
+    return progress;
+  }
+}
+
+async function getMicrolearningCompletion(userId) {
+  if (pool) {
+    try {
+      // Create table if it doesn't exist
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS microlearning_completions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL UNIQUE,
+          completed_at TIMESTAMP NOT NULL,
+          confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+          certificate_generated BOOLEAN NOT NULL DEFAULT FALSE,
+          video_progress JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      const result = await pool.query(`
+        SELECT * FROM microlearning_completions WHERE user_id = $1
+      `, [userId]);
+
+      if (result.rows.length === 0) {
+        return undefined;
+      }
+
+      const row = result.rows[0];
+      return {
+        userId: row.user_id,
+        completedAt: row.completed_at,
+        confirmed: row.confirmed,
+        certificateGenerated: row.certificate_generated,
+        videoProgress: row.video_progress,
+        createdAt: row.created_at
+      };
+    } catch (error) {
+      console.error('Error getting microlearning completion:', error);
+      return undefined;
+    }
+  } else {
+    // In-memory fallback
+    return microlearningCompletions.get(`completion-${userId}`);
+  }
+}
+
+async function updateVideoProgress(progressData) {
+  if (pool) {
+    try {
+      // Create table if it doesn't exist (same as above)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS video_progress (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL,
+          video_id VARCHAR(100) NOT NULL,
+          progress INTEGER NOT NULL DEFAULT 0,
+          completed BOOLEAN NOT NULL DEFAULT FALSE,
+          completed_at TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT NOW(),
+          UNIQUE(user_id, video_id)
+        );
+      `);
+
+      await pool.query(`
+        INSERT INTO video_progress (user_id, video_id, progress, completed, completed_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (user_id, video_id) 
+        DO UPDATE SET 
+          progress = EXCLUDED.progress,
+          completed = EXCLUDED.completed,
+          completed_at = EXCLUDED.completed_at,
+          updated_at = EXCLUDED.updated_at
+      `, [
+        progressData.userId,
+        progressData.videoId,
+        progressData.progress,
+        progressData.completed,
+        progressData.completedAt,
+        progressData.updatedAt
+      ]);
+    } catch (error) {
+      console.error('Error updating video progress:', error);
+    }
+  } else {
+    // In-memory fallback
+    const key = `${progressData.userId}-${progressData.videoId}`;
+    microlearningProgress.set(key, progressData);
+  }
+}
+
+async function createMicrolearningCompletion(completionData) {
+  if (pool) {
+    try {
+      // Create table if it doesn't exist (same as above)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS microlearning_completions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL UNIQUE,
+          completed_at TIMESTAMP NOT NULL,
+          confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+          certificate_generated BOOLEAN NOT NULL DEFAULT FALSE,
+          video_progress JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+
+      const result = await pool.query(`
+        INSERT INTO microlearning_completions (user_id, completed_at, confirmed, certificate_generated, video_progress)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+          completed_at = EXCLUDED.completed_at,
+          confirmed = EXCLUDED.confirmed,
+          certificate_generated = EXCLUDED.certificate_generated,
+          video_progress = EXCLUDED.video_progress
+        RETURNING *
+      `, [
+        completionData.userId,
+        completionData.completedAt,
+        completionData.confirmed,
+        completionData.certificateGenerated || false,
+        JSON.stringify(completionData.videoProgress)
+      ]);
+
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error creating microlearning completion:', error);
+      return completionData;
+    }
+  } else {
+    // In-memory fallback
+    const key = `completion-${completionData.userId}`;
+    microlearningCompletions.set(key, completionData);
+    return completionData;
+  }
+}
+
+// Get user's microlearning access level and progress
+app.get("/api/microlearning/progress/:userId", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (!sessionUserId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const userId = parseInt(req.params.userId);
+    
+    // Verify user can access this data (either their own or admin)
+    const sessionUser = await getUser(sessionUserId);
+    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const progress = await getMicrolearningProgress(userId);
+    const completionStatus = await getMicrolearningCompletion(userId);
+    const hasApproval = await hasApprovedApplication(userId);
+
+    res.json({
+      success: true,
+      progress: progress || [],
+      completionConfirmed: completionStatus?.confirmed || false,
+      completedAt: completionStatus?.completedAt,
+      hasApprovedApplication: hasApproval,
+      accessLevel: hasApproval ? 'full' : 'limited' // limited = first video only
+    });
+  } catch (error) {
+    console.error('Error fetching microlearning progress:', error);
+    res.status(500).json({ message: 'Failed to fetch progress' });
+  }
+});
+
+// Update video progress
+app.post("/api/microlearning/progress", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (!sessionUserId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const { userId, videoId, progress, completed, completedAt } = req.body;
+    
+    // Verify user can update this data (either their own or admin)
+    const sessionUser = await getUser(sessionUserId);
+    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Check if user has approved application for videos beyond the first one
+    const hasApproval = await hasApprovedApplication(userId);
+    const firstVideoId = 'canada-food-handling'; // First video that everyone can access
+    
+    if (!hasApproval && sessionUser?.role !== 'admin' && videoId !== firstVideoId) {
+      return res.status(403).json({ 
+        message: 'Application approval required to access this video',
+        accessLevel: 'limited',
+        firstVideoOnly: true
+      });
+    }
+
+    const progressData = {
+      userId,
+      videoId,
+      progress: Math.max(0, Math.min(100, progress)), // Clamp between 0-100
+      completed: completed || false,
+      completedAt: completed ? (completedAt ? new Date(completedAt) : new Date()) : null,
+      updatedAt: new Date()
+    };
+
+    await updateVideoProgress(progressData);
+
+    res.json({
+      success: true,
+      message: 'Progress updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating video progress:', error);
+    res.status(500).json({ message: 'Failed to update progress' });
+  }
+});
+
+// Complete microlearning and integrate with Always Food Safe
+app.post("/api/microlearning/complete", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (!sessionUserId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const { userId, completionDate, videoProgress } = req.body;
+    
+    // Verify user can complete this (either their own or admin)
+    const sessionUser = await getUser(sessionUserId);
+    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Check if user has approved application to complete full training
+    const hasApproval = await hasApprovedApplication(userId);
+    if (!hasApproval && sessionUser?.role !== 'admin') {
+      return res.status(403).json({ 
+        message: 'Application approval required to complete full certification',
+        accessLevel: 'limited',
+        requiresApproval: true
+      });
+    }
+
+    // Verify all required videos are completed (comprehensive training for Newfoundland chefs)
+    const requiredVideos = [
+      'canada-food-handling', 
+      'canada-contamination-prevention', 
+      'canada-allergen-awareness',
+      'nl-temperature-control',
+      'nl-personal-hygiene',
+      'nl-cleaning-sanitizing',
+      'nl-haccp-principles',
+      'nl-food-storage',
+      'nl-cooking-temperatures',
+      'nl-inspection-preparation'
+    ];
+    const completedVideos = videoProgress.filter(v => v.completed).map(v => v.videoId);
+    const allRequired = requiredVideos.every(videoId => completedVideos.includes(videoId));
+
+    if (!allRequired) {
+      return res.status(400).json({ 
+        message: 'All required videos must be completed before certification',
+        missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
+      });
+    }
+
+    // Get user details for certificate generation
+    const user = await getUser(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Create completion record
+    const completionData = {
+      userId,
+      completedAt: new Date(completionDate),
+      videoProgress,
+      confirmed: true,
+      certificateGenerated: false
+    };
+
+    await createMicrolearningCompletion(completionData);
+
+    res.json({
+      success: true,
+      message: 'Microlearning completed successfully',
+      completionConfirmed: true,
+      alwaysFoodSafeIntegration: 'not_configured'
+    });
+  } catch (error) {
+    console.error('Error completing microlearning:', error);
+    res.status(500).json({ message: 'Failed to complete microlearning' });
+  }
+});
+
+// Generate and download certificate
+app.get("/api/microlearning/certificate/:userId", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (!sessionUserId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const userId = parseInt(req.params.userId);
+    
+    // Verify user can access this certificate (either their own or admin)
+    const sessionUser = await getUser(sessionUserId);
+    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const completion = await getMicrolearningCompletion(userId);
+    if (!completion || !completion.confirmed) {
+      return res.status(404).json({ message: 'No confirmed completion found' });
+    }
+
+    const user = await getUser(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // For now, return a placeholder certificate URL
+    const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
+
+    res.json({
+      success: true,
+      certificateUrl,
+      completionDate: completion.completedAt,
+      message: 'Certificate for Government of Canada approved food safety training'
+    });
+  } catch (error) {
+    console.error('Error generating certificate:', error);
+    res.status(500).json({ message: 'Failed to generate certificate' });
+  }
+});
+
 export default app;
