@@ -525,6 +525,155 @@ Form validation uses Zod schemas. Common validation errors:
 
 ---
 
+## 🎓 Microlearning & Training Endpoints
+
+### Get User Training Progress
+```http
+GET /api/microlearning/progress/:userId
+Authorization: Required (User or Admin)
+```
+
+**Response** (200 OK):
+```json
+{
+  "userId": 123,
+  "progress": [
+    {
+      "videoId": "canada-food-handling",
+      "completed": true,
+      "completedAt": "2024-01-15T10:30:00Z",
+      "progress": 100
+    },
+    {
+      "videoId": "canada-contamination-prevention", 
+      "completed": false,
+      "completedAt": null,
+      "progress": 45
+    }
+  ],
+  "overallProgress": 15,
+  "accessLevel": "limited|full"
+}
+```
+
+### Update Video Progress
+```http
+POST /api/microlearning/progress
+Content-Type: application/json
+Authorization: Required (User)
+
+{
+  "videoId": "canada-food-handling",
+  "progress": 90
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "message": "Progress updated",
+  "videoId": "canada-food-handling",
+  "progress": 90,
+  "completed": true
+}
+```
+
+### Complete Training Certification
+```http
+POST /api/microlearning/complete
+Content-Type: application/json
+Authorization: Required (User)
+
+{
+  "completedVideos": [
+    "canada-food-handling",
+    "canada-contamination-prevention",
+    "canada-allergen-awareness",
+    "nl-temperature-control",
+    "nl-personal-hygiene", 
+    "nl-cleaning-sanitizing",
+    "nl-haccp-principles",
+    "nl-food-storage",
+    "nl-cooking-temperatures",
+    "nl-inspection-preparation"
+  ]
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "message": "Training completed successfully",
+  "certificateGenerated": true,
+  "completionDate": "2024-01-15T10:30:00Z",
+  "totalVideos": 10,
+  "completedVideos": 10
+}
+```
+
+### Generate Training Certificate
+```http
+GET /api/microlearning/certificate/:userId
+Authorization: Required (User or Admin)
+```
+
+**Response** (200 OK):
+```json
+{
+  "userId": 123,
+  "userName": "John Doe",
+  "completionDate": "2024-01-15T10:30:00Z",
+  "certificateUrl": "https://your-app.vercel.app/certificate/123",
+  "modules": [
+    {
+      "id": "canada-food-handling",
+      "title": "Safe Food Handling Basics",
+      "completedAt": "2024-01-15T09:15:00Z"
+    }
+  ]
+}
+```
+
+### Get Application Status
+```http
+GET /api/application-status
+Authorization: Required (User)
+```
+
+**Response** (200 OK):
+```json
+{
+  "userId": 123,
+  "hasApplication": true,
+  "applicationStatus": "approved|pending|rejected|new",
+  "accessLevel": "limited|full",
+  "applicationInfo": {
+    "id": 456,
+    "status": "approved",
+    "submittedAt": "2024-01-10T08:00:00Z",
+    "reviewedAt": "2024-01-12T14:30:00Z"
+  }
+}
+```
+
+**Access Levels:**
+- **Limited**: First training module only (for unapproved users)
+- **Full**: All 10 training modules + certification (for approved users)
+
+**Training Modules:**
+1. `canada-food-handling` - Safe Food Handling Basics
+2. `canada-contamination-prevention` - Preventing Food Contamination
+3. `canada-allergen-awareness` - Allergen Awareness and Management
+4. `nl-temperature-control` - Temperature Danger Zone & Time Control
+5. `nl-personal-hygiene` - Personal Hygiene for Food Handlers
+6. `nl-cleaning-sanitizing` - Cleaning and Sanitizing Procedures
+7. `nl-haccp-principles` - HACCP Principles for Small Kitchens
+8. `nl-food-storage` - Proper Food Storage & Receiving
+9. `nl-cooking-temperatures` - Safe Cooking Temperatures & Methods
+10. `nl-inspection-preparation` - Health Inspection Readiness
+
+---
+
 ## 🔒 Authentication & Authorization
 
 ### Session-Based Authentication
