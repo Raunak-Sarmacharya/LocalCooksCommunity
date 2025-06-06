@@ -142,15 +142,15 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   }
 
   return (
-    <div className={`space-y-6 ${className}`}>
-      <Card>
+    <div className={`space-y-6 relative ${className}`}>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Award className="h-5 w-5 text-primary" />
             Unlock Full Training Access
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 relative overflow-hidden">
           {/* Progress Bar */}
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
@@ -204,7 +204,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-all
+                  className={`flex items-center gap-4 p-4 rounded-lg border-2 transition-all relative overflow-hidden
                     ${isActive ? 'border-primary bg-primary/5' : 'border-gray-200 bg-gray-50'}
                     ${step.status === 'completed' ? 'border-green-200 bg-green-50' : ''}
                     ${step.status === 'rejected' ? 'border-red-200 bg-red-50' : ''}
@@ -214,9 +214,9 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                     <Icon className={`h-5 w-5 ${step.color}`} />
                   </div>
                   
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium">{step.title}</h4>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h4 className="font-medium truncate">{step.title}</h4>
                       <Badge
                         variant="outline"
                         className={`text-xs
@@ -234,22 +234,24 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                          'Waiting'}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-600">{step.description}</p>
+                    <p className="text-sm text-gray-600 break-words leading-relaxed">{step.description}</p>
                   </div>
 
                   {step.action && step.status === 'current' && (
-                    <Button asChild size="sm" className="ml-auto">
+                    <Button asChild size="sm" className="ml-auto flex-shrink-0">
                       <Link href={step.action}>
-                        Start Application
+                        <span className="hidden sm:inline">Start Application</span>
+                        <span className="sm:hidden">Start</span>
                         <ArrowRight className="h-4 w-4 ml-1" />
                       </Link>
                     </Button>
                   )}
 
                   {step.status === 'rejected' && (
-                    <Button asChild size="sm" variant="outline" className="ml-auto">
+                    <Button asChild size="sm" variant="outline" className="ml-auto flex-shrink-0">
                       <Link href="/apply">
-                        Update Application
+                        <span className="hidden sm:inline">Update Application</span>
+                        <span className="sm:hidden">Update</span>
                         <ArrowRight className="h-4 w-4 ml-1" />
                       </Link>
                     </Button>
@@ -261,43 +263,47 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
           {/* Action Section */}
           {!isApplicationApproved && (
-            <div className="border-t pt-4">
-              <div className="flex flex-col sm:flex-row gap-3">
-                {!hasSubmittedApplication ? (
-                  <Button asChild className="flex-1">
-                    <Link href="/apply">
-                      <FileText className="h-4 w-4 mr-2" />
-                      {hasRejectedApplications || hasCancelledApplications ? 
-                        "Submit New Application" : 
-                        "Start Application Now"}
+            <div className="border-t pt-6">
+              <div className="flex flex-col gap-3 relative z-10">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {!hasSubmittedApplication ? (
+                    <Button asChild className="flex-1 min-w-0">
+                      <Link href="/apply">
+                        <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="truncate">
+                          {hasRejectedApplications || hasCancelledApplications ? 
+                            "Submit New Application" : 
+                            "Start Application Now"}
+                        </span>
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild variant="outline" className="flex-1 min-w-0">
+                      <Link href="/dashboard">
+                        <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="truncate">Check Application Status</span>
+                      </Link>
+                    </Button>
+                  )}
+                  
+                  <Button asChild variant="outline" className="min-w-0 sm:flex-shrink-0">
+                    <Link href="/">
+                      <span className="truncate">Learn More About LocalCooks</span>
                     </Link>
                   </Button>
-                ) : (
-                  <Button asChild variant="outline" className="flex-1">
-                    <Link href="/dashboard">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Check Application Status
-                    </Link>
-                  </Button>
-                )}
-                
-                <Button asChild variant="outline">
-                  <Link href="/">
-                    Learn More About LocalCooks
-                  </Link>
-                </Button>
+                </div>
               </div>
             </div>
           )}
 
           {/* Previous Application Notice */}
           {(hasRejectedApplications || hasCancelledApplications) && !hasSubmittedApplication && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-              <div className="flex items-start gap-2 text-yellow-800 text-sm">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 relative z-10">
+              <div className="flex items-start gap-3 text-yellow-800 text-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="font-medium">Fresh Start:</span>
-                  <span className="ml-1">
+                  <span className="ml-1 break-words">
                     {hasRejectedApplications ? 
                       "Your previous application was not approved, but you can submit a new one anytime with updated information." :
                       "Your previous application was cancelled. You're welcome to submit a new application whenever you're ready!"

@@ -188,6 +188,96 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ---
 
+## 🎓 Training & Microlearning
+
+### Q: Why can't I access all training modules?
+
+**A:** Training access depends on your application status:
+
+- **Before Application**: No training access
+- **After Registration**: Limited access (first module only)  
+- **After Application**: Still limited access until approval
+- **After Approval**: Full access to all 10 modules + certification
+
+This tiered system ensures only approved community members receive full certification.
+
+### Q: What training modules are available?
+
+**A:** The platform includes 10 comprehensive modules:
+
+**Federal Requirements (Modules 1-3):**
+1. Safe Food Handling Basics (Health Canada)
+2. Preventing Food Contamination (CFIA)
+3. Allergen Awareness and Management (CFIA)
+
+**Newfoundland-Specific (Modules 4-10):**
+4. Temperature Danger Zone & Time Control
+5. Personal Hygiene for Food Handlers
+6. Cleaning and Sanitizing Procedures
+7. HACCP Principles for Small Kitchens
+8. Proper Food Storage & Receiving
+9. Safe Cooking Temperatures & Methods
+10. Health Inspection Readiness
+
+### Q: How do I track my training progress?
+
+**A:** Your progress is automatically tracked:
+
+- **Module completion**: 90% video completion required
+- **Overall progress**: Visual progress bar in training interface
+- **Completion status**: Check marks for completed modules
+- **Certificate eligibility**: Complete all 10 modules to unlock certificate
+
+### Q: Can I get a certificate after completing training?
+
+**A:** Yes! After completing all 10 modules:
+
+- **Digital certificate**: Generated automatically upon completion
+- **Official recognition**: Prepare for NL Food Handler Certification
+- **Download/print**: Certificate available for download
+- **Verification**: Certificate includes completion date and module details
+
+### Q: Training videos won't play / are buffering
+
+**A:** Common solutions:
+
+1. **Internet connection**: Ensure stable, fast internet
+2. **Browser issues**: Try refreshing the page or different browser
+3. **Clear cache**: Clear browser cache and cookies
+4. **Video format**: Ensure browser supports modern video formats
+5. **Ad blockers**: Temporarily disable ad blockers
+
+### Q: My training progress isn't saving
+
+**A:** Check these issues:
+
+1. **Login status**: Ensure you're logged in during training
+2. **Session timeout**: Login again if session expired
+3. **Complete video**: Watch at least 90% for progress to save
+4. **Network issues**: Ensure stable internet connection
+5. **JavaScript errors**: Check browser console for errors
+
+### Q: How long does the training take?
+
+**A:** Training duration varies by module:
+
+- **Individual modules**: 5-9 minutes each
+- **Total content**: Approximately 75 minutes of video
+- **Self-paced**: Complete at your own pace
+- **Mobile friendly**: Continue on any device
+- **Progress saved**: No need to complete in one session
+
+### Q: What happens if I don't complete training?
+
+**A:** Training completion affects your community participation:
+
+- **Limited access**: Without completion, access remains limited
+- **Certification required**: Some community features require certification
+- **No penalty**: Take as long as you need to complete
+- **Support available**: Contact admin if you need help
+
+---
+
 ## 🔒 Security & Privacy
 
 ### Q: Is my personal information secure?
