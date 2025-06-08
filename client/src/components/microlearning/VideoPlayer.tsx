@@ -15,7 +15,7 @@ interface VideoPlayerProps {
   isRewatching?: boolean;
   className?: string;
   autoPlay?: boolean;
-  requireFullWatch?: boolean; // Requires user to watch 90% to mark complete
+  requireFullWatch?: boolean; // Now less strict - allows early completion
 }
 
 export default function VideoPlayer({
@@ -49,6 +49,8 @@ export default function VideoPlayer({
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [lastTimeUpdate, setLastTimeUpdate] = useState(0);
+  const [shouldShowCompletePrompt, setShouldShowCompletePrompt] = useState(false);
+  const [hasReachedNearEnd, setHasReachedNearEnd] = useState(false);
 
   // Reset video state when video URL or completion status changes
   useEffect(() => {
@@ -63,7 +65,23 @@ export default function VideoPlayer({
     setIsLoading(true);
     setHasError(false);
     setErrorMessage('');
+    setShouldShowCompletePrompt(false);
+    setHasReachedNearEnd(false);
   }, [videoUrl, isCompleted]);
+
+  // Timer to detect when video should have ended but didn't
+  useEffect(() => {
+    if (!hasReachedNearEnd || videoCompleted || shouldShowCompletePrompt) return;
+
+    // Show completion prompt after 3 seconds of being at near end without natural completion
+    const timer = setTimeout(() => {
+      if (!videoCompleted && hasReachedNearEnd) {
+        setShouldShowCompletePrompt(true);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [hasReachedNearEnd, videoCompleted, shouldShowCompletePrompt]);
 
   // Calculate actual watch percentage based on watched segments
   const calculateWatchPercentage = () => {
@@ -143,10 +161,26 @@ export default function VideoPlayer({
         
         onProgress?.(progressPercent, actualWatchPercentage);
 
-        // Mark as complete when video reaches the end or near end
-        if (progressPercent >= 95 && !videoCompleted) {
-          setVideoCompleted(true);
-          onComplete?.();
+        // RELAXED COMPLETION LOGIC: Allow completion at any point after 10% to prevent accidental completions
+        // Users can skip to any point and complete the video - no strict watching requirement
+        if (progressPercent >= 10 && !videoCompleted) {
+          // Check if user has interacted significantly with the video (either watched some or skipped forward)
+          const hasWatchedSome = actualWatchPercentage > 5 || progressPercent > 20;
+          
+          // Track when video reaches near end for completion prompt
+          if (progressPercent >= 95) {
+            setHasReachedNearEnd(true);
+          }
+          
+          // Complete if:
+          // 1. Video reached very end (98%+) - natural completion
+          // 2. User has skipped forward significantly (40%+) - allows skipping to end
+          // 3. Video naturally ended
+          if (progressPercent >= 98 || (hasWatchedSome && progressPercent >= 40)) {
+            setVideoCompleted(true);
+            setShouldShowCompletePrompt(false);
+            onComplete?.();
+          }
         }
       }
     };
@@ -165,9 +199,10 @@ export default function VideoPlayer({
 
     const handleEnded = () => {
       setIsPlaying(false);
-      // Mark as complete when video ends
+      // Always mark as complete when video ends naturally
       if (!videoCompleted) {
         setVideoCompleted(true);
+        setShouldShowCompletePrompt(false);
         onComplete?.();
       }
     };
@@ -175,6 +210,21 @@ export default function VideoPlayer({
     const handleSeeking = () => {
       // Reset time tracking when user seeks
       setLastTimeUpdate(video.currentTime);
+      
+      // RELAXED: Allow completion on seeking to near end
+      const currentProgress = (video.currentTime / video.duration) * 100;
+      
+      // Track near end for prompt system
+      if (currentProgress >= 95) {
+        setHasReachedNearEnd(true);
+      }
+      
+      if (currentProgress >= 85 && !videoCompleted && hasStarted) {
+        // User seeked to near end - mark as complete
+        setVideoCompleted(true);
+        setShouldShowCompletePrompt(false);
+        onComplete?.();
+      }
     };
 
     video.addEventListener('loadstart', handleLoadStart);
@@ -280,6 +330,14 @@ export default function VideoPlayer({
                 if (!hasStarted) {
                   setHasStarted(true);
                   onStart?.();
+                  
+                  // For Streamable videos, show completion prompt after reasonable time
+                  // since we can't track progress reliably
+                  setTimeout(() => {
+                    if (!videoCompleted) {
+                      setShouldShowCompletePrompt(true);
+                    }
+                  }, 30000); // Show prompt after 30 seconds for Streamable videos
                 }
               }}
               onError={() => {
@@ -348,6 +406,32 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Subtle Completion Prompt - appears when video should have ended but didn't */}
+        {shouldShowCompletePrompt && !videoCompleted && !isLoading && !hasError && (
+          <div className="absolute bottom-4 right-4">
+            <div className="bg-black/80 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-white/20">
+              <div className="flex items-center gap-3">
+                <div className="text-white text-sm">
+                  <p className="font-medium">Video finished?</p>
+                  <p className="text-xs opacity-75">Mark as complete to continue</p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setVideoCompleted(true);
+                    setShouldShowCompletePrompt(false);
+                    onComplete?.();
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Complete
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Play/Pause Overlay - Only for standard videos */}
         {!isStreamableUrl && !isPlaying && !videoCompleted && !isLoading && !hasError && (
           <div 
@@ -386,9 +470,29 @@ export default function VideoPlayer({
 
         {isStreamableUrl ? (
           /* Streamable Video - Minimal Interface */
-          <div>
-            <h3 className="font-medium text-sm leading-tight break-words">{title}</h3>
-            <p className="text-xs text-gray-400 mt-1">Interactive training video with embedded controls</p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+            <div className="flex-1">
+              <h3 className="font-medium text-sm leading-tight break-words">{title}</h3>
+              <p className="text-xs text-gray-400 mt-1">Interactive training video with embedded controls</p>
+            </div>
+            
+            {/* Manual Complete Button for Streamable videos */}
+            {hasStarted && !videoCompleted && !shouldShowCompletePrompt && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setVideoCompleted(true);
+                  setShouldShowCompletePrompt(false);
+                  onComplete?.();
+                }}
+                className="text-white/70 hover:text-white hover:bg-white/10 flex-shrink-0 text-xs"
+                title="Mark video as complete"
+              >
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Complete
+              </Button>
+            )}
           </div>
         ) : (
           /* Standard Video - Full Controls */
@@ -445,6 +549,24 @@ export default function VideoPlayer({
                 >
                   {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                 </Button>
+
+                {/* Manual Complete Button - Only show if no subtle prompt is active */}
+                {hasStarted && !videoCompleted && !shouldShowCompletePrompt && progress > 50 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setVideoCompleted(true);
+                      setShouldShowCompletePrompt(false);
+                      onComplete?.();
+                    }}
+                    className="text-white/70 hover:text-white hover:bg-white/10 flex-shrink-0 text-xs"
+                    title="Mark video as complete"
+                  >
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Complete
+                  </Button>
+                )}
               </div>
 
               <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
