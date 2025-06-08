@@ -50,6 +50,21 @@ export default function VideoPlayer({
   const [errorMessage, setErrorMessage] = useState('');
   const [lastTimeUpdate, setLastTimeUpdate] = useState(0);
 
+  // Reset video state when video URL or completion status changes
+  useEffect(() => {
+    setVideoCompleted(isCompleted);
+    setProgress(0);
+    setCurrentTime(0);
+    setHasStarted(false);
+    setIsPlaying(false);
+    setWatchedSegments([]);
+    setTotalWatchedSeconds(0);
+    setLastTimeUpdate(0);
+    setIsLoading(true);
+    setHasError(false);
+    setErrorMessage('');
+  }, [videoUrl, isCompleted]);
+
   // Calculate actual watch percentage based on watched segments
   const calculateWatchPercentage = () => {
     if (videoDuration === 0) return 0;

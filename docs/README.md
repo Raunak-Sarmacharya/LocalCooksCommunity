@@ -2,6 +2,12 @@
 
 Welcome to the documentation hub for the Local Cooks Community project! This folder contains all guides, setup instructions, environment references, and architecture docs for both development and production.
 
+## 🚀 Latest Updates (June 2024)
+- **Microlearning System**: 22 videos, strict sequential access, auto-advance, and real-time progress tracking
+- **Access Control**: Limited users see only the first video; full users unlock videos sequentially and modules after completion
+- **Performance**: Code splitting and bundle optimization for fast loading, no build warnings
+- **Docs**: All documentation is up to date with the latest features and architecture
+
 ## Table of Contents
 
 - [Project Overview](./project-overview.md)

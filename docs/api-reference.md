@@ -527,109 +527,57 @@ Form validation uses Zod schemas. Common validation errors:
 
 ## 🎓 Microlearning & Training Endpoints
 
-### Get User Training Progress
+### Get User Progress
 ```http
 GET /api/microlearning/progress/:userId
-Authorization: Required (User or Admin)
 ```
-
-**Response** (200 OK):
-```json
-{
-  "userId": 123,
-  "progress": [
-    {
-      "videoId": "basics-cross-contamination",
-      "completed": true,
-      "completedAt": "2024-01-15T10:30:00Z",
-      "progress": 100
-    },
-    {
-      "videoId": "basics-allergen-awareness", 
-      "completed": false,
-      "completedAt": null,
-      "progress": 45
-    }
-  ],
-  "overallProgress": 15,
-  "accessLevel": "limited|full"
-}
-```
+- Returns progress for all 22 videos (see video ID list in microlearning-system.md)
+- Requires authentication
 
 ### Update Video Progress
 ```http
 POST /api/microlearning/progress
 Content-Type: application/json
-Authorization: Required (User)
 
 {
+  "userId": 1,
   "videoId": "basics-cross-contamination",
-  "progress": 90
+  "progress": 100,
+  "completed": true,
+  "watchedPercentage": 100
 }
 ```
+- Updates progress for a single video
+- Enforces access control (sequential, module unlocks)
+- Triggers auto-advance in the UI
 
-**Response** (200 OK):
-```json
-{
-  "message": "Progress updated",
-  "videoId": "basics-cross-contamination",
-  "progress": 90,
-  "completed": true
-}
-```
-
-### Complete Training Preparation
+### Complete All Training
 ```http
 POST /api/microlearning/complete
 Content-Type: application/json
-Authorization: Required (User)
 
 {
-  "completedVideos": [
-    "basics-cross-contamination", "basics-allergen-awareness", "basics-cooking-temps",
-    "basics-temperature-danger", "basics-personal-hygiene", "basics-food-storage",
-    "basics-illness-reporting", "basics-food-safety-plan", "basics-pest-control",
-    "basics-chemical-safety", "basics-fifo", "basics-receiving",
-    "basics-cooling-reheating", "basics-thawing",
-    "howto-handwashing", "howto-sanitizing", "howto-thermometer", "howto-cleaning-schedule",
-    "howto-equipment-cleaning", "howto-uniform-care", "howto-wound-care", "howto-inspection-prep"
-  ]
+  "userId": 1,
+  "completionDate": "2024-06-08T12:00:00Z",
+  "videoProgress": [ ... ]
 }
 ```
+- Requires all 22 videos to be completed
+- Returns certificate info
 
-**Response** (200 OK):
-```json
-{
-  "message": "Training preparation completed successfully",
-  "certificateGenerated": true,
-  "completionDate": "2024-01-15T10:30:00Z",
-  "totalVideos": 10,
-  "completedVideos": 10
-}
-```
-
-### Generate Training Completion Certificate
+### Get Certificate
 ```http
 GET /api/microlearning/certificate/:userId
-Authorization: Required (User or Admin)
 ```
+- Returns certificate URL if training is complete
 
-**Response** (200 OK):
-```json
-{
-  "userId": 123,
-  "userName": "John Doe",
-  "completionDate": "2024-01-15T10:30:00Z",
-  "certificateUrl": "https://your-app.vercel.app/certificate/123",
-  "modules": [
-    {
-      "id": "basics-cross-contamination",
-      "title": "An Introduction",
-      "completedAt": "2024-01-15T09:15:00Z"
-    }
-  ]
-}
-```
+## Performance & Bundle Optimization
+- **Code Splitting**: Microlearning and admin modules are lazy-loaded
+- **Manual Chunking**: Vendor libraries are split for optimal caching
+- **Result**: Faster load times, no build warnings
+
+## See also
+- [microlearning-system.md](./microlearning-system.md) for full video list and access logic
 
 ### Get Application Status
 ```http
