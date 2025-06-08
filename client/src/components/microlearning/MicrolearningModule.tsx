@@ -55,7 +55,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Food Safety Basics Overview',
     description: 'Comprehensive introduction to essential food safety principles and practices for professional kitchens',
     duration: '0:30',
-    url: 'https://streamable.com/e/8wmj23',
+    url: 'https://streamable.com/e/8wmj23?loop=0',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -327,7 +327,21 @@ export default function MicrolearningModule({
       if (response.ok) {
         const data = await response.json();
         console.log('Progress data received:', data);
-        setUserProgress(data.progress || []);
+        
+        // Filter out any old video IDs that don't match current video structure
+        const currentVideoIds = videos.map(v => v.id);
+        const filteredProgress = (data.progress || []).filter((p: UserProgress) => 
+          currentVideoIds.includes(p.videoId)
+        );
+        
+        console.log('Filtered progress (removing old video IDs):', {
+          original: data.progress?.length || 0,
+          filtered: filteredProgress.length,
+          currentVideoIds,
+          progressVideoIds: (data.progress || []).map((p: UserProgress) => p.videoId)
+        });
+        
+        setUserProgress(filteredProgress);
         setCompletionConfirmed(data.completionConfirmed || false);
         setAccessLevel(data.accessLevel || 'limited');
         setHasApprovedApplication(data.hasApprovedApplication || false);
@@ -455,7 +469,14 @@ export default function MicrolearningModule({
   };
 
   const getVideoProgress = (videoId: string) => {
-    return userProgress.find(p => p.videoId === videoId);
+    const progress = userProgress.find(p => p.videoId === videoId);
+    
+    // Debug logging for progress tracking
+    if (progress) {
+      console.log(`Progress for ${videoId}:`, progress);
+    }
+    
+    return progress;
   };
 
   const videoProgressData = videos.map(video => {

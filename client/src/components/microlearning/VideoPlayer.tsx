@@ -32,6 +32,9 @@ export default function VideoPlayer({
   requireFullWatch = true
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Check if this is a Streamable URL
+  const isStreamableUrl = videoUrl.includes('streamable.com/e/');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(duration || 0);
@@ -248,14 +251,44 @@ export default function VideoPlayer({
     <div className={cn("relative bg-black rounded-lg overflow-hidden shadow-lg", className)}>
       {/* Video Element */}
       <div className="relative aspect-video">
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          className="w-full h-full object-cover"
-          autoPlay={autoPlay}
-          playsInline
-          preload="metadata"
-        />
+        {isStreamableUrl ? (
+          /* Streamable Embed */
+          <div className="w-full h-full">
+            <iframe
+              src={videoUrl}
+              width="100%"
+              height="100%"
+              style={{ border: 'none', width: '100%', height: '100%' }}
+              allow="fullscreen"
+              allowFullScreen
+              className="w-full h-full"
+              onLoad={() => {
+                setIsLoading(false);
+                setHasError(false);
+                // Trigger start event for progress tracking
+                if (!hasStarted) {
+                  setHasStarted(true);
+                  onStart?.();
+                }
+              }}
+              onError={() => {
+                setIsLoading(false);
+                setHasError(true);
+                setErrorMessage('Failed to load Streamable video. Please check your internet connection and try again.');
+              }}
+            />
+          </div>
+        ) : (
+          /* Standard Video */
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="w-full h-full object-cover"
+            autoPlay={autoPlay}
+            playsInline
+            preload="metadata"
+          />
+        )}
         
         {/* Loading Overlay */}
         {isLoading && !hasError && (
@@ -304,13 +337,20 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Play/Pause Overlay */}
-        {!isPlaying && !videoCompleted && !isLoading && !hasError && (
+        {/* Play/Pause Overlay - Only for standard videos */}
+        {!isStreamableUrl && !isPlaying && !videoCompleted && !isLoading && !hasError && (
           <div 
             className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer transition-opacity hover:bg-black/40"
             onClick={togglePlayPause}
           >
             <Play className="h-16 w-16 text-white" />
+          </div>
+        )}
+        
+        {/* Streamable Video Info Overlay */}
+        {isStreamableUrl && !videoCompleted && !isLoading && !hasError && (
+          <div className="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-2 rounded-lg">
+            <p className="text-sm">Interactive video player - controls embedded within video</p>
           </div>
         )}
       </div>
@@ -336,69 +376,94 @@ export default function VideoPlayer({
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mb-3">
-          <div 
-            className="relative cursor-pointer"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = e.clientX - rect.left;
-              const percentage = (x / rect.width) * 100;
-              seekTo(percentage);
-            }}
-          >
-            <Progress 
-              value={progress} 
-              className="h-2 bg-gray-700"
-            />
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400 mt-2">
-            <span className="whitespace-nowrap">{formatTime(currentTime)}</span>
-            {requireFullWatch && (
-              <span className="text-center flex-shrink-0">{Math.round(actualWatchPercentage)}% watched</span>
+        {isStreamableUrl ? (
+          /* Streamable Video - Simplified Controls */
+          <div className="text-center">
+            <p className="text-sm text-gray-400 mb-2">Interactive Food Safety Training Video</p>
+            <p className="text-xs text-gray-500 mb-3">Watch the video above and click 'Mark Complete' when finished</p>
+            {!videoCompleted && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setVideoCompleted(true);
+                  onComplete?.();
+                }}
+                className="text-white border-white hover:bg-white hover:text-black"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Mark Complete
+              </Button>
             )}
-            <span className="whitespace-nowrap">{formatTime(videoDuration)}</span>
           </div>
-        </div>
+        ) : (
+          /* Standard Video - Full Controls */
+          <>
+            {/* Progress Bar */}
+            <div className="mb-3">
+              <div 
+                className="relative cursor-pointer"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const percentage = (x / rect.width) * 100;
+                  seekTo(percentage);
+                }}
+              >
+                <Progress 
+                  value={progress} 
+                  className="h-2 bg-gray-700"
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400 mt-2">
+                <span className="whitespace-nowrap">{formatTime(currentTime)}</span>
+                {requireFullWatch && (
+                  <span className="text-center flex-shrink-0">{Math.round(actualWatchPercentage)}% watched</span>
+                )}
+                <span className="whitespace-nowrap">{formatTime(videoDuration)}</span>
+              </div>
+            </div>
 
-        {/* Control Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 sm:justify-between">
-          <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={togglePlayPause}
-              className="text-white hover:bg-white/20 flex-shrink-0"
-            >
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={restart}
-              className="text-white hover:bg-white/20 flex-shrink-0"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </Button>
+            {/* Control Buttons */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 sm:justify-between">
+              <div className="flex items-center justify-center gap-2 w-full sm:w-auto">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={togglePlayPause}
+                  className="text-white hover:bg-white/20 flex-shrink-0"
+                >
+                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={restart}
+                  className="text-white hover:bg-white/20 flex-shrink-0"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleMute}
-              className="text-white hover:bg-white/20 flex-shrink-0"
-            >
-              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-            </Button>
-          </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleMute}
+                  className="text-white hover:bg-white/20 flex-shrink-0"
+                >
+                  {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+              </div>
 
-          <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
-            {requireFullWatch ? 
-              `${Math.round(actualWatchPercentage)}% required` : 
-              `${Math.round(progress)}% progress`
-            }
-          </div>
-        </div>
+              <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
+                {requireFullWatch ? 
+                  `${Math.round(actualWatchPercentage)}% required` : 
+                  `${Math.round(progress)}% progress`
+                }
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
