@@ -541,21 +541,68 @@ export default function ApplicantDashboard() {
                             day: 'numeric'
                           }) : "Recently"}
                         </p>
+                        {microlearningCompletion.certificateGenerated && (
+                          <p className="text-xs text-emerald-600 font-medium">
+                            ✅ Certificate previously generated
+                          </p>
+                        )}
                       </div>
                       <Button
-                        asChild
                         size="sm"
                         className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={async () => {
+                          try {
+                            const response = await fetch(`/api/microlearning/certificate/${user?.id}`, {
+                              method: 'GET',
+                              headers: {
+                                'X-User-ID': user?.id.toString() || '',
+                                'Authorization': `Bearer ${user?.id}`,
+                              },
+                              credentials: 'include'
+                            });
+                            
+                            if (response.ok) {
+                              const contentType = response.headers.get('content-type');
+                              
+                              if (contentType && contentType.includes('application/pdf')) {
+                                // Handle PDF download
+                                const pdfBlob = await response.blob();
+                                const url = window.URL.createObjectURL(pdfBlob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `LocalCooks-Certificate-${user?.username}.pdf`;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                window.URL.revokeObjectURL(url);
+                                
+                                toast({
+                                  title: "Certificate Downloaded!",
+                                  description: "🎉 Your certificate has been downloaded successfully.",
+                                });
+                              } else {
+                                // Handle JSON response (fallback)
+                                const data = await response.json();
+                                toast({
+                                  title: "Certificate Generated",
+                                  description: data.message || "Certificate ready for download",
+                                });
+                              }
+                            } else {
+                              throw new Error('Failed to download certificate');
+                            }
+                          } catch (error) {
+                            console.error('Error downloading certificate:', error);
+                            toast({
+                              title: "Download Error",
+                              description: "Failed to download certificate. Please try again.",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
                       >
-                        <a
-                          href={`/api/microlearning/certificate/${user?.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2"
-                        >
-                          <Download className="h-4 w-4" />
-                          Download Certificate
-                        </a>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Certificate
                       </Button>
                     </div>
                   </div>

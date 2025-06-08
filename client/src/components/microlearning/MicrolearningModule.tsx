@@ -1395,14 +1395,41 @@ export default function MicrolearningModule({
                                 method: 'GET',
                                 headers: {
                                   'X-User-ID': currentUserId.toString(),
-                                  'Content-Type': 'application/json'
+                                  // Add Authorization header for production compatibility
+                                  'Authorization': `Bearer ${currentUserId}`,
+                                  // Add user context from localStorage if available
+                                  ...(localStorage.getItem('user') && {
+                                    'X-User-Context': localStorage.getItem('user') || ''
+                                  })
                                 },
                                 credentials: 'include'
                               });
                               
                               if (response.ok) {
-                                const data = await response.json();
-                                alert(`Certificate generated! Your completion has been recorded for ${new Date(data.completionDate).toLocaleDateString()}`);
+                                const contentType = response.headers.get('content-type');
+                                
+                                if (contentType && contentType.includes('application/pdf')) {
+                                  // Handle PDF download
+                                  const pdfBlob = await response.blob();
+                                  const url = window.URL.createObjectURL(pdfBlob);
+                                  const link = document.createElement('a');
+                                  link.href = url;
+                                  link.download = `LocalCooks-Certificate-${currentUser?.username || currentUserId}.pdf`;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                  window.URL.revokeObjectURL(url);
+                                  
+                                  alert('🎉 Certificate downloaded successfully! Check your Downloads folder.');
+                                } else {
+                                  // Handle JSON response (fallback)
+                                  const data = await response.json();
+                                  if (data.error) {
+                                    alert(`Certificate generated with note: ${data.error}`);
+                                  } else {
+                                    alert(`Certificate generated! Your completion has been recorded for ${new Date(data.completionDate).toLocaleDateString()}`);
+                                  }
+                                }
                               } else {
                                 const errorData = await response.json();
                                 console.error('Certificate error:', errorData);
