@@ -31,7 +31,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
 
   const validateFile = (file: File): string | null => {
     if (file.size > maxSize) {
-      return `File size exceeds ${Math.round(maxSize / 1024 / 1024)}MB limit`;
+      return `File size exceeds 3.5MB limit`;
     }
 
     if (allowedTypes.length > 0 && !allowedTypes.includes(file.type)) {

@@ -1,27 +1,23 @@
-import { useForm } from "react-hook-form";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { useFileUpload } from "@/hooks/useFileUpload";
+import { ApplicationFormData } from "@/lib/applicationSchema";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { AlertTriangle, Check, ExternalLink, HelpCircle, Info, Link as LinkIcon, Upload } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { useLocation } from "wouter";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
-import { useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
-import { ApplicationFormData } from "@/lib/applicationSchema";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import { useFileUpload } from "@/hooks/useFileUpload";
-import { useState } from "react";
-import { Info, ExternalLink, Check, HelpCircle, ArrowRight, AlertTriangle, Upload, Link as LinkIcon } from "lucide-react";
 
-import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Card } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileUpload } from "@/components/ui/file-upload";
+import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 // Create a schema for just the certifications fields
 const certificationsSchema = z.object({
@@ -294,7 +290,7 @@ export default function CertificationsForm() {
         if (file.size > 10 * 1024 * 1024) {
           toast({
             title: "File too large",
-            description: "Please upload files smaller than 10MB.",
+            description: "Please upload files smaller than 3.5MB.",
             variant: "destructive",
           });
           return prev;
