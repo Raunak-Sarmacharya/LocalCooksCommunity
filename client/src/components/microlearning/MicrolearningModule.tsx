@@ -12,6 +12,7 @@ import {
   Download,
   FileText,
   Lock,
+  RotateCcw,
   Shield,
   TrendingUp
 } from 'lucide-react';
@@ -600,8 +601,33 @@ export default function MicrolearningModule({
         <div className="w-full">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
             
+            {/* Rewatch Mode Notification */}
+            {completionConfirmed && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="rounded-lg border p-4 bg-green-50 border-green-200"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-1 rounded-full bg-green-100 flex-shrink-0">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-800 flex items-center gap-2">
+                      <RotateCcw className="h-4 w-4" />
+                      Rewatch Mode Active - Full Access Granted
+                    </p>
+                    <p className="text-xs text-green-700 mt-1">
+                      🎉 Congratulations! You've completed your certification. You can now access and rewatch any video in any order.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
             {/* Application Status Notification */}
-            {applicationInfo && (
+            {applicationInfo && !completionConfirmed && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -753,29 +779,35 @@ export default function MicrolearningModule({
                   </button>
                   <button
                     onClick={() => { 
-                      // Only allow access to hygiene module if user has full access and completed all basics videos
+                      // Module access logic:
+                      // 1. If certification completed - unrestricted access to both modules
+                      // 2. If full access but not completed - must complete all basics videos first
+                      // 3. If limited access - no access to hygiene module
                       const allBasicsCompleted = foodSafetyBasicsVideos.every(video => 
                         userProgress.find(p => p.videoId === video.id)?.completed || false
                       );
-                      if (accessLevel === 'full' && allBasicsCompleted) {
+                      
+                      if (completionConfirmed || (accessLevel === 'full' && allBasicsCompleted)) {
                         setCurrentModule('hygiene'); 
                         setCurrentVideoIndex(0); 
                       }
                     }}
-                    disabled={accessLevel === 'limited' || !foodSafetyBasicsVideos.every(video => 
+                    disabled={accessLevel === 'limited' || (!completionConfirmed && !foodSafetyBasicsVideos.every(video => 
                       userProgress.find(p => p.videoId === video.id)?.completed || false
-                    )}
+                    ))}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       currentModule === 'hygiene' 
                         ? 'bg-primary text-white' 
-                        : (accessLevel === 'limited' || !foodSafetyBasicsVideos.every(video => 
+                        : (accessLevel === 'limited' || (!completionConfirmed && !foodSafetyBasicsVideos.every(video => 
                             userProgress.find(p => p.videoId === video.id)?.completed || false
-                          ))
+                          )))
                         ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                     title={
-                      accessLevel === 'limited' 
+                      completionConfirmed
+                        ? 'Access granted - Rewatch any module freely'
+                        : accessLevel === 'limited' 
                         ? 'Complete your application to access this module'
                         : !foodSafetyBasicsVideos.every(video => 
                             userProgress.find(p => p.videoId === video.id)?.completed || false
@@ -864,7 +896,7 @@ export default function MicrolearningModule({
                           onProgress={(progress, watchedPercentage) => handleVideoProgress(currentVideo.id, progress, watchedPercentage)}
                           onComplete={() => handleVideoComplete(currentVideo.id)}
                           isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
-                          isRewatching={(getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100}
+                          isRewatching={completionConfirmed || ((getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100)}
                           requireFullWatch={false}
                         />
                       ) : (
@@ -907,8 +939,23 @@ export default function MicrolearningModule({
                             // Check completion status explicitly - this should be true if video was ever completed
                             const currentCompleted = currentProgress?.completed || false;
                             
-                            // For full access users, they can proceed only if current video is completed
-                            const nextCanAccess = accessLevel === 'full' && currentCompleted;
+                            // Navigation logic:
+                            // 1. If certification completed - unrestricted navigation
+                            // 2. If full access but not completed - can proceed only if current video is completed
+                            // 3. If limited access - no navigation beyond first video
+                            let nextCanAccess = false;
+                            
+                            if (completionConfirmed) {
+                              // Unrestricted navigation for completed users
+                              nextCanAccess = true;
+                            } else if (accessLevel === 'full') {
+                              // Sequential navigation - current video must be completed
+                              nextCanAccess = currentCompleted;
+                            } else {
+                              // Limited access - no navigation
+                              nextCanAccess = false;
+                            }
+                            
                             const isNextLocked = !isLastModule && (!nextCanAccess || isLimitedAccess);
 
                             return (
@@ -1016,9 +1063,24 @@ export default function MicrolearningModule({
                         console.log(`Current video ${video.id} progress:`, progress);
                       }
                       
-                      // For approved users, check if previous video in current module is completed (sequential learning)
-                      const previousCompleted = index === 0 || userProgress.find(p => p.videoId === currentModuleVideos[index - 1].id)?.completed || false;
-                      const canAccess = accessLevel === 'full' ? (index === 0 || previousCompleted) : index === 0;
+                      // Access control logic:
+                      // 1. If user has completed certification - unlimited access to all videos for rewatching
+                      // 2. If user has full access but not completed - sequential learning (complete previous videos first)
+                      // 3. If user has limited access - only first video
+                      let canAccess = false;
+                      
+                      if (completionConfirmed) {
+                        // Full certification completed - unrestricted access to all videos for rewatching
+                        canAccess = true;
+                      } else if (accessLevel === 'full') {
+                        // Sequential learning for users with full access but not yet completed
+                        const previousCompleted = index === 0 || userProgress.find(p => p.videoId === currentModuleVideos[index - 1].id)?.completed || false;
+                        canAccess = index === 0 || previousCompleted;
+                      } else {
+                        // Limited access - only first video
+                        canAccess = index === 0;
+                      }
+                      
                       const isAccessLocked = !canAccess;
                       
                       return (
@@ -1258,13 +1320,31 @@ export default function MicrolearningModule({
                           className="w-full border-green-300 text-green-700 hover:bg-green-100"
                           onClick={async () => {
                             try {
-                              const response = await fetch(`/api/microlearning/certificate/${userId || user?.id}`);
+                              const currentUserId = userId || user?.id;
+                              
+                              // Include authentication headers matching other working endpoints
+                              const headers: Record<string, string> = {};
+                              if (currentUserId) {
+                                headers['X-User-ID'] = currentUserId.toString();
+                              }
+
+                              const response = await fetch(`/api/microlearning/certificate/${currentUserId}`, {
+                                method: 'GET',
+                                headers,
+                                credentials: 'include'
+                              });
+                              
                               if (response.ok) {
                                 const data = await response.json();
                                 alert(`Certificate generated! Your completion has been recorded for ${new Date(data.completionDate).toLocaleDateString()}`);
+                              } else {
+                                const errorData = await response.json();
+                                console.error('Certificate error:', errorData);
+                                alert(`Error: ${errorData.message || 'Failed to generate certificate'}`);
                               }
                             } catch (error) {
                               console.error('Error downloading certificate:', error);
+                              alert('Error downloading certificate. Please try again.');
                             }
                           }}
                         >

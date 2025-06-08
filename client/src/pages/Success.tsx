@@ -1,11 +1,11 @@
-import { useLocation } from "wouter";
+import ProgressIndicator from "@/components/application/ProgressIndicator";
+import Footer from "@/components/layout/Footer";
+import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
-import ProgressIndicator from "@/components/application/ProgressIndicator";
+import { CheckCircle } from "lucide-react";
+import { useLocation } from "wouter";
 
 export default function Success() {
   const [, navigate] = useLocation();
@@ -54,7 +54,7 @@ export default function Success() {
                       onClick={() => navigate("/dashboard")}
                       className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-6 md:px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow w-full sm:w-auto"
                     >
-                      View My Applications
+                      Go to My Dashboard
                     </Button>
                   )}
                 </div>

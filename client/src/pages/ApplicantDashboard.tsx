@@ -206,7 +206,7 @@ export default function ApplicantDashboard() {
     gcTime: 10000, // Keep in cache for only 10 seconds
   });
 
-  // Monitor application status changes and show notifications
+  // Monitor application status changes and microlearning completion
   useEffect(() => {
     if (applications && prevApplicationsRef.current) {
       const prevApps = prevApplicationsRef.current;
@@ -279,6 +279,57 @@ export default function ApplicantDashboard() {
     // Update the ref for next comparison
     prevApplicationsRef.current = applications || null;
   }, [applications]);
+
+  // Monitor microlearning completion and show celebration
+  useEffect(() => {
+    if (microlearningCompletion?.confirmed && !isLoadingCompletion) {
+      // Check if this is a new completion (not from initial load)
+      const isNewCompletion = !localStorage.getItem(`completion-celebrated-${user?.id}`);
+      
+      if (isNewCompletion) {
+        setTimeout(() => {
+          toast({
+            title: "🎉 Congratulations! Training Completed!",
+            description: "You have successfully completed the Local Cooks Food Safety Training. Your certificate is now available for download!",
+            duration: 8000,
+          });
+        }, 1000);
+        
+        // Mark as celebrated so we don't show it again
+        localStorage.setItem(`completion-celebrated-${user?.id}`, "true");
+      }
+    }
+  }, [microlearningCompletion, isLoadingCompletion, user?.id]);
+
+  // Query microlearning completion status
+  const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
+    queryKey: ["microlearning-completion", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      try {
+        const response = await apiRequest(`/api/microlearning/completion/${user.id}`, {
+          method: "GET",
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            // No completion found - user hasn't completed training
+            return null;
+          }
+          throw new Error("Failed to fetch completion status");
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.error("Error fetching microlearning completion:", error);
+        return null;
+      }
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: true,
+  });
 
   // Enhanced force refresh function for applicant dashboard
   const forceApplicantRefresh = async () => {
@@ -370,10 +421,10 @@ export default function ApplicantDashboard() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center">
-                <span className="font-logo text-primary mr-2">My</span> Applications
+                <span className="font-logo text-primary mr-2">My</span> Dashboard
               </h1>
               <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2 max-w-lg">
-                Track, manage and update your Local Cooks applications. We're excited to have you join our community of talented chefs!
+                Track your applications, manage documents, view training progress, and access certificates. We're excited to have you join our community of talented chefs!
               </p>
             </div>
             <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-0">
@@ -410,58 +461,154 @@ export default function ApplicantDashboard() {
           </div>
         </div>
 
-        {/* Food Safety Training Promotion */}
+        {/* Food Safety Training Section */}
         <motion.div
-          className="mb-6 md:mb-8 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-4 md:p-6"
+          className={`mb-6 md:mb-8 ${
+            microlearningCompletion?.confirmed
+              ? "bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200"
+              : "bg-gradient-to-r from-green-50 to-blue-50 border border-green-200"
+          } rounded-xl p-4 md:p-6`}
           variants={itemVariants}
           initial="hidden"
           animate="visible"
         >
           <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-            <div className="bg-green-100 p-3 rounded-full">
-              <GraduationCap className="h-6 w-6 text-green-600" />
+            <div className={`${
+              microlearningCompletion?.confirmed
+                ? "bg-emerald-100"
+                : "bg-green-100"
+            } p-3 rounded-full`}>
+              {microlearningCompletion?.confirmed ? (
+                <Trophy className="h-6 w-6 text-emerald-600" />
+              ) : (
+                <GraduationCap className="h-6 w-6 text-green-600" />
+              )}
             </div>
             <div className="flex-1">
-              <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-                Food Safety Training
-                <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
-                  Skillpass.nl Prep
-                </Badge>
-              </h2>
-              <p className="text-sm md:text-base text-gray-600 mb-4">
-                Prepare for your skillpass.nl food safety certification with our comprehensive 10-module training program designed specifically for Newfoundland chefs. 
-                Start with the first module immediately - unlock all 10 modules once your application is approved!
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button
-                  asChild
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Link href="/microlearning">
-                    <GraduationCap className="mr-2 h-4 w-4" />
-                    Start Training
-                  </Link>
-                </Button>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-4 text-xs text-gray-600">
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3 text-green-600" />
-                      1st Module Free
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3 text-blue-600" />
-                      Full Access: Approved Apps
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3 text-green-600" />
-                      Skillpass.nl Certification Prep
-                    </span>
+              {microlearningCompletion?.confirmed ? (
+                // Completed Training Display
+                <>
+                  <h2 className="text-lg md:text-xl font-bold text-emerald-800 mb-2 flex items-center gap-2">
+                    🎉 Food Safety Training Completed!
+                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1">
+                      <Award className="h-3 w-3" />
+                      Certified
+                    </Badge>
+                  </h2>
+                  <p className="text-sm md:text-base text-emerald-700 mb-4 flex items-center gap-2">
+                    <Star className="h-4 w-4 text-emerald-600" />
+                    Congratulations! You have successfully completed our comprehensive Local Cooks Food Safety Training program and earned your certificate.
+                  </p>
+                  <div className="bg-emerald-100 border border-emerald-200 rounded-lg p-3 mb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold text-emerald-800 text-sm">Certificate Available</h3>
+                        <p className="text-xs text-emerald-700">
+                          Completed on {microlearningCompletion.completedAt ? new Date(microlearningCompletion.completedAt).toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          }) : "Recently"}
+                        </p>
+                      </div>
+                      <Button
+                        asChild
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <a
+                          href={`/api/microlearning/certificate/${user?.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download Certificate
+                        </a>
+                      </Button>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    <span className="font-medium">Interactive Progress System:</span> See exactly what steps you need to unlock full training access
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    >
+                      <Link href="/microlearning">
+                        <GraduationCap className="mr-2 h-4 w-4" />
+                        Review Training Materials
+                      </Link>
+                    </Button>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-4 text-xs text-emerald-600">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          All 22 Videos Completed
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          Certificate Generated
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Award className="h-3 w-3" />
+                          Skillpass.nl Prep Complete
+                        </span>
+                      </div>
+                      <div className="text-xs text-emerald-600">
+                        <span className="font-medium">🏆 Achievement Unlocked:</span> You can now rewatch any training module at any time
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </>
+              ) : (
+                // Training Not Completed Display
+                <>
+                  <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
+                    Food Safety Training
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+                      Skillpass.nl Prep
+                    </Badge>
+                    {isLoadingCompletion && (
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    )}
+                  </h2>
+                  <p className="text-sm md:text-base text-gray-600 mb-4">
+                    Prepare for your skillpass.nl food safety certification with our comprehensive 22-video training program designed specifically for Newfoundland chefs. 
+                    Start with the first module immediately - unlock all modules once your application is approved!
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      asChild
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <Link href="/microlearning">
+                        <GraduationCap className="mr-2 h-4 w-4" />
+                        Start Training
+                      </Link>
+                    </Button>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-4 text-xs text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3 text-green-600" />
+                          1st Module Free
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3 text-blue-600" />
+                          Full Access: Approved Apps
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3 text-green-600" />
+                          Skillpass.nl Certification Prep
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        <span className="font-medium">Interactive Progress System:</span> See exactly what steps you need to unlock full training access
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </motion.div>

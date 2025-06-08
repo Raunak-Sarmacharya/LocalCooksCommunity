@@ -2774,8 +2774,9 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
     const completionStatus = await getMicrolearningCompletion(userId);
     const applicationStatus = await getApplicationStatus(userId);
 
-    // Determine access level and provide detailed application info
-    const accessLevel = applicationStatus.hasApproved ? 'full' : 'limited';
+    // Admins have unrestricted access regardless of application status
+    const isAdmin = sessionUser?.role === 'admin';
+    const accessLevel = isAdmin || applicationStatus.hasApproved ? 'full' : 'limited';
     
     res.json({
       success: true,
@@ -2784,6 +2785,7 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
       completedAt: completionStatus?.completedAt,
       hasApprovedApplication: applicationStatus.hasApproved,
       accessLevel: accessLevel,
+      isAdmin: isAdmin,
       applicationInfo: {
         hasActive: applicationStatus.hasActive,
         hasPending: applicationStatus.hasPending,
@@ -2844,8 +2846,10 @@ app.post("/api/microlearning/progress", async (req, res) => {
     // Check if user has approved application for videos beyond the first one
     const applicationStatus = await getApplicationStatus(userId);
     const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
+    const isAdmin = sessionUser?.role === 'admin';
     
-    if (!applicationStatus.hasApproved && sessionUser?.role !== 'admin' && videoId !== firstVideoId) {
+    // Admins have unrestricted access to all videos
+    if (!applicationStatus.hasApproved && !isAdmin && videoId !== firstVideoId) {
       const message = applicationStatus.hasPending 
         ? 'Your application is under review. Full access will be granted once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
@@ -2910,7 +2914,10 @@ app.post("/api/microlearning/complete", async (req, res) => {
 
     // Check if user has approved application to complete full training
     const applicationStatus = await getApplicationStatus(userId);
-    if (!applicationStatus.hasApproved && sessionUser?.role !== 'admin') {
+    const isAdmin = sessionUser?.role === 'admin';
+    
+    // Admins can complete certification without application approval
+    if (!applicationStatus.hasApproved && !isAdmin) {
       const message = applicationStatus.hasPending 
         ? 'Your application is under review. Certification will be available once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
@@ -2981,13 +2988,79 @@ app.post("/api/microlearning/complete", async (req, res) => {
   }
 });
 
+// Get microlearning completion status
+app.get("/api/microlearning/completion/:userId", async (req, res) => {
+  try {
+    // Check if user is authenticated - Match pattern from other working endpoints
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    
+    // Debug logging for session issues (matching other endpoints)
+    console.log('Completion status request:', {
+      sessionId: req.session.id,
+      sessionUserId: req.session.userId,
+      headerUserId: req.headers['x-user-id'],
+      requestedUserId: req.params.userId,
+      cookiePresent: !!req.headers.cookie
+    });
+    
+    if (!sessionUserId) {
+      console.log('Authentication failed - no session userId or header userId');
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    // Store user ID in session if it's not there but provided via header (matching other endpoints)
+    if (!req.session.userId && req.headers['x-user-id']) {
+      console.log('Storing userId in session from header:', req.headers['x-user-id']);
+      req.session.userId = req.headers['x-user-id'];
+      await new Promise(resolve => req.session.save(resolve));
+    }
+
+    const userId = parseInt(req.params.userId);
+    
+    // Verify user can access this completion (either their own or admin)
+    const sessionUser = await getUser(sessionUserId);
+    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const completion = await getMicrolearningCompletion(userId);
+    
+    if (!completion) {
+      return res.status(404).json({ message: 'No completion found' });
+    }
+
+    res.json(completion);
+  } catch (error) {
+    console.error('Error getting microlearning completion status:', error);
+    res.status(500).json({ message: 'Failed to get completion status' });
+  }
+});
+
 // Generate and download certificate
 app.get("/api/microlearning/certificate/:userId", async (req, res) => {
   try {
-    // Check if user is authenticated
+    // Check if user is authenticated - Match pattern from other working endpoints
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    
+    // Debug logging for session issues (matching other endpoints)
+    console.log('Certificate request:', {
+      sessionId: req.session.id,
+      sessionUserId: req.session.userId,
+      headerUserId: req.headers['x-user-id'],
+      requestedUserId: req.params.userId,
+      cookiePresent: !!req.headers.cookie
+    });
+    
     if (!sessionUserId) {
+      console.log('Authentication failed - no session userId or header userId');
       return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    // Store user ID in session if it's not there but provided via header (matching other endpoints)
+    if (!req.session.userId && req.headers['x-user-id']) {
+      console.log('Storing userId in session from header:', req.headers['x-user-id']);
+      req.session.userId = req.headers['x-user-id'];
+      await new Promise(resolve => req.session.save(resolve));
     }
 
     const userId = parseInt(req.params.userId);
