@@ -29,63 +29,86 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          // Node modules
-          if (id.includes('node_modules')) {
-            // React ecosystem
-            if (id.includes('react') || id.includes('react-dom')) {
-              return 'vendor-react';
-            }
-            // Radix UI components
-            if (id.includes('@radix-ui')) {
-              return 'vendor-ui';
-            }
-            // Animation library
-            if (id.includes('framer-motion')) {
-              return 'vendor-motion';
-            }
-            // Form libraries
-            if (id.includes('react-hook-form') || id.includes('@hookform') || id.includes('zod')) {
-              return 'vendor-forms';
-            }
-            // Utility libraries
-            if (id.includes('clsx') || id.includes('tailwind-merge') || id.includes('date-fns') || id.includes('lucide-react')) {
-              return 'vendor-utils';
-            }
-            // Charts
-            if (id.includes('recharts')) {
-              return 'vendor-charts';
-            }
-            // Auth libraries
-            if (id.includes('passport') || id.includes('openid-client')) {
-              return 'vendor-auth';
-            }
-            // Database libraries
-            if (id.includes('drizzle-orm') || id.includes('@neondatabase')) {
-              return 'vendor-db';
-            }
-            // All other node_modules
-            return 'vendor-other';
-          }
+        manualChunks: {
+          // Core React (keep together to prevent context issues)
+          'react-vendor': ['react', 'react-dom'],
           
-          // Application code
-          if (id.includes('microlearning')) {
-            return 'microlearning';
-          }
-          if (id.includes('auth') && !id.includes('node_modules')) {
-            return 'auth';
-          }
-          if (id.includes('/ui/') && !id.includes('node_modules')) {
-            return 'ui-components';
-          }
+          // UI libraries (only installed packages)
+          'ui-vendor': [
+            '@radix-ui/react-accordion',
+            '@radix-ui/react-alert-dialog',
+            '@radix-ui/react-aspect-ratio',
+            '@radix-ui/react-avatar',
+            '@radix-ui/react-checkbox',
+            '@radix-ui/react-collapsible',
+            '@radix-ui/react-context-menu',
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-hover-card',
+            '@radix-ui/react-label',
+            '@radix-ui/react-menubar',
+            '@radix-ui/react-navigation-menu',
+            '@radix-ui/react-popover',
+            '@radix-ui/react-progress',
+            '@radix-ui/react-radio-group',
+            '@radix-ui/react-scroll-area',
+            '@radix-ui/react-select',
+            '@radix-ui/react-separator',
+            '@radix-ui/react-slider',
+            '@radix-ui/react-slot',
+            '@radix-ui/react-switch',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-toast',
+            '@radix-ui/react-toggle-group',
+            '@radix-ui/react-toggle',
+            '@radix-ui/react-tooltip',
+            'lucide-react',
+            'cmdk',
+            'vaul'
+          ],
+          
+          // Utility libraries
+          'utils-vendor': [
+            'clsx',
+            'tailwind-merge',
+            'class-variance-authority',
+            'date-fns',
+            'react-day-picker',
+            'react-hook-form',
+            '@hookform/resolvers',
+            'zod'
+          ],
+          
+          // Chart and animation libraries
+          'charts-vendor': [
+            'recharts',
+            'framer-motion'
+          ],
+          
+          // Data fetching
+          'query-vendor': [
+            '@tanstack/react-query'
+          ],
+          
+          // Routing
+          'router-vendor': [
+            'wouter'
+          ]
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
-    chunkSizeWarningLimit: 1000, // Increase warning limit to 1MB
+    chunkSizeWarningLimit: 1000,
     target: 'esnext',
-    sourcemap: false, // Disable source maps in production for smaller build
+    sourcemap: false,
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime'
+      ]
+    }
   },
 });
