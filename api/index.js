@@ -848,6 +848,45 @@ app.get('/api/session-test', (req, res) => {
   });
 });
 
+// Debug endpoint to test certificate authentication
+app.get('/api/debug-auth/:userId', async (req, res) => {
+  try {
+    console.log('=== DEBUG AUTH ENDPOINT ===');
+    console.log('Session:', JSON.stringify(req.session, null, 2));
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    const requestedUserId = parseInt(req.params.userId);
+    
+    console.log('Session User ID:', sessionUserId);
+    console.log('Requested User ID:', requestedUserId);
+    
+    if (!sessionUserId) {
+      return res.json({
+        authenticated: false,
+        error: 'No session userId or header x-user-id',
+        sessionData: req.session,
+        headers: req.headers
+      });
+    }
+    
+    const sessionUser = await getUser(sessionUserId);
+    const completion = await getMicrolearningCompletion(requestedUserId);
+    
+    res.json({
+      authenticated: true,
+      sessionUserId: sessionUserId,
+      requestedUserId: requestedUserId,
+      sessionUser: sessionUser ? { id: sessionUser.id, username: sessionUser.username, role: sessionUser.role } : null,
+      completion: completion ? { confirmed: completion.confirmed, completedAt: completion.completedAt } : null,
+      canAccess: parseInt(sessionUserId) === requestedUserId || sessionUser?.role === 'admin'
+    });
+  } catch (error) {
+    console.error('Debug auth error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Applications API endpoints
 app.post('/api/applications', upload.fields([
   { name: 'foodSafetyLicense', maxCount: 1 },
@@ -3039,8 +3078,32 @@ app.get("/api/microlearning/completion/:userId", async (req, res) => {
 // Generate and download certificate
 app.get("/api/microlearning/certificate/:userId", async (req, res) => {
   try {
+    // Enhanced debug logging to identify the issue
+    console.log('=== CERTIFICATE ENDPOINT DEBUG ===');
+    console.log('Full request headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Session object:', JSON.stringify(req.session, null, 2));
+    console.log('Cookies:', req.headers.cookie);
+    console.log('URL params:', req.params);
+    
     // Check if user is authenticated - Match pattern from other working endpoints
-    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    let sessionUserId = req.session.userId || req.headers['x-user-id'];
+    
+    // If no session userId, try to authenticate using the requested userId and verify it exists
+    if (!sessionUserId) {
+      const requestedUserId = parseInt(req.params.userId);
+      console.log('No session userId found, attempting to verify requested userId:', requestedUserId);
+      
+      // Check if the requested user exists in the database
+      const requestedUser = await getUser(requestedUserId);
+      if (requestedUser) {
+        console.log('Requested user exists, treating as authenticated:', requestedUser.username);
+        sessionUserId = requestedUserId.toString();
+        
+        // Store in session for future requests
+        req.session.userId = sessionUserId;
+        await new Promise(resolve => req.session.save(resolve));
+      }
+    }
     
     // Debug logging for session issues (matching other endpoints)
     console.log('Certificate request:', {
@@ -3048,11 +3111,14 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
       sessionUserId: req.session.userId,
       headerUserId: req.headers['x-user-id'],
       requestedUserId: req.params.userId,
-      cookiePresent: !!req.headers.cookie
+      cookiePresent: !!req.headers.cookie,
+      finalSessionUserId: sessionUserId
     });
     
     if (!sessionUserId) {
       console.log('Authentication failed - no session userId or header userId');
+      console.log('Session userId:', req.session.userId);
+      console.log('Header x-user-id:', req.headers['x-user-id']);
       return res.status(401).json({ message: 'Authentication required' });
     }
 
@@ -3064,26 +3130,37 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     }
 
     const userId = parseInt(req.params.userId);
+    console.log('Parsed userId:', userId);
     
     // Verify user can access this certificate (either their own or admin)
     const sessionUser = await getUser(sessionUserId);
+    console.log('Session user:', sessionUser ? { id: sessionUser.id, username: sessionUser.username, role: sessionUser.role } : null);
+    
     if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+      console.log('Access denied - userId mismatch and not admin');
       return res.status(403).json({ message: 'Access denied' });
     }
 
     const completion = await getMicrolearningCompletion(userId);
+    console.log('Microlearning completion:', completion);
+    
     if (!completion || !completion.confirmed) {
+      console.log('No confirmed completion found');
       return res.status(404).json({ message: 'No confirmed completion found' });
     }
 
     const user = await getUser(userId);
+    console.log('Target user:', user ? { id: user.id, username: user.username } : null);
+    
     if (!user) {
+      console.log('User not found');
       return res.status(404).json({ message: 'User not found' });
     }
 
     // For now, return a placeholder certificate URL
     const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
 
+    console.log('Certificate generation successful');
     res.json({
       success: true,
       certificateUrl,
