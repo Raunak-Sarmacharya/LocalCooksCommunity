@@ -1,6 +1,6 @@
-import { applications, users, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
+import { applications, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
 import connectPg from "connect-pg-simple";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { db, pool } from "./db";
@@ -535,31 +535,98 @@ export class DatabaseStorage implements IStorage {
     return updatedUser || undefined;
   }
 
-  // Microlearning methods - For now, these are placeholder implementations
-  // In a real implementation, you would create proper database tables for these
+  // Microlearning methods
   async getMicrolearningProgress(userId: number): Promise<any[]> {
-    // Placeholder implementation - would query a video_progress table
-    return [];
+    const progressRecords = await db.select().from(videoProgress).where(eq(videoProgress.userId, userId));
+    return progressRecords.map(record => ({
+      videoId: record.videoId,
+      progress: parseFloat(record.progress.toString()),
+      completed: record.completed,
+      completedAt: record.completedAt,
+      watchedPercentage: parseFloat(record.watchedPercentage.toString()),
+      isRewatching: record.isRewatching,
+    }));
   }
 
   async getMicrolearningCompletion(userId: number): Promise<any | undefined> {
-    // Placeholder implementation - would query a microlearning_completions table
-    return undefined;
+    const [completion] = await db.select().from(microlearningCompletions).where(eq(microlearningCompletions.userId, userId));
+    return completion || undefined;
   }
 
   async updateVideoProgress(progressData: any): Promise<void> {
-    // Placeholder implementation - would insert/update in video_progress table
-    console.log('Video progress update (placeholder):', progressData);
+    const { userId, videoId, progress, completed, completedAt, watchedPercentage, isRewatching } = progressData;
+    
+    // Check if record exists
+    const existingProgress = await db.select()
+      .from(videoProgress)
+      .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)))
+      .limit(1);
+
+    const updateData = {
+      progress: progress?.toString() || "0",
+      completed: completed || false,
+      completedAt: completed && completedAt ? new Date(completedAt) : null,
+      updatedAt: new Date(),
+      watchedPercentage: watchedPercentage?.toString() || "0",
+      isRewatching: isRewatching || false,
+    };
+
+    if (existingProgress.length > 0) {
+      // Update existing record
+      await db.update(videoProgress)
+        .set(updateData)
+        .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)));
+    } else {
+      // Insert new record
+      await db.insert(videoProgress)
+        .values({
+          userId,
+          videoId,
+          ...updateData,
+        });
+    }
   }
 
   async createMicrolearningCompletion(completionData: any): Promise<any> {
-    // Placeholder implementation - would insert into microlearning_completions table
-    console.log('Microlearning completion (placeholder):', completionData);
-    return completionData;
+    const { userId, confirmed, certificateGenerated, videoProgress: videoProgressData } = completionData;
+    
+    // Check if completion already exists
+    const existingCompletion = await db.select()
+      .from(microlearningCompletions)
+      .where(eq(microlearningCompletions.userId, userId))
+      .limit(1);
+
+    const completionRecord = {
+      userId,
+      confirmed: confirmed || false,
+      certificateGenerated: certificateGenerated || false,
+      videoProgress: videoProgressData || [],
+      updatedAt: new Date(),
+    };
+
+    if (existingCompletion.length > 0) {
+      // Update existing completion
+      const [updated] = await db.update(microlearningCompletions)
+        .set(completionRecord)
+        .where(eq(microlearningCompletions.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      // Insert new completion
+      const [inserted] = await db.insert(microlearningCompletions)
+        .values({
+          ...completionRecord,
+          completedAt: new Date(),
+          createdAt: new Date(),
+        })
+        .returning();
+      return inserted;
+    }
   }
 }
 
 // Switch from in-memory to database storage
-export const storage = process.env.NODE_ENV === "development"
-  ? new MemStorage()
-  : new DatabaseStorage();
+// Use database storage if DATABASE_URL is set, otherwise use memory storage
+export const storage = process.env.DATABASE_URL
+  ? new DatabaseStorage()
+  : new MemStorage();

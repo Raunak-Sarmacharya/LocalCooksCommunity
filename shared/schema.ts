@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -121,3 +121,60 @@ export type User = typeof users.$inferSelect;
 
 // Remove old document verification schemas and types since they're now part of applications
 // The document verification functionality is now integrated into the applications table
+
+// Define microlearning_completions table
+export const microlearningCompletions = pgTable("microlearning_completions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  confirmed: boolean("confirmed").default(false).notNull(),
+  certificateGenerated: boolean("certificate_generated").default(false).notNull(),
+  videoProgress: jsonb("video_progress"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Define video_progress table
+export const videoProgress = pgTable("video_progress", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  videoId: text("video_id").notNull(),
+  progress: numeric("progress", { precision: 5, scale: 2 }).default("0").notNull(),
+  completed: boolean("completed").default(false).notNull(),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  watchedPercentage: numeric("watched_percentage", { precision: 5, scale: 2 }).default("0").notNull(),
+  isRewatching: boolean("is_rewatching").default(false).notNull(),
+});
+
+// Define schemas for microlearning operations
+export const insertMicrolearningCompletionSchema = createInsertSchema(microlearningCompletions, {
+  userId: z.number(),
+  confirmed: z.boolean().optional(),
+  certificateGenerated: z.boolean().optional(),
+  videoProgress: z.any().optional(),
+}).omit({ 
+  id: true, 
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertVideoProgressSchema = createInsertSchema(videoProgress, {
+  userId: z.number(),
+  videoId: z.string().min(1, "Video ID is required"),
+  progress: z.number().min(0).max(100).optional(),
+  completed: z.boolean().optional(),
+  watchedPercentage: z.number().min(0).max(100).optional(),
+  isRewatching: z.boolean().optional(),
+}).omit({ 
+  id: true, 
+  completedAt: true,
+  updatedAt: true,
+});
+
+// Define types
+export type MicrolearningCompletion = typeof microlearningCompletions.$inferSelect;
+export type InsertMicrolearningCompletion = z.infer<typeof insertMicrolearningCompletionSchema>;
+export type VideoProgress = typeof videoProgress.$inferSelect;
+export type InsertVideoProgress = z.infer<typeof insertVideoProgressSchema>;

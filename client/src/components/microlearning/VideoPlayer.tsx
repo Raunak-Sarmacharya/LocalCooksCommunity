@@ -128,11 +128,8 @@ export default function VideoPlayer({
         
         onProgress?.(progressPercent, actualWatchPercentage);
 
-        // Mark as complete only if user has actually watched required percentage
-        if (requireFullWatch && actualWatchPercentage >= 90 && !videoCompleted) {
-          setVideoCompleted(true);
-          onComplete?.();
-        } else if (!requireFullWatch && progressPercent >= 95 && !videoCompleted) {
+        // Mark as complete when video reaches the end or near end
+        if (progressPercent >= 95 && !videoCompleted) {
           setVideoCompleted(true);
           onComplete?.();
         }
@@ -153,9 +150,8 @@ export default function VideoPlayer({
 
     const handleEnded = () => {
       setIsPlaying(false);
-      // Only mark as complete if user has actually watched enough
-      const actualWatchPercentage = calculateWatchPercentage();
-      if (actualWatchPercentage >= 90 && !videoCompleted) {
+      // Mark as complete when video ends
+      if (!videoCompleted) {
         setVideoCompleted(true);
         onComplete?.();
       }
@@ -347,54 +343,37 @@ export default function VideoPlayer({
           </div>
         )}
         
-        {/* Streamable Video Info Overlay */}
-        {isStreamableUrl && !videoCompleted && !isLoading && !hasError && (
-          <div className="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-2 rounded-lg">
-            <p className="text-sm">Interactive video player - controls embedded within video</p>
-          </div>
-        )}
+
       </div>
 
       {/* Video Controls */}
       <div className="bg-gray-900 text-white p-3 sm:p-4">
-        {/* Title and Status */}
-        <div className="flex items-start gap-2 mb-3">
-          <h3 className="font-medium text-sm leading-tight flex-1 break-words">{title}</h3>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {isCompleted && isRewatching && (
-              <div className="flex items-center text-blue-400">
-                <RotateCcw className="h-3 w-3 mr-1 flex-shrink-0" />
-                <span className="text-xs whitespace-nowrap">Rewatching</span>
-              </div>
-            )}
-            {isCompleted && !isRewatching && (
-              <div className="flex items-center text-green-400">
-                <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
-                <span className="text-xs whitespace-nowrap">Complete</span>
-              </div>
-            )}
+        {/* Title and Status - Only for standard videos */}
+        {!isStreamableUrl && (
+          <div className="flex items-start gap-2 mb-3">
+            <h3 className="font-medium text-sm leading-tight flex-1 break-words">{title}</h3>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {isCompleted && isRewatching && (
+                <div className="flex items-center text-blue-400">
+                  <RotateCcw className="h-3 w-3 mr-1 flex-shrink-0" />
+                  <span className="text-xs whitespace-nowrap">Rewatching</span>
+                </div>
+              )}
+              {isCompleted && !isRewatching && (
+                <div className="flex items-center text-green-400">
+                  <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
+                  <span className="text-xs whitespace-nowrap">Complete</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {isStreamableUrl ? (
-          /* Streamable Video - Simplified Controls */
-          <div className="text-center">
-            <p className="text-sm text-gray-400 mb-2">Interactive Food Safety Training Video</p>
-            <p className="text-xs text-gray-500 mb-3">Watch the video above and click 'Mark Complete' when finished</p>
-            {!videoCompleted && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setVideoCompleted(true);
-                  onComplete?.();
-                }}
-                className="text-white border-white hover:bg-white hover:text-black"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Mark Complete
-              </Button>
-            )}
+          /* Streamable Video - Minimal Interface */
+          <div>
+            <h3 className="font-medium text-sm leading-tight break-words">{title}</h3>
+            <p className="text-xs text-gray-400 mt-1">Interactive training video with embedded controls</p>
           </div>
         ) : (
           /* Standard Video - Full Controls */
@@ -417,9 +396,7 @@ export default function VideoPlayer({
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400 mt-2">
                 <span className="whitespace-nowrap">{formatTime(currentTime)}</span>
-                {requireFullWatch && (
-                  <span className="text-center flex-shrink-0">{Math.round(actualWatchPercentage)}% watched</span>
-                )}
+                <span className="text-center flex-shrink-0">{Math.round(progress)}% progress</span>
                 <span className="whitespace-nowrap">{formatTime(videoDuration)}</span>
               </div>
             </div>
@@ -456,10 +433,7 @@ export default function VideoPlayer({
               </div>
 
               <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
-                {requireFullWatch ? 
-                  `${Math.round(actualWatchPercentage)}% required` : 
-                  `${Math.round(progress)}% progress`
-                }
+                {Math.round(progress)}% progress
               </div>
             </div>
           </>
