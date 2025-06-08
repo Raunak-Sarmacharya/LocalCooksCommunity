@@ -394,6 +394,7 @@ export default function MicrolearningModule({
             startedAt: existing?.startedAt || (progress > 0 ? new Date() : undefined)
           };
           
+          console.log(`Progress updated for ${videoId}:`, updatedProgress);
           return [...filtered, updatedProgress];
         });
       } else {
@@ -431,12 +432,28 @@ export default function MicrolearningModule({
     // Show success message
     const video = videos.find(v => v.id === videoId);
     if (video) {
-      // You could add a toast notification here if you have a toast system
       console.log(`Module completed: ${video.title}`);
     }
     
-    // Show completion message but don't auto-advance
-    // Users can manually navigate to next video when ready
+    // Auto-advance to next video after a short delay
+    setTimeout(() => {
+      const nextIndex = currentVideoIndex + 1;
+      const isLastModule = nextIndex >= currentModuleVideos.length;
+      
+      if (!isLastModule && accessLevel === 'full') {
+        setCurrentVideoIndex(nextIndex);
+      } else if (isLastModule && currentModule === 'basics') {
+        // Check if all basics videos are completed to unlock hygiene module
+        const allBasicsCompleted = foodSafetyBasicsVideos.every(basicVideo => 
+          userProgress.find(p => p.videoId === basicVideo.id)?.completed || basicVideo.id === videoId
+        );
+        
+        if (allBasicsCompleted) {
+          setCurrentModule('hygiene');
+          setCurrentVideoIndex(0);
+        }
+      }
+    }, 2000); // 2 second delay to show completion message
   };
 
   const confirmCompletion = async () => {
@@ -476,7 +493,7 @@ export default function MicrolearningModule({
 
   const videoProgressData = videos.map(video => {
     const progress = getVideoProgress(video.id);
-    return {
+    const progressData = {
       id: video.id,
       title: video.title,
       duration: video.duration,
@@ -487,6 +504,8 @@ export default function MicrolearningModule({
       certification: video.certification,
       source: video.source
     };
+    
+    return progressData;
   });
 
   if (isLoading) {
@@ -718,22 +737,52 @@ export default function MicrolearningModule({
                 <h3 className="text-lg font-semibold text-gray-900">Select Training Module</h3>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { setCurrentModule('basics'); setCurrentVideoIndex(0); }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      currentModule === 'basics' 
-                        ? 'bg-primary text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    onClick={() => { 
+                      // Always allow switching to basics module
+                      setCurrentModule('basics'); 
+                      setCurrentVideoIndex(0); 
+                    }}
+                    disabled={false}
+                                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        currentModule === 'basics' 
+                          ? 'bg-primary text-white' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
                   >
                     Food Safety Basics (14)
                   </button>
                   <button
-                    onClick={() => { setCurrentModule('hygiene'); setCurrentVideoIndex(0); }}
+                    onClick={() => { 
+                      // Only allow access to hygiene module if user has full access and completed all basics videos
+                      const allBasicsCompleted = foodSafetyBasicsVideos.every(video => 
+                        userProgress.find(p => p.videoId === video.id)?.completed || false
+                      );
+                      if (accessLevel === 'full' && allBasicsCompleted) {
+                        setCurrentModule('hygiene'); 
+                        setCurrentVideoIndex(0); 
+                      }
+                    }}
+                    disabled={accessLevel === 'limited' || !foodSafetyBasicsVideos.every(video => 
+                      userProgress.find(p => p.videoId === video.id)?.completed || false
+                    )}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       currentModule === 'hygiene' 
                         ? 'bg-primary text-white' 
+                        : (accessLevel === 'limited' || !foodSafetyBasicsVideos.every(video => 
+                            userProgress.find(p => p.videoId === video.id)?.completed || false
+                          ))
+                        ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
+                    title={
+                      accessLevel === 'limited' 
+                        ? 'Complete your application to access this module'
+                        : !foodSafetyBasicsVideos.every(video => 
+                            userProgress.find(p => p.videoId === video.id)?.completed || false
+                          )
+                        ? 'Complete all Food Safety Basics videos first'
+                        : ''
+                    }
                   >
                     Safety & Hygiene How-To's (8)
                   </button>
@@ -858,8 +907,8 @@ export default function MicrolearningModule({
                             // Check completion status explicitly - this should be true if video was ever completed
                             const currentCompleted = currentProgress?.completed || false;
                             
-                            // For full access users, they can proceed if current video is completed OR if they're on first video
-                            const nextCanAccess = accessLevel === 'full' ? (currentVideoIndex === 0 || currentCompleted) : false;
+                            // For full access users, they can proceed only if current video is completed
+                            const nextCanAccess = accessLevel === 'full' && currentCompleted;
                             const isNextLocked = !isLastModule && (!nextCanAccess || isLimitedAccess);
 
                             return (
@@ -961,6 +1010,11 @@ export default function MicrolearningModule({
                       const isCurrent = currentVideoIndex === index;
                       const watchedPercentage = progress?.watchedPercentage || 0;
                       const isCompleted = progress?.completed || false;
+                      
+                      // Debug logging for current video
+                      if (isCurrent && progress) {
+                        console.log(`Current video ${video.id} progress:`, progress);
+                      }
                       
                       // For approved users, check if previous video in current module is completed (sequential learning)
                       const previousCompleted = index === 0 || userProgress.find(p => p.videoId === currentModuleVideos[index - 1].id)?.completed || false;
