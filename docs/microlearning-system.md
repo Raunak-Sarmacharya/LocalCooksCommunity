@@ -1,18 +1,18 @@
-# Microlearning System - Newfoundland Food Safety Certification Training
+# Microlearning System - Newfoundland Food Safety Training Preparation for Skillpass.nl
 
 ## Overview
 
-The Local Cooks microlearning system provides comprehensive food safety training designed specifically for new chefs in Newfoundland and Labrador. The system features official content from Health Canada, the Canadian Food Inspection Agency (CFIA), and the NL Department of Health & Community Services to prepare users for Food Handler Certification and licensing requirements.
+The Local Cooks microlearning system provides comprehensive food safety training preparation designed specifically for new chefs in Newfoundland and Labrador. The system features training content based on Health Canada, the Canadian Food Inspection Agency (CFIA), and the NL Department of Health & Community Services standards to prepare users for Food Handler Certification at skillpass.nl and licensing requirements.
 
 ### Key Features
 
-- **Government Approved Content**: Official training materials from federal and provincial sources
-- **Newfoundland-Specific Training**: Tailored to NL Food Premises Regulations and certification requirements
+- **Skillpass.nl Preparation Content**: Training materials based on official federal and provincial sources
+- **Newfoundland-Specific Training**: Tailored to NL Food Premises Regulations and skillpass.nl certification requirements
 - **Comprehensive Curriculum**: 10 training modules covering all essential food safety topics
 - **Authenticated Access**: Requires LocalCooks registration and login
 - **Self-Paced Learning**: Complete training at your own pace with automatic progress saving
 - **Mobile Responsive**: Works on desktop, tablet, and mobile devices
-- **Certificate Generation**: Official completion certificates for NL Food Handler Certification preparation
+- **Completion Certificates**: Training completion certificates for skillpass.nl preparation
 - **Progress Tracking**: Real-time progress monitoring across all 10 modules
 
 ## Training Modules
@@ -23,54 +23,54 @@ The system includes ten comprehensive modules covering federal and Newfoundland-
 
 #### 1. Safe Food Handling Basics (8:45)
 - **Source**: Health Canada
-- **Certification**: Government of Canada Approved
+- **Certification**: Skillpass.nl Preparation Guide
 - **Content**: Fundamentals of safe food handling, temperature control, and personal hygiene
 
 #### 2. Preventing Food Contamination (6:30)
 - **Source**: Canadian Food Inspection Agency (CFIA)
-- **Certification**: Federal Government Standards
+- **Certification**: Food Safety Training Guide
 - **Content**: CFIA guidelines for preventing cross-contamination and maintaining food safety standards
 
 #### 3. Allergen Awareness and Management (5:15)
 - **Source**: Canadian Food Inspection Agency (CFIA)
-- **Certification**: Safe Food for Canadians Regulations
+- **Certification**: Food Safety Training Guide
 - **Content**: Safe Food for Canadians Regulations compliance for allergen identification and control
 
 ### Newfoundland-Specific Modules
 
 #### 4. Temperature Danger Zone & Time Control (7:20)
 - **Source**: Health Canada + NL Department of Health
-- **Certification**: NL Food Premises Regulations
+- **Certification**: Food Safety Training Guide
 - **Content**: Master the 2-hour rule and temperature danger zone (4°C-60°C) for compliance
 
 #### 5. Personal Hygiene for Food Handlers (6:45)
 - **Source**: NL Department of Health & Community Services
-- **Certification**: NL Food Handler Certification Required
+- **Certification**: Food Handler Training Guide
 - **Content**: Hand washing, uniform standards, illness reporting, and hygiene protocols
 
 #### 6. Cleaning and Sanitizing Procedures (8:15)
 - **Source**: CFIA + NL Public Health
-- **Certification**: Food Premises Act Compliance
+- **Certification**: Food Safety Training Guide
 - **Content**: Proper cleaning vs sanitizing, chemical safety, and equipment maintenance
 
 #### 7. HACCP Principles for Small Kitchens (9:30)
 - **Source**: Canadian Food Inspection Agency (CFIA)
-- **Certification**: HACCP Foundation Knowledge
+- **Certification**: HACCP Training Guide
 - **Content**: Introduction to Hazard Analysis Critical Control Points for new chefs
 
 #### 8. Proper Food Storage & Receiving (7:50)
 - **Source**: Health Canada
-- **Certification**: Safe Food for Canadians Regulations
+- **Certification**: Food Safety Training Guide
 - **Content**: Cold storage, dry storage, FIFO rotation, and delivery inspection procedures
 
 #### 9. Safe Cooking Temperatures & Methods (6:20)
 - **Source**: Health Canada
-- **Certification**: Government of Canada Approved
+- **Certification**: Skillpass.nl Preparation Guide
 - **Content**: Internal temperatures for meat, poultry, seafood, and proper cooking techniques
 
 #### 10. Health Inspection Readiness (8:00)
 - **Source**: NL Department of Health & Community Services
-- **Certification**: Food Premises Regulations
+- **Certification**: Food Safety Training Guide
 - **Content**: What inspectors look for, documentation requirements, and preparation procedures
 
 ## Newfoundland Food Safety Requirements
@@ -93,7 +93,7 @@ The system includes ten comprehensive modules covering federal and Newfoundland-
 - **Pass health inspections** with confidence
 - **Avoid significant fines** and business closures
 - **Meet licensing requirements** for new food businesses
-- **Prepare for certification exams** with comprehensive knowledge
+- **Prepare for skillpass.nl certification exams** with comprehensive knowledge
 - **Build professional competency** as a new chef
 
 ## Architecture
@@ -104,7 +104,7 @@ The system includes ten comprehensive modules covering federal and Newfoundland-
 - Main orchestrator component managing 10 training modules
 - Enhanced navigation for comprehensive curriculum
 - Responsive tab layout for mobile and desktop
-- Newfoundland-specific branding and certification messaging
+- Newfoundland-specific branding and skillpass.nl preparation messaging
 - Progress tracking across all modules
 
 #### VideoPlayer.tsx
@@ -177,10 +177,10 @@ const requiredVideos = [
 
 1. **Register with LocalCooks** - Create an account on the platform
 2. **Login to Your Account** - Authenticate to access protected features
-3. **Navigate to `/microlearning`** - Access the comprehensive training module
+3. **Navigate to `/microlearning`** - Access the comprehensive training preparation module
 4. **Complete All 10 Modules** - Watch each video to 90% completion
-5. **Confirm Completion** - Complete the training and receive certificate
-6. **Use for Certification** - Present completion for NL Food Handler Certification
+5. **Confirm Completion** - Complete the training preparation and receive certificate
+6. **Use for Skillpass.nl** - Present completion for skillpass.nl Food Handler Certification
 
 ### Training Path Recommendation
 
@@ -204,25 +204,25 @@ const requiredVideos = [
 - Documentation and compliance requirements
 - Professional certification readiness
 
-## Compliance and Certification
+## Compliance and Skillpass.nl Preparation
 
-### Government Approval
+### Training Content Sources
 - Content sourced from Health Canada, CFIA, and NL Department of Health
 - Aligned with Safe Food for Canadians Regulations
 - Meets NL Food Premises Regulations requirements
-- Covers all areas tested in Food Handler Certification exams
+- Covers all areas tested in skillpass.nl Food Handler Certification exams
 
 ### Certificate Features
-- Comprehensive completion certification for 10 modules
+- Comprehensive completion certificate for 10 modules
 - Federal and provincial compliance verification
-- NL Food Handler Certification preparation certificate
+- Skillpass.nl Food Handler Certification preparation certificate
 - Professional development documentation
 
-### Exam Preparation Benefits
-- **Complete coverage** of all certification exam topics
+### Skillpass.nl Exam Preparation Benefits
+- **Complete coverage** of all skillpass.nl certification exam topics
 - **Practical knowledge** for real-world kitchen applications
 - **Regulatory compliance** understanding for inspections
-- **Professional confidence** for new chef licensing
+- **Professional confidence** for new chef licensing at skillpass.nl
 
 ## Future Enhancements
 
@@ -240,4 +240,4 @@ const requiredVideos = [
 - **Continuing Education** - Advanced modules for career progression
 - **Professional Networks** - Connection with NL chef associations
 
-This comprehensive training system ensures new chefs in Newfoundland are fully prepared for Food Handler Certification, licensing requirements, and professional success in the food service industry. 
+This comprehensive training preparation system ensures new chefs in Newfoundland are fully prepared for skillpass.nl Food Handler Certification, licensing requirements, and professional success in the food service industry. 

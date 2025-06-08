@@ -45,7 +45,7 @@ interface MicrolearningModuleProps {
   className?: string;
 }
 
-const videos = [
+const videos: VideoData[] = [
   {
     id: 'canada-food-handling',
     title: 'Safe Food Handling Basics',
@@ -53,7 +53,7 @@ const videos = [
     duration: '8:45',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     source: 'Health Canada',
-    certification: 'Government of Canada Approved'
+    certification: 'Skillpass.nl Preparation Guide'
   },
   {
     id: 'canada-contamination-prevention',
@@ -62,7 +62,7 @@ const videos = [
     duration: '6:30',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
-    certification: 'Federal Government Standards'
+    certification: 'Food Safety Training Guide'
   },
   {
     id: 'canada-allergen-awareness',
@@ -71,7 +71,7 @@ const videos = [
     duration: '5:15',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
-    certification: 'Safe Food for Canadians Regulations'
+    certification: 'Food Safety Training Guide'
   },
   {
     id: 'nl-temperature-control',
@@ -80,7 +80,7 @@ const videos = [
     duration: '7:20',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
     source: 'Health Canada + NL Department of Health',
-    certification: 'NL Food Premises Regulations'
+    certification: 'Food Safety Training Guide'
   },
   {
     id: 'nl-personal-hygiene',
@@ -89,7 +89,7 @@ const videos = [
     duration: '6:45',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
     source: 'NL Department of Health & Community Services',
-    certification: 'NL Food Handler Certification Required'
+    certification: 'Food Handler Training Guide'
   },
   {
     id: 'nl-cleaning-sanitizing',
@@ -98,7 +98,7 @@ const videos = [
     duration: '8:15',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
     source: 'CFIA + NL Public Health',
-    certification: 'Food Premises Act Compliance'
+    certification: 'Food Safety Training Guide'
   },
   {
     id: 'nl-haccp-principles',
@@ -107,7 +107,7 @@ const videos = [
     duration: '9:30',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
-    certification: 'HACCP Foundation Knowledge'
+    certification: 'HACCP Training Guide'
   },
   {
     id: 'nl-food-storage',
@@ -116,7 +116,7 @@ const videos = [
     duration: '7:50',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     source: 'Health Canada',
-    certification: 'Safe Food for Canadians Regulations'
+    certification: 'Food Safety Training Guide'
   },
   {
     id: 'nl-cooking-temperatures',
@@ -125,7 +125,7 @@ const videos = [
     duration: '6:20',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4',
     source: 'Health Canada',
-    certification: 'Government of Canada Approved'
+    certification: 'Skillpass.nl Preparation Guide'
   },
   {
     id: 'nl-inspection-preparation',
@@ -134,7 +134,7 @@ const videos = [
     duration: '8:00',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
     source: 'NL Department of Health & Community Services',
-    certification: 'Food Premises Regulations'
+    certification: 'Food Safety Training Guide'
   }
 ];
 
@@ -331,7 +331,7 @@ export default function MicrolearningModule({
             >
               <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full text-primary font-medium text-sm">
                 <Shield className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Government Certified Training</span>
+                <span className="truncate">Skillpass.nl Exam Preparation</span>
                 {completionConfirmed && (
                   <>
                     <span className="w-1 h-1 bg-primary/60 rounded-full flex-shrink-0"></span>
@@ -344,19 +344,19 @@ export default function MicrolearningModule({
               </div>
               
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight px-4">
-                Food Safety Certification
-                <span className="block text-primary">Training Program</span>
+                Food Safety Training
+                <span className="block text-primary">Preparation Program</span>
               </h1>
               
               <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
-                Master food safety fundamentals with our comprehensive 10-module program designed 
-                specifically for Newfoundland & Labrador chefs and food handlers.
+                Prepare for your skillpass.nl food safety certification with our comprehensive 10-module program designed 
+                to help Newfoundland & Labrador chefs pass their official exam with confidence. Re-watch any module anytime as a refresher.
               </p>
 
               <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2 px-4">
                 <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs sm:text-sm">
                   <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">Health Canada Approved</span>
+                  <span className="whitespace-nowrap">Skillpass.nl Preparation</span>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs sm:text-sm">
                   <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></span>
@@ -364,7 +364,7 @@ export default function MicrolearningModule({
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs sm:text-sm">
                   <span className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">HACCP Certified</span>
+                  <span className="whitespace-nowrap">Refresher Training</span>
                 </div>
               </div>
             </motion.div>
@@ -470,7 +470,7 @@ export default function MicrolearningModule({
                         Free Preview Available
                       </h3>
                       <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                        Experience Module 1 for free. Complete your application to unlock all 10 comprehensive modules and earn your certification.
+                        Experience Module 1 for free. Complete your application to unlock all 10 comprehensive modules for skillpass.nl preparation. Re-watch any completed module anytime as a refresher.
                       </p>
                     </div>
                     

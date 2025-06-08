@@ -424,12 +424,12 @@ export default function ApplicantDashboard() {
             <div className="flex-1">
               <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
                 Food Safety Training
-                <Badge className="bg-green-100 text-green-800 border-green-300 text-xs">
-                  Government Approved
+                <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+                  Skillpass.nl Prep
                 </Badge>
               </h2>
               <p className="text-sm md:text-base text-gray-600 mb-4">
-                Get certified with our comprehensive 10-module training program designed specifically for Newfoundland chefs. 
+                Prepare for your skillpass.nl food safety certification with our comprehensive 10-module training program designed specifically for Newfoundland chefs. 
                 Start with the first module immediately - unlock all 10 modules once your application is approved!
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -454,7 +454,7 @@ export default function ApplicantDashboard() {
                     </span>
                     <span className="flex items-center gap-1">
                       <CheckCircle className="h-3 w-3 text-green-600" />
-                      NL Certification Prep
+                      Skillpass.nl Certification Prep
                     </span>
                   </div>
                   <div className="text-xs text-gray-500">

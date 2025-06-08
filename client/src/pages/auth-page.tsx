@@ -1,24 +1,23 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoginForm from "@/components/auth/LoginForm";
 import RegisterForm from "@/components/auth/RegisterForm";
-import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import Logo from "@/components/ui/logo";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useLocation } from "wouter";
 
 function GooglePasswordDialog({
   open,
@@ -254,7 +253,7 @@ export default function AuthPage() {
         <div className="max-w-md mx-auto text-white">
           <h2 className="text-3xl font-bold mb-4">Join Local Cooks</h2>
           <p className="text-white/90 mb-6">
-            Apply to become a certified cook and start your culinary journey with
+            Apply to become a verified cook and start your culinary journey with
             us. Create an account to track your application status and get
             updates on your approval process.
           </p>

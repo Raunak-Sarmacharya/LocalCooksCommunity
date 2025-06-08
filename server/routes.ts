@@ -1,17 +1,17 @@
-import type { Express, Request, Response } from "express";
-import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema } from "@shared/schema";
-import { fromZodError } from "zod-validation-error";
-import { setupAuth } from "./auth";
-import passport from "passport";
-import { sendEmail, generateStatusChangeEmail } from "./email";
-import { hashPassword, comparePasswords } from "./passwordUtils";
-import { upload, deleteFile, getFileUrl, uploadToBlob } from "./fileUpload";
-import { submitToAlwaysFoodSafe, isAlwaysFoodSafeConfigured } from "./alwaysFoodSafeAPI";
-import path from "path";
-import fs from "fs";
 import type { User } from "@shared/schema";
+import { insertApplicationSchema, updateApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
+import type { Express, Request, Response } from "express";
+import fs from "fs";
+import { createServer, type Server } from "http";
+import passport from "passport";
+import path from "path";
+import { fromZodError } from "zod-validation-error";
+import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
+import { setupAuth } from "./auth";
+import { generateStatusChangeEmail, sendEmail } from "./email";
+import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
+import { comparePasswords, hashPassword } from "./passwordUtils";
+import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -1266,7 +1266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         certificateUrl,
         completionDate: completion.completedAt,
-        message: 'Certificate for Government of Canada approved food safety training'
+        message: 'Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl'
       });
     } catch (error) {
       console.error('Error generating certificate:', error);

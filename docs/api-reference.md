@@ -578,7 +578,7 @@ Authorization: Required (User)
 }
 ```
 
-### Complete Training Certification
+### Complete Training Preparation
 ```http
 POST /api/microlearning/complete
 Content-Type: application/json
@@ -603,7 +603,7 @@ Authorization: Required (User)
 **Response** (200 OK):
 ```json
 {
-  "message": "Training completed successfully",
+  "message": "Training preparation completed successfully",
   "certificateGenerated": true,
   "completionDate": "2024-01-15T10:30:00Z",
   "totalVideos": 10,
@@ -611,7 +611,7 @@ Authorization: Required (User)
 }
 ```
 
-### Generate Training Certificate
+### Generate Training Completion Certificate
 ```http
 GET /api/microlearning/certificate/:userId
 Authorization: Required (User or Admin)
@@ -658,7 +658,7 @@ Authorization: Required (User)
 
 **Access Levels:**
 - **Limited**: First training module only (for unapproved users)
-- **Full**: All 10 training modules + certification (for approved users)
+- **Full**: All 10 training modules + preparation completion (for approved users)
 
 **Training Modules:**
 1. `canada-food-handling` - Safe Food Handling Basics

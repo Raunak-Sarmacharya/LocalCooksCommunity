@@ -1,14 +1,17 @@
 # 🏠 Local Cooks Community Platform
 
-A comprehensive platform for local cooks in Newfoundland and Labrador to apply for certification, complete food safety training, and participate in a trusted culinary community.
+A comprehensive platform for local cooks in Newfoundland and Labrador to apply for verification, complete food safety training preparation, and participate in a trusted culinary community.
 
 ## ✨ Features
 
-🎓 **Training & Certification System**
-- 10-module Newfoundland food safety training
-- Government-approved content (Health Canada + CFIA)
-- Progress tracking and digital certificates
+🎓 **Training & Preparation System**
+- 10-module Newfoundland food safety training preparation
+- Skillpass.nl exam preparation content (Health Canada + CFIA based)
+- Progress tracking and completion certificates
 - Mobile-responsive video learning
+- Re-watch any module anytime as a refresher
+
+> **Note**: This platform provides training preparation and guidance. For official food safety certification, visit [skillpass.nl](https://skillpass.nl) to take your certification exam.
 
 📝 **Application Management**
 - Streamlined application process with document upload
@@ -84,7 +87,7 @@ npm run sync-status
 
 ## 🎓 Training System Overview
 
-The platform includes a comprehensive microlearning training system:
+The platform includes a comprehensive microlearning training preparation system:
 
 ### **Training Modules (10 Total)**
 1. **Safe Food Handling Basics** (Health Canada)
@@ -100,7 +103,7 @@ The platform includes a comprehensive microlearning training system:
 
 ### **Access Levels**
 - **Limited Access**: First module only (before application approval)
-- **Full Access**: All 10 modules + certification (after approval)
+- **Full Access**: All 10 modules + preparation completion (after approval)
 - **Progress Tracking**: Automatic save and resume functionality
 - **Mobile Friendly**: Complete training on any device
 
