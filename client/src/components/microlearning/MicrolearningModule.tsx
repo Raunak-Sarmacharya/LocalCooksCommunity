@@ -2,18 +2,18 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
 import {
-    AlertCircle,
-    ArrowRight,
-    Award,
-    CheckCircle,
-    ChevronLeft,
-    ChevronRight,
-    Clock,
-    Download,
-    FileText,
-    Lock,
-    Shield,
-    TrendingUp
+  AlertCircle,
+  ArrowRight,
+  Award,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Download,
+  FileText,
+  Lock,
+  Shield,
+  TrendingUp
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
@@ -52,7 +52,7 @@ const videos: VideoData[] = [
     id: 'canada-food-handling',
     title: 'Safe Food Handling Basics',
     description: 'Health Canada approved fundamentals of safe food handling, temperature control, and personal hygiene',
-    duration: '8:45',
+    duration: '1:30',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     source: 'Health Canada',
     certification: 'Skillpass.nl Preparation Guide'
@@ -61,7 +61,7 @@ const videos: VideoData[] = [
     id: 'canada-contamination-prevention',
     title: 'Preventing Food Contamination',
     description: 'CFIA guidelines for preventing cross-contamination and maintaining food safety standards',
-    duration: '6:30',
+    duration: '2:00',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
     certification: 'Food Safety Training Guide'
@@ -70,7 +70,7 @@ const videos: VideoData[] = [
     id: 'canada-allergen-awareness',
     title: 'Allergen Awareness and Management',
     description: 'Safe Food for Canadians Regulations compliance for allergen identification and control',
-    duration: '5:15',
+    duration: '1:45',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
     certification: 'Food Safety Training Guide'
@@ -79,7 +79,7 @@ const videos: VideoData[] = [
     id: 'nl-temperature-control',
     title: 'Temperature Danger Zone & Time Control',
     description: 'Master the 2-hour rule and temperature danger zone (4°C-60°C) for Newfoundland food premises compliance',
-    duration: '7:20',
+    duration: '1:20',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
     source: 'Health Canada + NL Department of Health',
     certification: 'Food Safety Training Guide'
@@ -88,7 +88,7 @@ const videos: VideoData[] = [
     id: 'nl-personal-hygiene',
     title: 'Personal Hygiene for Food Handlers',
     description: 'Hand washing, uniform standards, illness reporting, and hygiene protocols for Newfoundland certification',
-    duration: '6:45',
+    duration: '1:50',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
     source: 'NL Department of Health & Community Services',
     certification: 'Food Handler Training Guide'
@@ -97,7 +97,7 @@ const videos: VideoData[] = [
     id: 'nl-cleaning-sanitizing',
     title: 'Cleaning and Sanitizing Procedures',
     description: 'Proper cleaning vs sanitizing, chemical safety, and equipment maintenance for food premises',
-    duration: '8:15',
+    duration: '2:00',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
     source: 'CFIA + NL Public Health',
     certification: 'Food Safety Training Guide'
@@ -106,7 +106,7 @@ const videos: VideoData[] = [
     id: 'nl-haccp-principles',
     title: 'HACCP Principles for Small Kitchens',
     description: 'Introduction to Hazard Analysis Critical Control Points for new chefs and kitchen managers',
-    duration: '9:30',
+    duration: '1:40',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
     source: 'Canadian Food Inspection Agency (CFIA)',
     certification: 'HACCP Training Guide'
@@ -115,7 +115,7 @@ const videos: VideoData[] = [
     id: 'nl-food-storage',
     title: 'Proper Food Storage & Receiving',
     description: 'Cold storage, dry storage, FIFO rotation, and delivery inspection procedures',
-    duration: '7:50',
+    duration: '1:35',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Training Guide'
@@ -124,7 +124,7 @@ const videos: VideoData[] = [
     id: 'nl-cooking-temperatures',
     title: 'Safe Cooking Temperatures & Methods',
     description: 'Internal temperatures for meat, poultry, seafood, and proper cooking techniques',
-    duration: '6:20',
+    duration: '1:25',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4',
     source: 'Health Canada',
     certification: 'Skillpass.nl Preparation Guide'
@@ -133,7 +133,7 @@ const videos: VideoData[] = [
     id: 'nl-inspection-preparation',
     title: 'Health Inspection Readiness',
     description: 'What inspectors look for, documentation requirements, and how to prepare for NL health inspections',
-    duration: '8:00',
+    duration: '1:55',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
     source: 'NL Department of Health & Community Services',
     certification: 'Food Safety Training Guide'
@@ -248,15 +248,22 @@ export default function MicrolearningModule({
 
   const handleVideoStart = (videoId: string) => {
     const existingProgress = userProgress.find(p => p.videoId === videoId);
-    if (!existingProgress || existingProgress.progress === 0) {
+    if (!existingProgress || (existingProgress.progress === 0 && !existingProgress.completed)) {
+      // Only initialize progress if video hasn't been started AND isn't completed
       updateVideoProgress(videoId, 0, false, 0);
     }
+    // If video is completed, user is re-watching - no need to update progress
   };
 
   const handleVideoProgress = (videoId: string, progress: number, watchedPercentage: number) => {
     // Only update if there's meaningful progress
     if (progress > 0) {
-      updateVideoProgress(videoId, progress, false, watchedPercentage);
+      const existingProgress = userProgress.find(p => p.videoId === videoId);
+      const wasAlreadyCompleted = existingProgress?.completed || false;
+      
+      // If video was already completed, don't send completed: false which might reset it
+      // Just update the progress without changing completion status
+      updateVideoProgress(videoId, progress, wasAlreadyCompleted, watchedPercentage);
     }
   };
 
@@ -585,7 +592,7 @@ export default function MicrolearningModule({
                           onProgress={(progress, watchedPercentage) => handleVideoProgress(currentVideo.id, progress, watchedPercentage)}
                           onComplete={() => handleVideoComplete(currentVideo.id)}
                           isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
-                          isRewatching={getVideoProgress(currentVideo.id)?.completed && getVideoProgress(currentVideo.id)?.progress < 100}
+                          isRewatching={(getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100}
                           requireFullWatch={true}
                         />
                       ) : (
@@ -622,8 +629,12 @@ export default function MicrolearningModule({
                             const isLastModule = nextIndex >= videos.length;
                             const isLimitedAccess = accessLevel === 'limited' && currentVideoIndex === 0;
                             const currentProgress = getVideoProgress(currentVideo.id);
+                            
+                            // Check completion status explicitly - this should be true if video was ever completed
                             const currentCompleted = currentProgress?.completed || false;
-                            const nextCanAccess = accessLevel === 'full' ? (nextIndex === 0 || currentCompleted) : false;
+                            
+                            // For full access users, they can proceed if current video is completed OR if they're on first video
+                            const nextCanAccess = accessLevel === 'full' ? (currentVideoIndex === 0 || currentCompleted) : false;
                             const isNextLocked = !isLastModule && (!nextCanAccess || isLimitedAccess);
 
                             return (
