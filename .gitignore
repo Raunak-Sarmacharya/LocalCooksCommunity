@@ -297,6 +297,7 @@ establishment-certificates/
 admin-uploads/
 
 # Test files
+test-certificate.pdf
 test-files/
 sample-documents/
 test-uploads/

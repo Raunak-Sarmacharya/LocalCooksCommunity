@@ -21,6 +21,8 @@
     "update-microlearning-schema": "node scripts/update-microlearning-schema.js",
     "prebuild": "npm run fix-microlearning",
     "predev": "npm run fix-microlearning",
+    "deploy": "npm run fix-microlearning && npm run build && vercel --prod",
+    "deploy-preview": "npm run fix-microlearning && npm run build && vercel",
     "sessions:stats": "node scripts/cleanup-sessions.js --dry-run",
     "sessions:cleanup": "node scripts/cleanup-sessions.js",
     "sessions:cleanup-old": "node scripts/cleanup-sessions.js --days 30",
@@ -31,7 +33,9 @@
     "db:add-feedback": "tsx scripts/add-feedback-field.ts",
     "test:db": "node scripts/test-db-connection.js",
     "test:oauth": "node scripts/test-oauth.js",
-    "test:all": "npm run test:db && npm run test:oauth"
+    "test:certificate": "node scripts/test-certificate-generation.js",
+    "test:certificate-db": "node scripts/test-certificate-db-update.js",
+    "test:all": "npm run test:db && npm run test:oauth && npm run test:certificate && npm run test:certificate-db"
   },
   "dependencies": {
     "@fontsource/lobster": "^5.2.5",
@@ -98,6 +102,7 @@
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
     "passport-oauth1": "^1.3.0",
+    "pdfkit": "^0.17.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
