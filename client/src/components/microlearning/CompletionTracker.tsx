@@ -9,8 +9,8 @@ interface VideoProgress {
   duration: string;
   completed: boolean;
   progress: number;
-  completedAt?: Date;
-  startedAt?: Date;
+  completedAt?: Date | string;
+  startedAt?: Date | string;
 }
 
 interface CompletionTrackerProps {
@@ -149,14 +149,14 @@ export default function CompletionTracker({
                   {/* Completion Info */}
                   {video.completed && video.completedAt && (
                     <p className="text-xs text-green-600 mt-1 break-words">
-                      Completed on {video.completedAt.toLocaleDateString()}
+                      Completed on {new Date(video.completedAt).toLocaleDateString()}
                     </p>
                   )}
 
                   {/* In Progress Info */}
                   {video.progress > 0 && !video.completed && video.startedAt && (
                     <p className="text-xs text-blue-600 mt-1 break-words">
-                      Started on {video.startedAt.toLocaleDateString()}
+                      Started on {new Date(video.startedAt).toLocaleDateString()}
                     </p>
                   )}
                 </div>
