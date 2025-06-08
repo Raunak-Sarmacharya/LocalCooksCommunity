@@ -48,228 +48,228 @@ interface MicrolearningModuleProps {
   className?: string;
 }
 
-// Module 1: Food Safety Basics (14 videos) - Using ACTUALLY SHORT 30-second videos
+// Module 1: Food Safety Basics (14 videos) - Actual titles and descriptions
 const foodSafetyBasicsVideos: VideoData[] = [
   {
-    id: 'basics-personal-hygiene',
-    title: 'Food Safety Basics Overview',
-    description: 'Comprehensive introduction to essential food safety principles and practices for professional kitchens',
-    duration: '0:30',
-    url: 'https://streamable.com/e/8wmj23?loop=0',
-    source: 'Health Canada',
-    certification: 'Food Safety Basics',
-    module: 'basics'
-  },
-  {
-    id: 'basics-temperature-danger',
-    title: 'Temperature Danger Zone',
-    description: 'Understanding 4°C-60°C danger zone and 2-hour rule',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
-    source: 'Health Canada',
-    certification: 'Food Safety Basics',
-    module: 'basics'
-  },
-  {
     id: 'basics-cross-contamination',
-    title: 'Preventing Cross-Contamination',
-    description: 'Basic principles to prevent food contamination',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'An Introduction',
+    description: 'Most of the food poisoning problems we see in our kitchens are caused by food. But it is easy to win the fight against food poisoning and other diseases and to serve food and drinks from the kitchen without food safety problems. Want to know how to win? Watch the videos in this course!',
+    duration: '',
+    url: 'https://streamable.com/e/2f5k73?loop=0',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
     id: 'basics-allergen-awareness',
-    title: 'Common Allergens',
-    description: 'Identifying and managing common food allergens',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'Basic Conditions of HACCP',
+    description: 'The practice of HACCP has its analysis and critical control points and gives you seven principles that helps you keeping your food safe. To make our work better, it is important that you follow all seven principles. Watch them in this video.',
+    duration: '',
+    url: 'https://streamable.com/e/5wweiz?loop=0',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
-    id: 'basics-food-storage',
-    title: 'Safe Food Storage',
-    description: 'Proper storage temperatures and methods',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
-    source: 'Health Canada',
-    certification: 'Food Safety Basics',
-    module: 'basics'
-  },
-  {
     id: 'basics-cooking-temps',
-    title: 'Safe Cooking Temperatures',
-    description: 'Minimum internal temperatures for safe cooking',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'Reducing Complexity',
+    description: 'Learn how to simplify the food processes in your kitchen.',
+    duration: '',
+    url: 'https://streamable.com/e/b1siq0?loop=0',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
-    id: 'basics-cooling-reheating',
-    title: 'Cooling and Reheating',
-    description: 'Safe cooling and reheating procedures',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    id: 'basics-temperature-danger',
+    title: 'Personal Hygiene',
+    description: 'It is very important that all employees follow the rules of personal hygiene. Learn how you can avoid bad bacteria coming into your kitchen.',
+    duration: '',
+    url: 'https://streamable.com/e/wqfjm5?loop=0',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
-    id: 'basics-thawing',
-    title: 'Safe Thawing Methods',
-    description: 'Proper techniques for thawing frozen foods',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    id: 'basics-personal-hygiene',
+    title: 'Deliveries',
+    description: 'Let\'s start thinking about delivery of goods to your kitchen. An important part of food safety is choosing a good supplier that is following all the safety standards.',
+    duration: '',
+    url: 'https://streamable.com/e/8wmj23?loop=0',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
-    id: 'basics-receiving',
-    title: 'Receiving Deliveries',
-    description: 'How to properly inspect and receive food deliveries',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
-    source: 'Health Canada',
-    certification: 'Food Safety Basics',
-    module: 'basics'
-  },
-  {
-    id: 'basics-fifo',
-    title: 'First In, First Out (FIFO)',
-    description: 'Inventory rotation and date labeling',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    id: 'basics-food-storage',
+    title: 'Storage',
+    description: 'Food safety also includes storage, because each product requires their own way of storaging. Find out more in this video.',
+    duration: '',
+    url: 'https://streamable.com/e/wr0jb8?loop=0',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
     id: 'basics-illness-reporting',
-    title: 'Illness Reporting',
-    description: 'When and how to report foodborne illness',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'Preparation',
+    description: 'It is time to wash your hands! Preparation time is important for food safety and so you must follow these steps really carefully.',
+    duration: '',
+    url: 'https://streamable.com/e/o3hwlj?loop=0',
     source: 'NL Health',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
+    id: 'basics-food-safety-plan',
+    title: 'Regeneration',
+    description: 'Sometimes you need to prepare food before the customer is ordering, so that they don\'t have to wait too long for their food. Learn here what steps we must take to keep this food safety.',
+    duration: '',
+    url: 'https://streamable.com/e/rv0ka9?loop=0',
+    source: 'CFIA',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
     id: 'basics-pest-control',
-    title: 'Pest Prevention',
-    description: 'Basic pest prevention in food areas',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'To Start',
+    description: 'The care we followed in the preparation process must continue, because they way the dish is served and presented also needs food safety practices. Are you ready to start?',
+    duration: '',
+    url: 'https://streamable.com/e/do2odt?loop=0',
     source: 'NL Health',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
     id: 'basics-chemical-safety',
-    title: 'Chemical Safety',
-    description: 'Safe storage and use of cleaning chemicals',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'After Service',
+    description: 'After the service is finished we still need to take care of food safety practices. Learn more about it in this video.',
+    duration: '',
+    url: 'https://streamable.com/e/shprtw?loop=0',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
   },
   {
-    id: 'basics-food-safety-plan',
-    title: 'Food Safety Plans',
-    description: 'Introduction to food safety planning',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
-    source: 'CFIA',
+    id: 'basics-fifo',
+    title: 'Waste Removal',
+    description: 'There is always a lot of waste we have after a service. This waste contains a lot of bacteria. Watch how you can best manage waste in this video.',
+    duration: '',
+    url: 'https://streamable.com/e/3zueet?loop=0',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-receiving',
+    title: 'Cleaning and Maintenance',
+    description: 'Following the steps in this video is very important and helps you to keep your kitchen clean. Learn more in this video.',
+    duration: '',
+    url: 'https://streamable.com/e/dxu2su?loop=0',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-cooling-reheating',
+    title: 'Weekly Log Sheets',
+    description: 'Every thing we see is very important and needs to be recorded. Make sure HACCP is in place and has been logged correctly.',
+    duration: '',
+    url: 'https://streamable.com/e/4axpdy?loop=0',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-thawing',
+    title: 'Wrap Up',
+    description: 'We are almost at the end, well done!',
+    duration: '',
+    url: 'https://streamable.com/e/d691km?loop=0',
+    source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
   }
 ];
 
-// Module 2: Safety and Hygiene How-To's (8 videos) - Using ACTUALLY SHORT 30-second videos
+// Module 2: Safety and Hygiene How-To's (8 videos) - Actual titles and descriptions
 const safetyHygieneVideos: VideoData[] = [
   {
     id: 'howto-handwashing',
-    title: 'Proper Handwashing Technique',
-    description: 'Step-by-step handwashing demonstration',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'How to Wash Your Hands',
+    description: 'In this video, we will take you through the steps to correctly and thoroughly wash your hands. Keep watching to learn more.',
+    duration: '',
+    url: 'https://streamable.com/e/4isx5j?loop=0',
     source: 'Health Canada',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-sanitizing',
-    title: 'Sanitizing Surfaces',
-    description: 'How to properly sanitize work surfaces',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'How to clean a food preparation station',
+    description: 'Discover the best ways to disinfect, degrease and more to boost health and safety in the kitchen workplace. Includes worksurfaces, sinks, appliances and unseen areas.',
+    duration: '',
+    url: 'https://streamable.com/e/qo69ox?loop=0',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-thermometer',
-    title: 'Using Food Thermometers',
-    description: 'Proper thermometer use and calibration',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'How to clean kitchen utensils',
+    description: 'They\'re the tools of a professional chef\'s trade so keeping them safe and ready for use is a vital part of commercial-kitchen cleaning. A little effort can make a huge difference.',
+    duration: '',
+    url: 'https://streamable.com/e/8rvz9d?loop=0',
     source: 'Health Canada',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-cleaning-schedule',
-    title: 'Creating Cleaning Schedules',
-    description: 'How to develop and maintain cleaning schedules',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'How to clean a stove',
+    description: 'This expert checklist will provide brilliant results and easier kitchen management. Get rid of the likes of chip fat and leftover bits of burnt food.',
+    duration: '',
+    url: 'https://streamable.com/e/vxqj7b?loop=0',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-equipment-cleaning',
-    title: 'Equipment Cleaning',
-    description: 'Step-by-step equipment cleaning procedures',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'How to clean a kitchen floor',
+    description: 'Try these straightforward cleaning tips. Discover the equipment you\'ll need, how to do the job safely and the right amount of time to scrub away dirt for.',
+    duration: '',
+    url: 'https://streamable.com/e/akb6pq?loop=0',
     source: 'CFIA',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-uniform-care',
-    title: 'Uniform and Apron Care',
-    description: 'Proper uniform hygiene and maintenance',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'How to clean a restaurant floor',
+    description: 'Help create a fresh, welcoming front of house with simple skills such as figure-of-eight mopping. A gleaming floor can reassure diners they\'re eating somewhere that really cares about hygiene.',
+    duration: '',
+    url: 'https://streamable.com/e/arbfdo?loop=0',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-wound-care',
-    title: 'Wound Care in Kitchen',
-    description: 'How to properly cover and protect cuts',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    title: 'How to clean tables and chairs',
+    description: 'Want to know the best techniques for cleaning up after customers and getting things ready for the next setting? Watch this short film.',
+    duration: '',
+    url: 'https://streamable.com/e/1gjyiq?loop=0',
     source: 'Health Canada',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
   },
   {
     id: 'howto-inspection-prep',
-    title: 'Inspection Preparation',
-    description: 'How to prepare for health inspections',
-    duration: '0:30',
-    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    title: 'How to clean a washroom',
+    description: 'Take responsibility for the cleanliness of even the smallest room in your restaurant. A guide to washing everything from sinks to baby-change tables thoroughly.',
+    duration: '',
+    url: 'https://streamable.com/e/r0l74p?loop=0',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -785,8 +785,12 @@ export default function MicrolearningModule({
                         <div className="min-w-0 flex-1">
                           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 leading-tight break-words">{currentVideo.title}</h2>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <span className="text-sm text-gray-600 whitespace-nowrap">{currentVideo.duration}</span>
-                            <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                            {!currentVideo.url.includes('streamable.com/e/') && (
+                              <>
+                                <span className="text-sm text-gray-600 whitespace-nowrap">{currentVideo.duration}</span>
+                                <span className="w-1 h-1 bg-gray-400 rounded-full flex-shrink-0"></span>
+                              </>
+                            )}
                             <span className="text-sm text-gray-600 break-all">{currentVideo.source}</span>
                           </div>
                         </div>
@@ -817,7 +821,7 @@ export default function MicrolearningModule({
                           onComplete={() => handleVideoComplete(currentVideo.id)}
                           isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
                           isRewatching={(getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100}
-                          requireFullWatch={true}
+                          requireFullWatch={false}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gray-100">

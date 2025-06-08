@@ -1119,8 +1119,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Ensure completion is only marked true if watchedPercentage is sufficient
-      const actualCompleted = completed && (watchedPercentage >= 90 || !watchedPercentage);
+      // Accept completion status as provided
+      const actualCompleted = completed;
 
       const progressData = {
         userId,

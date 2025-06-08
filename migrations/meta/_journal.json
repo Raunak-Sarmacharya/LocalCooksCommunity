@@ -15,6 +15,13 @@
       "when": 1748939517256,
       "tag": "0001_solid_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1748995200000,
+      "tag": "0004_add_microlearning_tables",
+      "breakpoints": true
     }
   ]
 }
