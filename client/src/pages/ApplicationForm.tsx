@@ -1,19 +1,19 @@
-import { useLocation } from "wouter";
-import { useEffect } from "react";
 import { ApplicationFormProvider, useApplicationForm } from "@/components/application/ApplicationFormContext";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
-import ProgressIndicator from "@/components/application/ProgressIndicator";
-import PersonalInfoForm from "@/components/application/PersonalInfoForm";
 import CertificationsForm from "@/components/application/CertificationsForm";
 import KitchenPreferenceForm from "@/components/application/KitchenPreferenceForm";
+import PersonalInfoForm from "@/components/application/PersonalInfoForm";
+import ProgressIndicator from "@/components/application/ProgressIndicator";
+import Footer from "@/components/layout/Footer";
+import Header from "@/components/layout/Header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
 import { Application } from "@shared/schema";
-import { Loader2, AlertCircle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle, Loader2, Shield } from "lucide-react";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -84,10 +84,13 @@ export default function ApplicationForm() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
 
-  // Redirect to auth page if user is not logged in
+  // Redirect to auth page if user is not logged in, or to admin dashboard if user is admin
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/auth?redirect=/apply");
+    } else if (!authLoading && user && user.role === "admin") {
+      // Admins should not be able to submit applications
+      navigate("/admin");
     }
   }, [user, authLoading, navigate]);
 
@@ -152,6 +155,37 @@ export default function ApplicationForm() {
 
   // Show loading state while checking authentication
   const isLoading = authLoading || (user && applicationsLoading);
+
+  // If user is admin, they shouldn't see this page
+  if (!authLoading && user && user.role === "admin") {
+    return (
+      <div className="min-h-screen flex flex-col bg-light-gray">
+        <Header />
+        <main className="flex-grow pt-28 pb-16">
+          <motion.div
+            className="container mx-auto px-4 max-w-2xl"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Alert className="mb-4">
+              <Shield className="h-4 w-4" />
+              <AlertTitle>Admin Access</AlertTitle>
+              <AlertDescription>
+                Administrators cannot submit applications. You are being redirected to the admin dashboard.
+              </AlertDescription>
+            </Alert>
+            <div className="flex justify-center">
+              <Button onClick={() => navigate("/admin")} className="mt-4">
+                Go to Admin Dashboard
+              </Button>
+            </div>
+          </motion.div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <ApplicationFormProvider>

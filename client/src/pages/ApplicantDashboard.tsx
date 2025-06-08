@@ -33,11 +33,15 @@ import {
     CheckCircle,
     ChefHat,
     Clock,
+    Download,
     FileText,
     GraduationCap,
     Info,
     Loader2,
     LogOut,
+    Shield,
+    Star,
+    Trophy,
     XCircle
 } from "lucide-react";
 import { useEffect, useRef } from "react";
@@ -87,12 +91,17 @@ export default function ApplicantDashboard() {
     localStorageUserId: localStorage.getItem('userId')
   });
 
-  // Fetch applicant's applications with user ID in header
+  // Fetch applicant's applications with user ID in header (skip for admins)
   const { data: applications, isLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
       if (!user?.id) {
         throw new Error("User not authenticated");
+      }
+      
+      // Admins don't have applications - return empty array
+      if (user.role === "admin") {
+        return [];
       }
 
       console.log('ApplicantDashboard: Fetching applications data...');
@@ -144,7 +153,7 @@ export default function ApplicantDashboard() {
       console.log('ApplicantDashboard: Normalized application data', normalizedData);
       return normalizedData;
     },
-    enabled: !!user,
+    enabled: !!user && user.role !== "admin", // Disable for admins
     // Intelligent auto-refresh logic for user applications
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) {
@@ -280,27 +289,6 @@ export default function ApplicantDashboard() {
     prevApplicationsRef.current = applications || null;
   }, [applications]);
 
-  // Monitor microlearning completion and show celebration
-  useEffect(() => {
-    if (microlearningCompletion?.confirmed && !isLoadingCompletion) {
-      // Check if this is a new completion (not from initial load)
-      const isNewCompletion = !localStorage.getItem(`completion-celebrated-${user?.id}`);
-      
-      if (isNewCompletion) {
-        setTimeout(() => {
-          toast({
-            title: "🎉 Congratulations! Training Completed!",
-            description: "You have successfully completed the Local Cooks Food Safety Training. Your certificate is now available for download!",
-            duration: 8000,
-          });
-        }, 1000);
-        
-        // Mark as celebrated so we don't show it again
-        localStorage.setItem(`completion-celebrated-${user?.id}`, "true");
-      }
-    }
-  }, [microlearningCompletion, isLoadingCompletion, user?.id]);
-
   // Query microlearning completion status
   const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
     queryKey: ["microlearning-completion", user?.id],
@@ -308,8 +296,12 @@ export default function ApplicantDashboard() {
       if (!user?.id) return null;
       
       try {
-        const response = await apiRequest(`/api/microlearning/completion/${user.id}`, {
+        const response = await fetch(`/api/microlearning/completion/${user.id}`, {
           method: "GET",
+          credentials: 'include',
+          headers: {
+            'X-User-ID': user.id.toString(),
+          },
         });
 
         if (!response.ok) {
@@ -330,6 +322,27 @@ export default function ApplicantDashboard() {
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
   });
+
+  // Monitor microlearning completion and show celebration
+  useEffect(() => {
+    if (microlearningCompletion?.confirmed && !isLoadingCompletion) {
+      // Check if this is a new completion (not from initial load)
+      const isNewCompletion = !localStorage.getItem(`completion-celebrated-${user?.id}`);
+      
+      if (isNewCompletion) {
+        setTimeout(() => {
+          toast({
+            title: "🎉 Congratulations! Training Completed!",
+            description: "You have successfully completed the Local Cooks Food Safety Training. Your certificate is now available for download!",
+            duration: 8000,
+          });
+        }, 1000);
+        
+        // Mark as celebrated so we don't show it again
+        localStorage.setItem(`completion-celebrated-${user?.id}`, "true");
+      }
+    }
+  }, [microlearningCompletion, isLoadingCompletion, user?.id]);
 
   // Enhanced force refresh function for applicant dashboard
   const forceApplicantRefresh = async () => {
@@ -421,24 +434,41 @@ export default function ApplicantDashboard() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center">
-                <span className="font-logo text-primary mr-2">My</span> Dashboard
+                <span className="font-logo text-primary mr-2">{user?.role === "admin" ? "Admin" : "My"}</span> Dashboard
               </h1>
               <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2 max-w-lg">
-                Track your applications, manage documents, view training progress, and access certificates. We're excited to have you join our community of talented chefs!
+                {user?.role === "admin" 
+                  ? "Access training materials, view your certificates, and manage the Local Cooks community platform."
+                  : "Track your applications, manage documents, view training progress, and access certificates. We're excited to have you join our community of talented chefs!"
+                }
               </p>
             </div>
             <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-0">
-              <Button
-                asChild
-                variant="default"
-                size="sm"
-                className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
-              >
-                <Link href="/">
-                  <ChefHat className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
-                  Explore Opportunities
-                </Link>
-              </Button>
+              {user?.role === "admin" ? (
+                <Button
+                  asChild
+                  variant="default"
+                  size="sm"
+                  className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
+                >
+                  <Link href="/admin">
+                    <Shield className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
+                    Admin Dashboard
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  asChild
+                  variant="default"
+                  size="sm"
+                  className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
+                >
+                  <Link href="/">
+                    <ChefHat className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
+                    Explore Opportunities
+                  </Link>
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -898,22 +928,47 @@ export default function ApplicantDashboard() {
             transition={{ duration: 0.5 }}
           >
             <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-              <FileText className="h-8 w-8 text-primary" />
+              {user?.role === "admin" ? (
+                <Shield className="h-8 w-8 text-primary" />
+              ) : (
+                <FileText className="h-8 w-8 text-primary" />
+              )}
             </div>
-            <h2 className="text-2xl font-semibold mb-2">No applications yet</h2>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">
-              You haven't submitted any applications to Local Cooks yet. Start your application now to join our growing community of talented chefs!
-            </p>
-            <Button
-              asChild
-              size="lg"
-              className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
-            >
-              <Link href="/apply">
-                <ChefHat className="mr-2 h-5 w-5" />
-                Start Your Application
-              </Link>
-            </Button>
+            {user?.role === "admin" ? (
+              <>
+                <h2 className="text-2xl font-semibold mb-2">Administrator Dashboard</h2>
+                <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                  Welcome! As an administrator, you have access to manage applications, review documents, and oversee the Local Cooks community.
+                </p>
+                <Button
+                  asChild
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
+                >
+                  <Link href="/admin">
+                    <Shield className="mr-2 h-5 w-5" />
+                    Go to Admin Dashboard
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-semibold mb-2">No applications yet</h2>
+                <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                  You haven't submitted any applications to Local Cooks yet. Start your application now to join our growing community of talented chefs!
+                </p>
+                <Button
+                  asChild
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
+                >
+                  <Link href="/apply">
+                    <ChefHat className="mr-2 h-5 w-5" />
+                    Start Your Application
+                  </Link>
+                </Button>
+              </>
+            )}
 
             <div className="mt-10 pt-6 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 text-left">
               <div className="flex items-start gap-3">

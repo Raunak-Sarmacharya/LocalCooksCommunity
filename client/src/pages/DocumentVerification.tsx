@@ -1,20 +1,18 @@
-import { useAuth } from "@/hooks/use-auth";
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import DocumentUpload from "@/components/document-verification/DocumentUpload";
-import { 
-  FileText, 
-  CheckCircle, 
-  Info, 
-  ChefHat,
-  ArrowLeft,
-  Shield
-} from "lucide-react";
-import { motion } from "framer-motion";
+import Footer from "@/components/layout/Footer";
+import Header from "@/components/layout/Header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
+import { motion } from "framer-motion";
+import {
+    ArrowLeft,
+    CheckCircle,
+    FileText,
+    Info,
+    Shield
+} from "lucide-react";
+import { Link } from "wouter";
 
 export default function DocumentVerification() {
   const { user } = useAuth();
@@ -34,6 +32,38 @@ export default function DocumentVerification() {
               <Link href="/login">Login</Link>
             </Button>
           </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Admins should not access document verification as applicants
+  if (user.role === "admin") {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow container max-w-4xl mx-auto px-4 pt-28 pb-8">
+          <motion.div
+            className="text-center py-12"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Shield className="h-16 w-16 mx-auto text-primary/50 mb-4" />
+            <h1 className="text-2xl font-bold mb-4">Admin Access</h1>
+            <p className="text-gray-600 mb-6">
+              Administrators cannot upload documents as applicants. Use the admin dashboard to manage document verification for users.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button asChild>
+                <Link href="/admin">Go to Admin Dashboard</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/">Return to Home</Link>
+              </Button>
+            </div>
+          </motion.div>
         </main>
         <Footer />
       </div>
