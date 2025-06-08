@@ -2640,21 +2640,11 @@ async function updateVideoProgress(progressData) {
 
       const existingProgress = existingResult.rows[0];
       
-      // If video was already completed and we're not explicitly marking as completed,
-      // preserve the completion status
-      let finalCompleted = progressData.completed;
-      let finalCompletedAt = progressData.completedAt;
-      let isRewatching = false;
-      
-      if (existingProgress && existingProgress.completed && !progressData.completed) {
-        // User is re-watching a completed video - preserve completion status
-        finalCompleted = true;
-        finalCompletedAt = existingProgress.completed_at;
-        isRewatching = true;
-      } else if (existingProgress && existingProgress.completed) {
-        // Already completed, just update isRewatching flag
-        isRewatching = true;
-      }
+      // Preserve completion status - if video was already completed, keep it completed
+      // unless explicitly setting it to completed again
+      const finalCompleted = progressData.completed || (existingProgress?.completed || false);
+      const finalCompletedAt = finalCompleted ? (existingProgress?.completed_at || progressData.completedAt) : null;
+      const isRewatching = existingProgress?.completed || false;
 
       await pool.query(`
         INSERT INTO video_progress (user_id, video_id, progress, completed, completed_at, updated_at, watched_percentage, is_rewatching)
@@ -2685,23 +2675,16 @@ async function updateVideoProgress(progressData) {
     const key = `${progressData.userId}-${progressData.videoId}`;
     const existingProgress = microlearningProgress.get(key);
     
-    // If the video was already completed, preserve the completion status and date
-    // unless explicitly setting it to completed again
-    if (existingProgress && existingProgress.completed && !progressData.completed) {
-      // User is re-watching a completed video - preserve completion status
-      microlearningProgress.set(key, {
-        ...progressData,
-        completed: true, // Keep it marked as completed
-        completedAt: existingProgress.completedAt, // Preserve original completion date
-        isRewatching: true // Flag to indicate this is a rewatch
-      });
-    } else {
-      // New video or explicitly marking as completed
-      microlearningProgress.set(key, {
-        ...progressData,
-        isRewatching: existingProgress?.completed || false
-      });
-    }
+    // Preserve completion status - if video was already completed, keep it completed
+    const finalCompleted = progressData.completed || (existingProgress?.completed || false);
+    const finalCompletedAt = finalCompleted ? (existingProgress?.completedAt || progressData.completedAt) : null;
+    
+    microlearningProgress.set(key, {
+      ...progressData,
+      completed: finalCompleted,
+      completedAt: finalCompletedAt,
+      isRewatching: existingProgress?.completed || false
+    });
   }
 }
 
@@ -2860,7 +2843,7 @@ app.post("/api/microlearning/progress", async (req, res) => {
 
     // Check if user has approved application for videos beyond the first one
     const applicationStatus = await getApplicationStatus(userId);
-    const firstVideoId = 'canada-food-handling'; // First video that everyone can access
+    const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
     
     if (!applicationStatus.hasApproved && sessionUser?.role !== 'admin' && videoId !== firstVideoId) {
       const message = applicationStatus.hasPending 

@@ -381,18 +381,20 @@ export default function MicrolearningModule({
           const filtered = prev.filter(p => p.videoId !== videoId);
           const existing = prev.find(p => p.videoId === videoId);
           
-          // Preserve completion status if video was already completed
-          const finalCompleted = existing?.completed || completed;
-          const finalCompletedAt = existing?.completed ? existing.completedAt : (completed ? new Date() : undefined);
+          // If explicitly setting to completed, use that. Otherwise preserve existing completion status
+          const finalCompleted = completed || (existing?.completed || false);
+          const finalCompletedAt = finalCompleted ? (existing?.completedAt || new Date()) : undefined;
           
-          return [...filtered, {
+          const updatedProgress = {
             videoId,
             progress,
             completed: finalCompleted,
             watchedPercentage,
             completedAt: finalCompletedAt,
             startedAt: existing?.startedAt || (progress > 0 ? new Date() : undefined)
-          }];
+          };
+          
+          return [...filtered, updatedProgress];
         });
       } else {
         console.error('Failed to update progress:', response.status);
@@ -469,14 +471,7 @@ export default function MicrolearningModule({
   };
 
   const getVideoProgress = (videoId: string) => {
-    const progress = userProgress.find(p => p.videoId === videoId);
-    
-    // Debug logging for progress tracking
-    if (progress) {
-      console.log(`Progress for ${videoId}:`, progress);
-    }
-    
-    return progress;
+    return userProgress.find(p => p.videoId === videoId);
   };
 
   const videoProgressData = videos.map(video => {
