@@ -1,18 +1,18 @@
-import { useState, useCallback } from "react";
-import { Link, useLocation } from "wouter";
-import { Menu, X, User, LogOut, GraduationCap } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
-import { Application } from "@shared/schema";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Logo from "@/components/ui/logo";
+import { useAuth } from "@/hooks/use-auth";
+import { Application } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
+import { GraduationCap, LogOut, Menu, User, X } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Link, useLocation } from "wouter";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -182,7 +182,7 @@ export default function Header() {
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem asChild>
-                        <Link href="/dashboard">My Applications</Link>
+                        <Link href="/dashboard">My Dashboard</Link>
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
@@ -213,7 +213,7 @@ export default function Header() {
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard">My Applications</Link>
+                    <Link href="/dashboard">My Dashboard</Link>
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />

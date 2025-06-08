@@ -1078,6 +1078,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const progress = await storage.getMicrolearningProgress(userId);
       const completionStatus = await storage.getMicrolearningCompletion(userId);
       const hasApproval = await hasApprovedApplication(userId);
+      
+      // Admins have unrestricted access regardless of application status
+      const isAdmin = req.user!.role === 'admin';
+      const accessLevel = isAdmin || hasApproval ? 'full' : 'limited';
 
       res.json({
         success: true,
@@ -1085,7 +1089,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         completionConfirmed: completionStatus?.confirmed || false,
         completedAt: completionStatus?.completedAt,
         hasApprovedApplication: hasApproval,
-        accessLevel: hasApproval ? 'full' : 'limited' // limited = first video only
+        accessLevel: accessLevel, // admins get full access, others limited to first video only
+        isAdmin: isAdmin
       });
     } catch (error) {
       console.error('Error fetching microlearning progress:', error);
@@ -1110,8 +1115,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user has approved application for videos beyond the first one
       const hasApproval = await hasApprovedApplication(userId);
       const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
+      const isAdmin = req.user!.role === 'admin';
       
-      if (!hasApproval && req.user!.role !== 'admin' && videoId !== firstVideoId) {
+      // Admins have unrestricted access to all videos
+      if (!hasApproval && !isAdmin && videoId !== firstVideoId) {
         return res.status(403).json({ 
           message: 'Application approval required to access this video',
           accessLevel: 'limited',
@@ -1160,7 +1167,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if user has approved application to complete full training
       const hasApproval = await hasApprovedApplication(userId);
-      if (!hasApproval && req.user!.role !== 'admin') {
+      const isAdmin = req.user!.role === 'admin';
+      
+      // Admins can complete certification without application approval
+      if (!hasApproval && !isAdmin) {
         return res.status(403).json({ 
           message: 'Application approval required to complete full certification',
           accessLevel: 'limited',
@@ -1234,6 +1244,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error completing microlearning:', error);
       res.status(500).json({ message: 'Failed to complete microlearning' });
+    }
+  });
+
+  // Get microlearning completion status
+  app.get("/api/microlearning/completion/:userId", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+
+      const userId = parseInt(req.params.userId);
+      
+      // Verify user can access this completion (either their own or admin)
+      if (req.user!.id !== userId && req.user!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const completion = await storage.getMicrolearningCompletion(userId);
+      
+      if (!completion) {
+        return res.status(404).json({ message: 'No completion found' });
+      }
+
+      res.json(completion);
+    } catch (error) {
+      console.error('Error getting microlearning completion status:', error);
+      res.status(500).json({ message: 'Failed to get completion status' });
     }
   });
 
