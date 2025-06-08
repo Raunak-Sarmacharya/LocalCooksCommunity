@@ -286,11 +286,11 @@ export default function CertificationsForm() {
           return prev;
         }
         
-        // Validate file size (10MB limit)
-        if (file.size > 10 * 1024 * 1024) {
+        // Validate file size (4.5MB limit - Vercel serverless function limit)
+        if (file.size > 4.5 * 1024 * 1024) {
           toast({
             title: "File too large",
-            description: "Please upload files smaller than 3.5MB.",
+            description: "Please upload files smaller than 4.5MB.",
             variant: "destructive",
           });
           return prev;

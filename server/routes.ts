@@ -1168,18 +1168,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Verify all required videos are completed (comprehensive training for Newfoundland chefs)
+      // Verify all required videos are completed (2 comprehensive modules)
       const requiredVideos = [
-        'canada-food-handling', 
-        'canada-contamination-prevention', 
-        'canada-allergen-awareness',
-        'nl-temperature-control',
-        'nl-personal-hygiene',
-        'nl-cleaning-sanitizing',
-        'nl-haccp-principles',
-        'nl-food-storage',
-        'nl-cooking-temperatures',
-        'nl-inspection-preparation'
+        // Food Safety Basics Module (14 videos)
+        'basics-personal-hygiene', 'basics-temperature-danger', 'basics-cross-contamination',
+        'basics-allergen-awareness', 'basics-food-storage', 'basics-cooking-temps',
+        'basics-cooling-reheating', 'basics-thawing', 'basics-receiving', 'basics-fifo',
+        'basics-illness-reporting', 'basics-pest-control', 'basics-chemical-safety', 'basics-food-safety-plan',
+        // Safety and Hygiene How-To's Module (8 videos)
+        'howto-handwashing', 'howto-sanitizing', 'howto-thermometer', 'howto-cleaning-schedule',
+        'howto-equipment-cleaning', 'howto-uniform-care', 'howto-wound-care', 'howto-inspection-prep'
       ];
       const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
       const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));

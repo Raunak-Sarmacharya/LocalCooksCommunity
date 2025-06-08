@@ -179,8 +179,9 @@ try {
 // In-memory fallback for users
 const users = new Map();
 
-// Middleware
-app.use(express.json());
+// Middleware  
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ limit: '12mb', extended: true }));
 
 // Session setup
 const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';
@@ -2947,18 +2948,16 @@ app.post("/api/microlearning/complete", async (req, res) => {
       });
     }
 
-    // Verify all required videos are completed (comprehensive training for Newfoundland chefs)
+    // Verify all required videos are completed (2 comprehensive modules)
     const requiredVideos = [
-      'canada-food-handling', 
-      'canada-contamination-prevention', 
-      'canada-allergen-awareness',
-      'nl-temperature-control',
-      'nl-personal-hygiene',
-      'nl-cleaning-sanitizing',
-      'nl-haccp-principles',
-      'nl-food-storage',
-      'nl-cooking-temperatures',
-      'nl-inspection-preparation'
+      // Food Safety Basics Module (14 videos)
+      'basics-personal-hygiene', 'basics-temperature-danger', 'basics-cross-contamination',
+      'basics-allergen-awareness', 'basics-food-storage', 'basics-cooking-temps',
+      'basics-cooling-reheating', 'basics-thawing', 'basics-receiving', 'basics-fifo',
+      'basics-illness-reporting', 'basics-pest-control', 'basics-chemical-safety', 'basics-food-safety-plan',
+      // Safety and Hygiene How-To's Module (8 videos)
+      'howto-handwashing', 'howto-sanitizing', 'howto-thermometer', 'howto-cleaning-schedule',
+      'howto-equipment-cleaning', 'howto-uniform-care', 'howto-wound-care', 'howto-inspection-prep'
     ];
     const completedVideos = videoProgress.filter(v => v.completed).map(v => v.videoId);
     const allRequired = requiredVideos.every(videoId => completedVideos.includes(videoId));
