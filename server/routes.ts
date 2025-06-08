@@ -1100,7 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: 'Authentication required' });
       }
 
-      const { userId, videoId, progress, completed, completedAt } = req.body;
+      const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
       
       // Verify user can update this data (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
@@ -1119,12 +1119,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Ensure completion is only marked true if watchedPercentage is sufficient
+      const actualCompleted = completed && (watchedPercentage >= 90 || !watchedPercentage);
+
       const progressData = {
         userId,
         videoId,
         progress: Math.max(0, Math.min(100, progress)), // Clamp between 0-100
-        completed: completed || false,
-        completedAt: completed ? (completedAt ? new Date(completedAt) : new Date()) : null,
+        watchedPercentage: Math.max(0, Math.min(100, watchedPercentage || 0)), // Clamp between 0-100
+        completed: actualCompleted,
+        completedAt: actualCompleted ? (completedAt ? new Date(completedAt) : new Date()) : null,
         updatedAt: new Date()
       };
 
