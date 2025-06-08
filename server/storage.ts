@@ -562,13 +562,20 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)))
       .limit(1);
 
+    const existing = existingProgress[0];
+    
+    // Preserve completion status - if video was already completed, keep it completed
+    // unless explicitly setting it to completed again
+    const finalCompleted = completed || (existing?.completed || false);
+    const finalCompletedAt = finalCompleted ? (existing?.completedAt || (completed ? new Date(completedAt) : new Date())) : null;
+
     const updateData = {
       progress: progress?.toString() || "0",
-      completed: completed || false,
-      completedAt: completed && completedAt ? new Date(completedAt) : null,
+      completed: finalCompleted,
+      completedAt: finalCompletedAt,
       updatedAt: new Date(),
       watchedPercentage: watchedPercentage?.toString() || "0",
-      isRewatching: isRewatching || false,
+      isRewatching: isRewatching || (existing?.completed || false), // Mark as rewatching if previously completed
     };
 
     if (existingProgress.length > 0) {

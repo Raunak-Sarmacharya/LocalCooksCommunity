@@ -1109,7 +1109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if user has approved application for videos beyond the first one
       const hasApproval = await hasApprovedApplication(userId);
-      const firstVideoId = 'canada-food-handling'; // First video that everyone can access
+      const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
       
       if (!hasApproval && req.user!.role !== 'admin' && videoId !== firstVideoId) {
         return res.status(403).json({ 

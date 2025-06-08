@@ -539,13 +539,13 @@ Authorization: Required (User or Admin)
   "userId": 123,
   "progress": [
     {
-      "videoId": "canada-food-handling",
+      "videoId": "basics-cross-contamination",
       "completed": true,
       "completedAt": "2024-01-15T10:30:00Z",
       "progress": 100
     },
     {
-      "videoId": "canada-contamination-prevention", 
+      "videoId": "basics-allergen-awareness", 
       "completed": false,
       "completedAt": null,
       "progress": 45
@@ -563,7 +563,7 @@ Content-Type: application/json
 Authorization: Required (User)
 
 {
-  "videoId": "canada-food-handling",
+  "videoId": "basics-cross-contamination",
   "progress": 90
 }
 ```
@@ -572,7 +572,7 @@ Authorization: Required (User)
 ```json
 {
   "message": "Progress updated",
-  "videoId": "canada-food-handling",
+  "videoId": "basics-cross-contamination",
   "progress": 90,
   "completed": true
 }
@@ -586,16 +586,13 @@ Authorization: Required (User)
 
 {
   "completedVideos": [
-    "canada-food-handling",
-    "canada-contamination-prevention",
-    "canada-allergen-awareness",
-    "nl-temperature-control",
-    "nl-personal-hygiene", 
-    "nl-cleaning-sanitizing",
-    "nl-haccp-principles",
-    "nl-food-storage",
-    "nl-cooking-temperatures",
-    "nl-inspection-preparation"
+    "basics-cross-contamination", "basics-allergen-awareness", "basics-cooking-temps",
+    "basics-temperature-danger", "basics-personal-hygiene", "basics-food-storage",
+    "basics-illness-reporting", "basics-food-safety-plan", "basics-pest-control",
+    "basics-chemical-safety", "basics-fifo", "basics-receiving",
+    "basics-cooling-reheating", "basics-thawing",
+    "howto-handwashing", "howto-sanitizing", "howto-thermometer", "howto-cleaning-schedule",
+    "howto-equipment-cleaning", "howto-uniform-care", "howto-wound-care", "howto-inspection-prep"
   ]
 }
 ```
@@ -626,8 +623,8 @@ Authorization: Required (User or Admin)
   "certificateUrl": "https://your-app.vercel.app/certificate/123",
   "modules": [
     {
-      "id": "canada-food-handling",
-      "title": "Safe Food Handling Basics",
+      "id": "basics-cross-contamination",
+      "title": "An Introduction",
       "completedAt": "2024-01-15T09:15:00Z"
     }
   ]
@@ -661,16 +658,32 @@ Authorization: Required (User)
 - **Full**: All 10 training modules + preparation completion (for approved users)
 
 **Training Modules:**
-1. `canada-food-handling` - Safe Food Handling Basics
-2. `canada-contamination-prevention` - Preventing Food Contamination
-3. `canada-allergen-awareness` - Allergen Awareness and Management
-4. `nl-temperature-control` - Temperature Danger Zone & Time Control
-5. `nl-personal-hygiene` - Personal Hygiene for Food Handlers
-6. `nl-cleaning-sanitizing` - Cleaning and Sanitizing Procedures
-7. `nl-haccp-principles` - HACCP Principles for Small Kitchens
-8. `nl-food-storage` - Proper Food Storage & Receiving
-9. `nl-cooking-temperatures` - Safe Cooking Temperatures & Methods
-10. `nl-inspection-preparation` - Health Inspection Readiness
+
+**Module 1 - Food Safety Basics (14 videos):**
+1. `basics-cross-contamination` - An Introduction
+2. `basics-allergen-awareness` - Basic Conditions of HACCP
+3. `basics-cooking-temps` - Reducing Complexity
+4. `basics-temperature-danger` - Personal Hygiene
+5. `basics-personal-hygiene` - Deliveries
+6. `basics-food-storage` - Storage
+7. `basics-illness-reporting` - Preparation
+8. `basics-food-safety-plan` - Regeneration
+9. `basics-pest-control` - To Start
+10. `basics-chemical-safety` - After Service
+11. `basics-fifo` - Waste Removal
+12. `basics-receiving` - Cleaning and Maintenance
+13. `basics-cooling-reheating` - Weekly Log Sheets
+14. `basics-thawing` - Wrap Up
+
+**Module 2 - Safety & Hygiene How-To's (8 videos):**
+15. `howto-handwashing` - How to Wash Your Hands
+16. `howto-sanitizing` - How to clean a food preparation station
+17. `howto-thermometer` - How to clean kitchen utensils
+18. `howto-cleaning-schedule` - How to clean a stove
+19. `howto-equipment-cleaning` - How to clean a kitchen floor
+20. `howto-uniform-care` - How to clean a restaurant floor
+21. `howto-wound-care` - How to clean tables and chairs
+22. `howto-inspection-prep` - How to clean a washroom
 
 ---
 

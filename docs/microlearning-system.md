@@ -157,18 +157,17 @@ All microlearning endpoints require LocalCooks authentication:
 
 The system now requires completion of all 10 modules:
 ```javascript
-const requiredVideos = [
-  'canada-food-handling', 
-  'canada-contamination-prevention', 
-  'canada-allergen-awareness',
-  'nl-temperature-control',
-  'nl-personal-hygiene',
-  'nl-cleaning-sanitizing',
-  'nl-haccp-principles',
-  'nl-food-storage',
-  'nl-cooking-temperatures',
-  'nl-inspection-preparation'
-];
+  const requiredVideos = [
+    // Food Safety Basics Module (14 videos)
+    'basics-cross-contamination', 'basics-allergen-awareness', 'basics-cooking-temps',
+    'basics-temperature-danger', 'basics-personal-hygiene', 'basics-food-storage',
+    'basics-illness-reporting', 'basics-food-safety-plan', 'basics-pest-control',
+    'basics-chemical-safety', 'basics-fifo', 'basics-receiving',
+    'basics-cooling-reheating', 'basics-thawing',
+    // Safety and Hygiene How-To's Module (8 videos)
+    'howto-handwashing', 'howto-sanitizing', 'howto-thermometer', 'howto-cleaning-schedule',
+    'howto-equipment-cleaning', 'howto-uniform-care', 'howto-wound-care', 'howto-inspection-prep'
+  ];
 ```
 
 ## Usage
