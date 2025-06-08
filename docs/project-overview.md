@@ -1,6 +1,6 @@
 # 🏠 Project Overview
 
-**Local Cooks Community** is a comprehensive platform for local cooks in Newfoundland and Labrador to apply for certification, complete food safety training, and participate in a trusted culinary community. The platform combines application management with an integrated training and certification system.
+**Local Cooks Community** is a comprehensive platform for local cooks in Newfoundland and Labrador to apply for verification, complete food safety training preparation, and participate in a trusted culinary community. The platform combines application management with an integrated training preparation system for skillpass.nl certification.
 
 ## 🎯 Core Features
 
@@ -11,13 +11,16 @@
 - **Document Verification**: Secure file upload with admin verification tools
 - **Status Notifications**: Email updates for application status changes
 
-### **Training & Certification System**
-- **Microlearning Platform**: 10-module Newfoundland food safety training
-- **Government-Approved Content**: Official Health Canada and CFIA materials
+### **Training & Preparation System**
+- **Microlearning Platform**: 10-module Newfoundland food safety training preparation
+- **Skillpass.nl Preparation Content**: Training materials based on Health Canada and CFIA standards
 - **Progress Tracking**: Real-time completion tracking across all modules
 - **Interactive Unlock System**: Guided progression from registration to full access
-- **Digital Certificates**: Official completion certificates for certification preparation
+- **Completion Certificates**: Training completion certificates for skillpass.nl preparation
 - **Mobile Responsive**: Complete training on any device
+- **Refresher Access**: Re-watch any completed module anytime as a refresher
+
+> **Important**: This platform provides training preparation and guidance only. For official food safety certification, users must visit [skillpass.nl](https://skillpass.nl) to take their certification exam.
 
 ### **Access Control & UX**
 - **Tiered Access**: Limited access until application approval, then full training access
@@ -63,7 +66,7 @@
 ### **Curriculum Coverage**
 - **Federal Requirements**: Health Canada and CFIA standards
 - **Provincial Compliance**: Newfoundland Food Premises Regulations
-- **Certification Preparation**: Food Handler Certification readiness
+- **Skillpass.nl Preparation**: Food Handler Certification readiness for skillpass.nl
 - **Practical Application**: Real-world food safety scenarios
 
 ### **Learning Features**
@@ -71,7 +74,7 @@
 - **Self-paced progression** with automatic save functionality
 - **Mobile optimization** for learning on-the-go
 - **Progress visualization** with completion tracking
-- **Certificate generation** upon full completion
+- **Completion certificates** upon full preparation completion
 
 ## 🔄 User Journey
 
@@ -79,12 +82,12 @@
 1. **Registration** → Create account (20% progress)
 2. **Application** → Submit application with documents (50% progress)
 3. **Review** → Admin review and approval (75% progress)
-4. **Training** → Access full 10-module training system (100% progress)
-5. **Certification** → Complete training and receive digital certificate
+4. **Training** → Access full 10-module training preparation system (100% progress)
+5. **Completion** → Complete training preparation and receive certificate - ready for skillpass.nl
 
 ### **Admin Experience**
 1. **Dashboard Access** → Comprehensive application management
-2. **Document Review** → Verify uploaded certifications
+2. **Document Review** → Verify uploaded documents
 3. **Status Management** → Approve/reject with feedback
 4. **Email Notifications** → Automated status update emails
 5. **Progress Monitoring** → Track user training completion
@@ -106,9 +109,9 @@
 
 ### **For Users**
 - **Clear Path**: Visual progress system eliminates confusion
-- **Comprehensive Training**: Government-approved Newfoundland-specific content
+- **Comprehensive Training**: Skillpass.nl preparation with Newfoundland-specific content
 - **Mobile Friendly**: Complete training anywhere, anytime
-- **Certification Ready**: Prepare for official Food Handler Certification
+- **Skillpass.nl Ready**: Prepare for official Food Handler Certification at skillpass.nl
 
 ### **For Administrators**
 - **Streamlined Review**: Efficient application and document management

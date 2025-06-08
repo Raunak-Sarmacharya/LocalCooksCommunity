@@ -324,11 +324,11 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>NL Food Handler Certification</span>
+                <span>Skillpass.nl Food Safety Certification</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>Government-Approved Content</span>
+                <span>Skillpass.nl Preparation Content</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />

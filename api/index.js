@@ -2981,7 +2981,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
       success: true,
       certificateUrl,
       completionDate: completion.completedAt,
-      message: 'Certificate for Government of Canada approved food safety training'
+      message: 'Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl'
     });
   } catch (error) {
     console.error('Error generating certificate:', error);

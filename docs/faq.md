@@ -197,9 +197,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - **Before Application**: No training access
 - **After Registration**: Limited access (first module only)  
 - **After Application**: Still limited access until approval
-- **After Approval**: Full access to all 10 modules + certification
+- **After Approval**: Full access to all 10 modules + preparation completion
 
-This tiered system ensures only approved community members receive full certification.
+This tiered system ensures only approved community members receive full training preparation.
 
 ### Q: What training modules are available?
 
@@ -233,7 +233,7 @@ This tiered system ensures only approved community members receive full certific
 **A:** Yes! After completing all 10 modules:
 
 - **Digital certificate**: Generated automatically upon completion
-- **Official recognition**: Prepare for NL Food Handler Certification
+- **Skillpass.nl preparation**: Prepare for skillpass.nl Food Handler Certification
 - **Download/print**: Certificate available for download
 - **Verification**: Certificate includes completion date and module details
 
@@ -272,7 +272,7 @@ This tiered system ensures only approved community members receive full certific
 **A:** Training completion affects your community participation:
 
 - **Limited access**: Without completion, access remains limited
-- **Certification required**: Some community features require certification
+- **Preparation required**: Some community features require training preparation completion
 - **No penalty**: Take as long as you need to complete
 - **Support available**: Contact admin if you need help
 
