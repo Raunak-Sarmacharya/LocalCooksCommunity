@@ -8,7 +8,7 @@ interface VideoPlayerProps {
   videoUrl: string;
   title: string;
   duration?: number;
-  onProgress?: (progress: number) => void;
+  onProgress?: (progress: number, watchedSeconds: number) => void;
   onComplete?: () => void;
   onStart?: () => void;
   isCompleted?: boolean;
@@ -37,11 +37,35 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
-  const [watchPercentage, setWatchPercentage] = useState(0);
+  const [watchedSegments, setWatchedSegments] = useState<{start: number, end: number}[]>([]);
+  const [totalWatchedSeconds, setTotalWatchedSeconds] = useState(0);
   const [videoCompleted, setVideoCompleted] = useState(isCompleted);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [lastTimeUpdate, setLastTimeUpdate] = useState(0);
+
+  // Calculate actual watch percentage based on watched segments
+  const calculateWatchPercentage = () => {
+    if (videoDuration === 0) return 0;
+    
+    // Merge overlapping segments and calculate total watched time
+    const sortedSegments = [...watchedSegments].sort((a, b) => a.start - b.start);
+    let totalWatched = 0;
+    let lastEnd = -1;
+    
+    for (const segment of sortedSegments) {
+      if (segment.start > lastEnd) {
+        totalWatched += segment.end - segment.start;
+        lastEnd = segment.end;
+      } else if (segment.end > lastEnd) {
+        totalWatched += segment.end - lastEnd;
+        lastEnd = segment.end;
+      }
+    }
+    
+    return Math.min((totalWatched / videoDuration) * 100, 100);
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -76,15 +100,31 @@ export default function VideoPlayer({
       
       if (duration > 0) {
         const progressPercent = (currentTime / duration) * 100;
-        const watchPercent = Math.max(watchPercentage, progressPercent);
-        
         setProgress(progressPercent);
-        setWatchPercentage(watchPercent);
         
-        onProgress?.(progressPercent);
+        // Track watched segments only when video is playing
+        if (isPlaying && !video.seeking && currentTime > lastTimeUpdate) {
+          const segmentStart = lastTimeUpdate;
+          const segmentEnd = currentTime;
+          
+          // Only add segment if it's a reasonable continuous watch (less than 2 second jump)
+          if (segmentEnd - segmentStart <= 2) {
+            setWatchedSegments(prev => {
+              const newSegments = [...prev, { start: segmentStart, end: segmentEnd }];
+              return newSegments;
+            });
+          }
+        }
+        
+        setLastTimeUpdate(currentTime);
+        
+        // Calculate actual watch percentage
+        const actualWatchPercentage = calculateWatchPercentage();
+        
+        onProgress?.(progressPercent, actualWatchPercentage);
 
-        // Mark as complete if user has watched required percentage
-        if (requireFullWatch && watchPercent >= 90 && !videoCompleted) {
+        // Mark as complete only if user has actually watched required percentage
+        if (requireFullWatch && actualWatchPercentage >= 90 && !videoCompleted) {
           setVideoCompleted(true);
           onComplete?.();
         } else if (!requireFullWatch && progressPercent >= 95 && !videoCompleted) {
@@ -108,10 +148,17 @@ export default function VideoPlayer({
 
     const handleEnded = () => {
       setIsPlaying(false);
-      if (!videoCompleted) {
+      // Only mark as complete if user has actually watched enough
+      const actualWatchPercentage = calculateWatchPercentage();
+      if (actualWatchPercentage >= 90 && !videoCompleted) {
         setVideoCompleted(true);
         onComplete?.();
       }
+    };
+
+    const handleSeeking = () => {
+      // Reset time tracking when user seeks
+      setLastTimeUpdate(video.currentTime);
     };
 
     video.addEventListener('loadstart', handleLoadStart);
@@ -122,6 +169,7 @@ export default function VideoPlayer({
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('seeking', handleSeeking);
 
     return () => {
       video.removeEventListener('loadstart', handleLoadStart);
@@ -132,8 +180,9 @@ export default function VideoPlayer({
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('seeking', handleSeeking);
     };
-  }, [hasStarted, onStart, onProgress, onComplete, videoCompleted, watchPercentage, requireFullWatch]);
+  }, [hasStarted, onStart, onProgress, onComplete, videoCompleted, watchedSegments, requireFullWatch, isPlaying, lastTimeUpdate]);
 
   const togglePlayPause = () => {
     const video = videoRef.current;
@@ -179,6 +228,10 @@ export default function VideoPlayer({
     video.currentTime = 0;
     setProgress(0);
     setCurrentTime(0);
+    setWatchedSegments([]);
+    setTotalWatchedSeconds(0);
+    setVideoCompleted(false);
+    setLastTimeUpdate(0);
   };
 
   const formatTime = (time: number): string => {
@@ -186,6 +239,8 @@ export default function VideoPlayer({
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  const actualWatchPercentage = calculateWatchPercentage();
 
   return (
     <div className={cn("relative bg-black rounded-lg overflow-hidden shadow-lg", className)}>
@@ -290,7 +345,7 @@ export default function VideoPlayer({
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400 mt-2">
             <span className="whitespace-nowrap">{formatTime(currentTime)}</span>
             {requireFullWatch && (
-              <span className="text-center flex-shrink-0">{Math.round(watchPercentage)}% watched</span>
+              <span className="text-center flex-shrink-0">{Math.round(actualWatchPercentage)}% watched</span>
             )}
             <span className="whitespace-nowrap">{formatTime(videoDuration)}</span>
           </div>
@@ -329,7 +384,7 @@ export default function VideoPlayer({
 
           <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
             {requireFullWatch ? 
-              `${Math.round(watchPercentage)}% required` : 
+              `${Math.round(actualWatchPercentage)}% required` : 
               `${Math.round(progress)}% progress`
             }
           </div>

@@ -37,6 +37,7 @@ interface UserProgress {
   completed: boolean;
   completedAt?: Date;
   startedAt?: Date;
+  watchedPercentage?: number;
 }
 
 interface MicrolearningModuleProps {
@@ -198,7 +199,7 @@ export default function MicrolearningModule({
     }
   };
 
-  const updateVideoProgress = async (videoId: string, progress: number, completed: boolean = false) => {
+  const updateVideoProgress = async (videoId: string, progress: number, completed: boolean = false, watchedPercentage: number = 0) => {
     try {
       const response = await fetch('/api/microlearning/progress', {
         method: 'POST',
@@ -211,24 +212,29 @@ export default function MicrolearningModule({
           videoId,
           progress,
           completed,
+          watchedPercentage,
           completedAt: completed ? new Date() : undefined
         }),
         credentials: 'include'
       });
 
       if (response.ok) {
-        const updatedProgress = userProgress.filter(p => p.videoId !== videoId);
-        const existingProgress = userProgress.find(p => p.videoId === videoId);
-        
-        updatedProgress.push({
-          videoId,
-          progress,
-          completed,
-          completedAt: completed ? new Date() : existingProgress?.completedAt,
-          startedAt: existingProgress?.startedAt || (progress > 0 ? new Date() : undefined)
+        // Update local state immediately for better UX
+        setUserProgress(prev => {
+          const filtered = prev.filter(p => p.videoId !== videoId);
+          const existing = prev.find(p => p.videoId === videoId);
+          
+          return [...filtered, {
+            videoId,
+            progress,
+            completed,
+            watchedPercentage,
+            completedAt: completed ? new Date() : existing?.completedAt,
+            startedAt: existing?.startedAt || (progress > 0 ? new Date() : undefined)
+          }];
         });
-        
-        setUserProgress(updatedProgress);
+      } else {
+        console.error('Failed to update progress:', response.status);
       }
     } catch (error) {
       console.error('Failed to update progress:', error);
@@ -237,25 +243,30 @@ export default function MicrolearningModule({
 
   const handleVideoStart = (videoId: string) => {
     const existingProgress = userProgress.find(p => p.videoId === videoId);
-    if (!existingProgress) {
-      updateVideoProgress(videoId, 0);
+    if (!existingProgress || existingProgress.progress === 0) {
+      updateVideoProgress(videoId, 0, false, 0);
     }
   };
 
-  const handleVideoProgress = (videoId: string, progress: number) => {
-    updateVideoProgress(videoId, progress);
+  const handleVideoProgress = (videoId: string, progress: number, watchedPercentage: number) => {
+    // Only update if there's meaningful progress
+    if (progress > 0) {
+      updateVideoProgress(videoId, progress, false, watchedPercentage);
+    }
   };
 
   const handleVideoComplete = (videoId: string) => {
-    updateVideoProgress(videoId, 100, true);
+    updateVideoProgress(videoId, 100, true, 100);
     
-    // Auto-advance to next video if available
-    const nextIndex = currentVideoIndex + 1;
-    if (nextIndex < videos.length) {
-      setTimeout(() => {
-        setCurrentVideoIndex(nextIndex);
-      }, 2000);
+    // Show success message
+    const video = videos.find(v => v.id === videoId);
+    if (video) {
+      // You could add a toast notification here if you have a toast system
+      console.log(`Module completed: ${video.title}`);
     }
+    
+    // Show completion message but don't auto-advance
+    // Users can manually navigate to next video when ready
   };
 
   const confirmCompletion = async () => {
@@ -331,7 +342,7 @@ export default function MicrolearningModule({
             >
               <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full text-primary font-medium text-sm">
                 <Shield className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Skillpass.nl Exam Preparation</span>
+                <span className="truncate">Specialized Training for Local Cooks</span>
                 {completionConfirmed && (
                   <>
                     <span className="w-1 h-1 bg-primary/60 rounded-full flex-shrink-0"></span>
@@ -344,27 +355,46 @@ export default function MicrolearningModule({
               </div>
               
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight px-4">
-                Food Safety Training
-                <span className="block text-primary">Preparation Program</span>
+                Food Safety
+                <span className="block text-primary">Specialized Training for Local Cooks</span>
               </h1>
               
               <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
-                Prepare for your skillpass.nl food safety certification with our comprehensive 10-module program designed 
-                to help Newfoundland & Labrador chefs pass their official exam with confidence. Re-watch any module anytime as a refresher.
+                Our comprehensive video training collection supports chefs operating on our platform - whether cooking from home kitchens or commercial kitchen spaces. This 10-module program provides the essential food safety knowledge needed to prepare for provincial certification requirements across Canada.
               </p>
 
-              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2 px-4">
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs sm:text-sm">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">Skillpass.nl Preparation</span>
+              <div className="bg-white rounded-xl p-4 sm:p-6 mx-4 shadow-sm border border-gray-100 max-w-4xl mx-auto">
+                <h3 className="font-semibold text-gray-900 mb-3">Program Features:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-600">
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1.5"></div>
+                    <span>10 targeted training modules covering food safety fundamentals</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 mt-1.5"></div>
+                    <span>Professional video content designed for certification preparation</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full flex-shrink-0 mt-1.5"></div>
+                    <span>On-demand access - review any module anytime as a refresher</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1.5"></div>
+                    <span>Applicable nationwide supporting various provincial certification standards</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1.5"></div>
+                    <span>Flexible learning designed for busy platform chefs</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs sm:text-sm">
-                  <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">NL Licensed Content</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs sm:text-sm">
-                  <span className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></span>
-                  <span className="whitespace-nowrap">Refresher Training</span>
+                
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-600 mb-3">
+                    Ideal for our platform chefs operating from home-based kitchens and commercial kitchen facilities who need to meet local food safety certification requirements.
+                  </p>
+                  <p className="text-sm font-medium text-primary">
+                    Strengthen your knowledge. Meet certification standards. Grow your culinary business.
+                  </p>
                 </div>
               </div>
             </motion.div>
@@ -552,7 +582,7 @@ export default function MicrolearningModule({
                           videoUrl={currentVideo.url}
                           title={currentVideo.title}
                           onStart={() => handleVideoStart(currentVideo.id)}
-                          onProgress={(progress) => handleVideoProgress(currentVideo.id, progress)}
+                          onProgress={(progress, watchedPercentage) => handleVideoProgress(currentVideo.id, progress, watchedPercentage)}
                           onComplete={() => handleVideoComplete(currentVideo.id)}
                           isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
                           requireFullWatch={true}
@@ -586,25 +616,48 @@ export default function MicrolearningModule({
                             <span className="truncate">Previous</span>
                           </Button>
 
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
-                            disabled={currentVideoIndex === videos.length - 1 || (accessLevel === 'limited' && currentVideoIndex === 0)}
-                            className="flex items-center justify-center gap-2 w-full"
-                          >
-                            {accessLevel === 'limited' && currentVideoIndex === 0 ? (
-                              <>
-                                <Lock className="h-4 w-4 flex-shrink-0" />
-                                <span className="truncate">Locked</span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="truncate">Next</span>
-                                <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                              </>
-                            )}
-                          </Button>
+                          {(() => {
+                            const nextIndex = currentVideoIndex + 1;
+                            const isLastModule = nextIndex >= videos.length;
+                            const isLimitedAccess = accessLevel === 'limited' && currentVideoIndex === 0;
+                            const currentProgress = getVideoProgress(currentVideo.id);
+                            const currentCompleted = currentProgress?.completed || false;
+                            const nextCanAccess = accessLevel === 'full' ? (nextIndex === 0 || currentCompleted) : false;
+                            const isNextLocked = !isLastModule && (!nextCanAccess || isLimitedAccess);
+
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => !isLastModule && nextCanAccess && setCurrentVideoIndex(nextIndex)}
+                                disabled={isLastModule || isNextLocked}
+                                className="flex items-center justify-center gap-2 w-full"
+                                title={
+                                  isLastModule ? "This is the last module" :
+                                  isLimitedAccess ? "Complete your application to unlock more modules" :
+                                  !currentCompleted ? "Complete this module to unlock the next one" :
+                                  undefined
+                                }
+                              >
+                                {isLimitedAccess ? (
+                                  <>
+                                    <Lock className="h-4 w-4 flex-shrink-0" />
+                                    <span className="truncate">Locked</span>
+                                  </>
+                                ) : !currentCompleted && accessLevel === 'full' ? (
+                                  <>
+                                    <span className="truncate">Complete First</span>
+                                    <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="truncate">Next</span>
+                                    <ChevronRight className="h-4 w-4 flex-shrink-0" />
+                                  </>
+                                )}
+                              </Button>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -615,11 +668,44 @@ export default function MicrolearningModule({
                 <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                     <h3 className="text-lg font-semibold text-gray-900">Training Modules</h3>
-                    {accessLevel === 'limited' && (
-                      <div className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs sm:text-sm font-medium">
-                        1 of 10 Available
+                    <div className="flex flex-wrap items-center gap-2">
+                      {accessLevel === 'limited' && (
+                        <div className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs sm:text-sm font-medium">
+                          1 of 10 Available
+                        </div>
+                      )}
+                      <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium">
+                        {userProgress.filter(p => p.completed).length} / {videos.length} Completed
                       </div>
-                    )}
+                    </div>
+                  </div>
+
+                  {/* Overall Progress */}
+                  <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-blue-900">Overall Progress</span>
+                      <span className="text-sm font-bold text-blue-900">{Math.round(overallProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2 mb-3">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${overallProgress}%` }}
+                      ></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-xs text-blue-700">
+                      <div className="text-center">
+                        <div className="font-semibold">{userProgress.filter(p => p.completed).length}</div>
+                        <div>Modules Completed</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold">
+                          {userProgress.reduce((acc, p) => acc + (p.watchedPercentage || 0), 0) > 0 
+                            ? Math.round(userProgress.reduce((acc, p) => acc + (p.watchedPercentage || 0), 0) / videos.length)
+                            : 0}%
+                        </div>
+                        <div>Average Watch Time</div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Module Grid */}
@@ -628,37 +714,79 @@ export default function MicrolearningModule({
                       const progress = getVideoProgress(video.id);
                       const isLocked = accessLevel === 'limited' && index > 0;
                       const isCurrent = currentVideoIndex === index;
+                      const watchedPercentage = progress?.watchedPercentage || 0;
+                      const isCompleted = progress?.completed || false;
+                      
+                      // For approved users, check if previous module is completed (sequential learning)
+                      const previousCompleted = index === 0 || userProgress.find(p => p.videoId === videos[index - 1].id)?.completed || false;
+                      const canAccess = accessLevel === 'full' ? (index === 0 || previousCompleted) : index === 0;
+                      const isAccessLocked = !canAccess;
                       
                       return (
                         <button
                           key={video.id}
-                          onClick={() => !isLocked && setCurrentVideoIndex(index)}
-                          disabled={isLocked}
+                          onClick={() => canAccess && setCurrentVideoIndex(index)}
+                          disabled={isAccessLocked}
                           className={`relative p-2 sm:p-3 rounded-xl border transition-all duration-200 ${
                             isCurrent
                               ? 'border-primary bg-primary/5 shadow-sm'
-                              : isLocked
+                              : isAccessLocked
                               ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
                               : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                           }`}
                         >
-                          {progress?.completed && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-green-500 rounded-full flex items-center justify-center">
-                              <CheckCircle className="h-2 w-2 sm:h-3 sm:w-3 text-white" />
-                            </div>
-                          )}
-                          {isLocked && (
-                            <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-gray-400 rounded-full flex items-center justify-center">
-                              <Lock className="h-2 w-2 sm:h-3 sm:w-3 text-white" />
-                            </div>
-                          )}
+                          {/* Progress Ring */}
+                          <div className="absolute -top-1 -right-1 w-6 h-6 sm:w-7 sm:h-7">
+                            {isCompleted ? (
+                              <div className="w-full h-full bg-green-500 rounded-full flex items-center justify-center">
+                                <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
+                              </div>
+                            ) : isAccessLocked ? (
+                              <div className="w-full h-full bg-gray-400 rounded-full flex items-center justify-center">
+                                <Lock className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
+                              </div>
+                            ) : watchedPercentage > 0 ? (
+                              <div className="relative w-full h-full">
+                                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 24 24">
+                                  <circle
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    fill="none"
+                                    stroke="#e5e7eb"
+                                    strokeWidth="2"
+                                  />
+                                  <circle
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    fill="none"
+                                    stroke="#3b82f6"
+                                    strokeWidth="2"
+                                    strokeDasharray={`${2 * Math.PI * 10}`}
+                                    strokeDashoffset={`${2 * Math.PI * 10 * (1 - watchedPercentage / 100)}`}
+                                    className="transition-all duration-300"
+                                  />
+                                </svg>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <span className="text-xs font-medium text-blue-600">
+                                    {Math.round(watchedPercentage)}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                           
                           <div className="text-center">
                             <div className={`w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-1 sm:mb-2 rounded-lg flex items-center justify-center text-xs sm:text-sm font-semibold ${
                               isCurrent
                                 ? 'bg-primary text-white'
-                                : isLocked
+                                : isAccessLocked
                                 ? 'bg-gray-300 text-gray-500'
+                                : isCompleted
+                                ? 'bg-green-100 text-green-700'
+                                : watchedPercentage > 0
+                                ? 'bg-blue-100 text-blue-700'
                                 : 'bg-gray-100 text-gray-700'
                             }`}>
                               {index + 1}

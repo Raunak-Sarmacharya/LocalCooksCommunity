@@ -2801,7 +2801,7 @@ app.post("/api/microlearning/progress", async (req, res) => {
       await new Promise(resolve => req.session.save(resolve));
     }
 
-    const { userId, videoId, progress, completed, completedAt } = req.body;
+    const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
     
     // Verify user can update this data (either their own or admin)
     const sessionUser = await getUser(sessionUserId);
@@ -2834,12 +2834,16 @@ app.post("/api/microlearning/progress", async (req, res) => {
       });
     }
 
+    // Ensure completion is only marked true if watchedPercentage is sufficient
+    const actualCompleted = completed && (watchedPercentage >= 90 || !watchedPercentage);
+
     const progressData = {
       userId,
       videoId,
       progress: Math.max(0, Math.min(100, progress)), // Clamp between 0-100
-      completed: completed || false,
-      completedAt: completed ? (completedAt ? new Date(completedAt) : new Date()) : null,
+      watchedPercentage: Math.max(0, Math.min(100, watchedPercentage || 0)), // Clamp between 0-100
+      completed: actualCompleted,
+      completedAt: actualCompleted ? (completedAt ? new Date(completedAt) : new Date()) : null,
       updatedAt: new Date()
     };
 
