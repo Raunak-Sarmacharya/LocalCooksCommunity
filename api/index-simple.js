@@ -1,8 +1,8 @@
 // Simple, standalone API implementation for Vercel 
+import { Pool } from '@neondatabase/serverless';
+import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
 import express from 'express';
 import session from 'express-session';
-import { Pool } from '@neondatabase/serverless';
-import { scrypt, randomBytes, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 
 // Setup
@@ -30,7 +30,8 @@ const users = new Map();
 const sessions = new Map();
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ limit: '12mb', extended: true }));
 
 // Session setup
 const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';

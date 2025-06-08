@@ -24,7 +24,7 @@ export function FileUpload({
   currentFile,
   onFileChange,
   accept = ".pdf,.jpg,.jpeg,.png,.webp",
-  maxSize = 10,
+  maxSize = 4.5,
   description = "PDF, JPG, PNG, WebP files",
   className = ""
 }: FileUploadProps) {
@@ -47,7 +47,7 @@ export function FileUpload({
     if (file.size > maxSize * 1024 * 1024) {
       toast({
         title: "File too large",
-        description: `Please upload files smaller than 3.5MB.`,
+        description: `Please upload files smaller than 4.5MB.`,
         variant: "destructive",
       });
       return false;
@@ -142,7 +142,7 @@ export function FileUpload({
                 <span className="font-medium text-primary">Click to upload</span> or drag and drop
               </div>
               <p className="text-xs text-gray-500">
-                {description} (max 3.5MB)
+                {description} (max 4.5MB)
               </p>
             </div>
           </Label>

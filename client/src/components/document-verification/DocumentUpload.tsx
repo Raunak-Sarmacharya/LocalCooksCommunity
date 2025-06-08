@@ -1,29 +1,28 @@
-import { useState } from "react";
-import { useDocumentVerification } from "@/hooks/use-document-verification";
-import { useFileUpload } from "@/hooks/useFileUpload";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUpload } from "@/components/ui/file-upload";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Upload, 
-  FileText, 
-  CheckCircle, 
-  Clock, 
-  XCircle, 
-  AlertTriangle,
-  Loader2,
-  Info,
-  Award,
-  Link as LinkIcon,
-  ImageIcon
-} from "lucide-react";
+import { useFileUpload } from "@/hooks/useFileUpload";
 import { motion } from "framer-motion";
+import {
+    AlertTriangle,
+    Award,
+    CheckCircle,
+    Clock,
+    FileText,
+    Info,
+    Link as LinkIcon,
+    Loader2,
+    Upload,
+    XCircle
+} from "lucide-react";
+import { useState } from "react";
 import { Link } from "wouter";
 
 export default function DocumentUpload() {
@@ -44,7 +43,7 @@ export default function DocumentUpload() {
 
   // Initialize file upload hook
   const { uploadFile, isUploading, uploadProgress, error: uploadError } = useFileUpload({
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 4.5 * 1024 * 1024, // 4.5MB (Vercel limit)
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     onSuccess: (response) => {
       toast({

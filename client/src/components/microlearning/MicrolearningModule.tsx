@@ -29,6 +29,7 @@ interface VideoData {
   duration: string;
   certification: string;
   source: string;
+  module: string;
 }
 
 interface UserProgress {
@@ -47,98 +48,236 @@ interface MicrolearningModuleProps {
   className?: string;
 }
 
-const videos: VideoData[] = [
+// Module 1: Food Safety Basics (14 videos) - Using ACTUALLY SHORT 30-second videos
+const foodSafetyBasicsVideos: VideoData[] = [
   {
-    id: 'canada-food-handling',
-    title: 'Safe Food Handling Basics',
-    description: 'Health Canada approved fundamentals of safe food handling, temperature control, and personal hygiene',
-    duration: '1:30',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    id: 'basics-personal-hygiene',
+    title: 'Food Safety Basics Overview',
+    description: 'Comprehensive introduction to essential food safety principles and practices for professional kitchens',
+    duration: '0:30',
+    url: 'https://streamable.com/e/8wmj23',
     source: 'Health Canada',
-    certification: 'Skillpass.nl Preparation Guide'
+    certification: 'Food Safety Basics',
+    module: 'basics'
   },
   {
-    id: 'canada-contamination-prevention',
-    title: 'Preventing Food Contamination',
-    description: 'CFIA guidelines for preventing cross-contamination and maintaining food safety standards',
-    duration: '2:00',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    source: 'Canadian Food Inspection Agency (CFIA)',
-    certification: 'Food Safety Training Guide'
-  },
-  {
-    id: 'canada-allergen-awareness',
-    title: 'Allergen Awareness and Management',
-    description: 'Safe Food for Canadians Regulations compliance for allergen identification and control',
-    duration: '1:45',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    source: 'Canadian Food Inspection Agency (CFIA)',
-    certification: 'Food Safety Training Guide'
-  },
-  {
-    id: 'nl-temperature-control',
-    title: 'Temperature Danger Zone & Time Control',
-    description: 'Master the 2-hour rule and temperature danger zone (4°C-60°C) for Newfoundland food premises compliance',
-    duration: '1:20',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    source: 'Health Canada + NL Department of Health',
-    certification: 'Food Safety Training Guide'
-  },
-  {
-    id: 'nl-personal-hygiene',
-    title: 'Personal Hygiene for Food Handlers',
-    description: 'Hand washing, uniform standards, illness reporting, and hygiene protocols for Newfoundland certification',
-    duration: '1:50',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    source: 'NL Department of Health & Community Services',
-    certification: 'Food Handler Training Guide'
-  },
-  {
-    id: 'nl-cleaning-sanitizing',
-    title: 'Cleaning and Sanitizing Procedures',
-    description: 'Proper cleaning vs sanitizing, chemical safety, and equipment maintenance for food premises',
-    duration: '2:00',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    source: 'CFIA + NL Public Health',
-    certification: 'Food Safety Training Guide'
-  },
-  {
-    id: 'nl-haccp-principles',
-    title: 'HACCP Principles for Small Kitchens',
-    description: 'Introduction to Hazard Analysis Critical Control Points for new chefs and kitchen managers',
-    duration: '1:40',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
-    source: 'Canadian Food Inspection Agency (CFIA)',
-    certification: 'HACCP Training Guide'
-  },
-  {
-    id: 'nl-food-storage',
-    title: 'Proper Food Storage & Receiving',
-    description: 'Cold storage, dry storage, FIFO rotation, and delivery inspection procedures',
-    duration: '1:35',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+    id: 'basics-temperature-danger',
+    title: 'Temperature Danger Zone',
+    description: 'Understanding 4°C-60°C danger zone and 2-hour rule',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
     source: 'Health Canada',
-    certification: 'Food Safety Training Guide'
+    certification: 'Food Safety Basics',
+    module: 'basics'
   },
   {
-    id: 'nl-cooking-temperatures',
-    title: 'Safe Cooking Temperatures & Methods',
-    description: 'Internal temperatures for meat, poultry, seafood, and proper cooking techniques',
-    duration: '1:25',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4',
+    id: 'basics-cross-contamination',
+    title: 'Preventing Cross-Contamination',
+    description: 'Basic principles to prevent food contamination',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'CFIA',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-allergen-awareness',
+    title: 'Common Allergens',
+    description: 'Identifying and managing common food allergens',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'CFIA',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-food-storage',
+    title: 'Safe Food Storage',
+    description: 'Proper storage temperatures and methods',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
     source: 'Health Canada',
-    certification: 'Skillpass.nl Preparation Guide'
+    certification: 'Food Safety Basics',
+    module: 'basics'
   },
   {
-    id: 'nl-inspection-preparation',
-    title: 'Health Inspection Readiness',
-    description: 'What inspectors look for, documentation requirements, and how to prepare for NL health inspections',
-    duration: '1:55',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-    source: 'NL Department of Health & Community Services',
-    certification: 'Food Safety Training Guide'
+    id: 'basics-cooking-temps',
+    title: 'Safe Cooking Temperatures',
+    description: 'Minimum internal temperatures for safe cooking',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-cooling-reheating',
+    title: 'Cooling and Reheating',
+    description: 'Safe cooling and reheating procedures',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-thawing',
+    title: 'Safe Thawing Methods',
+    description: 'Proper techniques for thawing frozen foods',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-receiving',
+    title: 'Receiving Deliveries',
+    description: 'How to properly inspect and receive food deliveries',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-fifo',
+    title: 'First In, First Out (FIFO)',
+    description: 'Inventory rotation and date labeling',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'Health Canada',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-illness-reporting',
+    title: 'Illness Reporting',
+    description: 'When and how to report foodborne illness',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'NL Health',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-pest-control',
+    title: 'Pest Prevention',
+    description: 'Basic pest prevention in food areas',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'NL Health',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-chemical-safety',
+    title: 'Chemical Safety',
+    description: 'Safe storage and use of cleaning chemicals',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'CFIA',
+    certification: 'Food Safety Basics',
+    module: 'basics'
+  },
+  {
+    id: 'basics-food-safety-plan',
+    title: 'Food Safety Plans',
+    description: 'Introduction to food safety planning',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'CFIA',
+    certification: 'Food Safety Basics',
+    module: 'basics'
   }
 ];
+
+// Module 2: Safety and Hygiene How-To's (8 videos) - Using ACTUALLY SHORT 30-second videos
+const safetyHygieneVideos: VideoData[] = [
+  {
+    id: 'howto-handwashing',
+    title: 'Proper Handwashing Technique',
+    description: 'Step-by-step handwashing demonstration',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'Health Canada',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-sanitizing',
+    title: 'Sanitizing Surfaces',
+    description: 'How to properly sanitize work surfaces',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'NL Health',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-thermometer',
+    title: 'Using Food Thermometers',
+    description: 'Proper thermometer use and calibration',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'Health Canada',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-cleaning-schedule',
+    title: 'Creating Cleaning Schedules',
+    description: 'How to develop and maintain cleaning schedules',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'NL Health',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-equipment-cleaning',
+    title: 'Equipment Cleaning',
+    description: 'Step-by-step equipment cleaning procedures',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'CFIA',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-uniform-care',
+    title: 'Uniform and Apron Care',
+    description: 'Proper uniform hygiene and maintenance',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'NL Health',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-wound-care',
+    title: 'Wound Care in Kitchen',
+    description: 'How to properly cover and protect cuts',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_480_1_5MG.mp4',
+    source: 'Health Canada',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  },
+  {
+    id: 'howto-inspection-prep',
+    title: 'Inspection Preparation',
+    description: 'How to prepare for health inspections',
+    duration: '0:30',
+    url: 'https://file-examples.com/wp-content/storage/2017/04/file_example_MP4_640_3MG.mp4',
+    source: 'NL Health',
+    certification: 'Safety & Hygiene How-To',
+    module: 'hygiene'
+  }
+];
+
+// Combine all videos
+const videos: VideoData[] = [...foodSafetyBasicsVideos, ...safetyHygieneVideos];
 
 export default function MicrolearningModule({
   userId,
@@ -148,6 +287,7 @@ export default function MicrolearningModule({
   const { user } = useAuth();
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const [currentModule, setCurrentModule] = useState<'basics' | 'hygiene'>('basics');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completionConfirmed, setCompletionConfirmed] = useState(false);
@@ -155,7 +295,9 @@ export default function MicrolearningModule({
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
   const [applicationInfo, setApplicationInfo] = useState<any>(null);
 
-  const currentVideo = videos[currentVideoIndex];
+  // Filter videos by current module
+  const currentModuleVideos = videos.filter(video => video.module === currentModule);
+  const currentVideo = currentModuleVideos[currentVideoIndex];
   const allVideosCompleted = userProgress.length === videos.length && 
     userProgress.every(p => p.completed);
   const overallProgress = (userProgress.filter(p => p.completed).length / videos.length) * 100;
@@ -352,9 +494,9 @@ export default function MicrolearningModule({
               transition={{ delay: 0.2, duration: 0.6 }}
               className="text-center space-y-6"
             >
-              <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full text-primary font-medium text-sm">
+                                  <div className="inline-flex items-center gap-3 px-4 py-2 bg-primary/10 rounded-full text-primary font-medium text-sm">
                 <Shield className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Specialized Training for Local Cooks</span>
+                <span className="truncate">Food Safety Training Modules</span>
                 {completionConfirmed && (
                   <>
                     <span className="w-1 h-1 bg-primary/60 rounded-full flex-shrink-0"></span>
@@ -367,34 +509,45 @@ export default function MicrolearningModule({
               </div>
               
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight px-4">
-                Food Safety
-                <span className="block text-primary">Specialized Training for Local Cooks</span>
+                Food Safety Training
+                <span className="block text-primary">Two Essential Modules</span>
               </h1>
               
               <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
-                Our comprehensive video training collection supports chefs operating on our platform - whether cooking from home kitchens or commercial kitchen spaces. This 10-module program provides the essential food safety knowledge needed to prepare for provincial certification requirements across Canada.
+                Our streamlined video training features two comprehensive modules designed for efficient learning. Module 1 covers Food Safety Basics (14 videos), while Module 2 focuses on Safety and Hygiene How-To's (8 videos) with shorter demo videos for practical application.
               </p>
 
               <div className="max-w-2xl mx-auto px-4">
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                                  <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
                   <div className="text-center space-y-4">
                     <div className="flex items-center justify-center gap-2 mb-3">
-                      <span className="text-2xl font-bold text-primary">10</span>
-                      <span className="text-gray-600">Professional Training Modules</span>
+                      <span className="text-2xl font-bold text-primary">2</span>
+                      <span className="text-gray-600">Comprehensive Training Modules</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
+                      <div className="flex flex-col items-center">
+                        <span className="text-lg font-semibold text-primary">14</span>
+                        <span>Food Safety Basics</span>
+                      </div>
+                      <div className="w-px h-8 bg-gray-300"></div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-lg font-semibold text-primary">8</span>
+                        <span>Safety & Hygiene</span>
+                      </div>
                     </div>
                     
                     <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span>Certification Preparation</span>
+                        <span>Short Demo Videos</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span>On-Demand Access</span>
+                        <span>Two Module Structure</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span>Flexible Learning</span>
+                        <span>Quick Testing</span>
                       </div>
                     </div>
 
@@ -542,6 +695,56 @@ export default function MicrolearningModule({
         {/* Main Content Area */}
         <div className="w-full">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+            
+            {/* Module Selector */}
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 mb-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Select Training Module</h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setCurrentModule('basics'); setCurrentVideoIndex(0); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      currentModule === 'basics' 
+                        ? 'bg-primary text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Food Safety Basics (14)
+                  </button>
+                  <button
+                    onClick={() => { setCurrentModule('hygiene'); setCurrentVideoIndex(0); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      currentModule === 'hygiene' 
+                        ? 'bg-primary text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Safety & Hygiene How-To's (8)
+                  </button>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <div className="font-medium text-blue-900">
+                    {currentModule === 'basics' ? 'Food Safety Basics' : 'Safety & Hygiene How-To\'s'}
+                  </div>
+                  <div className="text-blue-700 text-xs mt-1">
+                    {currentModule === 'basics' 
+                      ? 'Essential knowledge and principles'
+                      : 'Step-by-step practical demonstrations'
+                    }
+                  </div>
+                </div>
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <div className="font-medium text-green-900">Module Progress</div>
+                  <div className="text-green-700 text-xs mt-1">
+                    {userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length} of {currentModuleVideos.length} completed
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
               {/* Video Player Section - Modern Design */}
               <div className="xl:col-span-2 order-2 xl:order-1">
@@ -609,7 +812,9 @@ export default function MicrolearningModule({
                     <div className="p-4 sm:p-6 bg-gray-50/50 border-t">
                       <div className="flex flex-col gap-3 sm:gap-4">
                         <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                          <span className="whitespace-nowrap">Module {currentVideoIndex + 1} of {videos.length}</span>
+                          <span className="whitespace-nowrap">Video {currentVideoIndex + 1} of {currentModuleVideos.length}</span>
+                          <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                          <span className="whitespace-nowrap">{currentModule === 'basics' ? 'Food Safety Basics' : 'Safety & Hygiene How-To\'s'}</span>
                         </div>
                         
                         <div className="grid grid-cols-2 gap-3">
@@ -626,7 +831,7 @@ export default function MicrolearningModule({
 
                           {(() => {
                             const nextIndex = currentVideoIndex + 1;
-                            const isLastModule = nextIndex >= videos.length;
+                            const isLastModule = nextIndex >= currentModuleVideos.length;
                             const isLimitedAccess = accessLevel === 'limited' && currentVideoIndex === 0;
                             const currentProgress = getVideoProgress(currentVideo.id);
                             
@@ -679,40 +884,48 @@ export default function MicrolearningModule({
                 {/* Modern Module Grid */}
                 <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Training Modules</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {currentModule === 'basics' ? 'Food Safety Basics' : 'Safety & Hygiene How-To\'s'}
+                    </h3>
                     <div className="flex flex-wrap items-center gap-2">
                       {accessLevel === 'limited' && (
                         <div className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs sm:text-sm font-medium">
-                          1 of 10 Available
+                          Limited Access
                         </div>
                       )}
                       <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium">
-                        {userProgress.filter(p => p.completed).length} / {videos.length} Completed
+                        {userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length} / {currentModuleVideos.length} Completed
                       </div>
                     </div>
                   </div>
 
-                  {/* Overall Progress */}
+                  {/* Current Module Progress */}
                   <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-blue-900">Overall Progress</span>
-                      <span className="text-sm font-bold text-blue-900">{Math.round(overallProgress)}%</span>
+                      <span className="text-sm font-medium text-blue-900">
+                        {currentModule === 'basics' ? 'Food Safety Basics' : 'Safety & Hygiene How-To\'s'} Progress
+                      </span>
+                      <span className="text-sm font-bold text-blue-900">
+                        {Math.round((userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length / currentModuleVideos.length) * 100)}%
+                      </span>
                     </div>
                     <div className="w-full bg-blue-200 rounded-full h-2 mb-3">
                       <div 
                         className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${overallProgress}%` }}
+                        style={{ width: `${(userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length / currentModuleVideos.length) * 100}%` }}
                       ></div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 text-xs text-blue-700">
                       <div className="text-center">
-                        <div className="font-semibold">{userProgress.filter(p => p.completed).length}</div>
-                        <div>Modules Completed</div>
+                        <div className="font-semibold">{userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length}</div>
+                        <div>Videos Completed</div>
                       </div>
                       <div className="text-center">
                         <div className="font-semibold">
-                          {userProgress.reduce((acc, p) => acc + (p.watchedPercentage || 0), 0) > 0 
-                            ? Math.round(userProgress.reduce((acc, p) => acc + (p.watchedPercentage || 0), 0) / videos.length)
+                          {currentModuleVideos.length > 0 && userProgress.filter(p => currentModuleVideos.some(v => v.id === p.videoId)).length > 0
+                            ? Math.round(userProgress
+                                .filter(p => currentModuleVideos.some(v => v.id === p.videoId))
+                                .reduce((acc, p) => acc + (p.watchedPercentage || 0), 0) / currentModuleVideos.length)
                             : 0}%
                         </div>
                         <div>Average Watch Time</div>
@@ -720,17 +933,17 @@ export default function MicrolearningModule({
                     </div>
                   </div>
 
-                  {/* Module Grid */}
+                  {/* Current Module Video Grid */}
                   <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-5 gap-2 sm:gap-3 mb-6">
-                    {videos.map((video, index) => {
+                    {currentModuleVideos.map((video, index) => {
                       const progress = getVideoProgress(video.id);
                       const isLocked = accessLevel === 'limited' && index > 0;
                       const isCurrent = currentVideoIndex === index;
                       const watchedPercentage = progress?.watchedPercentage || 0;
                       const isCompleted = progress?.completed || false;
                       
-                      // For approved users, check if previous module is completed (sequential learning)
-                      const previousCompleted = index === 0 || userProgress.find(p => p.videoId === videos[index - 1].id)?.completed || false;
+                      // For approved users, check if previous video in current module is completed (sequential learning)
+                      const previousCompleted = index === 0 || userProgress.find(p => p.videoId === currentModuleVideos[index - 1].id)?.completed || false;
                       const canAccess = accessLevel === 'full' ? (index === 0 || previousCompleted) : index === 0;
                       const isAccessLocked = !canAccess;
                       

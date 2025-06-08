@@ -22,7 +22,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
   const [error, setError] = useState<string | null>(null);
 
   const {
-    maxSize = 10 * 1024 * 1024, // 10MB default
+    maxSize = 4.5 * 1024 * 1024, // 4.5MB default (Vercel limit)
     allowedTypes = [],
     onProgress,
     onSuccess,
@@ -31,7 +31,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
 
   const validateFile = (file: File): string | null => {
     if (file.size > maxSize) {
-      return `File size exceeds 3.5MB limit`;
+      return `File size exceeds 4.5MB limit`;
     }
 
     if (allowedTypes.length > 0 && !allowedTypes.includes(file.type)) {
