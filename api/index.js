@@ -2625,34 +2625,82 @@ async function updateVideoProgress(progressData) {
           completed BOOLEAN NOT NULL DEFAULT FALSE,
           completed_at TIMESTAMP,
           updated_at TIMESTAMP DEFAULT NOW(),
+          watched_percentage INTEGER DEFAULT 0,
+          is_rewatching BOOLEAN DEFAULT FALSE,
           UNIQUE(user_id, video_id)
         );
       `);
 
+      // First, get existing progress to preserve completion status
+      const existingResult = await pool.query(`
+        SELECT completed, completed_at FROM video_progress 
+        WHERE user_id = $1 AND video_id = $2
+      `, [progressData.userId, progressData.videoId]);
+
+      const existingProgress = existingResult.rows[0];
+      
+      // If video was already completed and we're not explicitly marking as completed,
+      // preserve the completion status
+      let finalCompleted = progressData.completed;
+      let finalCompletedAt = progressData.completedAt;
+      let isRewatching = false;
+      
+      if (existingProgress && existingProgress.completed && !progressData.completed) {
+        // User is re-watching a completed video - preserve completion status
+        finalCompleted = true;
+        finalCompletedAt = existingProgress.completed_at;
+        isRewatching = true;
+      } else if (existingProgress && existingProgress.completed) {
+        // Already completed, just update isRewatching flag
+        isRewatching = true;
+      }
+
       await pool.query(`
-        INSERT INTO video_progress (user_id, video_id, progress, completed, completed_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO video_progress (user_id, video_id, progress, completed, completed_at, updated_at, watched_percentage, is_rewatching)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (user_id, video_id) 
         DO UPDATE SET 
           progress = EXCLUDED.progress,
           completed = EXCLUDED.completed,
           completed_at = EXCLUDED.completed_at,
-          updated_at = EXCLUDED.updated_at
+          updated_at = EXCLUDED.updated_at,
+          watched_percentage = EXCLUDED.watched_percentage,
+          is_rewatching = EXCLUDED.is_rewatching
       `, [
         progressData.userId,
         progressData.videoId,
         progressData.progress,
-        progressData.completed,
-        progressData.completedAt,
-        progressData.updatedAt
+        finalCompleted,
+        finalCompletedAt,
+        progressData.updatedAt,
+        progressData.watchedPercentage || 0,
+        isRewatching
       ]);
     } catch (error) {
       console.error('Error updating video progress:', error);
     }
   } else {
-    // In-memory fallback
+    // In-memory fallback - apply same logic as storage.ts
     const key = `${progressData.userId}-${progressData.videoId}`;
-    microlearningProgress.set(key, progressData);
+    const existingProgress = microlearningProgress.get(key);
+    
+    // If the video was already completed, preserve the completion status and date
+    // unless explicitly setting it to completed again
+    if (existingProgress && existingProgress.completed && !progressData.completed) {
+      // User is re-watching a completed video - preserve completion status
+      microlearningProgress.set(key, {
+        ...progressData,
+        completed: true, // Keep it marked as completed
+        completedAt: existingProgress.completedAt, // Preserve original completion date
+        isRewatching: true // Flag to indicate this is a rewatch
+      });
+    } else {
+      // New video or explicitly marking as completed
+      microlearningProgress.set(key, {
+        ...progressData,
+        isRewatching: existingProgress?.completed || false
+      });
+    }
   }
 }
 

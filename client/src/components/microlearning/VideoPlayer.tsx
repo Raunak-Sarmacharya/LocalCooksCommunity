@@ -12,6 +12,7 @@ interface VideoPlayerProps {
   onComplete?: () => void;
   onStart?: () => void;
   isCompleted?: boolean;
+  isRewatching?: boolean;
   className?: string;
   autoPlay?: boolean;
   requireFullWatch?: boolean; // Requires user to watch 90% to mark complete
@@ -25,6 +26,7 @@ export default function VideoPlayer({
   onComplete,
   onStart,
   isCompleted = false,
+  isRewatching = false,
   className = "",
   autoPlay = false,
   requireFullWatch = true
@@ -318,12 +320,20 @@ export default function VideoPlayer({
         {/* Title and Status */}
         <div className="flex items-start gap-2 mb-3">
           <h3 className="font-medium text-sm leading-tight flex-1 break-words">{title}</h3>
-          {videoCompleted && (
-            <div className="flex items-center text-green-400 flex-shrink-0">
-              <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
-              <span className="text-xs whitespace-nowrap">Complete</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isCompleted && isRewatching && (
+              <div className="flex items-center text-blue-400">
+                <RotateCcw className="h-3 w-3 mr-1 flex-shrink-0" />
+                <span className="text-xs whitespace-nowrap">Rewatching</span>
+              </div>
+            )}
+            {isCompleted && !isRewatching && (
+              <div className="flex items-center text-green-400">
+                <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
+                <span className="text-xs whitespace-nowrap">Complete</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Progress Bar */}
