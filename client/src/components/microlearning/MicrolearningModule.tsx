@@ -1320,17 +1320,83 @@ export default function MicrolearningModule({
                           className="w-full border-green-300 text-green-700 hover:bg-green-100"
                           onClick={async () => {
                             try {
-                              const currentUserId = userId || user?.id;
+                              // First ensure user is authenticated
+                              let currentUserId = userId || user?.id;
+                              let currentUser = user;
                               
-                              // Include authentication headers matching other working endpoints
-                              const headers: Record<string, string> = {};
-                              if (currentUserId) {
-                                headers['X-User-ID'] = currentUserId.toString();
+                              // If no user data, try to fetch it
+                              if (!currentUserId || !currentUser) {
+                                console.log('No user data found, fetching from API...');
+                                try {
+                                  const userResponse = await fetch('/api/user', {
+                                    credentials: 'include'
+                                  });
+                                  
+                                  if (userResponse.ok) {
+                                    currentUser = await userResponse.json();
+                                    currentUserId = currentUser?.id;
+                                    console.log('Fetched user data:', currentUser);
+                                  } else {
+                                    console.log('Failed to fetch user data, redirecting to login');
+                                    alert('Please log in to download your certificate.');
+                                    window.location.href = '/login';
+                                    return;
+                                  }
+                                } catch (fetchError) {
+                                  console.error('Error fetching user data:', fetchError);
+                                  alert('Please log in to download your certificate.');
+                                  return;
+                                }
+                              }
+                              
+                              // Debug: Log authentication data
+                              console.log('Certificate request debug:', {
+                                userId: currentUserId,
+                                userObject: currentUser,
+                                sessionStorage: localStorage.getItem('user'),
+                              });
+                              
+                              if (!currentUserId) {
+                                alert('Please log in to download your certificate.');
+                                return;
+                              }
+                              
+                              // First test authentication with debug endpoint
+                              const debugResponse = await fetch(`/api/debug-auth/${currentUserId}`, {
+                                method: 'GET',
+                                headers: {
+                                  'X-User-ID': currentUserId.toString(),
+                                  'Content-Type': 'application/json'
+                                },
+                                credentials: 'include'
+                              });
+                              
+                              const debugData = await debugResponse.json();
+                              console.log('Debug auth response:', debugData);
+                              
+                              if (!debugData.authenticated) {
+                                alert('Authentication issue detected. Please log out and log back in.');
+                                console.error('Auth debug data:', debugData);
+                                return;
+                              }
+                              
+                              if (!debugData.completion) {
+                                alert('No completion record found. Please ensure you have completed all training modules.');
+                                return;
+                              }
+                              
+                              if (!debugData.completion.confirmed) {
+                                alert('Training completion not confirmed. Please complete the certification process first.');
+                                return;
                               }
 
+                              // Now attempt certificate download
                               const response = await fetch(`/api/microlearning/certificate/${currentUserId}`, {
                                 method: 'GET',
-                                headers,
+                                headers: {
+                                  'X-User-ID': currentUserId.toString(),
+                                  'Content-Type': 'application/json'
+                                },
                                 credentials: 'include'
                               });
                               
