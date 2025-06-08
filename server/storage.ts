@@ -319,7 +319,25 @@ export class MemStorage implements IStorage {
 
   async updateVideoProgress(progressData: any): Promise<void> {
     const key = `${progressData.userId}-${progressData.videoId}`;
-    this.videoProgress.set(key, progressData);
+    const existingProgress = this.videoProgress.get(key);
+    
+    // If the video was already completed, preserve the completion status and date
+    // unless explicitly setting it to completed again
+    if (existingProgress && existingProgress.completed && !progressData.completed) {
+      // User is re-watching a completed video - preserve completion status
+      this.videoProgress.set(key, {
+        ...progressData,
+        completed: true, // Keep it marked as completed
+        completedAt: existingProgress.completedAt, // Preserve original completion date
+        isRewatching: true // Flag to indicate this is a rewatch
+      });
+    } else {
+      // New video or explicitly marking as completed
+      this.videoProgress.set(key, {
+        ...progressData,
+        isRewatching: existingProgress?.completed || false
+      });
+    }
   }
 
   async createMicrolearningCompletion(completionData: any): Promise<any> {

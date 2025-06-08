@@ -38,6 +38,7 @@ interface UserProgress {
   completedAt?: Date;
   startedAt?: Date;
   watchedPercentage?: number;
+  isRewatching?: boolean;
 }
 
 interface MicrolearningModuleProps {
@@ -224,12 +225,16 @@ export default function MicrolearningModule({
           const filtered = prev.filter(p => p.videoId !== videoId);
           const existing = prev.find(p => p.videoId === videoId);
           
+          // Preserve completion status if video was already completed
+          const finalCompleted = existing?.completed || completed;
+          const finalCompletedAt = existing?.completed ? existing.completedAt : (completed ? new Date() : undefined);
+          
           return [...filtered, {
             videoId,
             progress,
-            completed,
+            completed: finalCompleted,
             watchedPercentage,
-            completedAt: completed ? new Date() : existing?.completedAt,
+            completedAt: finalCompletedAt,
             startedAt: existing?.startedAt || (progress > 0 ? new Date() : undefined)
           }];
         });
@@ -363,38 +368,33 @@ export default function MicrolearningModule({
                 Our comprehensive video training collection supports chefs operating on our platform - whether cooking from home kitchens or commercial kitchen spaces. This 10-module program provides the essential food safety knowledge needed to prepare for provincial certification requirements across Canada.
               </p>
 
-              <div className="bg-white rounded-xl p-4 sm:p-6 mx-4 shadow-sm border border-gray-100 max-w-4xl mx-auto">
-                <h3 className="font-semibold text-gray-900 mb-3">Program Features:</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-600">
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1.5"></div>
-                    <span>10 targeted training modules covering food safety fundamentals</span>
+              <div className="max-w-2xl mx-auto px-4">
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                  <div className="text-center space-y-4">
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      <span className="text-2xl font-bold text-primary">10</span>
+                      <span className="text-gray-600">Professional Training Modules</span>
+                    </div>
+                    
+                    <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span>Certification Preparation</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span>On-Demand Access</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                        <span>Flexible Learning</span>
+                      </div>
+                    </div>
+
+                    <p className="text-sm font-medium text-primary border-t border-gray-100 pt-4">
+                      Strengthen your knowledge. Meet certification standards. Grow your culinary business.
+                    </p>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0 mt-1.5"></div>
-                    <span>Professional video content designed for certification preparation</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full flex-shrink-0 mt-1.5"></div>
-                    <span>On-demand access - review any module anytime as a refresher</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1.5"></div>
-                    <span>Applicable nationwide supporting various provincial certification standards</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1.5"></div>
-                    <span>Flexible learning designed for busy platform chefs</span>
-                  </div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-sm text-gray-600 mb-3">
-                    Ideal for our platform chefs operating from home-based kitchens and commercial kitchen facilities who need to meet local food safety certification requirements.
-                  </p>
-                  <p className="text-sm font-medium text-primary">
-                    Strengthen your knowledge. Meet certification standards. Grow your culinary business.
-                  </p>
                 </div>
               </div>
             </motion.div>
@@ -585,6 +585,7 @@ export default function MicrolearningModule({
                           onProgress={(progress, watchedPercentage) => handleVideoProgress(currentVideo.id, progress, watchedPercentage)}
                           onComplete={() => handleVideoComplete(currentVideo.id)}
                           isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
+                          isRewatching={getVideoProgress(currentVideo.id)?.completed && getVideoProgress(currentVideo.id)?.progress < 100}
                           requireFullWatch={true}
                         />
                       ) : (
