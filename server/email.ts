@@ -390,6 +390,7 @@ export const generateFullVerificationEmail = (
                                              <h4 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;font-weight:600;color:#16a34a;margin:0 0 12px 0;">🚀 What's Next?</h4>
                        <ul style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#166534;margin:0;padding-left:20px;line-height:1.6;">
                          <li>Visit <strong>localcook.shop/app/shop/login.php</strong> and log in with your credentials</li>
+                         <li><strong>Set up your Stripe payment profile</strong> for secure payment processing (you'll be guided through this automatically)</li>
                          <li>Complete your vendor profile and add your menu items</li>
                          <li>Set up your shop preferences and availability</li>
                          <li>Start accepting orders from hungry customers!</li>

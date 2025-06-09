@@ -47,7 +47,7 @@ Examples:
 2. **Verification achievement message**
 3. **Vendor credentials table** (highlighted blue box)
 4. **Security recommendation** (yellow warning box)
-5. **Next steps guide** (5 actionable items)
+5. **Next steps guide** (6 actionable items including Stripe onboarding)
 6. **Vendor shop login CTA button**
 7. **Support contact** information
 
