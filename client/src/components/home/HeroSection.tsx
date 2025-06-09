@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
@@ -8,28 +9,14 @@ import chefCookingImage from "../../assets/chef-cooking.png";
 export default function HeroSection() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
+  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handlePrimaryClick = () => {
-    if (!user) {
-      // Not logged in, redirect to auth page
-      navigate("/auth");
-    } else if (user.role === "admin") {
-      // Admin user, redirect to admin dashboard
-      navigate("/admin");
-    } else {
-      // Regular user, redirect to application form
-      navigate("/apply");
-    }
+    navigate(getNavigationPath());
   };
 
   const getPrimaryButtonText = () => {
-    if (!user) {
-      return "Start Your Application";
-    } else if (user.role === "admin") {
-      return "Go to Admin Dashboard";
-    } else {
-      return "Continue Application";
-    }
+    return getButtonText("Start Your Application");
   };
   
   return (
@@ -81,10 +68,11 @@ export default function HeroSection() {
           
           <Button 
             onClick={handlePrimaryClick}
+            disabled={isLoading}
             size="lg"
             className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto"
           >
-            {getPrimaryButtonText()}
+            {isLoading ? "Loading..." : getPrimaryButtonText()}
           </Button>
         </motion.div>
         

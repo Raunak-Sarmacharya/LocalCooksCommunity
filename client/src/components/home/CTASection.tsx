@@ -1,36 +1,19 @@
 import { Button } from "@/components/ui/button";
+import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 
 export default function CTASection() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
+  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handlePrimaryClick = () => {
-    if (!user) {
-      // Not logged in, redirect to auth page
-      navigate("/auth");
-    } else if (user.role === "admin") {
-      // Admin user, redirect to admin dashboard
-      navigate("/admin");
-    } else {
-      // Regular user, redirect to application form
-      navigate("/apply");
-    }
-  };
-
-  const handleTestEmailClick = () => {
-    navigate("/?test=email");
+    navigate(getNavigationPath());
   };
 
   const getPrimaryButtonText = () => {
-    if (!user) {
-      return "Start Your Application";
-    } else if (user.role === "admin") {
-      return "Go to Admin Dashboard";
-    } else {
-      return "Continue Application";
-    }
+    return getButtonText("Start an Application");
   };
 
   const getHeadingText = () => {
@@ -60,12 +43,11 @@ export default function CTASection() {
         <div className="flex justify-center gap-4 flex-wrap">
           <Button
             onClick={handlePrimaryClick}
+            disabled={isLoading}
             className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
           >
-            {getPrimaryButtonText()}
+            {isLoading ? "Loading..." : getPrimaryButtonText()}
           </Button>
-
-
         </div>
       </div>
     </section>
