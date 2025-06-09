@@ -284,3 +284,164 @@ export const generateStatusChangeEmail = (
     html,
   };
 };
+
+// Generate vendor login credentials
+const generateVendorCredentials = (fullName: string, phone: string) => {
+  const username = phone.replace(/[^0-9]/g, ''); // Clean phone number
+  const namePrefix = fullName.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 3) || 'usr';
+  const phoneSuffix = phone.replace(/[^0-9]/g, '').slice(-4) || '0000';
+  const password = namePrefix + phoneSuffix;
+  return { username, password };
+};
+
+// Generate full verification email with vendor credentials
+export const generateFullVerificationEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+    phone: string;
+  }
+): EmailContent => {
+  const { username, password } = generateVendorCredentials(userData.fullName, userData.phone);
+  
+  const html = `
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
+    <tr>
+      <td align="center" style="padding:0;margin:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
+          <tr>
+            <td style="padding:0;">
+              <!-- Header -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);padding:0;">
+                <tr>
+                  <td style="padding:32px 32px 16px 32px;text-align:center;">
+                    <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
+                    <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- Verification Complete Badge -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td align="center" style="padding:32px 32px 0 32px;">
+                    <span style="display:inline-block;padding:12px 32px;font-size:1.2rem;font-weight:700;border-radius:999px;background:linear-gradient(90deg,#bbf7d0 0%,#4ade80 100%);box-shadow:0 4px 16px 0 rgba(16,185,129,0.15);color:#166534;letter-spacing:0.5px;vertical-align:middle;">
+                      <span style="font-size:1.8rem;vertical-align:middle;margin-right:10px;">🎉</span>
+                      FULLY VERIFIED
+                    </span>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- Main Content -->
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="padding:32px 32px 0 32px;">
+                    <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.6rem;font-weight:700;color:#16a34a;margin:0 0 16px 0;letter-spacing:-0.5px;text-align:center;">Congratulations ${userData.fullName}!</h2>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 24px 0;text-align:center;">
+                      🎊 Your documents have been approved and you are now <strong>fully verified</strong>! You can now start accepting orders and serving customers through our Local Cooks platform.
+                    </p>
+                  </td>
+                </tr>
+                
+                <!-- Vendor Login Credentials -->
+                <tr>
+                  <td style="padding:0 32px;">
+                    <div style="background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);border:2px solid #0284c7;border-radius:12px;padding:24px;margin-bottom:24px;">
+                                             <h3 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.3rem;font-weight:700;color:#0284c7;margin:0 0 16px 0;text-align:center;">
+                         🔑 Your Vendor Shop Login Credentials
+                       </h3>
+                       <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1rem;color:#0369a1;margin:0 0 20px 0;text-align:center;">
+                         Use these credentials to access your vendor shop at localcook.shop:
+                      </p>
+                      
+                      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">
+                        <tr>
+                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-radius:8px 8px 0 0;">
+                            <strong style="font-family:'Segoe UI',Arial,sans-serif;color:#0284c7;font-size:0.9rem;">USERNAME:</strong>
+                          </td>
+                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-left:none;border-radius:0 8px 0 0;">
+                            <code style="font-family:'Courier New',monospace;font-size:1.1rem;color:#1e293b;font-weight:600;">${username}</code>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-top:none;border-radius:0 0 8px 0;">
+                            <strong style="font-family:'Segoe UI',Arial,sans-serif;color:#0284c7;font-size:0.9rem;">PASSWORD:</strong>
+                          </td>
+                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-left:none;border-top:none;border-radius:0 0 8px 8px;">
+                            <code style="font-family:'Courier New',monospace;font-size:1.1rem;color:#1e293b;font-weight:600;">${password}</code>
+                          </td>
+                        </tr>
+                      </table>
+                      
+                      <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px;text-align:center;">
+                        <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.9rem;color:#92400e;margin:0;line-height:1.4;">
+                          <strong>⚠️ Important:</strong> Please change your password after your first login for security purposes.
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- Next Steps -->
+                <tr>
+                  <td style="padding:0 32px 24px 32px;">
+                    <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1px solid #22c55e;border-radius:12px;padding:20px;">
+                                             <h4 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;font-weight:600;color:#16a34a;margin:0 0 12px 0;">🚀 What's Next?</h4>
+                       <ul style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#166534;margin:0;padding-left:20px;line-height:1.6;">
+                         <li>Visit <strong>localcook.shop/app/shop/login.php</strong> and log in with your credentials</li>
+                         <li>Complete your vendor profile and add your menu items</li>
+                         <li>Set up your shop preferences and availability</li>
+                         <li>Start accepting orders from hungry customers!</li>
+                         <li><strong>Remember to change your password after first login</strong></li>
+                       </ul>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- CTA Button -->
+                <tr>
+                  <td align="center" style="padding:0 32px 32px 32px;">
+                    <a href="${process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/login.php'}" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(34,197,94,0.20);text-decoration:none;transition:box-shadow 0.2s;">
+                      Access Vendor Login →
+                    </a>
+                  </td>
+                </tr>
+                
+                <!-- Divider -->
+                <tr>
+                  <td style="padding:0 32px;">
+                    <div style="height:1px;width:100%;background:linear-gradient(90deg,#e0e7ff 0%,#f3f4f6 100%);opacity:0.7;"></div>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="padding:32px 32px 32px 32px;text-align:center;">
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
+                      Welcome to the <strong>Local Cooks</strong> verified vendor community!
+                    </p>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
+                      If you need help, contact us at <a href="mailto:${process.env.VENDOR_SUPPORT_EMAIL || 'support@localcooks.shop'}" style="color:#16a34a;text-decoration:underline;">vendor support</a>
+                    </p>
+                    <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);opacity:0.18;"></div>
+                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">
+                      &copy; ${new Date().getFullYear()} Local Cooks Community
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  `;
+
+  return {
+    to: userData.email,
+    subject: '🎉 You\'re Fully Verified! Here are your Vendor Login Credentials',
+    html,
+  };
+};
