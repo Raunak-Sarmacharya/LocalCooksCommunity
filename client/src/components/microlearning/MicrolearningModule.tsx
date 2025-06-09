@@ -300,7 +300,7 @@ export default function MicrolearningModule({
   const currentModuleVideos = videos.filter(video => video.module === currentModule);
   const currentVideo = currentModuleVideos[currentVideoIndex];
   const allVideosCompleted = userProgress.length === videos.length && 
-    userProgress.every(p => p.completed);
+    userProgress.every((p: any) => p.completed);
   const overallProgress = (userProgress.filter(p => p.completed).length / videos.length) * 100;
 
   // Debug log
@@ -331,7 +331,7 @@ export default function MicrolearningModule({
         
         // Filter out any old video IDs that don't match current video structure
         const currentVideoIds = videos.map(v => v.id);
-        const filteredProgress = (data.progress || []).filter((p: UserProgress) => 
+        const filteredProgress = (data.progress || []).filter((p: any) => 
           currentVideoIds.includes(p.videoId)
         );
         
@@ -339,7 +339,7 @@ export default function MicrolearningModule({
           original: data.progress?.length || 0,
           filtered: filteredProgress.length,
           currentVideoIds,
-          progressVideoIds: (data.progress || []).map((p: UserProgress) => p.videoId)
+          progressVideoIds: (data.progress || []).map((p: any) => p.videoId)
         });
         
         setUserProgress(filteredProgress);
@@ -379,8 +379,8 @@ export default function MicrolearningModule({
       if (response.ok) {
         // Update local state immediately for better UX
         setUserProgress(prev => {
-          const filtered = prev.filter(p => p.videoId !== videoId);
-          const existing = prev.find(p => p.videoId === videoId);
+          const filtered = (prev as any[]).filter((p: any) => p.videoId !== videoId);
+          const existing = (prev as any[]).find((p: any) => p.videoId === videoId);
           
           // If explicitly setting to completed, use that. Otherwise preserve existing completion status
           const finalCompleted = completed || (existing?.completed || false);
@@ -493,7 +493,7 @@ export default function MicrolearningModule({
   };
 
   const getVideoProgress = (videoId: string) => {
-    return userProgress.find(p => p.videoId === videoId);
+    return userProgress.find((p: any) => p.videoId === videoId);
   };
 
   const videoProgressData = videos.map(video => {
@@ -502,10 +502,10 @@ export default function MicrolearningModule({
       id: video.id,
       title: video.title,
       duration: video.duration,
-      completed: progress?.completed || false,
-      progress: progress?.progress || 0,
-      completedAt: progress?.completedAt,
-      startedAt: progress?.startedAt,
+      completed: (progress as any)?.completed || false,
+      progress: (progress as any)?.progress || 0,
+      completedAt: (progress as any)?.completedAt,
+      startedAt: (progress as any)?.startedAt,
       certification: video.certification,
       source: video.source
     };
@@ -550,11 +550,12 @@ export default function MicrolearningModule({
               
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight px-4">
                 Food Safety Training
-                <span className="block text-primary">Two Essential Modules</span>
+                <span className="block text-primary">Professional Video Modules</span>
               </h1>
               
               <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
-                Our streamlined video training features two comprehensive modules designed for efficient learning. Module 1 covers Food Safety Basics (14 videos), while Module 2 focuses on Safety and Hygiene How-To's (8 videos) with shorter demo videos for practical application.
+                Access industry-leading food safety education through our curated collection of Unilever Food Solutions training videos. These HACCP-based modules provide practical guidance on food safety fundamentals and hygiene best practices—ideal for familiarizing yourself with standards, refreshing existing knowledge, or supporting your certification preparation. <br /> <br />
+                <strong className="font-semibold text-primary">Note:</strong> This training is designed to support your learning and certification preparation, but does not itself confer certification.
               </p>
 
               <div className="max-w-2xl mx-auto px-4">
@@ -562,37 +563,37 @@ export default function MicrolearningModule({
                   <div className="text-center space-y-4">
                     <div className="flex items-center justify-center gap-2 mb-3">
                       <span className="text-2xl font-bold text-primary">2</span>
-                      <span className="text-gray-600">Comprehensive Training Modules</span>
+                      <span className="text-gray-600">Professional Training Modules</span>
                     </div>
                     <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
                       <div className="flex flex-col items-center">
                         <span className="text-lg font-semibold text-primary">14</span>
-                        <span>Food Safety Basics</span>
+                        <span>Food Safety Basics Videos</span>
                       </div>
                       <div className="w-px h-8 bg-gray-300"></div>
                       <div className="flex flex-col items-center">
                         <span className="text-lg font-semibold text-primary">8</span>
-                        <span>Safety & Hygiene</span>
+                        <span>Safety & Hygiene Demonstrations</span>
                       </div>
                     </div>
                     
                     <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span>Short Demo Videos</span>
+                        <span>HACCP-Based Content</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span>Two Module Structure</span>
+                        <span>Self-Paced Learning</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span>Quick Testing</span>
+                        <span>Industry-Standard Practices</span>
                       </div>
                     </div>
 
                     <p className="text-sm font-medium text-primary border-t border-gray-100 pt-4">
-                      Strengthen your knowledge. Meet certification standards. Grow your culinary business.
+                      Enhance your food safety knowledge. Apply proven principles. Elevate your culinary business.
                     </p>
                   </div>
                 </div>
@@ -904,8 +905,8 @@ export default function MicrolearningModule({
                           onStart={() => handleVideoStart(currentVideo.id)}
                           onProgress={(progress, watchedPercentage) => handleVideoProgress(currentVideo.id, progress, watchedPercentage)}
                           onComplete={() => handleVideoComplete(currentVideo.id)}
-                          isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
-                          isRewatching={completionConfirmed || user?.role === 'admin' || ((getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100)}
+                          isCompleted={(getVideoProgress(currentVideo.id) as any)?.completed || false}
+                          isRewatching={completionConfirmed || user?.role === 'admin' || ((getVideoProgress(currentVideo.id) as any)?.completed || false) && ((getVideoProgress(currentVideo.id) as any)?.progress || 0) < 100}
                           requireFullWatch={false}
                         />
                       ) : (
@@ -946,7 +947,7 @@ export default function MicrolearningModule({
                             const currentProgress = getVideoProgress(currentVideo.id);
                             
                             // Check completion status explicitly - this should be true if video was ever completed
-                            const currentCompleted = currentProgress?.completed || false;
+                            const currentCompleted = (currentProgress as any)?.completed || false;
                             
                             // Navigation logic:
                             // 1. If certification completed - unrestricted navigation
@@ -1064,8 +1065,8 @@ export default function MicrolearningModule({
                       const progress = getVideoProgress(video.id);
                       const isLocked = accessLevel === 'limited' && index > 0;
                       const isCurrent = currentVideoIndex === index;
-                      const watchedPercentage = progress?.watchedPercentage || 0;
-                      const isCompleted = progress?.completed || false;
+                      const watchedPercentage = (progress as any)?.watchedPercentage || 0;
+                      const isCompleted = (progress as any)?.completed || false;
                       
                       // Debug logging for current video
                       if (isCurrent && progress) {
