@@ -436,25 +436,29 @@ export default function MicrolearningModule({
       console.log(`Module completed: ${video.title}`);
     }
     
-    // Auto-advance to next video after a short delay
-    setTimeout(() => {
-      const nextIndex = currentVideoIndex + 1;
-      const isLastModule = nextIndex >= currentModuleVideos.length;
-      
-      if (!isLastModule && accessLevel === 'full') {
-        setCurrentVideoIndex(nextIndex);
-      } else if (isLastModule && currentModule === 'basics') {
-        // Check if all basics videos are completed to unlock hygiene module
-        const allBasicsCompleted = foodSafetyBasicsVideos.every(basicVideo => 
-          userProgress.find(p => p.videoId === basicVideo.id)?.completed || basicVideo.id === videoId
-        );
+    // Auto-advance to next video after a short delay - but only if user is not in rewatch mode
+    const isInRewatchMode = completionConfirmed || user?.role === 'admin';
+    
+    if (!isInRewatchMode) {
+      setTimeout(() => {
+        const nextIndex = currentVideoIndex + 1;
+        const isLastModule = nextIndex >= currentModuleVideos.length;
         
-        if (allBasicsCompleted) {
-          setCurrentModule('hygiene');
-          setCurrentVideoIndex(0);
+        if (!isLastModule && accessLevel === 'full') {
+          setCurrentVideoIndex(nextIndex);
+        } else if (isLastModule && currentModule === 'basics') {
+          // Check if all basics videos are completed to unlock hygiene module
+          const allBasicsCompleted = foodSafetyBasicsVideos.every(basicVideo => 
+            userProgress.find(p => p.videoId === basicVideo.id)?.completed || basicVideo.id === videoId
+          );
+          
+          if (allBasicsCompleted) {
+            setCurrentModule('hygiene');
+            setCurrentVideoIndex(0);
+          }
         }
-      }
-    }, 2000); // 2 second delay to show completion message
+      }, 2000); // 2 second delay to show completion message
+    }
   };
 
   const confirmCompletion = async () => {
