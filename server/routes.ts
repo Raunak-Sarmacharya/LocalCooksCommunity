@@ -1079,9 +1079,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const completionStatus = await storage.getMicrolearningCompletion(userId);
       const hasApproval = await hasApprovedApplication(userId);
       
-      // Admins have unrestricted access regardless of application status
+      // Admins and completed users have unrestricted access regardless of application status
       const isAdmin = req.user!.role === 'admin';
-      const accessLevel = isAdmin || hasApproval ? 'full' : 'limited';
+      const isCompleted = completionStatus?.confirmed || false;
+      const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
 
       res.json({
         success: true,
@@ -1114,11 +1115,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if user has approved application for videos beyond the first one
       const hasApproval = await hasApprovedApplication(userId);
+      const completionStatus = await storage.getMicrolearningCompletion(userId);
+      const isCompleted = completionStatus?.confirmed || false;
       const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
       const isAdmin = req.user!.role === 'admin';
       
-      // Admins have unrestricted access to all videos
-      if (!hasApproval && !isAdmin && videoId !== firstVideoId) {
+      // Admins and completed users have unrestricted access to all videos
+      if (!hasApproval && !isAdmin && !isCompleted && videoId !== firstVideoId) {
         return res.status(403).json({ 
           message: 'Application approval required to access this video',
           accessLevel: 'limited',
@@ -1170,6 +1173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = req.user!.role === 'admin';
       
       // Admins can complete certification without application approval
+      // Regular users need approval unless they're completing as admin
       if (!hasApproval && !isAdmin) {
         return res.status(403).json({ 
           message: 'Application approval required to complete full certification',
