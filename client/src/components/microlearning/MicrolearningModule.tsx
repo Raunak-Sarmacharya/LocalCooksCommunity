@@ -670,7 +670,7 @@ export default function MicrolearningModule({
                       const debugResponse = await fetch(`/api/debug-auth/${currentUserId}`, {
                         method: 'GET',
                         headers: {
-                          'X-User-ID': currentUserId.toString(),
+                          'X-User-ID': currentUserId?.toString() || '',
                           'Content-Type': 'application/json'
                         },
                         credentials: 'include'
@@ -691,7 +691,7 @@ export default function MicrolearningModule({
                       const response = await fetch(`/api/microlearning/certificate/${currentUserId}`, {
                         method: 'GET',
                         headers: {
-                          'X-User-ID': currentUserId.toString(),
+                          'X-User-ID': currentUserId?.toString() || '',
                           'Authorization': `Bearer ${currentUserId}`,
                           ...(localStorage.getItem('user') && {
                             'X-User-Context': localStorage.getItem('user') || ''

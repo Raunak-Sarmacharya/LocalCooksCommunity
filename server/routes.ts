@@ -563,6 +563,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint for sending full verification emails
+  app.post("/api/test-verification-email", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated and is an admin
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const { fullName, email, phone } = req.body;
+
+      // Generate and send a test verification email
+      const { generateFullVerificationEmail } = await import('./email.js');
+      const emailContent = generateFullVerificationEmail({
+        fullName: fullName || "Test User",
+        email: email || "test@example.com",
+        phone: phone || "5551234567"
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `test_verification_${email}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        console.log(`Test verification email sent to: ${email}`);
+        return res.status(200).json({ message: "Test verification email sent successfully" });
+      } else {
+        return res.status(500).json({ message: "Failed to send test verification email" });
+      }
+    } catch (error) {
+      console.error("Error sending test verification email:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Authentication routes
   app.post("/api/register", async (req, res) => {
     try {
@@ -1037,6 +1075,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
         await storage.updateUserVerificationStatus(updatedApplication.userId!, true);
         console.log(`User ${updatedApplication.userId} has been fully verified`);
+        
+        // Send full verification email with vendor credentials
+        try {
+          const user = await storage.getUser(updatedApplication.userId!);
+          if (user && updatedApplication.email) {
+            const { generateFullVerificationEmail } = await import('./email.js');
+            const emailContent = generateFullVerificationEmail({
+              fullName: updatedApplication.fullName || user.username,
+              email: updatedApplication.email,
+              phone: updatedApplication.phone || user.username
+            });
+
+            await sendEmail(emailContent, {
+              trackingId: `full_verification_${updatedApplication.userId}_${Date.now()}`
+            });
+            console.log(`Full verification email sent to ${updatedApplication.email} for user ${updatedApplication.userId}`);
+            console.log(`Vendor credentials generated: username=${updatedApplication.phone || user.username}`); // Don't log password
+          } else {
+            console.warn(`Cannot send full verification email: Missing user data or email for user ${updatedApplication.userId}`);
+          }
+        } catch (emailError) {
+          // Log the error but don't fail the request
+          console.error("Error sending full verification email:", emailError);
+        }
       }
 
       return res.status(200).json(updatedApplication);

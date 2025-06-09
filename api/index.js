@@ -1923,6 +1923,37 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       `, [targetUserId]);
       
       console.log(`User ${targetUserId} has been fully verified`);
+      
+      // Send full verification email with vendor credentials
+      try {
+        // Import the email functions
+        const { sendEmail, generateFullVerificationEmail } = await import('../server/email.js');
+        
+        // Get user details for email
+        const userResult = await pool.query(`
+          SELECT username FROM users WHERE id = $1
+        `, [targetUserId]);
+        
+        if (userResult.rows.length > 0 && updatedApplication.email) {
+          const user = userResult.rows[0];
+          const emailContent = generateFullVerificationEmail({
+            fullName: updatedApplication.full_name || user.username,
+            email: updatedApplication.email,
+            phone: updatedApplication.phone || user.username // Assuming username is phone number
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `full_verification_${targetUserId}_${Date.now()}`
+          });
+          console.log(`Full verification email sent to ${updatedApplication.email} for user ${targetUserId}`);
+          console.log(`Vendor credentials generated: username=${updatedApplication.phone || user.username}`); // Don't log password
+        } else {
+          console.warn(`Cannot send full verification email: Missing user data or email for user ${targetUserId}`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending full verification email:", emailError);
+      }
     }
 
     // Return the application data in the format expected by the frontend

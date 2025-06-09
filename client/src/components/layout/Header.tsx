@@ -110,7 +110,7 @@ export default function Header() {
     } else {
       return {
         href: "/dashboard",
-        text: `${user.username}'s Dashboard`
+        text: `${user?.username}'s Dashboard`
       };
     }
   };
