@@ -60,8 +60,8 @@ function generateCertificatePDF(certificateData) {
       const logoY = 48;
       doc.image(logoPath, centerX - logoDisplayWidth / 2, logoY, { width: logoDisplayWidth });
 
-      // Add vertical space below logo
-      let y = logoY + logoDisplayHeight + 30;
+      // Add more vertical space below logo to prevent overlap
+      let y = logoY + logoDisplayHeight + 45;
 
       // (No company name in Lobster here)
 
@@ -84,7 +84,7 @@ function generateCertificatePDF(certificateData) {
          .fontSize(40)
          .fillColor(brandColor)
          .text(certificateData.userName, 0, y, { width: pageWidth, align: 'center' });
-      y += 50;
+      y += 60; // Add extra space below the user's name
 
       // Completion text
       doc.font('Helvetica')
