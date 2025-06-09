@@ -177,8 +177,7 @@ export default function CompletionTracker({
                   Congratulations! Training Complete
                 </h4>
                 <p className="text-sm text-green-700 mt-1 break-words leading-relaxed">
-                  You've successfully completed all food safety training videos. 
-                  You can now proceed with your certification.
+                  Congratulations! You have completed all food safety training videos. You can now proceed and download your completion certificate.
                 </p>
               </div>
             </div>

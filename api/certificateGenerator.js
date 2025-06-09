@@ -45,71 +45,64 @@ function generateCertificatePDF(certificateData) {
       doc.fontSize(36)
          .font('Helvetica-Bold')
          .fillColor('#1e40af')
-         .text('CERTIFICATE OF COMPLETION', 80, 80, {
+         .text('LOCAL COOKS', 80, 80, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Subtitle
       doc.fontSize(18)
          .font('Helvetica')
          .fillColor('#374151')
-         .text('Food Safety Handler Training', 80, 130, {
+         .text('Training Record & Verification', 80, 130, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Main content area
       doc.fontSize(16)
          .font('Helvetica')
          .fillColor('#1f2937')
-         .text('This is to certify that', 80, 200, {
+         .text('We hereby verify that', 80, 180, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Recipient name (large and prominent)
       doc.fontSize(32)
          .font('Helvetica-Bold')
          .fillColor('#1e40af')
-         .text(certificateData.userName.toUpperCase(), 80, 240, {
+         .text(certificateData.userName.toUpperCase(), 80, 220, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Completion text
       doc.fontSize(16)
          .font('Helvetica')
          .fillColor('#1f2937')
-         .text('has successfully completed the comprehensive', 80, 300, {
+         .text('has completed the Local Cooks Food Safety Video Training Series, demonstrating dedication to professional food safety education.', 80, 270, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Course title
-      doc.fontSize(20)
+      doc.fontSize(14)
          .font('Helvetica-Bold')
          .fillColor('#059669')
-         .text('Newfoundland & Labrador Food Safety Training Program', 80, 330, {
+         .text('Completed Training Modules:', 80, 320, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Training details
-      doc.fontSize(14)
+      doc.fontSize(13)
          .font('Helvetica')
-         .fillColor('#6b7280')
-         .text('Including: Personal Hygiene • Temperature Control • Cross-Contamination Prevention', 80, 370, {
+         .fillColor('#374151')
+         .text('Module 1: Introduction • HACCP Principles • Reducing Complexity • Personal Hygiene • Deliveries • Storage • Preparation • Regeneration • Service Start • After Service • Waste Removal • Cleaning & Maintenance • Weekly Log Sheets • Wrap Up', 80, 350, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      doc.text('Allergen Awareness • Food Storage • Sanitation Procedures • HACCP Principles', 80, 390, {
-         width: pageWidth - 160,
-         align: 'center'
-       });
+      doc.text('Module 2: Hand Washing • Food Prep Station Cleaning • Kitchen Utensil Cleaning • Stove Cleaning • Kitchen Floor Cleaning • Restaurant Floor Cleaning • Table & Chair Cleaning • Washroom Cleaning', 80, 390, {
+           width: pageWidth - 160,
+           align: 'center'
+         });
 
-      // Completion date
       const formattedDate = new Date(certificateData.completionDate).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -119,60 +112,34 @@ function generateCertificatePDF(certificateData) {
       doc.fontSize(16)
          .font('Helvetica-Bold')
          .fillColor('#1f2937')
-         .text(`Date of Completion: ${formattedDate}`, 80, 450, {
+         .text(`Completion Date: ${formattedDate}`, 80, 450, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Certificate ID
       doc.fontSize(12)
          .font('Helvetica')
          .fillColor('#6b7280')
-         .text(`Certificate ID: ${certificateData.certificateId}`, 80, 480, {
+         .text(`Record ID: ${certificateData.certificateId}`, 80, 480, {
            width: pageWidth - 160,
            align: 'center'
          });
 
-      // Footer section with signatures/seals
-      const footerY = 520;
-      
-      // Left side - Authority
-      doc.fontSize(14)
+      doc.fontSize(16)
          .font('Helvetica-Bold')
-         .fillColor('#1f2937')
-         .text('LocalCooks Community', 100, footerY);
-      
-      doc.fontSize(12)
-         .font('Helvetica')
-         .fillColor('#6b7280')
-         .text('Authorized Training Provider', 100, footerY + 20);
+         .fillColor('#1e40af')
+         .text('Local Cooks', 80, 510, {
+           width: pageWidth - 160,
+           align: 'center'
+         });
 
-      // Center - Compliance
-      doc.fontSize(12)
-         .font('Helvetica-Bold')
-         .fillColor('#059669')
-         .text('✓ Health Canada Compliant', centerX - 80, footerY);
-      
-      doc.text('✓ CFIA Approved Standards', centerX - 80, footerY + 20);
-
-      // Right side - Validity
-      doc.fontSize(12)
-         .font('Helvetica')
-         .fillColor('#6b7280')
-         .text('Valid for Employment in', pageWidth - 200, footerY);
-      
-      doc.text('Newfoundland & Labrador', pageWidth - 200, footerY + 20);
-
-      // Bottom disclaimer
       doc.fontSize(10)
          .font('Helvetica')
          .fillColor('#9ca3af')
-         .text('This certificate confirms completion of LocalCooks Community food safety training preparation. ' +
-               'Complete your official provincial certification at skillpass.nl', 
-               80, pageHeight - 80, {
-                 width: pageWidth - 160,
-                 align: 'center'
-               });
+         .text('This training record documents completion of video-based educational content and is issued by LocalCooks as a private training provider.', 80, pageHeight - 80, {
+           width: pageWidth - 160,
+           align: 'center'
+         });
 
       // Decorative elements
       // Add some corner decorations
