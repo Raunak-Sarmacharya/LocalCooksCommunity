@@ -2,19 +2,19 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
 import {
-  AlertCircle,
-  ArrowRight,
-  Award,
-  CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Download,
-  FileText,
-  Lock,
-  RotateCcw,
-  Shield,
-  TrendingUp
+    AlertCircle,
+    ArrowRight,
+    Award,
+    CheckCircle,
+    ChevronLeft,
+    ChevronRight,
+    Clock,
+    Download,
+    FileText,
+    Lock,
+    RotateCcw,
+    Shield,
+    TrendingUp
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
@@ -602,7 +602,7 @@ export default function MicrolearningModule({
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
             
             {/* Rewatch Mode Notification */}
-            {completionConfirmed && (
+            {(completionConfirmed || user?.role === 'admin') && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -616,10 +616,13 @@ export default function MicrolearningModule({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-green-800 flex items-center gap-2">
                       <RotateCcw className="h-4 w-4" />
-                      Rewatch Mode Active - Full Access Granted
+                      {user?.role === 'admin' ? 'Admin Mode - Full Access Granted' : 'Rewatch Mode Active - Full Access Granted'}
                     </p>
                     <p className="text-xs text-green-700 mt-1">
-                      🎉 Congratulations! You've completed your certification. You can now access and rewatch any video in any order.
+                      {user?.role === 'admin' 
+                        ? '🔓 Admin privileges: You have unrestricted access to all videos and modules.'
+                        : '🎉 Congratulations! You\'ve completed your certification. You can now access and rewatch any video in any order.'
+                      }
                     </p>
                   </div>
                 </div>
@@ -780,25 +783,25 @@ export default function MicrolearningModule({
                   <button
                     onClick={() => { 
                       // Module access logic:
-                      // 1. If certification completed - unrestricted access to both modules
+                      // 1. If certification completed OR admin - unrestricted access to both modules
                       // 2. If full access but not completed - must complete all basics videos first
                       // 3. If limited access - no access to hygiene module
                       const allBasicsCompleted = foodSafetyBasicsVideos.every(video => 
                         userProgress.find(p => p.videoId === video.id)?.completed || false
                       );
                       
-                      if (completionConfirmed || (accessLevel === 'full' && allBasicsCompleted)) {
+                      if (completionConfirmed || user?.role === 'admin' || (accessLevel === 'full' && allBasicsCompleted)) {
                         setCurrentModule('hygiene'); 
                         setCurrentVideoIndex(0); 
                       }
                     }}
-                    disabled={accessLevel === 'limited' || (!completionConfirmed && !foodSafetyBasicsVideos.every(video => 
+                    disabled={accessLevel === 'limited' || (!completionConfirmed && user?.role !== 'admin' && !foodSafetyBasicsVideos.every(video => 
                       userProgress.find(p => p.videoId === video.id)?.completed || false
                     ))}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       currentModule === 'hygiene' 
                         ? 'bg-primary text-white' 
-                        : (accessLevel === 'limited' || (!completionConfirmed && !foodSafetyBasicsVideos.every(video => 
+                        : (accessLevel === 'limited' || (!completionConfirmed && user?.role !== 'admin' && !foodSafetyBasicsVideos.every(video => 
                             userProgress.find(p => p.videoId === video.id)?.completed || false
                           )))
                         ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
@@ -807,6 +810,8 @@ export default function MicrolearningModule({
                     title={
                       completionConfirmed
                         ? 'Access granted - Rewatch any module freely'
+                        : user?.role === 'admin'
+                        ? 'Admin access - Full access to all modules'
                         : accessLevel === 'limited' 
                         ? 'Complete your application to access this module'
                         : !foodSafetyBasicsVideos.every(video => 
@@ -896,7 +901,7 @@ export default function MicrolearningModule({
                           onProgress={(progress, watchedPercentage) => handleVideoProgress(currentVideo.id, progress, watchedPercentage)}
                           onComplete={() => handleVideoComplete(currentVideo.id)}
                           isCompleted={getVideoProgress(currentVideo.id)?.completed || false}
-                          isRewatching={completionConfirmed || ((getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100)}
+                          isRewatching={completionConfirmed || user?.role === 'admin' || ((getVideoProgress(currentVideo.id)?.completed || false) && (getVideoProgress(currentVideo.id)?.progress || 0) < 100)}
                           requireFullWatch={false}
                         />
                       ) : (
@@ -945,11 +950,11 @@ export default function MicrolearningModule({
                             // 3. If limited access - no navigation beyond first video
                             let nextCanAccess = false;
                             
-                            if (completionConfirmed) {
-                              // Unrestricted navigation for completed users
+                            if (completionConfirmed || user?.role === 'admin') {
+                              // Full certification completed OR admin - unrestricted access to all videos
                               nextCanAccess = true;
                             } else if (accessLevel === 'full') {
-                              // Sequential navigation - current video must be completed
+                              // Sequential learning - current video must be completed
                               nextCanAccess = currentCompleted;
                             } else {
                               // Limited access - no navigation
@@ -1064,13 +1069,13 @@ export default function MicrolearningModule({
                       }
                       
                       // Access control logic:
-                      // 1. If user has completed certification - unlimited access to all videos for rewatching
-                      // 2. If user has full access but not completed - sequential learning (complete previous videos first)
+                      // 1. If user has completed certification OR is admin - unlimited access to all videos
+                      // 2. If user has full access but not completed - sequential learning (complete previous videos first)  
                       // 3. If user has limited access - only first video
                       let canAccess = false;
                       
-                      if (completionConfirmed) {
-                        // Full certification completed - unrestricted access to all videos for rewatching
+                      if (completionConfirmed || user?.role === 'admin') {
+                        // Full certification completed OR admin - unrestricted access to all videos
                         canAccess = true;
                       } else if (accessLevel === 'full') {
                         // Sequential learning for users with full access but not yet completed

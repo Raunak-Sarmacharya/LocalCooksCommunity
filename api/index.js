@@ -2847,9 +2847,10 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
     const completionStatus = await getMicrolearningCompletion(userId);
     const applicationStatus = await getApplicationStatus(userId);
 
-    // Admins have unrestricted access regardless of application status
+    // Admins and completed users have unrestricted access regardless of application status
     const isAdmin = sessionUser?.role === 'admin';
-    const accessLevel = isAdmin || applicationStatus.hasApproved ? 'full' : 'limited';
+    const isCompleted = completionStatus?.confirmed || false;
+    const accessLevel = isAdmin || applicationStatus.hasApproved || isCompleted ? 'full' : 'limited';
     
     res.json({
       success: true,
@@ -2918,11 +2919,13 @@ app.post("/api/microlearning/progress", async (req, res) => {
 
     // Check if user has approved application for videos beyond the first one
     const applicationStatus = await getApplicationStatus(userId);
+    const completion = await getMicrolearningCompletion(userId);
+    const isCompleted = completion?.confirmed || false;
     const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
     const isAdmin = sessionUser?.role === 'admin';
     
-    // Admins have unrestricted access to all videos
-    if (!applicationStatus.hasApproved && !isAdmin && videoId !== firstVideoId) {
+    // Admins and completed users have unrestricted access to all videos
+    if (!applicationStatus.hasApproved && !isAdmin && !isCompleted && videoId !== firstVideoId) {
       const message = applicationStatus.hasPending 
         ? 'Your application is under review. Full access will be granted once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
