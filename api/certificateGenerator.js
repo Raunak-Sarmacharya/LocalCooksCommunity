@@ -60,8 +60,8 @@ function generateCertificatePDF(certificateData) {
       const logoY = 48;
       doc.image(logoPath, centerX - logoDisplayWidth / 2, logoY, { width: logoDisplayWidth });
 
-      // Add more vertical space below logo to prevent overlap
-      let y = logoY + logoDisplayHeight + 45;
+      // Add even more vertical space below logo to prevent any overlap
+      let y = logoY + logoDisplayHeight + 70;
 
       // (No company name in Lobster here)
 
