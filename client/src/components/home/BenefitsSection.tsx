@@ -1,8 +1,9 @@
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Check, Camera, Medal, TrendingUp, Megaphone, Wallet, Calendar, CreditCard, Settings } from "lucide-react";
+import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
+import { Calendar, Camera, CreditCard, Medal, Megaphone, Settings, TrendingUp, Wallet } from "lucide-react";
+import { useLocation } from "wouter";
 import foodDeliveryImage from "../../assets/food-delivery.png";
 
 const pilotBenefits = [
@@ -54,10 +55,14 @@ const mainBenefits = [
 export default function BenefitsSection() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
-  
+  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
+
   const handleApplicationClick = () => {
-    // If not logged in, redirect to auth page, otherwise to application form
-    navigate(user ? "/apply" : "/auth");
+    navigate(getNavigationPath());
+  };
+
+  const getCtaButtonText = () => {
+    return getButtonText("Apply Now");
   };
   
   return (
@@ -163,10 +168,11 @@ export default function BenefitsSection() {
               
               <Button 
                 onClick={handleApplicationClick}
+                disabled={isLoading}
                 size="lg"
                 className="bg-white/95 text-primary hover:bg-white font-bold py-3 md:py-4 px-6 md:px-10 rounded-full shadow-lg hover:-translate-y-2 hover-transform hover:shadow-xl hover-shadow text-base md:text-lg w-full sm:w-auto"
               >
-                Apply Now
+                {isLoading ? "Loading..." : getCtaButtonText()}
               </Button>
             </div>
           </div>

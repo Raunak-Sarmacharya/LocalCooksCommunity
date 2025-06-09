@@ -1,6 +1,8 @@
-import { Leaf, Heart, Globe, Quote } from "lucide-react";
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { useApplicationStatus } from "@/hooks/use-application-status";
+import { useAuth } from "@/hooks/use-auth";
+import { motion } from "framer-motion";
+import { Globe, Heart, Leaf, Quote } from "lucide-react";
 import { useLocation } from "wouter";
 
 const values = [
@@ -26,6 +28,16 @@ const values = [
 
 export default function AboutSection() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
+
+  const handleJoinClick = () => {
+    navigate(getNavigationPath());
+  };
+
+  const getCtaButtonText = () => {
+    return getButtonText("Join Our Community");
+  };
 
   return (
     <section id="about" className="py-16 md:py-24 px-4 scroll-mt-24 bg-gradient-to-b from-gray-50 to-white relative overflow-hidden">
@@ -87,10 +99,11 @@ export default function AboutSection() {
 
                 <div className="mt-8 flex flex-wrap gap-4">
                   <Button
-                    onClick={() => navigate("/apply")}
+                    onClick={handleJoinClick}
+                    disabled={isLoading}
                     className="rounded-full px-6 hover-standard"
                   >
-                    Join Our Community
+                    {isLoading ? "Loading..." : getCtaButtonText()}
                   </Button>
                 </div>
               </div>
