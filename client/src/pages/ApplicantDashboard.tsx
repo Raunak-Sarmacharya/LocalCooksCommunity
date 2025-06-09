@@ -828,7 +828,7 @@ export default function ApplicantDashboard() {
                                           className="bg-blue-600 hover:bg-blue-700 text-white"
                                         >
                                           <a 
-                                            href={`https://localcook.shop/app/shop/vendor_onboarding.php`}
+                                            href={`https://localcook.shop/app/shop/login.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                           >
