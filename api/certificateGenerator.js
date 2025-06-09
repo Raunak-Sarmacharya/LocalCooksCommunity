@@ -63,12 +63,7 @@ function generateCertificatePDF(certificateData) {
       // Add vertical space below logo
       let y = logoY + logoDisplayHeight + 30;
 
-      // Company Name with Lobster font and brand color
-      doc.font('Lobster')
-         .fontSize(48)
-         .fillColor(brandColor)
-         .text('Local Cooks', 0, y, { width: pageWidth, align: 'center' });
-      y += 58; // 48px font + 10px spacing
+      // (No company name in Lobster here)
 
       // Subtitle
       doc.font('Helvetica')
@@ -84,12 +79,12 @@ function generateCertificatePDF(certificateData) {
          .text('We hereby verify that', 0, y, { width: pageWidth, align: 'center' });
       y += 30;
 
-      // Recipient name
-      doc.font('Helvetica-Bold')
-         .fontSize(32)
+      // Recipient name in Lobster font, brand color, large
+      doc.font('Lobster')
+         .fontSize(40)
          .fillColor(brandColor)
-         .text(certificateData.userName.toUpperCase(), 0, y, { width: pageWidth, align: 'center' });
-      y += 40;
+         .text(certificateData.userName, 0, y, { width: pageWidth, align: 'center' });
+      y += 50;
 
       // Completion text
       doc.font('Helvetica')
