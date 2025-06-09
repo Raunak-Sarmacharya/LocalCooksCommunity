@@ -79,7 +79,7 @@ Examples:
 
 ```bash
 # Vendor Platform Configuration
-VENDOR_DASHBOARD_URL=https://localcook.shop/app/shop/login.php
+VENDOR_DASHBOARD_URL=https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php
 VENDOR_SUPPORT_EMAIL=support@localcooks.shop
 ```
 
