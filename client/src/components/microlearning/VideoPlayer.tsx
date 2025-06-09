@@ -51,6 +51,7 @@ export default function VideoPlayer({
   const [lastTimeUpdate, setLastTimeUpdate] = useState(0);
   const [shouldShowCompletePrompt, setShouldShowCompletePrompt] = useState(false);
   const [hasReachedNearEnd, setHasReachedNearEnd] = useState(false);
+  const [showCompletionBanner, setShowCompletionBanner] = useState(false);
 
   // Reset video state when video URL or completion status changes
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function VideoPlayer({
     setErrorMessage('');
     setShouldShowCompletePrompt(false);
     setHasReachedNearEnd(false);
+    setShowCompletionBanner(false);
   }, [videoUrl, isCompleted]);
 
   // Timer to detect when video should have ended but didn't
@@ -178,8 +180,14 @@ export default function VideoPlayer({
           // 3. Video naturally ended
           if (progressPercent >= 98 || (hasWatchedSome && progressPercent >= 40)) {
             setVideoCompleted(true);
+            setShowCompletionBanner(true);
             setShouldShowCompletePrompt(false);
             onComplete?.();
+            
+            // Auto-hide banner after 8 seconds
+            setTimeout(() => {
+              setShowCompletionBanner(false);
+            }, 8000);
           }
         }
       }
@@ -395,13 +403,53 @@ export default function VideoPlayer({
           </div>
         )}
         
-        {/* Video Completion Overlay */}
+        {/* Subtle Completion Banner - Top of video */}
+        {showCompletionBanner && !isLoading && !hasError && (
+          <div className="absolute top-4 left-4 right-4 z-10">
+            <div className="bg-green-600/90 backdrop-blur-sm text-white px-4 py-3 rounded-lg shadow-lg border border-green-500/50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <CheckCircle className="h-5 w-5 text-green-200 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm">Video Completed! 🎉</p>
+                    <p className="text-xs text-green-200">You can rewatch or continue with controls below</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      restart();
+                      setShowCompletionBanner(false);
+                    }}
+                    className="text-white hover:bg-white/20 h-8 px-3 text-xs"
+                    title="Restart video from beginning"
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Restart
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCompletionBanner(false)}
+                    className="text-white hover:bg-white/20 h-8 w-8 p-0"
+                    title="Dismiss completion message"
+                  >
+                    ✕
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Completion Badge - Bottom right corner */}
         {videoCompleted && !isLoading && !hasError && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className="text-center text-white">
-              <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-400" />
-              <h3 className="text-xl font-semibold mb-2">Video Completed!</h3>
-              <p className="text-sm opacity-90">You've successfully watched this training video</p>
+          <div className="absolute bottom-4 right-4 z-10">
+            <div className="bg-green-600 text-white px-3 py-2 rounded-full shadow-lg border border-green-500 flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" />
+              <span className="text-sm font-medium">Complete</span>
             </div>
           </div>
         )}
@@ -432,7 +480,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Play/Pause Overlay - Only for standard videos */}
+        {/* Play/Pause Overlay - Only for standard videos and when not showing completion overlay */}
         {!isStreamableUrl && !isPlaying && !videoCompleted && !isLoading && !hasError && (
           <div 
             className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer transition-opacity hover:bg-black/40"
@@ -452,14 +500,20 @@ export default function VideoPlayer({
           <div className="flex items-start gap-2 mb-3">
             <h3 className="font-medium text-sm leading-tight flex-1 break-words">{title}</h3>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {isCompleted && isRewatching && (
-                <div className="flex items-center text-blue-400">
+              {videoCompleted && (
+                <div className="flex items-center text-green-400 bg-green-400/10 px-2 py-1 rounded-full">
+                  <CheckCircle className="h-3 w-3 mr-1 flex-shrink-0" />
+                  <span className="text-xs whitespace-nowrap font-medium">Completed</span>
+                </div>
+              )}
+              {isCompleted && isRewatching && !videoCompleted && (
+                <div className="flex items-center text-blue-400 bg-blue-400/10 px-2 py-1 rounded-full">
                   <RotateCcw className="h-3 w-3 mr-1 flex-shrink-0" />
                   <span className="text-xs whitespace-nowrap">Rewatching</span>
                 </div>
               )}
-              {isCompleted && !isRewatching && (
-                <div className="flex items-center text-green-400">
+              {isCompleted && !isRewatching && !videoCompleted && (
+                <div className="flex items-center text-green-400 bg-green-400/10 px-2 py-1 rounded-full">
                   <CheckCircle className="h-4 w-4 mr-1 flex-shrink-0" />
                   <span className="text-xs whitespace-nowrap">Complete</span>
                 </div>
@@ -537,6 +591,7 @@ export default function VideoPlayer({
                   size="sm"
                   onClick={restart}
                   className="text-white hover:bg-white/20 flex-shrink-0"
+                  title={videoCompleted ? "Restart completed video" : "Restart video"}
                 >
                   <RotateCcw className="h-4 w-4" />
                 </Button>
