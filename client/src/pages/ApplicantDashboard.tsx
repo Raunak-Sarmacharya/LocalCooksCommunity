@@ -33,7 +33,10 @@ import {
     CheckCircle,
     ChefHat,
     Clock,
+    CreditCard,
+    DollarSign,
     Download,
+    ExternalLink,
     FileText,
     GraduationCap,
     Info,
@@ -800,6 +803,56 @@ export default function ApplicantDashboard() {
                                       })}
                                     </p>
                                   )}
+                                </div>
+                              </div>
+                              
+                              {/* Stripe Onboarding Section */}
+                              <div className="mt-4">
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="bg-blue-100 p-2 rounded-full">
+                                      <CreditCard className="h-5 w-5 text-blue-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                      <h3 className="font-semibold text-blue-800 mb-1 flex items-center gap-2">
+                                        <DollarSign className="h-4 w-4" />
+                                        Set Up Payment Processing
+                                      </h3>
+                                      <p className="text-sm text-blue-700 mb-3">
+                                        💳 To start receiving payments from customers, you need to set up your Stripe account. This is required to get paid for your orders.
+                                      </p>
+                                      <div className="flex flex-col sm:flex-row gap-2">
+                                        <Button
+                                          asChild
+                                          size="sm"
+                                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                                        >
+                                          <a 
+                                            href={`https://localcook.shop/app/shop/vendor_onboarding.php`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            <CreditCard className="mr-2 h-4 w-4" />
+                                            Set Up Stripe Account
+                                            <ExternalLink className="ml-2 h-3 w-3" />
+                                          </a>
+                                        </Button>
+                                        <span className="text-xs text-blue-600 flex items-center">
+                                          <Info className="mr-1 h-3 w-3" />
+                                          Secure payment processing by Stripe
+                                        </span>
+                                      </div>
+                                      <div className="mt-3 p-3 bg-blue-50/50 rounded border border-blue-100">
+                                        <h4 className="text-xs font-medium text-blue-700 mb-1">What happens next:</h4>
+                                        <ul className="text-xs text-blue-600 space-y-1">
+                                          <li>• Complete Stripe account setup (bank details, tax info)</li>
+                                          <li>• Verify your identity with Stripe</li>
+                                          <li>• Start receiving payments from customers</li>
+                                          <li>• Track your earnings in your Stripe dashboard</li>
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
