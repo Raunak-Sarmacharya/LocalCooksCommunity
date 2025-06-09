@@ -1,11 +1,36 @@
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ChefHat, ShoppingBag, Users, CreditCard } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
+import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
+import { useLocation } from "wouter";
 import chefCookingImage from "../../assets/chef-cooking.png";
 
 export default function HeroSection() {
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+
+  const handlePrimaryClick = () => {
+    if (!user) {
+      // Not logged in, redirect to auth page
+      navigate("/auth");
+    } else if (user.role === "admin") {
+      // Admin user, redirect to admin dashboard
+      navigate("/admin");
+    } else {
+      // Regular user, redirect to application form
+      navigate("/apply");
+    }
+  };
+
+  const getPrimaryButtonText = () => {
+    if (!user) {
+      return "Start Your Application";
+    } else if (user.role === "admin") {
+      return "Go to Admin Dashboard";
+    } else {
+      return "Continue Application";
+    }
+  };
   
   return (
     <section className="pt-28 pb-8 md:pt-36 md:pb-16 px-4 bg-gradient-to-br from-white via-light-gray to-pink-50">
@@ -55,11 +80,11 @@ export default function HeroSection() {
           </div>
           
           <Button 
-            onClick={() => navigate("/apply")}
+            onClick={handlePrimaryClick}
             size="lg"
             className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto"
           >
-            Start Your Application
+            {getPrimaryButtonText()}
           </Button>
         </motion.div>
         
