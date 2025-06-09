@@ -54,6 +54,8 @@ DATABASE_URL=your-postgres-connection-string
 3. User uploads documents (Food Safety License)
 4. Admin approves the documents
 5. Verify email is sent automatically
+6. Test vendor login with generated credentials
+7. Verify Stripe onboarding flow works correctly
 
 ### 3. Manual API Test
 ```bash
