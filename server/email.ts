@@ -389,7 +389,7 @@ export const generateFullVerificationEmail = (
                     <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1px solid #22c55e;border-radius:12px;padding:20px;">
                                              <h4 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;font-weight:600;color:#16a34a;margin:0 0 12px 0;">🚀 What's Next?</h4>
                        <ul style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#166534;margin:0;padding-left:20px;line-height:1.6;">
-                         <li>Visit <strong>localcook.shop/app/shop/login.php</strong> and log in with your credentials</li>
+                         <li>Click the "Access Vendor Login" button above or visit the link provided - you'll be automatically redirected to setup after login</li>
                          <li><strong>Set up your Stripe payment profile</strong> for secure payment processing (you'll be guided through this automatically)</li>
                          <li>Complete your vendor profile and add your menu items</li>
                          <li>Set up your shop preferences and availability</li>
@@ -403,7 +403,7 @@ export const generateFullVerificationEmail = (
                 <!-- CTA Button -->
                 <tr>
                   <td align="center" style="padding:0 32px 32px 32px;">
-                    <a href="${process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/login.php'}" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(34,197,94,0.20);text-decoration:none;transition:box-shadow 0.2s;">
+                    <a href="${process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php'}" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(34,197,94,0.20);text-decoration:none;transition:box-shadow 0.2s;">
                       Access Vendor Login →
                     </a>
                   </td>
