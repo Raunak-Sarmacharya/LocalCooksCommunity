@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * Generate a professional food safety certificate PDF
@@ -13,6 +14,9 @@ import path from 'path';
 function generateCertificatePDF(certificateData) {
   return new Promise((resolve, reject) => {
     try {
+      // ESM-compatible __dirname
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
       // Create a new PDF document
       const doc = new PDFDocument({
         size: 'A4',
