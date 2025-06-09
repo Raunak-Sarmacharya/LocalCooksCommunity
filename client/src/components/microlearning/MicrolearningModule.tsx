@@ -634,6 +634,107 @@ export default function MicrolearningModule({
               </motion.div>
             )}
 
+            {/* Completion Certificate Download Notification */}
+            {completionConfirmed && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
+                className="rounded-lg border p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-green-200 flex flex-col sm:flex-row items-center gap-4"
+              >
+                <div className="p-2 rounded-full bg-green-100 flex-shrink-0 flex items-center justify-center">
+                  <Award className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="flex-1 min-w-0 text-center sm:text-left">
+                  <h3 className="font-semibold text-green-900 mb-1">Completion Certificate Available</h3>
+                  <p className="text-sm text-green-700 mb-2">Congratulations! You have completed all food safety training videos. You can now download your completion certificate.</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  className="border-green-300 text-green-700 hover:bg-green-100 w-full sm:w-auto"
+                  onClick={async () => {
+                    try {
+                      let currentUserId = userId || user?.id;
+                      let currentUser = user;
+                      if (!currentUserId || !currentUser) {
+                        const userResponse = await fetch('/api/user', { credentials: 'include' });
+                        if (userResponse.ok) {
+                          currentUser = await userResponse.json();
+                          currentUserId = currentUser?.id;
+                        } else {
+                          alert('Please log in to download your certificate.');
+                          window.location.href = '/login';
+                          return;
+                        }
+                      }
+                      const debugResponse = await fetch(`/api/debug-auth/${currentUserId}`, {
+                        method: 'GET',
+                        headers: {
+                          'X-User-ID': currentUserId.toString(),
+                          'Content-Type': 'application/json'
+                        },
+                        credentials: 'include'
+                      });
+                      const debugData = await debugResponse.json();
+                      if (!debugData.authenticated) {
+                        alert('Authentication issue detected. Please log out and log back in.');
+                        return;
+                      }
+                      if (!debugData.completion) {
+                        alert('No completion record found. Please ensure you have completed all training modules.');
+                        return;
+                      }
+                      if (!debugData.completion.confirmed) {
+                        alert('Training completion not confirmed. Please complete the certification process first.');
+                        return;
+                      }
+                      const response = await fetch(`/api/microlearning/certificate/${currentUserId}`, {
+                        method: 'GET',
+                        headers: {
+                          'X-User-ID': currentUserId.toString(),
+                          'Authorization': `Bearer ${currentUserId}`,
+                          ...(localStorage.getItem('user') && {
+                            'X-User-Context': localStorage.getItem('user') || ''
+                          })
+                        },
+                        credentials: 'include'
+                      });
+                      if (response.ok) {
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('application/pdf')) {
+                          const pdfBlob = await response.blob();
+                          const url = window.URL.createObjectURL(pdfBlob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `LocalCooks-Certificate-${currentUser?.username || currentUserId}.pdf`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          window.URL.revokeObjectURL(url);
+                          alert('🎉 Certificate downloaded successfully! Check your Downloads folder.');
+                        } else {
+                          const data = await response.json();
+                          if (data.error) {
+                            alert(`Certificate generated with note: ${data.error}`);
+                          } else {
+                            alert(`Certificate generated! Your completion has been recorded for ${new Date(data.completionDate).toLocaleDateString()}`);
+                          }
+                        }
+                      } else {
+                        const errorData = await response.json();
+                        alert(`Error: ${errorData.message || 'Failed to generate certificate'}`);
+                      }
+                    } catch (error) {
+                      alert('Error downloading certificate. Please try again.');
+                    }
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Certificate
+                </Button>
+              </motion.div>
+            )}
+
             {/* Application Status Notification */}
             {applicationInfo && !completionConfirmed && (
               <motion.div 
@@ -696,20 +797,6 @@ export default function MicrolearningModule({
                 </div>
               </motion.div>
             )}
-
-            {/* Demo Notice - Subtle */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
-              className="bg-white/80 backdrop-blur-sm border border-orange-200/50 rounded-xl p-4"
-            >
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 text-orange-700">
-                <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1.5 sm:mt-0"></div>
-                <span className="text-sm font-medium">Demo Environment</span>
-                <span className="text-sm opacity-75 break-words">Sample videos for demonstration purposes</span>
-              </div>
-            </motion.div>
 
             {/* Access Level Notification - Clean & Modern */}
             {accessLevel === 'limited' && (
@@ -1286,7 +1373,7 @@ export default function MicrolearningModule({
                             Ready for Certification!
                           </h3>
                           <p className="text-sm text-green-700 leading-relaxed">
-                            Congratulations! You've completed all training modules. Confirm to receive your certificate.
+                            Congratulations! You have completed all food safety training videos. You can now proceed and download your completion certificate.
                           </p>
                         </div>
                         
@@ -1304,167 +1391,6 @@ export default function MicrolearningModule({
                             'Confirm Completion'
                           )}
                         </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Modern Certificate Card */}
-                  {completionConfirmed && (
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
-                      <div className="text-center space-y-4">
-                        <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mx-auto">
-                          <Award className="h-8 w-8 text-white" />
-                        </div>
-                        
-                        <div>
-                          <h3 className="font-semibold text-green-900 mb-2">
-                            Certification Complete!
-                          </h3>
-                          <p className="text-sm text-green-700 leading-relaxed mb-4">
-                            You've successfully completed all NL Food Handler Certification requirements.
-                          </p>
-                        </div>
-                        
-                        <Button 
-                          variant="outline" 
-                          className="w-full border-green-300 text-green-700 hover:bg-green-100"
-                          onClick={async () => {
-                            try {
-                              // First ensure user is authenticated
-                              let currentUserId = userId || user?.id;
-                              let currentUser = user;
-                              
-                              // If no user data, try to fetch it
-                              if (!currentUserId || !currentUser) {
-                                console.log('No user data found, fetching from API...');
-                                try {
-                                  const userResponse = await fetch('/api/user', {
-                                    credentials: 'include'
-                                  });
-                                  
-                                  if (userResponse.ok) {
-                                    currentUser = await userResponse.json();
-                                    currentUserId = currentUser?.id;
-                                    console.log('Fetched user data:', currentUser);
-                                  } else {
-                                    console.log('Failed to fetch user data, redirecting to login');
-                                    alert('Please log in to download your certificate.');
-                                    window.location.href = '/login';
-                                    return;
-                                  }
-                                } catch (fetchError) {
-                                  console.error('Error fetching user data:', fetchError);
-                                  alert('Please log in to download your certificate.');
-                                  return;
-                                }
-                              }
-                              
-                              // Debug: Log authentication data
-                              console.log('Certificate request debug:', {
-                                userId: currentUserId,
-                                userObject: currentUser,
-                                sessionStorage: localStorage.getItem('user'),
-                              });
-                              
-                              if (!currentUserId) {
-                                alert('Please log in to download your certificate.');
-                                return;
-                              }
-                              
-                              // First test authentication with debug endpoint
-                              const debugResponse = await fetch(`/api/debug-auth/${currentUserId}`, {
-                                method: 'GET',
-                                headers: {
-                                  'X-User-ID': currentUserId.toString(),
-                                  'Content-Type': 'application/json'
-                                },
-                                credentials: 'include'
-                              });
-                              
-                              const debugData = await debugResponse.json();
-                              console.log('Debug auth response:', debugData);
-                              
-                              if (!debugData.authenticated) {
-                                alert('Authentication issue detected. Please log out and log back in.');
-                                console.error('Auth debug data:', debugData);
-                                return;
-                              }
-                              
-                              if (!debugData.completion) {
-                                alert('No completion record found. Please ensure you have completed all training modules.');
-                                return;
-                              }
-                              
-                              if (!debugData.completion.confirmed) {
-                                alert('Training completion not confirmed. Please complete the certification process first.');
-                                return;
-                              }
-
-                              // Now attempt certificate download
-                              const response = await fetch(`/api/microlearning/certificate/${currentUserId}`, {
-                                method: 'GET',
-                                headers: {
-                                  'X-User-ID': currentUserId.toString(),
-                                  // Add Authorization header for production compatibility
-                                  'Authorization': `Bearer ${currentUserId}`,
-                                  // Add user context from localStorage if available
-                                  ...(localStorage.getItem('user') && {
-                                    'X-User-Context': localStorage.getItem('user') || ''
-                                  })
-                                },
-                                credentials: 'include'
-                              });
-                              
-                              if (response.ok) {
-                                const contentType = response.headers.get('content-type');
-                                
-                                if (contentType && contentType.includes('application/pdf')) {
-                                  // Handle PDF download
-                                  const pdfBlob = await response.blob();
-                                  const url = window.URL.createObjectURL(pdfBlob);
-                                  const link = document.createElement('a');
-                                  link.href = url;
-                                  link.download = `LocalCooks-Certificate-${currentUser?.username || currentUserId}.pdf`;
-                                  document.body.appendChild(link);
-                                  link.click();
-                                  document.body.removeChild(link);
-                                  window.URL.revokeObjectURL(url);
-                                  
-                                  alert('🎉 Certificate downloaded successfully! Check your Downloads folder.');
-                                } else {
-                                  // Handle JSON response (fallback)
-                                  const data = await response.json();
-                                  if (data.error) {
-                                    alert(`Certificate generated with note: ${data.error}`);
-                                  } else {
-                                    alert(`Certificate generated! Your completion has been recorded for ${new Date(data.completionDate).toLocaleDateString()}`);
-                                  }
-                                }
-                              } else {
-                                const errorData = await response.json();
-                                console.error('Certificate error:', errorData);
-                                alert(`Error: ${errorData.message || 'Failed to generate certificate'}`);
-                              }
-                            } catch (error) {
-                              console.error('Error downloading certificate:', error);
-                              alert('Error downloading certificate. Please try again.');
-                            }
-                          }}
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Download Certificate
-                        </Button>
-                        
-                        <div className="space-y-1 text-xs text-green-600">
-                          <div className="flex items-center justify-center gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            <span>Health Canada Approved</span>
-                          </div>
-                          <div className="flex items-center justify-center gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            <span>CFIA Compliant</span>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   )}
