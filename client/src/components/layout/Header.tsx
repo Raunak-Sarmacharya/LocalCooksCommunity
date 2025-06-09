@@ -1,11 +1,4 @@
 import { Button } from "@/components/ui/button";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import Logo from "@/components/ui/logo";
 import { useAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
@@ -107,6 +100,21 @@ export default function Header() {
     }
   }, [location, setLocation]);
 
+  // Helper function to get dashboard link and text
+  const getDashboardInfo = () => {
+    if (user?.role === "admin") {
+      return {
+        href: "/admin",
+        text: `${user.username}'s Admin Dashboard`
+      };
+    } else {
+      return {
+        href: "/dashboard",
+        text: `${user.username}'s Dashboard`
+      };
+    }
+  };
+
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -167,69 +175,51 @@ export default function Header() {
             )}
 
             {user && (
-              <li>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-2">
-                      <User className="h-4 w-4" />
-                      {user.username}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {user.role === "admin" ? (
-                      <DropdownMenuItem asChild>
-                        <Link href="/admin">Admin Dashboard</Link>
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem asChild>
-                        <Link href="/dashboard">My Dashboard</Link>
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} className="gap-2">
-                      <LogOut className="h-4 w-4" />
-                      Logout
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </li>
+              <>
+                <li>
+                  <Link 
+                    href={getDashboardInfo().href}
+                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors"
+                  >
+                    <User className="h-4 w-4" />
+                    {getDashboardInfo().text}
+                  </Link>
+                </li>
+                <li>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </Button>
+                </li>
+              </>
             )}
           </ul>
         </nav>
 
         <div className="flex items-center gap-2 md:hidden">
           {user && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <User className="h-4 w-4 mr-1" />
-                  {user.username}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {user.role === "admin" ? (
-                  <DropdownMenuItem asChild>
-                    <Link href="/admin">Admin Dashboard</Link>
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem asChild>
-                    <Link href="/dashboard">My Dashboard</Link>
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/microlearning" className="flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4" />
-                    Food Safety Training
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="gap-2">
-                  <LogOut className="h-4 w-4" />
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <>
+              <Link 
+                href={getDashboardInfo().href}
+                className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
+              >
+                <User className="h-4 w-4" />
+                {user.username}'s Dashboard
+              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="p-1"
+              >
+                <LogOut className="h-4 w-4 text-red-600" />
+              </Button>
+            </>
           )}
 
           <Button
@@ -287,16 +277,42 @@ export default function Header() {
               </a>
             </li>
             {user && (
-              <li>
-                <Link 
-                  href="/microlearning" 
-                  className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
-                  onClick={closeMenu}
-                >
-                  <GraduationCap className="h-4 w-4" />
-                  Food Safety Training
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link 
+                    href="/microlearning" 
+                    className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                    onClick={closeMenu}
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    Food Safety Training
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    href={getDashboardInfo().href}
+                    className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                    onClick={closeMenu}
+                  >
+                    <User className="h-4 w-4" />
+                    {getDashboardInfo().text}
+                  </Link>
+                </li>
+                <li>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      handleLogout();
+                      closeMenu();
+                    }}
+                    className="w-full gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </Button>
+                </li>
+              </>
             )}
             {!user && (
               <li className="pt-2">
