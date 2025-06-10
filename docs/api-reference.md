@@ -175,7 +175,7 @@ foodEstablishmentCert: [PDF/Image file]
     "foodEstablishmentCert": "yes",
     "kitchenPreference": "commercial",
     "feedback": "Excited to join!",
-    "status": "new",
+    "status": "inReview",
     "foodSafetyLicenseUrl": "https://blob.vercel-storage.com/license-abc123.pdf",
     "foodEstablishmentCertUrl": "https://blob.vercel-storage.com/cert-def456.pdf",
     "createdAt": "2024-01-15T10:30:00Z"
@@ -216,7 +216,7 @@ Authorization: Required (admin role)
       "foodEstablishmentCert": "yes",
       "kitchenPreference": "commercial",
       "feedback": "Excited to join!",
-      "status": "new",
+      "status": "inReview",
       "foodSafetyLicenseUrl": "https://blob.vercel-storage.com/license-abc123.pdf",
       "foodEstablishmentCertUrl": "https://blob.vercel-storage.com/cert-def456.pdf",
       "foodSafetyLicenseStatus": "pending",
@@ -289,7 +289,7 @@ Authorization: Required (admin role)
 }
 ```
 
-**Valid Status Values**: `new`, `inReview`, `approved`, `rejected`, `cancelled`
+**Valid Status Values**: `inReview`, `approved`, `rejected`, `cancelled`
 
 **Response** (200 OK):
 ```json
@@ -590,7 +590,7 @@ Authorization: Required (User)
 {
   "userId": 123,
   "hasApplication": true,
-  "applicationStatus": "approved|pending|rejected|new",
+  "applicationStatus": "approved|pending|rejected|inReview",
   "accessLevel": "limited|full",
   "applicationInfo": {
     "id": 456,

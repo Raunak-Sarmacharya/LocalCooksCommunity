@@ -9,7 +9,7 @@ export const kitchenPreferenceEnum = pgEnum('kitchen_preference', ['commercial',
 export const certificationStatusEnum = pgEnum('certification_status', ['yes', 'no', 'notSure']);
 
 // Define an enum for application status
-export const applicationStatusEnum = pgEnum('application_status', ['new', 'inReview', 'approved', 'rejected', 'cancelled']);
+export const applicationStatusEnum = pgEnum('application_status', ['inReview', 'approved', 'rejected', 'cancelled']);
 
 // Define an enum for user roles
 export const userRoleEnum = pgEnum('user_role', ['admin', 'applicant']);
@@ -39,7 +39,7 @@ export const applications = pgTable("applications", {
   foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
   feedback: text("feedback"),
-  status: applicationStatusEnum("status").default("new").notNull(),
+  status: applicationStatusEnum("status").default("inReview").notNull(),
   
   // Document verification fields
   foodSafetyLicenseUrl: text("food_safety_license_url"),
@@ -81,7 +81,7 @@ export const insertApplicationSchema = createInsertSchema(applications, {
 // Define the Zod schema for updating the status of an application
 export const updateApplicationStatusSchema = z.object({
   id: z.number(),
-  status: z.enum(["new", "inReview", "approved", "rejected", "cancelled"]),
+  status: z.enum(["inReview", "approved", "rejected", "cancelled"]),
 });
 
 // Schema for updating application documents

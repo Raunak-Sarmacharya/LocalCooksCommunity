@@ -172,7 +172,7 @@ export class MemStorage implements IStorage {
       foodEstablishmentCert: insertApplication.foodEstablishmentCert,
       kitchenPreference: insertApplication.kitchenPreference,
       feedback: insertApplication.feedback || null,
-      status: "new",
+      status: "inReview",
       
       // Initialize document verification fields
       foodSafetyLicenseUrl: insertApplication.foodSafetyLicenseUrl || null,
@@ -426,7 +426,7 @@ export class DatabaseStorage implements IStorage {
       .insert(applications)
       .values({
         ...insertApplication,
-        status: "new",
+        status: "inReview",
         createdAt: now,
       })
       .returning();

@@ -17,7 +17,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import {
     formatApplicationStatus,
-    formatCertificationStatus,
     formatKitchenPreference,
     getStatusBadgeColor
 } from "@/lib/applicationSchema";
@@ -26,7 +25,6 @@ import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-    AlertCircle,
     Award,
     BadgeCheck,
     CalendarDays,
@@ -41,7 +39,6 @@ import {
     GraduationCap,
     Info,
     Loader2,
-    LogOut,
     Shield,
     Star,
     Trophy,
@@ -166,7 +163,7 @@ export default function ApplicantDashboard() {
 
       // Check if user has applications under review
       const hasApplicationsUnderReview = data.some(app => 
-        app.status === "new" || app.status === "inReview"
+        app.status === "inReview"
       );
 
       // Check if user has approved applications with pending document verification
@@ -682,7 +679,6 @@ export default function ApplicantDashboard() {
               const isApproved = application.status === "approved";
               const statusIcon = () => {
                 switch (application.status) {
-                  case "new": return <AlertCircle className="h-5 w-5 text-yellow-500" />;
                   case "inReview": return <Clock className="h-5 w-5 text-blue-500" />;
                   case "approved": return <CheckCircle className="h-5 w-5 text-green-500" />;
                   case "rejected": return <XCircle className="h-5 w-5 text-red-500" />;

@@ -63,7 +63,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   const hasSubmittedApplication = activeApplications.length > 0;
   const latestApplication = activeApplications[0];
   const isApplicationApproved = hasApprovedApplication;
-  const isApplicationPending = latestApplication?.status === 'new' || latestApplication?.status === 'inReview';
+  const isApplicationPending = latestApplication?.status === 'inReview';
   const isApplicationRejected = latestApplication?.status === 'rejected';
   
   // Check if user has any rejected applications (for messaging purposes)

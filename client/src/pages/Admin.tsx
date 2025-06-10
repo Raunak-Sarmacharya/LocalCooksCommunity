@@ -115,7 +115,7 @@ function AdminDashboard() {
 
       // Check for new applications awaiting review
       const hasNewApplications = data.some(app => 
-        app.status === "new" || app.status === "inReview"
+        app.status === "inReview"
       );
 
       if (hasPendingDocumentReviews) {
@@ -430,8 +430,7 @@ function AdminDashboard() {
   // Helper function for status icons
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "new": return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      case "inReview": return <Clock className="h-4 w-4 text-blue-500" />;
+      case "inReview": return <AlertCircle className="h-4 w-4 text-yellow-500" />;
       case "approved": return <CheckCircle className="h-4 w-4 text-green-500" />;
       case "rejected": return <XCircle className="h-4 w-4 text-red-500" />;
       case "cancelled": return <XCircle className="h-4 w-4 text-gray-500" />;
@@ -441,7 +440,6 @@ function AdminDashboard() {
 
   // Get status counts for dashboard metrics
   const statusCounts = {
-    new: applications.filter(app => app.status === "new").length,
     inReview: applications.filter(app => app.status === "inReview").length,
     approved: applications.filter(app => app.status === "approved").length,
     rejected: applications.filter(app => app.status === "rejected").length,
@@ -538,15 +536,15 @@ function AdminDashboard() {
 
                   <Card className="bg-white shadow-sm border-2 border-yellow-100">
                     <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-yellow-500">{statusCounts.new}</div>
-                      <div className="text-sm mt-1 text-gray-600">New</div>
+                      <div className="text-4xl font-bold text-yellow-500">{statusCounts.inReview}</div>
+                      <div className="text-sm mt-1 text-gray-600">In Review</div>
                     </CardContent>
                   </Card>
 
                   <Card className="bg-white shadow-sm border-2 border-blue-100">
                     <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-blue-500">{statusCounts.inReview}</div>
-                      <div className="text-sm mt-1 text-gray-600">In Review</div>
+                      <div className="text-4xl font-bold text-blue-500">{statusCounts.approved}</div>
+                      <div className="text-sm mt-1 text-gray-600">Approved</div>
                     </CardContent>
                   </Card>
 
@@ -571,12 +569,8 @@ function AdminDashboard() {
                       <TabsTrigger value="all" className="flex items-center gap-1">
                         All
                       </TabsTrigger>
-                      <TabsTrigger value="new" className="flex items-center gap-1">
-                        <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
-                        New
-                      </TabsTrigger>
                       <TabsTrigger value="inReview" className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5 text-blue-500" />
+                        <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
                         In Review
                       </TabsTrigger>
                       <TabsTrigger value="approved" className="flex items-center gap-1">
@@ -605,9 +599,6 @@ function AdminDashboard() {
 
                   <TabsContent value="all" className="mt-0">
                     {renderApplicationList(filteredApplications)}
-                  </TabsContent>
-                  <TabsContent value="new" className="mt-0">
-                    {renderApplicationList(applications.filter(app => app.status === "new"))}
                   </TabsContent>
                   <TabsContent value="inReview" className="mt-0">
                     {renderApplicationList(applications.filter(app => app.status === "inReview"))}
@@ -1026,7 +1017,6 @@ function AdminDashboard() {
                                   <SelectValue placeholder="Update Status" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="new">New</SelectItem>
                                   <SelectItem value="inReview">In Review</SelectItem>
                                   <SelectItem value="approved">Approve</SelectItem>
                                   <SelectItem value="rejected">Reject</SelectItem>

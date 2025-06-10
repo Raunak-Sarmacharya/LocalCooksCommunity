@@ -1,12 +1,11 @@
 // This script initializes the database for Vercel deployment
 // Run this locally with: node scripts/vercel-db-init.js
 
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import { migrate } from 'drizzle-orm/neon-serverless/migrator';
 import { Pool, neonConfig } from '@neondatabase/serverless';
+import dotenv from 'dotenv';
+import { drizzle } from 'drizzle-orm/neon-serverless';
 import ws from 'ws';
 import * as schema from '../shared/schema.js';
-import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
@@ -43,7 +42,7 @@ async function initDatabase() {
       END $$;
       
       DO $$ BEGIN
-        CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
+        CREATE TYPE application_status AS ENUM ('inReview', 'approved', 'rejected', 'cancelled');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -74,7 +73,7 @@ async function initDatabase() {
         food_safety_license certification_status NOT NULL,
         food_establishment_cert certification_status NOT NULL,
         kitchen_preference kitchen_preference NOT NULL,
-        status application_status NOT NULL DEFAULT 'new',
+        status application_status NOT NULL DEFAULT 'inReview',
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);

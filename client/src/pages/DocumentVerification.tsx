@@ -1,9 +1,10 @@
-import DocumentUpload from "@/components/document-verification/DocumentUpload";
+import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { motion } from "framer-motion";
 import {
     ArrowLeft,
@@ -14,10 +15,8 @@ import {
     Shield,
     XCircle
 } from "lucide-react";
-import { Link } from "wouter";
-import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { useState } from "react";
-import { useDocumentVerification } from "@/hooks/use-document-verification";
+import { Link } from "wouter";
 
 export default function DocumentVerification() {
   const { user } = useAuth();
@@ -308,8 +307,7 @@ export default function DocumentVerification() {
           </div>
         </motion.div>
 
-        {/* Document Upload Modal Trigger */}
-        <DocumentManagementModal />
+        {/* Note: DocumentManagementModal is not needed here since this section is for users without verification records */}
 
         {/* Additional Information */}
         <motion.div

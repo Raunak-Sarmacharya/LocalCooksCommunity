@@ -84,7 +84,7 @@ export const users = pgTable("users", {
 ```typescript
 export const kitchenPreferenceEnum = pgEnum('kitchen_preference', ['commercial', 'home', 'notSure']);
 export const certificationStatusEnum = pgEnum('certification_status', ['yes', 'no', 'notSure']);
-export const applicationStatusEnum = pgEnum('application_status', ['new', 'inReview', 'approved', 'rejected', 'cancelled']);
+export const applicationStatusEnum = pgEnum('application_status', ['inReview', 'approved', 'rejected', 'cancelled']);
 export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
 
 export const applications = pgTable("applications", {
@@ -97,7 +97,7 @@ export const applications = pgTable("applications", {
   foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
   feedback: text("feedback"),
-  status: applicationStatusEnum("status").default("new").notNull(),
+  status: applicationStatusEnum("status").default("inReview").notNull(),
   
   // Document verification fields
   foodSafetyLicenseUrl: text("food_safety_license_url"),
@@ -116,7 +116,7 @@ export const applications = pgTable("applications", {
 
 | Field | Description | Possible Values |
 |-------|-------------|-----------------|
-| `status` | Application status | `new`, `inReview`, `approved`, `rejected`, `cancelled` |
+| `status` | Application status | `inReview`, `approved`, `rejected`, `cancelled` |
 | `foodSafetyLicense` | Has food safety license? | `yes`, `no`, `notSure` |
 | `foodEstablishmentCert` | Has establishment cert? | `yes`, `no`, `notSure` |
 | `kitchenPreference` | Kitchen preference | `commercial`, `home`, `notSure` |
@@ -124,11 +124,10 @@ export const applications = pgTable("applications", {
 | `foodEstablishmentCertStatus` | Document verification status | `pending`, `approved`, `rejected` |
 
 ### Application Status Flow
-1. **`new`** - Just submitted, needs initial review
-2. **`inReview`** - Being reviewed by admin
-3. **`approved`** - Application approved
-4. **`rejected`** - Application rejected
-5. **`cancelled`** - Cancelled by applicant
+1. **`inReview`** - Being reviewed by admin
+2. **`approved`** - Application approved
+3. **`rejected`** - Application rejected
+4. **`cancelled`** - Cancelled by applicant
 
 ### Document Verification Status
 - **`pending`** - Document uploaded, awaiting admin review
@@ -213,7 +212,7 @@ SELECT * FROM users WHERE role = 'admin';
 SELECT * FROM applications WHERE user_id = 123 ORDER BY created_at DESC;
 
 -- Get pending applications for admin review
-SELECT * FROM applications WHERE status = 'new' ORDER BY created_at ASC;
+SELECT * FROM applications WHERE status = 'inReview' ORDER BY created_at ASC;
 
 -- Get applications with pending document verification
 SELECT * FROM applications 
@@ -247,7 +246,7 @@ WHERE (a.food_safety_license_url IS NOT NULL AND a.food_safety_license_status = 
 CREATE TYPE user_role AS ENUM ('admin', 'applicant');
 CREATE TYPE kitchen_preference AS ENUM ('commercial', 'home', 'notSure');
 CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
-CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
+CREATE TYPE application_status AS ENUM ('inReview', 'approved', 'rejected', 'cancelled');
 CREATE TYPE document_verification_status AS ENUM ('pending', 'approved', 'rejected');
 
 -- Create users table
@@ -272,7 +271,7 @@ CREATE TABLE applications (
   food_establishment_cert certification_status NOT NULL,
   kitchen_preference kitchen_preference NOT NULL,
   feedback TEXT,
-  status application_status DEFAULT 'new' NOT NULL,
+  status application_status DEFAULT 'inReview' NOT NULL,
   
   food_safety_license_url TEXT,
   food_establishment_cert_url TEXT,

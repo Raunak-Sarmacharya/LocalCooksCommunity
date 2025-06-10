@@ -1,4 +1,4 @@
-CREATE TYPE "public"."application_status" AS ENUM('new', 'inReview', 'approved', 'rejected');--> statement-breakpoint
+CREATE TYPE "public"."application_status" AS ENUM('inReview', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."certification_status" AS ENUM('yes', 'no', 'notSure');--> statement-breakpoint
 CREATE TYPE "public"."kitchen_preference" AS ENUM('commercial', 'home', 'notSure');--> statement-breakpoint
 CREATE TABLE "applications" (
@@ -9,7 +9,7 @@ CREATE TABLE "applications" (
 	"food_safety_license" "certification_status" NOT NULL,
 	"food_establishment_cert" "certification_status" NOT NULL,
 	"kitchen_preference" "kitchen_preference" NOT NULL,
-	"status" "application_status" DEFAULT 'new' NOT NULL,
+	"status" "application_status" DEFAULT 'inReview' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
