@@ -1102,10 +1102,10 @@ app.post('/api/applications', upload.fields([
               });
               console.log(`✅ Application with documents email result: ${emailResult ? 'SUCCESS' : 'FAILED'} to ${createdApplication.email} for application ${createdApplication.id}`);
             } else {
-              // Application submitted WITHOUT documents - prompt to upload
-              console.log("📧 Sending WITHOUT documents email...");
-              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
-              const emailContent = generateApplicationWithoutDocumentsEmail({
+              // Application submitted WITHOUT documents - TEMPORARILY use WITH documents template
+              console.log("📧 Sending WITHOUT documents email (USING WITH DOCS TEMPLATE FOR TEST)...");
+              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
+              const emailContent = generateApplicationWithDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
               });
@@ -1177,34 +1177,45 @@ app.post('/api/applications', upload.fields([
     });
 
     // Send appropriate email based on whether documents were submitted (for memory storage case)
+    console.log("🔔 STARTING EMAIL PROCESS (MEMORY):", {
+      applicationId: application.id,
+      email: application.email,
+      hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
+      environment: process.env.NODE_ENV
+    });
+    
     try {
       if (application.email) {
         const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
         
         if (hasDocuments) {
           // Application submitted WITH documents - send combined email
+          console.log("📧 Sending WITH documents email (MEMORY)...");
           const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
           const emailContent = generateApplicationWithDocumentsEmail({
             fullName: application.fullName || "Applicant",
             email: application.email
           });
+          console.log("📧 WITH docs email content generated (MEMORY):", { to: emailContent.to, subject: emailContent.subject });
 
-          await sendEmail(emailContent, {
+          const emailResult = await sendEmail(emailContent, {
             trackingId: `app_with_docs_${application.id}_${Date.now()}`
           });
-          console.log(`Application with documents email sent to ${application.email} for application ${application.id}`);
+          console.log(`✅ Application with documents email result (MEMORY): ${emailResult ? 'SUCCESS' : 'FAILED'} to ${application.email} for application ${application.id}`);
         } else {
           // Application submitted WITHOUT documents - prompt to upload
+          console.log("📧 Sending WITHOUT documents email (MEMORY)...");
           const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
           const emailContent = generateApplicationWithoutDocumentsEmail({
             fullName: application.fullName || "Applicant",
             email: application.email
           });
+          console.log("📧 WITHOUT docs email content generated (MEMORY):", { to: emailContent.to, subject: emailContent.subject });
 
-          await sendEmail(emailContent, {
+          const emailResult = await sendEmail(emailContent, {
             trackingId: `app_no_docs_${application.id}_${Date.now()}`
           });
-          console.log(`Application without documents email sent to ${application.email} for application ${application.id}`);
+          console.log(`✅ Application without documents email result (MEMORY): ${emailResult ? 'SUCCESS' : 'FAILED'} to ${application.email} for application ${application.id}`);
         }
       } else {
         console.warn(`Cannot send application email: Missing email address`);
