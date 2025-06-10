@@ -1102,10 +1102,10 @@ app.post('/api/applications', upload.fields([
               });
               console.log(`✅ Application with documents email result: ${emailResult ? 'SUCCESS' : 'FAILED'} to ${createdApplication.email} for application ${createdApplication.id}`);
             } else {
-              // Application submitted WITHOUT documents - TEMPORARILY use WITH documents template
-              console.log("📧 Sending WITHOUT documents email (USING WITH DOCS TEMPLATE FOR TEST)...");
-              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
-              const emailContent = generateApplicationWithDocumentsEmail({
+              // Application submitted WITHOUT documents - prompt to upload
+              console.log("📧 Sending WITHOUT documents email...");
+              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
+              const emailContent = generateApplicationWithoutDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
               });
