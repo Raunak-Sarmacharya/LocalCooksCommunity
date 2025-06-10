@@ -619,7 +619,7 @@ export const generateApplicationWithoutDocumentsEmail = (
 
   return {
     to: applicationData.email,
-    subject: 'Application Received - Under Review',
+    subject: 'Local Cooks Application Confirmation - Next Steps',
     html,
   };
 };
