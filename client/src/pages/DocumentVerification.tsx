@@ -13,9 +13,12 @@ import {
     Shield
 } from "lucide-react";
 import { Link } from "wouter";
+import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
+import { useState } from "react";
 
 export default function DocumentVerification() {
   const { user } = useAuth();
+  const [modalOpen, setModalOpen] = useState(false);
 
   if (!user) {
     return (
@@ -161,14 +164,8 @@ export default function DocumentVerification() {
           </div>
         </motion.div>
 
-        {/* Document Upload Component */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-        >
-          <DocumentUpload />
-        </motion.div>
+        {/* Document Upload Modal Trigger */}
+        <DocumentManagementModal />
 
         {/* Additional Information */}
         <motion.div
