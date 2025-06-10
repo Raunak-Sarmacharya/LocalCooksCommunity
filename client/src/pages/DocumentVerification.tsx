@@ -253,8 +253,8 @@ export default function DocumentVerification() {
           <Alert className="mb-8 max-w-3xl mx-auto">
             <Info className="h-4 w-4" />
             <AlertDescription className="text-sm">
-              <strong>Important:</strong> Only approved applicants can upload documents for verification. 
-              If your application is still under review, please wait for approval before proceeding.
+              <strong>Important:</strong> You can upload documents anytime after submitting your application. 
+              Document verification can be done regardless of your application status.
             </AlertDescription>
           </Alert>
 

@@ -582,7 +582,7 @@ export const generateApplicationWithoutDocumentsEmail = (
                 <!-- CTA Button -->
                 <tr>
                   <td align="center" style="padding:32px 32px 0 32px;">
-                    <a href="https://localcooks.community/dashboard" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#f59e42 0%,#fbbf24 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(245,158,66,0.20);text-decoration:none;transition:box-shadow 0.2s;">
+                    <a href="https://local-cooks-community.vercel.app/login?redirect=dashboard" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#f59e42 0%,#fbbf24 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(245,158,66,0.20);text-decoration:none;transition:box-shadow 0.2s;">
                       Visit Dashboard →
                     </a>
                   </td>
