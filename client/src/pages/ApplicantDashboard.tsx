@@ -455,7 +455,7 @@ export default function ApplicantDashboard() {
                   }
                   return (
                     <>
-                      <span className="font-logo text-primary mr-2">{displayName}</span>'s Dashboard
+                      <span className="font-logo text-primary mr-2">{displayName + "'s"}</span> Dashboard
                       {isFullyVerified && (
                         <span className="ml-2">
                           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1 px-2 py-1">
