@@ -15,9 +15,11 @@ import {
 import { Link } from "wouter";
 import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { useState } from "react";
+import { useDocumentVerification } from "@/hooks/use-document-verification";
 
 export default function DocumentVerification() {
   const { user } = useAuth();
+  const { verification, isLoading } = useDocumentVerification();
   const [modalOpen, setModalOpen] = useState(false);
 
   if (!user) {
@@ -73,6 +75,127 @@ export default function DocumentVerification() {
     );
   }
 
+  // If loading, show loader
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow container max-w-4xl mx-auto px-4 pt-28 pb-8">
+          <div className="flex justify-center py-12">
+            <span className="text-lg text-primary">Loading...</span>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // If user has a verification record, always show document summary and manage button
+  if (verification) {
+    const isFullyVerified = verification.foodSafetyLicenseStatus === "approved" &&
+      (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow container max-w-4xl mx-auto px-4 pt-28 pb-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-8">
+            <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
+              <FileText className="h-8 w-8 text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-800 mb-2 text-center">
+              Document Verification
+            </h1>
+            <p className="text-gray-600 max-w-2xl mx-auto text-center">
+              {isFullyVerified ? "Your documents are verified! You can view or update them below." : "Upload or update your required documents for verification. You can replace your documents anytime."}
+            </p>
+          </motion.div>
+
+          {/* Document Summary Card */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}>
+            <div className="w-full max-w-2xl mx-auto mb-8">
+              <div className="bg-white border rounded-lg shadow p-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Your Documents
+                </h2>
+                <div className="mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Food Safety License:</span>
+                    {verification.foodSafetyLicenseUrl ? (
+                      <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                        View
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">Not uploaded</span>
+                    )}
+                    {verification.foodSafetyLicenseStatus && (
+                      <span className="ml-2">{verification.foodSafetyLicenseStatus === "approved" ? "✅ Approved" : verification.foodSafetyLicenseStatus === "pending" ? "🕒 Pending" : "❌ Rejected"}</span>
+                    )}
+                  </div>
+                  {verification.foodEstablishmentCertUrl && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="font-medium">Food Establishment Certificate:</span>
+                      <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                        View
+                      </a>
+                      {verification.foodEstablishmentCertStatus && (
+                        <span className="ml-2">{verification.foodEstablishmentCertStatus === "approved" ? "✅ Approved" : verification.foodEstablishmentCertStatus === "pending" ? "🕒 Pending" : "❌ Rejected"}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {verification.documentsAdminFeedback && (
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+                    <span className="font-medium text-blue-800">Admin Feedback:</span> {verification.documentsAdminFeedback}
+                  </div>
+                )}
+                <button className="mt-2 px-4 py-2 bg-primary text-white rounded hover:bg-primary/90 transition" onClick={() => setModalOpen(true)}>
+                  Manage Documents
+                </button>
+                <div className="mt-4 text-blue-800 text-sm">
+                  <strong>Update Documents:</strong> You can update your verified documents anytime. New uploads will reset your verification status to "pending review" for security.
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Modal for managing documents */}
+          <DocumentManagementModal open={modalOpen} onOpenChange={setModalOpen} />
+
+          {/* Additional Information */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }} className="mt-8 max-w-2xl mx-auto">
+            <div className="bg-gray-50 rounded-lg p-6 border">
+              <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <Info className="h-5 w-5 text-primary" />
+                Document Requirements
+              </h3>
+              <div className="space-y-3 text-sm text-gray-600">
+                <div>
+                  <strong>Food Safety License (Required):</strong>
+                  <ul className="list-disc list-inside mt-1 ml-4 space-y-1">
+                    <li>Must be a valid, current food safety certification</li>
+                    <li>Provide a direct URL link to the document (PDF, image, etc.)</li>
+                    <li>Document should be clearly readable and authentic</li>
+                  </ul>
+                </div>
+                <div>
+                  <strong>Food Establishment Certificate (Optional):</strong>
+                  <ul className="list-disc list-inside mt-1 ml-4 space-y-1">
+                    <li>Enhances your credibility as a professional cook</li>
+                    <li>Shows compliance with local health regulations</li>
+                    <li>Recommended but not mandatory for verification</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // If no verification/application, show onboarding/instructions
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
