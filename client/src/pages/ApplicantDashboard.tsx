@@ -936,12 +936,24 @@ export default function ApplicantDashboard() {
                         <p className="font-medium text-gray-900">#{application.id}</p>
                       </div>
                       <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Food Safety License</h4>
-                        <p className="font-medium text-gray-900">{formatCertificationStatus(application.foodSafetyLicense)}</p>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><FileText className="h-4 w-4 text-blue-400" /> Food Safety License</h4>
+                        {application.foodSafetyLicenseUrl ? (
+                          <a href={application.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium">
+                            <FileText className="h-4 w-4" /> View Document
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">Not uploaded</span>
+                        )}
                       </div>
                       <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Food Establishment Cert</h4>
-                        <p className="font-medium text-gray-900">{formatCertificationStatus(application.foodEstablishmentCert)}</p>
+                        <h4 className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><FileText className="h-4 w-4 text-blue-400" /> Food Establishment Cert</h4>
+                        {application.foodEstablishmentCertUrl ? (
+                          <a href={application.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium">
+                            <FileText className="h-4 w-4" /> View Document
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">Not uploaded</span>
+                        )}
                       </div>
                       <div>
                         <h4 className="text-xs font-medium text-gray-500 mb-1">Kitchen Preference</h4>

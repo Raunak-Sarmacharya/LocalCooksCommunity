@@ -8,9 +8,11 @@ import { motion } from "framer-motion";
 import {
     ArrowLeft,
     CheckCircle,
+    Clock,
     FileText,
     Info,
-    Shield
+    Shield,
+    XCircle
 } from "lucide-react";
 import { Link } from "wouter";
 import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
@@ -98,16 +100,37 @@ export default function DocumentVerification() {
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-grow container max-w-4xl mx-auto px-4 pt-28 pb-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-8">
-            <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-              <FileText className="h-8 w-8 text-primary" />
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-10">
+            <div className="flex flex-col items-center">
+              <div className="flex items-center w-full max-w-2xl mx-auto justify-between relative mb-6">
+                <div className="flex flex-col items-center flex-1">
+                  <div className="bg-blue-100 text-blue-600 rounded-full w-12 h-12 flex items-center justify-center mb-2 shadow">
+                    <FileText className="h-7 w-7" />
+                  </div>
+                  <span className="font-semibold text-blue-700">1. Upload</span>
+                </div>
+                <div className="flex-1 h-1 bg-gradient-to-r from-blue-200 via-yellow-200 to-green-200 mx-2 rounded-full" />
+                <div className="flex flex-col items-center flex-1">
+                  <div className="bg-yellow-100 text-yellow-600 rounded-full w-12 h-12 flex items-center justify-center mb-2 shadow">
+                    <Shield className="h-7 w-7" />
+                  </div>
+                  <span className="font-semibold text-yellow-700">2. Review</span>
+                </div>
+                <div className="flex-1 h-1 bg-gradient-to-r from-yellow-200 to-green-200 mx-2 rounded-full" />
+                <div className="flex flex-col items-center flex-1">
+                  <div className="bg-green-100 text-green-600 rounded-full w-12 h-12 flex items-center justify-center mb-2 shadow">
+                    <CheckCircle className="h-7 w-7" />
+                  </div>
+                  <span className="font-semibold text-green-700">3. Verified</span>
+                </div>
+              </div>
+              <div className="w-full max-w-2xl mx-auto">
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded flex items-center gap-2">
+                  <Info className="h-5 w-5 text-yellow-600" />
+                  <span className="text-yellow-800 text-sm font-medium">Updating your documents will reset your verification status to <b>pending review</b>.</span>
+                </div>
+              </div>
             </div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2 text-center">
-              Document Verification
-            </h1>
-            <p className="text-gray-600 max-w-2xl mx-auto text-center">
-              {isFullyVerified ? "Your documents are verified! You can view or update them below." : "Upload or update your required documents for verification. You can replace your documents anytime."}
-            </p>
           </motion.div>
 
           {/* Document Summary Card */}
@@ -122,14 +145,19 @@ export default function DocumentVerification() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">Food Safety License:</span>
                     {verification.foodSafetyLicenseUrl ? (
-                      <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                        View
+                      <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium">
+                        <FileText className="h-4 w-4" /> View Document
                       </a>
                     ) : (
                       <span className="text-gray-400">Not uploaded</span>
                     )}
                     {verification.foodSafetyLicenseStatus && (
-                      <span className="ml-2">{verification.foodSafetyLicenseStatus === "approved" ? "✅ Approved" : verification.foodSafetyLicenseStatus === "pending" ? "🕒 Pending" : "❌ Rejected"}</span>
+                      <span className={`ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${verification.foodSafetyLicenseStatus === "approved" ? "bg-green-100 text-green-800" : verification.foodSafetyLicenseStatus === "pending" ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"}`}>
+                        {verification.foodSafetyLicenseStatus === "approved" && <CheckCircle className="h-3 w-3" />}
+                        {verification.foodSafetyLicenseStatus === "pending" && <Clock className="h-3 w-3" />}
+                        {verification.foodSafetyLicenseStatus === "rejected" && <XCircle className="h-3 w-3" />}
+                        {verification.foodSafetyLicenseStatus.charAt(0).toUpperCase() + verification.foodSafetyLicenseStatus.slice(1)}
+                      </span>
                     )}
                   </div>
                   {verification.foodEstablishmentCertUrl && (
@@ -145,8 +173,9 @@ export default function DocumentVerification() {
                   )}
                 </div>
                 {verification.documentsAdminFeedback && (
-                  <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                    <span className="font-medium text-blue-800">Admin Feedback:</span> {verification.documentsAdminFeedback}
+                  <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4 flex items-center gap-2">
+                    <Info className="h-5 w-5 text-blue-700" />
+                    <span className="font-medium text-blue-800">Admin Feedback:</span> <span className="text-blue-700">{verification.documentsAdminFeedback}</span>
                   </div>
                 )}
                 <button className="mt-2 px-4 py-2 bg-primary text-white rounded hover:bg-primary/90 transition" onClick={() => setModalOpen(true)}>
