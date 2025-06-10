@@ -436,8 +436,37 @@ export default function ApplicantDashboard() {
         <div className="mb-6 md:mb-8 p-4 md:p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-xl">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center">
-                <span className="font-logo text-primary mr-2">{user?.role === "admin" ? "Admin" : "My"}</span> Dashboard
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2">
+                {/* Get user's full name from latest application, fallback to username */}
+                {(() => {
+                  let displayName = user?.username || "";
+                  if (applications && applications.length > 0 && applications[0]?.fullName) {
+                    displayName = applications[0].fullName;
+                  }
+                  // Determine if user is fully verified
+                  let isFullyVerified = false;
+                  if (applications && applications.length > 0) {
+                    const app = applications[0];
+                    isFullyVerified =
+                      app.status === "approved" &&
+                      app.foodSafetyLicenseStatus === "approved" &&
+                      (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved") &&
+                      microlearningCompletion?.confirmed;
+                  }
+                  return (
+                    <>
+                      <span className="font-logo text-primary mr-2">{displayName}</span> Dashboard
+                      {isFullyVerified && (
+                        <span className="ml-2">
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1 px-2 py-1">
+                            <Award className="h-3 w-3 mr-1" />
+                            Verified
+                          </Badge>
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
               </h1>
               <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2 max-w-lg">
                 {user?.role === "admin" 
@@ -445,51 +474,6 @@ export default function ApplicantDashboard() {
                   : "Track your applications, manage documents, view training progress, and access certificates. We're excited to have you join our community of talented chefs!"
                 }
               </p>
-            </div>
-            <div className="flex flex-wrap gap-2 md:gap-3 mt-3 md:mt-0">
-              {user?.role === "admin" ? (
-                <Button
-                  asChild
-                  variant="default"
-                  size="sm"
-                  className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
-                >
-                  <Link href="/admin">
-                    <Shield className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
-                    Admin Dashboard
-                  </Link>
-                </Button>
-              ) : (
-                <Button
-                  asChild
-                  variant="default"
-                  size="sm"
-                  className="bg-primary/90 hover:bg-primary rounded-full shadow-sm text-xs md:text-sm py-1 h-auto md:h-10"
-                >
-                  <Link href="/">
-                    <ChefHat className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
-                    Explore Opportunities
-                  </Link>
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLogout}
-                className="rounded-full border-gray-300 text-xs md:text-sm py-1 h-auto md:h-10"
-              >
-                {logoutMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4 animate-spin" />
-                    Logging out...
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="mr-1.5 h-3.5 w-3.5 md:h-4 md:w-4" />
-                    Log out
-                  </>
-                )}
-              </Button>
             </div>
           </div>
         </div>
