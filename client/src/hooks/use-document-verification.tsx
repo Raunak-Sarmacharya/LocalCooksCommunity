@@ -1,12 +1,12 @@
-import { 
-  useQuery, 
-  useMutation, 
-  UseMutationResult,
-} from "@tanstack/react-query";
-import { Application } from "@shared/schema";
-import { queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Application } from "@shared/schema";
+import {
+    useMutation,
+    UseMutationResult,
+    useQuery,
+} from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { queryClient } from "../lib/queryClient";
 
 type DocumentVerificationContextType = {
   verification: Application | null;
@@ -194,8 +194,8 @@ export function useDocumentVerification() {
     gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
-  // Find the most recent approved application for document verification
-  const verification = applications?.find(app => app.status === "approved") || null;
+  // Find the most recent application for document verification (any status)
+  const verification = applications && applications.length > 0 ? applications[0] : null;
 
   // Check for status changes and show subtle notifications
   useEffect(() => {
@@ -292,7 +292,7 @@ export function useDocumentVerification() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData | Record<string, string>) => {
       if (!verification) {
-        throw new Error("No approved application found for document upload");
+        throw new Error("No application found for document upload");
       }
       
       // Check if data is FormData (file upload) or JSON object (URL submission)

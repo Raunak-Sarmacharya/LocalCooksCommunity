@@ -257,7 +257,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     );
   }
 
-  // Check if user has an approved application for document verification
+  // Check if user has submitted an application for document verification
   if (!verification) {
     return (
       <motion.div
@@ -269,19 +269,18 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-yellow-500" />
-              No Approved Application Found
+              No Application Found
             </CardTitle>
             <CardDescription>
-              You need an approved application before you can upload documents for verification.
+              You need to submit an application before you can upload documents for verification.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
-                <strong>Next Steps:</strong> You need to submit an application and have it approved 
-                before you can upload documents for verification. Once your application is approved, 
-                you'll be able to upload your required documents here.
+                <strong>Next Steps:</strong> Submit an application first. Once submitted, you'll be able 
+                to upload your required documents for verification regardless of your application status.
               </AlertDescription>
             </Alert>
             <div className="text-center pt-4">
