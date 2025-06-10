@@ -175,7 +175,7 @@ export const generateStatusChangeEmail = (
       emoji: '🎉',
       cta: {
         text: 'Get Started',
-        url: 'https://localcooks.community/auth?redirect=dashboard',
+        url: 'https://local-cooks-community.vercel.app/auth?redirect=dashboard',
       },
     },
     rejected: {
