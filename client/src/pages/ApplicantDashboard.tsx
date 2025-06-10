@@ -704,8 +704,8 @@ export default function ApplicantDashboard() {
                     </Badge>
                   </div>
 
-                  {/* Document Verification Alert for Approved Applications */}
-                  {isApproved && (
+                  {/* Document Verification Section for All Applications */}
+                  {(
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
@@ -828,38 +828,70 @@ export default function ApplicantDashboard() {
                           );
                         } else {
                           // Show document management interface for non-verified users
+                          const getDocumentSectionContent = () => {
+                            if (application.status === "approved") {
+                              return {
+                                bgColor: "bg-green-50 border border-green-200",
+                                iconBg: "bg-green-100",
+                                iconColor: "text-green-600",
+                                titleColor: "text-green-800",
+                                textColor: "text-green-700",
+                                title: "Document Verification Center",
+                                message: "Congratulations! Your application has been approved. Upload your verification documents or update existing ones anytime."
+                              };
+                            } else {
+                              return {
+                                bgColor: "bg-blue-50 border border-blue-200",
+                                iconBg: "bg-blue-100",
+                                iconColor: "text-blue-600",
+                                titleColor: "text-blue-800",
+                                textColor: "text-blue-700",
+                                title: "Document Upload Available",
+                                message: "Your application is under review. You can upload your verification documents now to speed up the approval process."
+                              };
+                            }
+                          };
+                          
+                          const content = getDocumentSectionContent();
+                          
                           return (
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <div className={`${content.bgColor} rounded-lg p-4`}>
                               <div className="flex items-start gap-3">
-                                <div className="bg-green-100 p-2 rounded-full">
-                                  <FileText className="h-5 w-5 text-green-600" />
+                                <div className={`${content.iconBg} p-2 rounded-full`}>
+                                  <FileText className={`h-5 w-5 ${content.iconColor}`} />
                                 </div>
                                 <div className="flex-1">
-                                  <h3 className="font-semibold text-green-800 mb-1">Document Verification Center</h3>
-                                  <p className="text-sm text-green-700 mb-3">
-                                    Congratulations! Your application has been approved. Upload your verification documents or update existing ones anytime.
+                                  <h3 className={`font-semibold ${content.titleColor} mb-1`}>{content.title}</h3>
+                                  <p className={`text-sm ${content.textColor} mb-3`}>
+                                    {content.message}
                                   </p>
                                   <div className="flex flex-col sm:flex-row gap-2">
                                     <Button
                                       asChild
                                       size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                      className={application.status === "approved" 
+                                        ? "bg-green-600 hover:bg-green-700 text-white"
+                                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                                      }
                                     >
                                       <Link href="/document-verification">
                                         <BadgeCheck className="mr-2 h-4 w-4" />
-                                        Manage Documents
+                                        {application.status === "approved" ? "Manage Documents" : "Upload Documents"}
                                       </Link>
                                     </Button>
-                                    <span className="text-xs text-green-600 flex items-center">
+                                    <span className={`text-xs ${application.status === "approved" ? "text-green-600" : "text-blue-600"} flex items-center`}>
                                       <Info className="mr-1 h-3 w-3" />
-                                      Upload new or replace existing files
+                                      {application.status === "approved" 
+                                        ? "Upload new or replace existing files"
+                                        : "Speed up your application review"
+                                      }
                                     </span>
                                   </div>
                                   
                                   {/* Show current document status if documents are uploaded */}
                                   {(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl) && (
-                                    <div className="mt-3 pt-3 border-t border-green-200">
-                                      <h4 className="text-xs font-medium text-green-700 mb-2">Current Status:</h4>
+                                    <div className={`mt-3 pt-3 border-t ${application.status === "approved" ? "border-green-200" : "border-blue-200"}`}>
+                                      <h4 className={`text-xs font-medium ${application.status === "approved" ? "text-green-700" : "text-blue-700"} mb-2`}>Current Status:</h4>
                                       <div className="flex flex-wrap gap-2">
                                         {application.foodSafetyLicenseUrl && (
                                           <Badge variant="secondary" className={
