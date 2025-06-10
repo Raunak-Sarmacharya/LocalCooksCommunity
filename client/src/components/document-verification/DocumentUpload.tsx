@@ -40,12 +40,18 @@ interface DocumentUploadProps {
 export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl w-full">
+      <DialogContent className="max-w-2xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl">
         <DialogHeader>
           <DialogTitle>Manage Your Documents</DialogTitle>
           <DialogClose />
         </DialogHeader>
-        <DocumentUpload forceShowForm />
+        <div className="p-4 sm:p-0">
+          <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded flex items-center gap-2">
+            <Info className="h-5 w-5 text-yellow-600" />
+            <span className="text-yellow-800 text-sm font-medium">Updating your documents will reset your verification status to <b>pending review</b>.</span>
+          </div>
+          <DocumentUpload forceShowForm />
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -537,9 +543,9 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                         href={verification.foodSafetyLicenseUrl} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="text-blue-600 hover:underline text-sm break-all"
+                        className="text-blue-600 underline font-medium"
                       >
-                        {verification.foodSafetyLicenseUrl}
+                        View Document
                       </a>
                       <p className="text-xs text-blue-600 mt-1">
                         Enter a new URL below to replace this link
@@ -583,9 +589,9 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                         href={verification.foodEstablishmentCertUrl} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="text-blue-600 hover:underline text-sm break-all"
+                        className="text-blue-600 underline font-medium"
                       >
-                        {verification.foodEstablishmentCertUrl}
+                        View Document
                       </a>
                       <p className="text-xs text-blue-600 mt-1">
                         Enter a new URL below to replace this link
