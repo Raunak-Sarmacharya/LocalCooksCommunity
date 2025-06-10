@@ -1076,6 +1076,13 @@ app.post('/api/applications', upload.fields([
         });
 
         // Send appropriate email based on whether documents were submitted
+        console.log("🔔 STARTING EMAIL PROCESS:", {
+          applicationId: createdApplication.id,
+          email: createdApplication.email,
+          hasDocuments: !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url),
+          environment: process.env.NODE_ENV
+        });
+        
         try {
           if (createdApplication.email) {
             const hasDocuments = !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url);
@@ -1110,7 +1117,19 @@ app.post('/api/applications', upload.fields([
           }
         } catch (emailError) {
           // Log the error but don't fail the request
-          console.error("Error sending application email:", emailError);
+          console.error("❌ PRODUCTION EMAIL ERROR:", {
+            error: emailError.message,
+            stack: emailError.stack,
+            applicationId: createdApplication.id,
+            email: createdApplication.email,
+            hasDocuments: !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url),
+            environment: process.env.NODE_ENV,
+            emailConfig: {
+              hasEmailUser: !!process.env.EMAIL_USER,
+              hasEmailPass: !!process.env.EMAIL_PASS,
+              emailHost: process.env.EMAIL_HOST
+            }
+          });
         }
 
         // Return the created application
@@ -1188,7 +1207,19 @@ app.post('/api/applications', upload.fields([
       }
     } catch (emailError) {
       // Log the error but don't fail the request
-      console.error("Error sending application email:", emailError);
+      console.error("❌ PRODUCTION EMAIL ERROR (Memory):", {
+        error: emailError.message,
+        stack: emailError.stack,
+        applicationId: application.id,
+        email: application.email,
+        hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
+        environment: process.env.NODE_ENV,
+        emailConfig: {
+          hasEmailUser: !!process.env.EMAIL_USER,
+          hasEmailPass: !!process.env.EMAIL_PASS,
+          emailHost: process.env.EMAIL_HOST
+        }
+      });
     }
 
     res.status(201).json(application);
@@ -3460,6 +3491,53 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
   } catch (error) {
     console.error('Error generating certificate:', error);
     res.status(500).json({ message: 'Failed to generate certificate' });
+  }
+});
+
+// Test email configuration endpoint (development only)
+app.post("/api/test-status-email", async (req, res) => {
+  try {
+    const { status, email, fullName } = req.body;
+
+    if (!status || !email || !fullName) {
+      return res.status(400).json({ 
+        message: "Missing required fields: status, email, fullName" 
+      });
+    }
+
+    console.log('Testing status change email with:', { status, email, fullName });
+
+    // Import the email functions
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+    const emailContent = generateStatusChangeEmail({
+      fullName,
+      email,
+      status
+    });
+
+    const emailSent = await sendEmail(emailContent, {
+      trackingId: `test_${status}_${Date.now()}`
+    });
+
+    if (emailSent) {
+      return res.status(200).json({ 
+        message: "Test email sent successfully",
+        status,
+        email,
+        fullName
+      });
+    } else {
+      return res.status(500).json({ 
+        message: "Failed to send test email - check email configuration" 
+      });
+    }
+  } catch (error) {
+    console.error("Error sending test email:", error);
+    return res.status(500).json({ 
+      message: "Error sending test email",
+      error: error.message 
+    });
   }
 });
 
