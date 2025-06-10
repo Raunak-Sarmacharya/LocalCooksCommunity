@@ -207,14 +207,6 @@ export default function DocumentVerification() {
                     <li>Document should be clearly readable and authentic</li>
                   </ul>
                 </div>
-                <div>
-                  <strong>Food Establishment Certificate (Optional):</strong>
-                  <ul className="list-disc list-inside mt-1 ml-4 space-y-1">
-                    <li>Enhances your credibility as a professional cook</li>
-                    <li>Shows compliance with local health regulations</li>
-                    <li>Recommended but not mandatory for verification</li>
-                  </ul>
-                </div>
               </div>
             </div>
           </motion.div>

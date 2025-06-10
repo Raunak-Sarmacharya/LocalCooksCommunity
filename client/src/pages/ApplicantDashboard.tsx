@@ -460,7 +460,7 @@ export default function ApplicantDashboard() {
                         <span className="ml-2">
                           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1 px-2 py-1">
                             <Award className="h-3 w-3 mr-1" />
-                            Verified
+                            Verified Chef
                           </Badge>
                         </span>
                       )}
@@ -509,7 +509,7 @@ export default function ApplicantDashboard() {
                     🎉 Food Safety Training Completed!
                     <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1">
                       <Award className="h-3 w-3" />
-                      Certified
+                      Local Cooks Certified
                     </Badge>
                   </h2>
                   <p className="text-sm md:text-base text-emerald-700 mb-4 flex items-center gap-2">
@@ -614,10 +614,6 @@ export default function ApplicantDashboard() {
                           <CheckCircle className="h-3 w-3" />
                           Certificate Generated
                         </span>
-                        <span className="flex items-center gap-1">
-                          <Award className="h-3 w-3" />
-                          Skillpass.nl Prep Complete
-                        </span>
                       </div>
                       <div className="text-xs text-emerald-600">
                         <span className="font-medium">🏆 Achievement Unlocked:</span> You can now rewatch any training module at any time
@@ -630,15 +626,12 @@ export default function ApplicantDashboard() {
                 <>
                   <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
                     Food Safety Training
-                    <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
-                      Skillpass.nl Prep
-                    </Badge>
                     {isLoadingCompletion && (
                       <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                     )}
                   </h2>
                   <p className="text-sm md:text-base text-gray-600 mb-4">
-                    Prepare for your skillpass.nl food safety certification with our comprehensive 22-video training program designed specifically for Newfoundland chefs. 
+                    Prepare for your food safety certification with our comprehensive 22-video training program designed specifically for Newfoundland chefs. 
                     Start with the first module immediately - unlock all modules once your application is approved!
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3">
@@ -660,10 +653,6 @@ export default function ApplicantDashboard() {
                         <span className="flex items-center gap-1">
                           <CheckCircle className="h-3 w-3 text-blue-600" />
                           Full Access: Approved Apps
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3 text-green-600" />
-                          Skillpass.nl Certification Prep
                         </span>
                       </div>
                       <div className="text-xs text-gray-500">
@@ -742,7 +731,7 @@ export default function ApplicantDashboard() {
                                 <div className="flex-1">
                                   <h3 className="font-semibold text-green-800 mb-1 flex items-center gap-2">
                                     <Award className="h-4 w-4" />
-                                    Fully Verified Cook!
+                                    Verification Complete!
                                   </h3>
                                   <p className="text-sm text-green-700 mb-3">
                                     🎉 Congratulations! Your documents have been approved and you are now a verified Local Cook. You can start accepting orders from customers.
