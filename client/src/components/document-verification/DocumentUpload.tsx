@@ -239,6 +239,16 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     return url; // It's a URL
   };
 
+  const handleUpdateSuccess = () => {
+    toast({
+      title: "Documents updated successfully!",
+      description: "Status is now pending review.",
+      variant: "success",
+    });
+    if (typeof setModalOpen === 'function') setModalOpen(false); // If modal context is available
+    refetch();
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-8">
