@@ -1098,6 +1098,73 @@ app.post('/api/applications', upload.fields([
           console.error("Error sending new application email:", emailError);
         }
 
+        // After updating the application and before returning the response:
+        if (createdApplication && createdApplication.email) {
+          try {
+            const { sendEmail } = await import('../server/email.js');
+            const html = `
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
+                <tr>
+                  <td align="center" style="padding:0;margin:0;">
+                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
+                      <tr>
+                        <td style="padding:0;">
+                          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#fbbf24 0%,#f59e42 100%);padding:0;">
+                            <tr>
+                              <td style="padding:32px 32px 16px 32px;text-align:center;">
+                                <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
+                                <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
+                              </td>
+                            </tr>
+                          </table>
+                          <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                            <tr>
+                              <td style="padding:32px 32px 0 32px;">
+                                <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#f59e42;margin:0 0 16px 0;letter-spacing:-0.5px;text-align:center;">We've received your updated documents</h2>
+                                <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 24px 0;text-align:center;">
+                                  Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.<br />
+                                  You'll receive another email once your documents have been reviewed.
+                                </p>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding:0 32px 32px 32px;text-align:center;">
+                                <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:700;border-radius:999px;background:linear-gradient(90deg,#fef9c3 0%,#fde68a 100%);box-shadow:0 4px 16px 0 rgba(251,191,36,0.10);color:#92400e;letter-spacing:0.5px;vertical-align:middle;">
+                                  <span style="font-size:1.5rem;vertical-align:middle;margin-right:10px;">📄</span>
+                                  Document Update Received
+                                </span>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding:0 32px 32px 32px;text-align:center;">
+                                <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
+                                  If you have any questions, reply to this email or contact our support team.
+                                </p>
+                                <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#fbbf24 0%,#f59e42 100%);opacity:0.18;"></div>
+                                <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks</p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            `;
+            await sendEmail({
+              to: createdApplication.email,
+              subject: 'We've received your updated documents',
+              html,
+            }, {
+              trackingId: `doc_update_${createdApplication.id}_${Date.now()}`
+            });
+            console.log(`Document update confirmation email sent to ${createdApplication.email}`);
+          } catch (emailError) {
+            console.error('Error sending document update confirmation email:', emailError);
+          }
+        }
+
         // Return the created application
         return res.status(201).json(createdApplication);
       } catch (error) {
