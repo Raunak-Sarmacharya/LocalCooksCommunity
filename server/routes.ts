@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateStatusChangeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateStatusChangeEmail, sendEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -288,17 +288,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           hasDocuments: !!(fullApplication?.foodSafetyLicenseUrl || fullApplication?.foodEstablishmentCertUrl)
         });
 
-        // Send email notification about new application
+        // Send appropriate email notification for new application
         try {
           if (fullApplication && fullApplication.email) {
-            const emailContent = generateStatusChangeEmail({
-              fullName: fullApplication.fullName || "Applicant",
-              email: fullApplication.email,
-              status: "inReview"
-            });
+            const hasDocuments = !!(fullApplication.foodSafetyLicenseUrl || fullApplication.foodEstablishmentCertUrl);
+            
+            if (hasDocuments) {
+              // Application submitted WITH documents - send combined email
+              const emailContent = generateApplicationWithDocumentsEmail({
+                fullName: fullApplication.fullName || "Applicant",
+                email: fullApplication.email
+              });
 
-            await sendEmail(emailContent);
-            console.log(`Status change email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+              await sendEmail(emailContent, {
+                trackingId: `app_with_docs_${fullApplication.id}_${Date.now()}`
+              });
+              console.log(`Application with documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+            } else {
+              // Application submitted WITHOUT documents - prompt to upload
+              const emailContent = generateApplicationWithoutDocumentsEmail({
+                fullName: fullApplication.fullName || "Applicant",
+                email: fullApplication.email
+              });
+
+              await sendEmail(emailContent, {
+                trackingId: `app_no_docs_${fullApplication.id}_${Date.now()}`
+              });
+              console.log(`Application without documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+            }
           } else {
             console.warn(`Cannot send new application email: Application record not found or missing email.`);
           }
@@ -1372,6 +1389,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error generating certificate:', error);
       res.status(500).json({ message: 'Failed to generate certificate' });
+    }
+  });
+
+  // Test email configuration endpoint (development only)
+  app.post("/api/test-status-email", async (req: Request, res: Response) => {
+    try {
+      const { status, email, fullName } = req.body;
+
+      if (!status || !email || !fullName) {
+        return res.status(400).json({ 
+          message: "Missing required fields: status, email, fullName" 
+        });
+      }
+
+      console.log('Testing status change email with:', { status, email, fullName });
+
+      const emailContent = generateStatusChangeEmail({
+        fullName,
+        email,
+        status
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `test_${status}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        return res.status(200).json({ 
+          message: "Test email sent successfully",
+          status,
+          email,
+          fullName
+        });
+      } else {
+        return res.status(500).json({ 
+          message: "Failed to send test email - check email configuration" 
+        });
+      }
+    } catch (error) {
+      console.error("Error sending test email:", error);
+      return res.status(500).json({ 
+        message: "Error sending test email",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
