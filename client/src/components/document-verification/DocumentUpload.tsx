@@ -22,15 +22,41 @@ import {
     Upload,
     XCircle
 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Link } from "wouter";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 
-export default function DocumentUpload() {
+// Add types for props
+interface DocumentManagementModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+interface DocumentUploadProps {
+  openInModal?: boolean;
+  forceShowForm?: boolean;
+}
+
+export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl w-full">
+        <DialogHeader>
+          <DialogTitle>Manage Your Documents</DialogTitle>
+          <DialogClose />
+        </DialogHeader>
+        <DocumentUpload forceShowForm />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function DocumentUpload({ openInModal = false, forceShowForm = false }: DocumentUploadProps) {
   const { verification, isLoading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
   const { toast } = useToast();
   
   // Check if we're in production (Vercel)
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production';
   
   // URL states (keep these)
   const [foodSafetyLicenseUrl, setFoodSafetyLicenseUrl] = useState("");
@@ -71,10 +97,10 @@ export default function DocumentUpload() {
 
   // File upload handlers
   const handleFileUpload = (fieldName: string, file: File | null) => {
-    setFileUploads(prev => {
-      const updated = { ...prev };
+    setFileUploads((prev: Record<string, File>) => {
+      const updated: Record<string, File> = { ...prev };
       if (file) {
-        updated[fieldName] = file;
+        updated[fieldName] = file as File;
       } else {
         delete updated[fieldName];
       }
@@ -82,7 +108,7 @@ export default function DocumentUpload() {
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrors({});
     
@@ -165,7 +191,7 @@ export default function DocumentUpload() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string): React.ReactNode => {
     switch (status) {
       case "pending":
         return (
@@ -193,7 +219,7 @@ export default function DocumentUpload() {
     }
   };
 
-  const getFileDisplayName = (url: string | null) => {
+  const getFileDisplayName = (url: string | null): string | null => {
     if (!url) return null;
     if (url.startsWith('/api/files/')) {
       // Extract original filename from our file path
@@ -260,117 +286,106 @@ export default function DocumentUpload() {
   const isFullyVerified = verification.foodSafetyLicenseStatus === "approved" && 
     (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
 
-  // Show fully verified view
-  if (isFullyVerified) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <Card className="w-full max-w-2xl mx-auto">
-          <CardHeader className="text-center">
-            <div className="w-20 h-20 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="h-12 w-12 text-green-600" />
-            </div>
-            <CardTitle className="flex items-center justify-center gap-2 text-green-800">
-              <Award className="h-6 w-6" />
-              Verification Complete!
-            </CardTitle>
-            <CardDescription className="text-green-600">
-              Congratulations! Your documents have been approved and you are now fully verified.
-            </CardDescription>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-green-800 mb-4">✅ Verification Status</h3>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-green-700">Food Safety License:</span>
-                  <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Approved
-                  </Badge>
-                </div>
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // If openInModal and not forceShowForm, show only the verification card and modal trigger
+  if (openInModal && !forceShowForm) {
+    if (isFullyVerified) {
+      return (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+          <Card className="w-full max-w-2xl mx-auto">
+            <CardHeader className="text-center">
+              <div className="w-20 h-20 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
+                <CheckCircle className="h-12 w-12 text-green-600" />
+              </div>
+              <CardTitle className="flex items-center justify-center gap-2 text-green-800">
+                <Award className="h-6 w-6" />
+                Verification Complete!
+              </CardTitle>
+              <CardDescription className="text-green-600">
+                Congratulations! Your documents have been approved and you are now fully verified.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-green-800 mb-4">✅ Verification Status</h3>
                 
-                {verification.foodEstablishmentCertUrl && (
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-green-700">Food Establishment Certificate:</span>
+                    <span className="text-sm font-medium text-green-700">Food Safety License:</span>
                     <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Approved
                     </Badge>
                   </div>
-                )}
-                
-                {verification.documentsReviewedAt && (
-                  <div className="text-xs text-green-600 mt-3 pt-3 border-t border-green-200">
-                    <strong>Approved on:</strong> {new Date(verification.documentsReviewedAt).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </div>
-                )}
+                  
+                  {verification.foodEstablishmentCertUrl && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-green-700">Food Establishment Certificate:</span>
+                      <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Approved
+                      </Badge>
+                    </div>
+                  )}
+                  
+                  {verification.documentsReviewedAt && (
+                    <div className="text-xs text-green-600 mt-3 pt-3 border-t border-green-200">
+                      <strong>Approved on:</strong> {new Date(verification.documentsReviewedAt).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {verification.documentsAdminFeedback && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-blue-800 mb-2">💬 Admin Comments</h4>
-                <p className="text-sm text-blue-700">{verification.documentsAdminFeedback}</p>
+              {verification.documentsAdminFeedback && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-blue-800 mb-2">💬 Admin Comments</h4>
+                  <p className="text-sm text-blue-700">{verification.documentsAdminFeedback}</p>
+                </div>
+              )}
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-3">🎉 What's Next?</h4>
+                <div className="space-y-2 text-sm text-gray-600">
+                  <p>• Your profile is now marked as verified</p>
+                  <p>• You can start accepting orders from customers</p>
+                  <p>• Your verified status will be displayed to potential customers</p>
+                  <p>• Keep your documents current and renew them as needed</p>
+                </div>
               </div>
-            )}
 
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-800 mb-3">🎉 What's Next?</h4>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p>• Your profile is now marked as verified</p>
-                <p>• You can start accepting orders from customers</p>
-                <p>• Your verified status will be displayed to potential customers</p>
-                <p>• Keep your documents current and renew them as needed</p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <Button asChild className="flex-1">
+                  <Link href="/dashboard">
+                    <Award className="h-4 w-4 mr-2" />
+                    Go to Dashboard
+                  </Link>
+                </Button>
+                <Button variant="outline" onClick={() => setModalOpen(true)} className="flex-1">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Manage Documents
+                </Button>
               </div>
-            </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 pt-4">
-              <Button asChild className="flex-1">
-                <Link href="/dashboard">
-                  <Award className="h-4 w-4 mr-2" />
-                  Go to Dashboard
-                </Link>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  // Force refresh and stay on current page to show document management
-                  forceRefresh();
-                  // Small delay to allow data to refresh, then scroll to top
-                  setTimeout(() => {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }, 1000);
-                }}
-                className="flex-1"
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Manage Documents
-              </Button>
-            </div>
-
-            {/* Note about document updates */}
-            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>Update Documents:</strong> You can update your verified documents anytime. 
-                New uploads will reset your verification status to "pending review" for security.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    );
+              {/* Note about document updates */}
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Update Documents:</strong> You can update your verified documents anytime. New uploads will reset your verification status to "pending review" for security.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <DocumentManagementModal open={modalOpen} onOpenChange={setModalOpen} />
+        </motion.div>
+      );
+    }
+    // If not fully verified, just show the form as usual
+    return <DocumentUpload forceShowForm />;
   }
 
   return (
