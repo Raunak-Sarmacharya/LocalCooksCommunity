@@ -1154,7 +1154,7 @@ app.post('/api/applications', upload.fields([
             `;
             await sendEmail({
               to: createdApplication.email,
-              subject: 'We've received your updated documents',
+              subject: "We\'ve received your updated documents",
               html,
             }, {
               trackingId: `doc_update_${createdApplication.id}_${Date.now()}`
