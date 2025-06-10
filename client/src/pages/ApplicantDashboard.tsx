@@ -1,48 +1,48 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import {
-    formatApplicationStatus,
-    formatKitchenPreference,
-    getStatusBadgeColor
+  formatApplicationStatus,
+  formatKitchenPreference,
+  getStatusBadgeColor
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-    Award,
-    BadgeCheck,
-    CalendarDays,
-    CheckCircle,
-    ChefHat,
-    Clock,
-    CreditCard,
-    DollarSign,
-    Download,
-    ExternalLink,
-    FileText,
-    GraduationCap,
-    Info,
-    Loader2,
-    Shield,
-    Star,
-    Trophy,
-    XCircle
+  Award,
+  BadgeCheck,
+  CalendarDays,
+  CheckCircle,
+  ChefHat,
+  Clock,
+  CreditCard,
+  DollarSign,
+  Download,
+  ExternalLink,
+  FileText,
+  GraduationCap,
+  Info,
+  Loader2,
+  Shield,
+  Star,
+  Trophy,
+  XCircle
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "wouter";
@@ -229,7 +229,7 @@ export default function ApplicantDashboard() {
             case "approved":
               toast({
                 title: "🎉 Application Approved!",
-                description: "Congratulations! Your application has been approved. You can now upload your documents for verification.",
+                description: "Congratulations! Your application has been approved. You can now manage your documents for verification.",
               });
               break;
             case "rejected":
@@ -436,10 +436,9 @@ export default function ApplicantDashboard() {
               <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2">
                 {/* Get user's full name from latest application, fallback to username */}
                 {(() => {
-                  let displayName = user?.username || "";
-                  if (applications && applications.length > 0 && applications[0]?.fullName) {
-                    displayName = applications[0].fullName;
-                  }
+                  // Use consistent naming convention like header navigation - just use username
+                  const displayName = user?.username || "";
+                  
                   // Determine if user is fully verified
                   let isFullyVerified = false;
                   if (applications && applications.length > 0) {
@@ -677,6 +676,8 @@ export default function ApplicantDashboard() {
             {applications.map((application) => {
               const canApply = !isApplicationActive(application);
               const isApproved = application.status === "approved";
+              const isInReview = application.status === "inReview";
+              const canManageDocuments = isApproved || isInReview;
               const statusIcon = () => {
                 switch (application.status) {
                   case "inReview": return <Clock className="h-5 w-5 text-blue-500" />;
@@ -704,8 +705,8 @@ export default function ApplicantDashboard() {
                     </Badge>
                   </div>
 
-                  {/* Document Verification Alert for Approved Applications */}
-                  {isApproved && (
+                  {/* Document Verification Alert for Approved and In-Review Applications */}
+                  {canManageDocuments && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
@@ -828,29 +829,36 @@ export default function ApplicantDashboard() {
                           );
                         } else {
                           // Show document management interface for non-verified users
+                          const bgColor = isApproved ? "bg-green-50 border border-green-200" : "bg-blue-50 border border-blue-200";
+                          const iconBgColor = isApproved ? "bg-green-100" : "bg-blue-100";
+                          const iconColor = isApproved ? "text-green-600" : "text-blue-600";
+                          
                           return (
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <div className={`${bgColor} rounded-lg p-4`}>
                               <div className="flex items-start gap-3">
-                                <div className="bg-green-100 p-2 rounded-full">
-                                  <FileText className="h-5 w-5 text-green-600" />
+                                <div className={`${iconBgColor} p-2 rounded-full`}>
+                                  <FileText className={`h-5 w-5 ${iconColor}`} />
                                 </div>
                                 <div className="flex-1">
-                                  <h3 className="font-semibold text-green-800 mb-1">Document Verification Center</h3>
-                                  <p className="text-sm text-green-700 mb-3">
-                                    Congratulations! Your application has been approved. Upload your verification documents or update existing ones anytime.
+                                  <h3 className={`font-semibold mb-1 ${isApproved ? 'text-green-800' : 'text-blue-800'}`}>Document Verification Center</h3>
+                                  <p className={`text-sm mb-3 ${isApproved ? 'text-green-700' : 'text-blue-700'}`}>
+                                    {isApproved 
+                                      ? "Congratulations! Your application has been approved. Update your verified documents anytime."
+                                      : "Upload your verification documents to speed up your application review. You can update or replace documents anytime before approval."
+                                    }
                                   </p>
                                   <div className="flex flex-col sm:flex-row gap-2">
                                     <Button
                                       asChild
                                       size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                      className={isApproved ? "bg-green-600 hover:bg-green-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}
                                     >
                                       <Link href="/document-verification">
                                         <BadgeCheck className="mr-2 h-4 w-4" />
                                         Manage Documents
                                       </Link>
                                     </Button>
-                                    <span className="text-xs text-green-600 flex items-center">
+                                    <span className={`text-xs flex items-center ${isApproved ? 'text-green-600' : 'text-blue-600'}`}>
                                       <Info className="mr-1 h-3 w-3" />
                                       Upload new or replace existing files
                                     </span>
@@ -858,8 +866,8 @@ export default function ApplicantDashboard() {
                                   
                                   {/* Show current document status if documents are uploaded */}
                                   {(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl) && (
-                                    <div className="mt-3 pt-3 border-t border-green-200">
-                                      <h4 className="text-xs font-medium text-green-700 mb-2">Current Status:</h4>
+                                    <div className={`mt-3 pt-3 border-t ${isApproved ? 'border-green-200' : 'border-blue-200'}`}>
+                                      <h4 className={`text-xs font-medium mb-2 ${isApproved ? 'text-green-700' : 'text-blue-700'}`}>Current Status:</h4>
                                       <div className="flex flex-wrap gap-2">
                                         {application.foodSafetyLicenseUrl && (
                                           <Badge variant="secondary" className={
