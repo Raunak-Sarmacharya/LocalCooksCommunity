@@ -40,7 +40,7 @@ interface DocumentUploadProps {
 export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl">
+      <DialogContent className="max-w-4xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl">
         <DialogHeader>
           <DialogTitle>Manage Your Documents</DialogTitle>
           <DialogClose />
@@ -461,13 +461,9 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                       <p className="text-sm font-medium text-blue-800 mb-1">Current document:</p>
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm text-blue-700">
-                          {getFileDisplayName(verification.foodSafetyLicenseUrl) || 'Document uploaded'}
-                        </span>
+                        <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">View Document</a>
                       </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Upload a new file below to replace this document
-                      </p>
+                      <p className="text-xs text-blue-600 mt-1">Upload a new file below to replace this document</p>
                     </div>
                   )}
                   
@@ -500,13 +496,9 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                       <p className="text-sm font-medium text-blue-800 mb-1">Current document:</p>
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm text-blue-700">
-                          {getFileDisplayName(verification.foodEstablishmentCertUrl) || 'Document uploaded'}
-                        </span>
+                        <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">View Document</a>
                       </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Upload a new file below to replace this document
-                      </p>
+                      <p className="text-xs text-blue-600 mt-1">Upload a new file below to replace this document</p>
                     </div>
                   )}
                   
