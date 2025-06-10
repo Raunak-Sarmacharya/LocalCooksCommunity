@@ -1089,28 +1089,32 @@ app.post('/api/applications', upload.fields([
             
             if (hasDocuments) {
               // Application submitted WITH documents - send combined email
+              console.log("📧 Sending WITH documents email...");
               const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
               const emailContent = generateApplicationWithDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
               });
+              console.log("📧 WITH docs email content generated:", { to: emailContent.to, subject: emailContent.subject });
 
-              await sendEmail(emailContent, {
+              const emailResult = await sendEmail(emailContent, {
                 trackingId: `app_with_docs_${createdApplication.id}_${Date.now()}`
               });
-              console.log(`Application with documents email sent to ${createdApplication.email} for application ${createdApplication.id}`);
+              console.log(`✅ Application with documents email result: ${emailResult ? 'SUCCESS' : 'FAILED'} to ${createdApplication.email} for application ${createdApplication.id}`);
             } else {
               // Application submitted WITHOUT documents - prompt to upload
+              console.log("📧 Sending WITHOUT documents email...");
               const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
               const emailContent = generateApplicationWithoutDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
               });
+              console.log("📧 WITHOUT docs email content generated:", { to: emailContent.to, subject: emailContent.subject });
 
-              await sendEmail(emailContent, {
+              const emailResult = await sendEmail(emailContent, {
                 trackingId: `app_no_docs_${createdApplication.id}_${Date.now()}`
               });
-              console.log(`Application without documents email sent to ${createdApplication.email} for application ${createdApplication.id}`);
+              console.log(`✅ Application without documents email result: ${emailResult ? 'SUCCESS' : 'FAILED'} to ${createdApplication.email} for application ${createdApplication.id}`);
             }
           } else {
             console.warn(`Cannot send application email: Missing email address`);
