@@ -11,7 +11,7 @@ import { useState } from "react";
 
 export default function StatusEmailTest() {
   const { toast } = useToast();
-  const [status, setStatus] = useState<string>("new");
+  const [status, setStatus] = useState<string>("inReview");
   const [email, setEmail] = useState<string>("");
   const [name, setName] = useState<string>("");
   const [phone, setPhone] = useState<string>("");

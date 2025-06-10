@@ -367,7 +367,7 @@ async function initializeDatabase() {
             CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
           END IF;
           IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'application_status') THEN
-            CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
+            CREATE TYPE application_status AS ENUM ('inReview', 'approved', 'rejected', 'cancelled');
           END IF;
           IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'document_verification_status') THEN
             CREATE TYPE document_verification_status AS ENUM ('pending', 'approved', 'rejected');
@@ -401,7 +401,7 @@ async function initializeDatabase() {
           food_establishment_cert certification_status NOT NULL,
           kitchen_preference kitchen_preference NOT NULL,
           feedback TEXT,
-          status application_status NOT NULL DEFAULT 'new',
+          status application_status NOT NULL DEFAULT 'inReview',
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
       `);
@@ -438,7 +438,7 @@ async function initializeDatabase() {
               CREATE TYPE certification_status AS ENUM ('yes', 'no', 'notSure');
             END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'application_status') THEN
-              CREATE TYPE application_status AS ENUM ('new', 'inReview', 'approved', 'rejected', 'cancelled');
+              CREATE TYPE application_status AS ENUM ('inReview', 'approved', 'rejected', 'cancelled');
             END IF;
             IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'document_verification_status') THEN
               CREATE TYPE document_verification_status AS ENUM ('pending', 'approved', 'rejected');
@@ -458,7 +458,7 @@ async function initializeDatabase() {
             food_establishment_cert certification_status NOT NULL,
             kitchen_preference kitchen_preference NOT NULL,
             feedback TEXT,
-            status application_status NOT NULL DEFAULT 'new',
+            status application_status NOT NULL DEFAULT 'inReview',
             
             -- Document verification fields
             food_safety_license_url TEXT,
@@ -1074,95 +1074,42 @@ app.post('/api/applications', upload.fields([
           }
         });
 
-        // Send email notification about new application
+        // Send appropriate email based on whether documents were submitted
         try {
-          // Import the email functions
-          const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
-
           if (createdApplication.email) {
-            const emailContent = generateStatusChangeEmail({
-              fullName: createdApplication.full_name || "Applicant",
-              email: createdApplication.email,
-              status: 'new'
-            });
+            const hasDocuments = !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url);
+            
+            if (hasDocuments) {
+              // Application submitted WITH documents - send combined email
+              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
+              const emailContent = generateApplicationWithDocumentsEmail({
+                fullName: createdApplication.full_name || "Applicant",
+                email: createdApplication.email
+              });
 
-            await sendEmail(emailContent, {
-              trackingId: `new_${createdApplication.id}_${Date.now()}`
-            });
-            console.log(`New application email sent to ${createdApplication.email} for application ${createdApplication.id}`);
+              await sendEmail(emailContent, {
+                trackingId: `app_with_docs_${createdApplication.id}_${Date.now()}`
+              });
+              console.log(`Application with documents email sent to ${createdApplication.email} for application ${createdApplication.id}`);
+            } else {
+              // Application submitted WITHOUT documents - prompt to upload
+              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
+              const emailContent = generateApplicationWithoutDocumentsEmail({
+                fullName: createdApplication.full_name || "Applicant",
+                email: createdApplication.email
+              });
+
+              await sendEmail(emailContent, {
+                trackingId: `app_no_docs_${createdApplication.id}_${Date.now()}`
+              });
+              console.log(`Application without documents email sent to ${createdApplication.email} for application ${createdApplication.id}`);
+            }
           } else {
-            console.warn(`Cannot send new application email: Missing email address`);
+            console.warn(`Cannot send application email: Missing email address`);
           }
         } catch (emailError) {
           // Log the error but don't fail the request
-          console.error("Error sending new application email:", emailError);
-        }
-
-        // After updating the application and before returning the response:
-        if (createdApplication && createdApplication.email) {
-          try {
-            const { sendEmail } = await import('../server/email.js');
-            const html = `
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
-                <tr>
-                  <td align="center" style="padding:0;margin:0;">
-                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
-                      <tr>
-                        <td style="padding:0;">
-                          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#fbbf24 0%,#f59e42 100%);padding:0;">
-                            <tr>
-                              <td style="padding:32px 32px 16px 32px;text-align:center;">
-                                <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
-                                <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
-                              </td>
-                            </tr>
-                          </table>
-                          <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                            <tr>
-                              <td style="padding:32px 32px 0 32px;">
-                                <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#f59e42;margin:0 0 16px 0;letter-spacing:-0.5px;text-align:center;">We've received your updated documents</h2>
-                                <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 24px 0;text-align:center;">
-                                  Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.<br />
-                                  You'll receive another email once your documents have been reviewed.
-                                </p>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style="padding:0 32px 32px 32px;text-align:center;">
-                                <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:700;border-radius:999px;background:linear-gradient(90deg,#fef9c3 0%,#fde68a 100%);box-shadow:0 4px 16px 0 rgba(251,191,36,0.10);color:#92400e;letter-spacing:0.5px;vertical-align:middle;">
-                                  <span style="font-size:1.5rem;vertical-align:middle;margin-right:10px;">📄</span>
-                                  Document Update Received
-                                </span>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td style="padding:0 32px 32px 32px;text-align:center;">
-                                <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
-                                  If you have any questions, reply to this email or contact our support team.
-                                </p>
-                                <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#fbbf24 0%,#f59e42 100%);opacity:0.18;"></div>
-                                <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks</p>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            `;
-            await sendEmail({
-              to: createdApplication.email,
-              subject: "We\'ve received your updated documents",
-              html,
-            }, {
-              trackingId: `doc_update_${createdApplication.id}_${Date.now()}`
-            });
-            console.log(`Document update confirmation email sent to ${createdApplication.email}`);
-          } catch (emailError) {
-            console.error('Error sending document update confirmation email:', emailError);
-          }
+          console.error("Error sending application email:", emailError);
         }
 
         // Return the created application
@@ -1187,7 +1134,7 @@ app.post('/api/applications', upload.fields([
       foodEstablishmentCert,
       kitchenPreference,
       feedback: req.body.feedback || null, // Include feedback field
-      status: 'new',
+      status: 'inReview',
       createdAt: new Date().toISOString(),
       // Include document URLs
       foodSafetyLicenseUrl: documentData.foodSafetyLicenseUrl,
@@ -1205,28 +1152,42 @@ app.post('/api/applications', upload.fields([
       }
     });
 
-    // Send email notification about new application (for memory storage case)
+    // Send appropriate email based on whether documents were submitted (for memory storage case)
     try {
-      // Import the email functions
-      const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
-
       if (application.email) {
-        const emailContent = generateStatusChangeEmail({
-          fullName: application.fullName || "Applicant",
-          email: application.email,
-          status: 'new'
-        });
+        const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
+        
+        if (hasDocuments) {
+          // Application submitted WITH documents - send combined email
+          const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
+          const emailContent = generateApplicationWithDocumentsEmail({
+            fullName: application.fullName || "Applicant",
+            email: application.email
+          });
 
-        await sendEmail(emailContent, {
-          trackingId: `new_${application.id}_${Date.now()}`
-        });
-        console.log(`New application email sent to ${application.email} for application ${application.id}`);
+          await sendEmail(emailContent, {
+            trackingId: `app_with_docs_${application.id}_${Date.now()}`
+          });
+          console.log(`Application with documents email sent to ${application.email} for application ${application.id}`);
+        } else {
+          // Application submitted WITHOUT documents - prompt to upload
+          const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
+          const emailContent = generateApplicationWithoutDocumentsEmail({
+            fullName: application.fullName || "Applicant",
+            email: application.email
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `app_no_docs_${application.id}_${Date.now()}`
+          });
+          console.log(`Application without documents email sent to ${application.email} for application ${application.id}`);
+        }
       } else {
-        console.warn(`Cannot send new application email: Missing email address`);
+        console.warn(`Cannot send application email: Missing email address`);
       }
     } catch (emailError) {
       // Log the error but don't fail the request
-      console.error("Error sending new application email:", emailError);
+      console.error("Error sending application email:", emailError);
     }
 
     res.status(201).json(application);
@@ -1581,7 +1542,7 @@ app.patch('/api/applications/:id/status', async (req, res) => {
     const { status } = req.body;
 
     // Validate the status
-    const validStatuses = ['new', 'inReview', 'approved', 'rejected', 'cancelled'];
+    const validStatuses = ['inReview', 'approved', 'rejected', 'cancelled'];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({
         error: 'Invalid status',
@@ -1887,6 +1848,75 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
         found: verifyResult.rows.length > 0,
         data: verifyResult.rows[0] || "No data"
       });
+      
+      // Send document update confirmation email (only for dashboard updates, not initial submissions)
+      try {
+        if (updatedApplication.email) {
+          const { sendEmail } = await import('../server/email.js');
+          const html = `
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
+              <tr>
+                <td align="center" style="padding:0;margin:0;">
+                  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
+                    <tr>
+                      <td style="padding:0;">
+                        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#fbbf24 0%,#f59e42 100%);padding:0;">
+                          <tr>
+                            <td style="padding:32px 32px 16px 32px;text-align:center;">
+                              <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
+                              <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
+                            </td>
+                          </tr>
+                        </table>
+                        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                          <tr>
+                            <td style="padding:32px 32px 0 32px;">
+                              <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#f59e42;margin:0 0 16px 0;letter-spacing:-0.5px;text-align:center;">We've received your updated documents</h2>
+                              <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 24px 0;text-align:center;">
+                                Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.<br />
+                                You'll receive another email once your documents have been reviewed.
+                              </p>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding:0 32px 32px 32px;text-align:center;">
+                              <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:700;border-radius:999px;background:linear-gradient(90deg,#fef9c3 0%,#fde68a 100%);box-shadow:0 4px 16px 0 rgba(251,191,36,0.10);color:#92400e;letter-spacing:0.5px;vertical-align:middle;">
+                                <span style="font-size:1.5rem;vertical-align:middle;margin-right:10px;">📄</span>
+                                Document Update Received
+                              </span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding:0 32px 32px 32px;text-align:center;">
+                              <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
+                                If you have any questions, reply to this email or contact our support team.
+                              </p>
+                              <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#fbbf24 0%,#f59e42 100%);opacity:0.18;"></div>
+                              <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          `;
+          await sendEmail({
+            to: updatedApplication.email,
+            subject: "We've received your updated documents",
+            html,
+          }, {
+            trackingId: `doc_update_${updatedApplication.id}_${Date.now()}`
+          });
+          console.log(`Document update confirmation email sent to ${updatedApplication.email}`);
+        } else {
+          console.warn(`Cannot send document update email: No email address found`);
+        }
+      } catch (emailError) {
+        console.error('Error sending document update confirmation email:', emailError);
+      }
       
       console.log("=== DOCUMENT UPLOAD DEBUG END (SUCCESS) ===");
       return res.status(200).json(updatedApplication);
@@ -2637,7 +2667,7 @@ async function getApplicationStatus(userId) {
     return {
       hasApproved: applications.some(app => app.status === 'approved'),
       hasActive: activeApplications.length > 0,
-      hasPending: applications.some(app => app.status === 'new' || app.status === 'inReview'),
+      hasPending: applications.some(app => app.status === 'inReview'),
       hasRejected: applications.some(app => app.status === 'rejected'),
       hasCancelled: applications.some(app => app.status === 'cancelled'),
       latestStatus: applications.length > 0 ? applications[0].status : null,

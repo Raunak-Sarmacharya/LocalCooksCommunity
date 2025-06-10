@@ -2,6 +2,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +25,6 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { Link } from "wouter";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 
 // Add types for props
 interface DocumentManagementModalProps {
@@ -243,7 +243,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     toast({
       title: "Documents updated successfully!",
       description: "Status is now pending review.",
-      variant: "success",
+      variant: "default",
     });
     if (typeof setModalOpen === 'function') setModalOpen(false); // If modal context is available
     refetch();

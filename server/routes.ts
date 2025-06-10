@@ -294,11 +294,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const emailContent = generateStatusChangeEmail({
               fullName: fullApplication.fullName || "Applicant",
               email: fullApplication.email,
-              status: "new"
+              status: "inReview"
             });
 
             await sendEmail(emailContent);
-            console.log(`New application email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+            console.log(`Status change email sent to ${fullApplication.email} for application ${fullApplication.id}`);
           } else {
             console.warn(`Cannot send new application email: Application record not found or missing email.`);
           }
@@ -453,11 +453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             trackingId: `status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
           });
           
-          if (updatedApplication.status === "new") {
-            console.warn(`Skipping "new" status notification since this shouldn't happen through this endpoint`);
-          } else {
-            console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-          }
+          console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
         }
