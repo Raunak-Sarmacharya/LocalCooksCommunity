@@ -1044,9 +1044,9 @@ app.post('/api/applications', upload.fields([
         // Insert application with document URLs
         const result = await pool.query(`
           INSERT INTO applications
-          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference, feedback, 
+          (user_id, full_name, email, phone, food_safety_license, food_establishment_cert, kitchen_preference, feedback, status,
            food_safety_license_url, food_establishment_cert_url, food_safety_license_status, food_establishment_cert_status)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING *;
         `, [
           userId, // Use the userId from session or header
@@ -1057,6 +1057,7 @@ app.post('/api/applications', upload.fields([
           foodEstablishmentCert,
           kitchenPreference,
           req.body.feedback || null, // Include feedback field, default to null if not provided
+          'inReview', // Explicitly set status to inReview
           documentData.foodSafetyLicenseUrl, // Document URL
           documentData.foodEstablishmentCertUrl, // Document URL  
           documentData.foodSafetyLicenseUrl ? 'pending' : null, // Status based on URL presence
