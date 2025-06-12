@@ -277,14 +277,27 @@ async function getUser(id) {
   // Try database first
   if (pool) {
     try {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-      if (result.rows.length > 0) return result.rows[0];
+      if (isNaN(Number(id))) {
+        // Lookup by firebase_uid
+        const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [id]);
+        if (result.rows.length > 0) return result.rows[0];
+      } else {
+        // Lookup by integer id
+        const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+        if (result.rows.length > 0) return result.rows[0];
+      }
     } catch (error) {
       console.error('Database query error:', error);
     }
   }
 
   // Fall back to in-memory
+  if (isNaN(Number(id))) {
+    for (const user of users.values()) {
+      if (user.firebase_uid === id) return user;
+    }
+    return null;
+  }
   return users.get(parseInt(id));
 }
 
@@ -323,9 +336,10 @@ async function createUser(userData) {
   if (pool) {
     try {
       const hashedPassword = userData.password; // Already hashed before this point
+      // Patch: support firebase_uid
       const result = await pool.query(
-        'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING *',
-        [userData.username, hashedPassword, userData.role || 'applicant']
+        'INSERT INTO users (username, password, role, firebase_uid) VALUES ($1, $2, $3, $4) RETURNING *',
+        [userData.username, hashedPassword, userData.role || 'applicant', userData.firebase_uid || null]
       );
       return result.rows[0];
     } catch (error) {
@@ -1348,18 +1362,34 @@ app.get('/api/applications/my-applications', async (req, res) => {
   });
 
   // Get user ID from session or header
-  const userId = req.session.userId || req.headers['x-user-id'];
+  let userId = req.session.userId || req.headers['x-user-id'];
 
   if (!userId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  // Store user ID in session if it's not there
-  if (!req.session.userId && userId) {
-    console.log('Storing userId in session from header:', userId);
-    req.session.userId = userId;
-    await new Promise(resolve => req.session.save(resolve));
+  // If userId is not an integer, look up by firebase_uid
+  if (isNaN(Number(userId))) {
+    if (pool) {
+      const result = await pool.query('SELECT id FROM users WHERE firebase_uid = $1', [userId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: 'User not found' });
+      }
+      userId = result.rows[0].id;
+      req.session.userId = userId; // Optionally store for session
+      await new Promise(resolve => req.session.save(resolve));
+    } else {
+      // Fallback for in-memory
+      for (const [id, user] of users.entries()) {
+        if (user.firebase_uid === userId) {
+          userId = id;
+          req.session.userId = userId;
+          await new Promise(resolve => req.session.save(resolve));
+          break;
+        }
+      }
+    }
   }
 
   try {
@@ -1381,7 +1411,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
         FROM applications a
         WHERE a.user_id = $1
         ORDER BY a.created_at DESC;
-      `, [req.session.userId]);
+      `, [userId]);
 
       return res.status(200).json(result.rows);
     }
@@ -3553,6 +3583,48 @@ app.post("/api/test-status-email", async (req, res) => {
       message: "Error sending test email",
       error: error.message 
     });
+  }
+});
+
+// Endpoint to sync Firebase user to SQL users table
+app.post('/api/firebase-sync-user', async (req, res) => {
+  const { uid, email, displayName, role } = req.body;
+  if (!uid || !email) {
+    return res.status(400).json({ error: 'Missing uid or email' });
+  }
+  try {
+    // Check if user exists
+    let user = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
+      if (result.rows.length > 0) {
+        user = result.rows[0];
+      } else {
+        // Create new user
+        const insertResult = await pool.query(
+          'INSERT INTO users (username, role, firebase_uid, email) VALUES ($1, $2, $3, $4) RETURNING *',
+          [displayName || email, role || 'applicant', uid, email]
+        );
+        user = insertResult.rows[0];
+      }
+    } else {
+      // In-memory fallback
+      for (const u of users.values()) {
+        if (u.firebase_uid === uid) {
+          user = u;
+          break;
+        }
+      }
+      if (!user) {
+        const id = Date.now();
+        user = { id, username: displayName || email, role: role || 'applicant', firebase_uid: uid, email };
+        users.set(id, user);
+      }
+    }
+    res.json({ success: true, user });
+  } catch (error) {
+    console.error('Error syncing Firebase user:', error);
+    res.status(500).json({ error: 'Failed to sync user', message: error.message });
   }
 });
 
