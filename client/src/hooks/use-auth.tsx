@@ -48,72 +48,98 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Get providers
-        const providers = firebaseUser.providerData.map((p) => p.providerId);
-        // Sync Firestore user doc
-        const userRef = doc(db, "users", firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-        let role: string | undefined = undefined;
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            emailVerified: firebaseUser.emailVerified,
-            displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
-            authProviders: providers,
-            primaryAuthMethod: providers[0],
-            isActive: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            lastLoginAt: serverTimestamp(),
-            role: "applicant", // default role
-          });
-          role = "applicant";
-        } else {
-          const data = userSnap.data();
-          role = data.role;
-          await updateDoc(userRef, {
-            lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
-        // --- Ensure Neon DB is always updated with latest UID ---
-        try {
-          await fetch("/api/firebase-sync-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+      try {
+        if (firebaseUser) {
+          // Get providers
+          const providers = firebaseUser.providerData.map((p) => p.providerId);
+          
+          // Check if this is a session restoration (not a fresh login)
+          const isSessionRestoration = isInitializing;
+          
+          // Sync Firestore user doc
+          const userRef = doc(db, "users", firebaseUser.uid);
+          const userSnap = await getDoc(userRef);
+          let role: string | undefined = undefined;
+          
+          if (!userSnap.exists()) {
+            // Only create new user document if user doesn't exist
+            await setDoc(userRef, {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
+              emailVerified: firebaseUser.emailVerified,
               displayName: firebaseUser.displayName,
-              role: role || "applicant"
-            })
+              photoURL: firebaseUser.photoURL,
+              authProviders: providers,
+              primaryAuthMethod: providers[0],
+              isActive: true,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              lastLoginAt: serverTimestamp(),
+              role: "applicant", // default role
+            });
+            role = "applicant";
+          } else {
+            const data = userSnap.data();
+            role = data.role;
+            
+            // Only update lastLoginAt for fresh logins, not session restorations
+            if (!isSessionRestoration) {
+              await updateDoc(userRef, {
+                lastLoginAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+          
+          // --- Ensure Neon DB is synced (only for fresh logins or new users) ---
+          if (!isSessionRestoration || !userSnap.exists()) {
+            try {
+              await fetch("/api/firebase-sync-user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  displayName: firebaseUser.displayName,
+                  role: role || "applicant"
+                })
+              });
+            } catch (err) {
+              console.error("Failed to sync Firebase user to Neon DB:", err);
+            }
+          }
+          // --- End Neon DB sync ---
+          
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            emailVerified: firebaseUser.emailVerified,
+            providers,
+            role,
           });
-        } catch (err) {
-          console.error("Failed to sync Firebase user to Neon DB:", err);
+        } else {
+          setUser(null);
         }
-        // --- End Neon DB sync ---
-        setUser({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-          emailVerified: firebaseUser.emailVerified,
-          providers,
-          role,
-        });
-      } else {
-        setUser(null);
+      } catch (err) {
+        console.error("Auth state change error:", err);
+        setError("Authentication error occurred");
+      } finally {
+        setLoading(false);
+        if (isInitializing) {
+          // Small delay to prevent flickering on initial load
+          setTimeout(() => setIsInitializing(false), 50);
+        }
       }
-      setLoading(false);
     });
+    
     return () => unsubscribe();
-  }, []);
+  }, [isInitializing]);
 
   const login = async (email: string, password: string) => {
     setError(null);
