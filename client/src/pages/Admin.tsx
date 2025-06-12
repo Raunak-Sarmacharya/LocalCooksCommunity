@@ -1,5 +1,5 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
@@ -32,12 +32,12 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
-  const { user } = useAuth();
+  const { user, logout } = useFirebaseAuth();
 
   // Debug authentication state
   console.log('Admin Dashboard - Authentication state:', {
     isLoggedIn: !!user,
-    userId: user?.id,
+    userId: user?.uid,
     userRole: user?.role,
     localStorageUserId: localStorage.getItem('userId')
   });
@@ -56,8 +56,8 @@ function AdminDashboard() {
       };
 
       // Include user ID in header for authentication
-      if (user?.id) {
-        headers['X-User-ID'] = user.id.toString();
+      if (user?.uid) {
+        headers['X-User-ID'] = user.uid.toString();
       }
 
       const response = await fetch(queryKey[0] as string, {
@@ -145,9 +145,9 @@ function AdminDashboard() {
       const customHeaders: Record<string, string> = {};
 
       // Include user ID in header for authentication
-      if (user?.id) {
-        customHeaders['X-User-ID'] = user.id.toString();
-        console.log('Adding X-User-ID header for status update:', user.id);
+      if (user?.uid) {
+        customHeaders['X-User-ID'] = user.uid.toString();
+        console.log('Adding X-User-ID header for status update:', user.uid);
       }
 
       try {
@@ -209,8 +209,8 @@ function AdminDashboard() {
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
       const customHeaders: Record<string, string> = {};
       
-      if (user?.id) {
-        customHeaders['X-User-ID'] = user.id.toString();
+      if (user?.uid) {
+        customHeaders['X-User-ID'] = user.uid.toString();
       }
 
       const updateData = { [field]: status };
@@ -317,10 +317,8 @@ function AdminDashboard() {
   };
 
   // Handle logout
-  const { logoutMutation } = useAuth();
-
   const handleLogout = () => {
-    logoutMutation.mutate();
+    logout();
   };
 
   // Helper function to toggle card expansion

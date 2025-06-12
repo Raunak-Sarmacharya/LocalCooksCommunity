@@ -1,24 +1,24 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useAuth } from "@/hooks/use-auth";
-import { Loader2 } from "lucide-react";
-
+import { Button } from "@/components/ui/button";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 const registerSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("Valid email required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  displayName: z.string().min(2, "Name required"),
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -28,88 +28,97 @@ interface RegisterFormProps {
 }
 
 export default function RegisterForm({ onSuccess }: RegisterFormProps) {
-  const { registerMutation } = useAuth();
-  const [error, setError] = useState<string | null>(null);
-
+  const { signup, signInWithGoogle, loading, error } = useFirebaseAuth();
+  const [formError, setFormError] = useState<string | null>(null);
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
-    defaultValues: {
-      username: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "", displayName: "" },
   });
 
-  const onSubmit = (data: RegisterFormData) => {
-    setError(null);
-    registerMutation.mutate(
-      { ...data, role: "applicant" },
-      {
-        onSuccess: () => {
-          if (onSuccess) onSuccess();
-        },
-        onError: (error) => {
-          setError(error.message);
-        },
-      }
-    );
+  const onSubmit = async (data: RegisterFormData) => {
+    setFormError(null);
+    try {
+      await signup(data.email, data.password, data.displayName);
+      if (onSuccess) onSuccess();
+    } catch (e: any) {
+      setFormError(e.message);
+    }
   };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-500">
-            {error}
-          </div>
-        )}
-
-        <FormField
-          control={form.control}
-          name="username"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Username</FormLabel>
-              <FormControl>
-                <Input placeholder="Choose a username" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+    <div>
+      <Button
+        type="button"
+        className="w-full mb-4 bg-black text-white hover:bg-gray-900"
+        onClick={signInWithGoogle}
+        disabled={loading}
+      >
+        <img src="/google-icon.svg" alt="Google" className="w-5 h-5 mr-2 inline" />
+        Continue with Google
+      </Button>
+      <div className="flex items-center my-4">
+        <div className="flex-1 h-px bg-gray-200" />
+        <span className="mx-2 text-gray-400 text-sm">or</span>
+        <div className="flex-1 h-px bg-gray-200" />
+      </div>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {(formError || error) && (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-500">
+              {formError || error}
+            </div>
           )}
-        />
-
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Password</FormLabel>
-              <FormControl>
-                <Input
-                  type="password"
-                  placeholder="Create a password"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={registerMutation.isPending}
-        >
-          {registerMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Creating Account...
-            </>
-          ) : (
-            "Register"
-          )}
-        </Button>
-      </form>
-    </Form>
+          <FormField
+            control={form.control}
+            name="displayName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Your name" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input placeholder="Enter your email" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input type="password" placeholder="Create a password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating Account...
+              </>
+            ) : (
+              "Register"
+            )}
+          </Button>
+        </form>
+      </Form>
+    </div>
   );
 }

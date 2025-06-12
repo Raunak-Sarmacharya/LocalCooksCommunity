@@ -10,7 +10,7 @@ import { queryClient } from "../lib/queryClient";
 
 type DocumentVerificationContextType = {
   verification: Application | null;
-  isLoading: boolean;
+  loading: boolean;
   error: Error | null;
   createMutation: UseMutationResult<Application, Error, FormData | Record<string, string>>;
   updateMutation: UseMutationResult<Application, Error, FormData | Record<string, string>>;
@@ -358,7 +358,7 @@ export function useDocumentVerification() {
 
   return {
     verification: verification ?? null,
-    isLoading,
+    loading: isLoading,
     error,
     createMutation,
     updateMutation,

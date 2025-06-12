@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/use-auth';
+import { useFirebaseAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
 import {
     AlertCircle,
@@ -44,7 +44,7 @@ interface UserProgress {
 }
 
 interface MicrolearningModuleProps {
-  userId?: number;
+  userId?: string;
   onComplete?: () => void;
   className?: string;
 }
@@ -285,7 +285,7 @@ export default function MicrolearningModule({
   onComplete,
   className = ""
 }: MicrolearningModuleProps) {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [currentModule, setCurrentModule] = useState<'basics' | 'hygiene'>('basics');
@@ -318,10 +318,10 @@ export default function MicrolearningModule({
 
   const loadUserProgress = async () => {
     try {
-      const response = await fetch(`/api/microlearning/progress/${userId || user?.id}`, {
+      const response = await fetch(`/api/microlearning/progress/${userId || user?.uid}`, {
         credentials: 'include',
         headers: {
-          'X-User-ID': String(userId || user?.id || '')
+          'X-User-ID': String(userId || user?.uid || '')
         }
       });
       
@@ -363,10 +363,10 @@ export default function MicrolearningModule({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-ID': String(userId || user?.id || '')
+          'X-User-ID': String(userId || user?.uid || '')
         },
         body: JSON.stringify({
-          userId: userId || user?.id,
+          userId: userId || user?.uid,
           videoId,
           progress,
           completed,
@@ -471,10 +471,10 @@ export default function MicrolearningModule({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-ID': String(userId || user?.id || '')
+          'X-User-ID': String(userId || user?.uid || '')
         },
         body: JSON.stringify({
-          userId: userId || user?.id,
+          userId: userId || user?.uid,
           completionDate: new Date(),
           videoProgress: userProgress
         }),
@@ -654,13 +654,13 @@ export default function MicrolearningModule({
                   className="border-green-300 text-green-700 hover:bg-green-100 w-full sm:w-auto"
                   onClick={async () => {
                     try {
-                      let currentUserId = userId || user?.id;
+                      let currentUserId = userId || user?.uid;
                       let currentUser = user;
                       if (!currentUserId || !currentUser) {
                         const userResponse = await fetch('/api/user', { credentials: 'include' });
                         if (userResponse.ok) {
                           currentUser = await userResponse.json();
-                          currentUserId = currentUser?.id;
+                          currentUserId = currentUser?.uid;
                         } else {
                           alert('Please log in to download your certificate.');
                           window.location.href = '/login';
@@ -706,7 +706,7 @@ export default function MicrolearningModule({
                           const url = window.URL.createObjectURL(pdfBlob);
                           const link = document.createElement('a');
                           link.href = url;
-                          link.download = `LocalCooks-Certificate-${currentUser?.username || currentUserId}.pdf`;
+                          link.download = `LocalCooks-Certificate-${currentUser?.displayName || currentUserId}.pdf`;
                           document.body.appendChild(link);
                           link.click();
                           document.body.removeChild(link);

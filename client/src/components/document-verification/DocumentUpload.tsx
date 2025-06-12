@@ -58,7 +58,7 @@ export function DocumentManagementModal({ open, onOpenChange }: DocumentManageme
 }
 
 export default function DocumentUpload({ openInModal = false, forceShowForm = false }: DocumentUploadProps) {
-  const { verification, isLoading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
+  const { verification, loading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
   const { toast } = useToast();
   
   // Check if we're in production (Vercel)
@@ -249,7 +249,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     refetch();
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex justify-center py-8">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

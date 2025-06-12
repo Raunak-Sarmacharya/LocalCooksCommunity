@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { useAuth } from '@/hooks/use-auth';
+import { useFirebaseAuth } from '@/hooks/use-auth';
 import { motion } from 'framer-motion';
 import { AlertCircle, ArrowRight, Award, CheckCircle, ChefHat, Clock, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -20,12 +20,12 @@ interface UnlockProgressProps {
 }
 
 export default function UnlockProgress({ hasApprovedApplication, className = "" }: UnlockProgressProps) {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [applications, setApplications] = useState<Application[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.uid) {
       fetchApplications();
     }
   }, [user]);
@@ -35,7 +35,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       const response = await fetch('/api/applications/my-applications', {
         credentials: 'include',
         headers: {
-          'X-User-ID': user?.id?.toString() || ''
+          'X-User-ID': user?.uid || ''
         }
       });
 
@@ -51,7 +51,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     } catch (error) {
       console.error('Failed to fetch applications:', error);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -133,7 +133,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     }
   ];
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

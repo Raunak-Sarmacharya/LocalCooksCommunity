@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { ApplicationFormData } from "@/lib/applicationSchema";
@@ -32,7 +32,7 @@ export default function CertificationsForm() {
   const { formData, updateFormData, goToPreviousStep } = useApplicationForm();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   
   // Check if we're in production (Vercel)
   const isProduction = process.env.NODE_ENV === 'production';
@@ -104,8 +104,8 @@ export default function CertificationsForm() {
         });
         
         const headers: Record<string, string> = {};
-        if (user?.id) {
-          headers["X-User-ID"] = user.id.toString();
+        if (user?.uid) {
+          headers["X-User-ID"] = user.uid.toString();
         }
 
         console.log("📤 Submitting via FormData with files");
@@ -125,8 +125,8 @@ export default function CertificationsForm() {
       } else {
         // Use JSON submission - for pre-uploaded file URLs or no files
         const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (user?.id) {
-          headers["X-User-ID"] = user.id.toString();
+        if (user?.uid) {
+          headers["X-User-ID"] = user.uid.toString();
         }
 
         console.log("📤 Submitting via JSON with document URLs:", {
@@ -230,7 +230,7 @@ export default function CertificationsForm() {
         const completeFormData = {
           ...formData,
           ...data,
-          userId: user.id,
+          userId: user.uid,
           files: fileUploads // Include files for FormData submission
         } as ApplicationFormData & { files: Record<string, File> };
 
@@ -243,7 +243,7 @@ export default function CertificationsForm() {
           ...formData,
           ...data,
           ...documentUrls, // Add the URL inputs
-          userId: user.id,
+          userId: user.uid,
         } as ApplicationFormData;
 
         console.log("🔗 Submitting with pre-uploaded URLs");
@@ -254,7 +254,7 @@ export default function CertificationsForm() {
         const completeFormData = {
           ...formData,
           ...data,
-          userId: user.id,
+          userId: user.uid,
         } as ApplicationFormData;
 
         console.log("📝 Submitting without documents");

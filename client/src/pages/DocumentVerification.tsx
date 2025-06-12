@@ -3,7 +3,7 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { motion } from "framer-motion";
 import {
@@ -19,8 +19,8 @@ import { useState } from "react";
 import { Link } from "wouter";
 
 export default function DocumentVerification() {
-  const { user } = useAuth();
-  const { verification, isLoading } = useDocumentVerification();
+  const { user } = useFirebaseAuth();
+  const { verification, loading } = useDocumentVerification();
   const [modalOpen, setModalOpen] = useState(false);
 
   if (!user) {
@@ -77,7 +77,7 @@ export default function DocumentVerification() {
   }
 
   // If loading, show loader
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />

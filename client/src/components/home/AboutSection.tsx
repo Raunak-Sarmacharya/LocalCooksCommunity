@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { Globe, Heart, Leaf, Quote } from "lucide-react";
 import { useLocation } from "wouter";
@@ -28,7 +28,7 @@ const values = [
 
 export default function AboutSection() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handleJoinClick = () => {

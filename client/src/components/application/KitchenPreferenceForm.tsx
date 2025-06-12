@@ -1,18 +1,17 @@
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { useApplicationForm } from "./ApplicationFormContext";
-import { apiRequest } from "@/lib/queryClient";
-import { ApplicationFormData } from "@/lib/applicationSchema";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import { ChefHat, HomeIcon, HelpCircle, ArrowRight, Building, Info } from "lucide-react";
+import { ApplicationFormData } from "@/lib/applicationSchema";
+import { apiRequest } from "@/lib/queryClient";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { ArrowRight, Building, ChefHat, HelpCircle, HomeIcon, Info } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { useLocation } from "wouter";
+import { z } from "zod";
+import { useApplicationForm } from "./ApplicationFormContext";
 
-import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Form } from "@/components/ui/form";
 
 // Create a schema for just the kitchen preference field
 const kitchenPreferenceSchema = z.object({
@@ -25,7 +24,7 @@ export default function KitchenPreferenceForm() {
   const { formData, updateFormData, goToNextStep, goToPreviousStep } = useApplicationForm();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
 
   const form = useForm<KitchenPreferenceFormData>({
     resolver: zodResolver(kitchenPreferenceSchema),
