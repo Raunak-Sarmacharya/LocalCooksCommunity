@@ -8,7 +8,7 @@ import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading } = useFirebaseAuth();
+  const { user, loading, logout } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
 
@@ -53,8 +53,6 @@ export default function AuthPage() {
           <button
             className="bg-gray-100 text-gray-700 px-6 py-2 rounded font-semibold hover:bg-gray-200 transition border border-gray-300"
             onClick={async () => {
-              // Log out and reload to allow switching accounts
-              const { logout } = await import("@/hooks/use-auth");
               await logout();
               window.location.reload();
             }}
