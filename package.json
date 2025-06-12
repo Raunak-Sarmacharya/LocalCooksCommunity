@@ -23,6 +23,9 @@
     "predev": "npm run fix-microlearning",
     "deploy": "npm run fix-microlearning && npm run build && vercel --prod",
     "deploy-preview": "npm run fix-microlearning && npm run build && vercel",
+    "deploy:production": "node scripts/deploy-production.js",
+    "deploy:preview": "node scripts/deploy-production.js --preview",
+    "deploy:safe": "npm run test:firebase && npm run deploy:production",
     "sessions:stats": "node scripts/cleanup-sessions.js --dry-run",
     "sessions:cleanup": "node scripts/cleanup-sessions.js",
     "sessions:cleanup-old": "node scripts/cleanup-sessions.js --days 30",
@@ -35,7 +38,9 @@
     "test:oauth": "node scripts/test-oauth.js",
     "test:certificate": "node scripts/test-certificate-generation.js",
     "test:certificate-db": "node scripts/test-certificate-db-update.js",
-    "test:all": "npm run test:db && npm run test:oauth && npm run test:certificate && npm run test:certificate-db"
+    "test:firebase": "node scripts/test-firebase-setup.js",
+    "test:all": "npm run test:db && npm run test:oauth && npm run test:certificate && npm run test:certificate-db && npm run test:firebase",
+    "verify:production": "node scripts/verify-production.js"
   },
   "dependencies": {
     "@fontsource/lobster": "^5.2.5",
@@ -87,6 +92,7 @@
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "firebase": "^11.8.1",
+    "firebase-admin": "^13.4.0",
     "formidable": "^3.5.4",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",

@@ -1,11 +1,16 @@
 import 'dotenv/config';
 import express, { NextFunction, type Request, Response } from "express";
+import { initializeFirebaseAdmin } from "./firebase-admin";
+import { registerFirebaseRoutes } from "./firebase-routes";
 import { registerRoutes } from "./routes";
 import { log, serveStatic, setupVite } from "./vite";
 
 const app = express();
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
+
+// Initialize Firebase Admin SDK
+initializeFirebaseAdmin();
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -39,6 +44,10 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+  
+  // Register Firebase authentication routes 
+  // These routes use Firebase Auth tokens instead of sessions
+  registerFirebaseRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
