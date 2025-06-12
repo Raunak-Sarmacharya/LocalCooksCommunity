@@ -9,7 +9,11 @@ export default function CTASection() {
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handlePrimaryClick = () => {
-    navigate(getNavigationPath());
+    if (!user) {
+      navigate(`/auth?redirect=/dashboard`);
+    } else {
+      navigate(getNavigationPath());
+    }
   };
 
   const getPrimaryButtonText = () => {

@@ -106,12 +106,26 @@ export function useApplicationStatus() {
     }
   };
 
+  /**
+   * Returns the path to redirect to after successful login
+   */
+  const getPostLoginRedirectPath = () => {
+    if (!user) {
+      return "/dashboard";
+    } else if (user.role === "admin") {
+      return "/admin";
+    } else {
+      return "/dashboard";
+    }
+  };
+
   return {
     applications,
     applicationsLoading,
     shouldShowStartApplication,
     getButtonText,
     getNavigationPath,
+    getPostLoginRedirectPath,
     isLoading: applicationsLoading && !!user && user.role !== "admin"
   };
 } 
