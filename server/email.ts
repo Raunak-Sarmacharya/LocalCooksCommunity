@@ -23,7 +23,7 @@ interface EmailContent {
 const recentEmails = new Map<string, number>();
 const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
 
-// Create a transporter with configuration
+// Create a transporter with enhanced configuration for spam prevention
 const createTransporter = (config: EmailConfig) => {
   return nodemailer.createTransport({
     host: config.host,
@@ -33,6 +33,19 @@ const createTransporter = (config: EmailConfig) => {
       user: config.auth.user,
       pass: config.auth.pass,
     },
+    // Enhanced configuration for better deliverability
+    tls: {
+      rejectUnauthorized: false, // Allow self-signed certificates
+      ciphers: 'SSLv3'
+    },
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000, // 30 seconds
+    socketTimeout: 60000, // 60 seconds
+    // Add authentication method
+    authMethod: 'PLAIN',
+    // Enable debug for troubleshooting
+    debug: process.env.NODE_ENV === 'development',
+    logger: process.env.NODE_ENV === 'development'
   });
 };
 
@@ -49,7 +62,7 @@ const getEmailConfig = (): EmailConfig => {
   };
 };
 
-// Send email function
+// Enhanced send email function with spam prevention
 export const sendEmail = async (content: EmailContent, options?: { trackingId?: string }): Promise<boolean> => {
   try {
     // Check for duplicate emails if trackingId is provided
@@ -86,17 +99,21 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       port: config.port,
       secure: config.secure,
       user: config.auth.user ? '****' : 'not set', // Don't log actual credentials
+      domain: getDomainFromEmail(config.auth.user),
+      organization: getOrganizationName(),
+      hasEmailFrom: !!process.env.EMAIL_FROM
     });
 
     const transporter = createTransporter(config);
 
-    // Set the from address
-    const from = process.env.EMAIL_FROM || `Local Cooks <${config.auth.user}>`;
+    // Enhanced from address with proper formatting using Vercel environment variables
+    const fromName = getOrganizationName();
+    const fromEmail = process.env.EMAIL_FROM || `${fromName} <${config.auth.user}>`;
 
     // Verify SMTP connection
     try {
       await new Promise((resolve, reject) => {
-        transporter.verify((error, success) => {
+        transporter.verify((error: any, success: any) => {
           if (error) {
             console.error('SMTP connection verification failed:', error);
             reject(error);
@@ -111,16 +128,62 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       // Continue anyway, as some providers might not support verification
     }
 
-    // Send the email
-    const info = await transporter.sendMail({
-      from,
+    // Get domain and other configuration from Vercel environment variables
+    const domain = getDomainFromEmail(config.auth.user);
+    const unsubscribeEmail = getUnsubscribeEmail();
+    const organizationName = getOrganizationName();
+
+    // Enhanced email options with spam prevention headers
+    const mailOptions = {
+      from: fromEmail,
       to: content.to,
       subject: content.subject,
       text: content.text,
       html: content.html,
-    });
+      // Anti-spam headers
+      headers: {
+        'X-Mailer': `${organizationName} Platform`,
+        'X-Priority': '3', // Normal priority
+        'X-MSMail-Priority': 'Normal',
+        'Importance': 'Normal',
+        'List-Unsubscribe': `<mailto:${unsubscribeEmail}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        // Authentication headers
+        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
+        'Date': new Date().toUTCString(),
+        // Content classification
+        'Content-Type': 'text/html; charset=UTF-8',
+        'MIME-Version': '1.0',
+        // Sender reputation
+        'Organization': organizationName,
+        'X-Sender': fromEmail,
+        'Return-Path': config.auth.user,
+        // Prevent auto-replies
+        'X-Auto-Response-Suppress': 'All',
+        'Auto-Submitted': 'auto-generated'
+      },
+      // Enhanced delivery options
+      envelope: {
+        from: config.auth.user,
+        to: content.to
+      },
+      // Tracking and analytics
+      messageId: `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
+      date: new Date()
+    };
 
-    console.log('Email sent successfully:', info.messageId);
+    // Send the email
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log('Email sent successfully:', {
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+      domain: domain,
+      organization: organizationName,
+      fromEmail: fromEmail
+    });
     return true;
   } catch (error) {
     console.error('Error sending email:', error);
@@ -129,12 +192,222 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       if ('code' in error) {
         console.error('Error code:', (error as any).code);
       }
+      if ('responseCode' in error) {
+        console.error('SMTP Response code:', (error as any).responseCode);
+      }
     }
     return false;
   }
 };
 
-// Generate application status change email
+// Helper function to extract domain from email or use configured domain
+const getDomainFromEmail = (email: string): string => {
+  // First check if EMAIL_DOMAIN is explicitly set
+  if (process.env.EMAIL_DOMAIN) {
+    return process.env.EMAIL_DOMAIN;
+  }
+  
+  // Extract from EMAIL_FROM if available
+  if (process.env.EMAIL_FROM) {
+    const match = process.env.EMAIL_FROM.match(/<([^>]+)>/);
+    if (match) {
+      const emailPart = match[1];
+      const domainMatch = emailPart.match(/@(.+)$/);
+      if (domainMatch) {
+        return domainMatch[1];
+      }
+    }
+  }
+  
+  // Extract from EMAIL_USER as fallback
+  const match = email.match(/@(.+)$/);
+  if (match) {
+    return match[1];
+  }
+  
+  // Default fallback
+  return 'localcooks.community';
+};
+
+// Get organization name from environment or default
+const getOrganizationName = (): string => {
+  return process.env.EMAIL_ORGANIZATION || 'Local Cooks Community';
+};
+
+// Get unsubscribe email from environment or generate from domain
+const getUnsubscribeEmail = (): string => {
+  if (process.env.EMAIL_UNSUBSCRIBE) {
+    return process.env.EMAIL_UNSUBSCRIBE;
+  }
+  
+  const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
+  return `unsubscribe@${domain}`;
+};
+
+// Helper function to get support email based on configured domain
+const getSupportEmail = (): string => {
+  const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
+  return `support@${domain}`;
+};
+
+// Uniform email styles using brand colors and assets
+const getUniformEmailStyles = () => `
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lobster&display=swap');
+  
+  body { 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+    line-height: 1.6; 
+    color: #475569; 
+    margin: 0; 
+    padding: 0; 
+    background: #f1f5f9;
+  }
+  .email-container { 
+    max-width: 600px; 
+    margin: 0 auto; 
+    background: white; 
+    border-radius: 12px; 
+    overflow: hidden; 
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  }
+  .header { 
+    background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); 
+    color: white; 
+    padding: 32px 24px; 
+    text-align: center; 
+  }
+  .logo-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .logo-image {
+    height: 40px;
+    width: auto;
+  }
+  .logo-text {
+    font-family: 'Lobster', cursive;
+    font-size: 32px;
+    font-weight: normal;
+    margin: 0;
+    letter-spacing: -0.5px;
+    color: white;
+  }
+  .content { 
+    padding: 40px 32px; 
+  }
+  .greeting {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 16px 0;
+  }
+  .message {
+    font-size: 16px;
+    line-height: 1.6;
+    color: #475569;
+    margin: 0 0 24px 0;
+  }
+  .status-badge { 
+    display: inline-block; 
+    padding: 12px 20px; 
+    background: linear-gradient(135deg, #fef7f7 0%, #fecaca 100%); 
+    color: hsl(347, 91%, 51%); 
+    border: 1px solid hsl(347, 91%, 70%);
+    border-radius: 8px; 
+    font-weight: 600; 
+    margin: 16px 0; 
+  }
+  .status-badge.approved {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    color: #16a34a;
+    border-color: #bbf7d0;
+  }
+  .status-badge.rejected {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+  .cta-button { 
+    display: inline-block; 
+    padding: 14px 28px; 
+    background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); 
+    color: white; 
+    text-decoration: none; 
+    border-radius: 8px; 
+    font-weight: 600;
+    margin: 24px 0;
+    box-shadow: 0 2px 8px hsla(347, 91%, 51%, 0.3);
+  }
+  .info-box {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 24px 0;
+  }
+  .credentials-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  .credentials-table td {
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+  }
+  .credentials-table td:first-child {
+    font-weight: 600;
+    color: hsl(347, 91%, 51%);
+    background: #f8fafc;
+  }
+  .credentials-table code {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: #1e293b;
+    font-weight: 600;
+  }
+  .footer { 
+    background: #f8fafc; 
+    padding: 24px 32px; 
+    text-align: center; 
+    border-top: 1px solid #e2e8f0;
+  }
+  .footer-text {
+    font-size: 14px;
+    color: #64748b;
+    margin: 0 0 8px 0;
+  }
+  .footer-links {
+    font-size: 13px;
+    color: #94a3b8;
+  }
+  .footer-links a { 
+    color: hsl(347, 91%, 51%); 
+    text-decoration: none;
+  }
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
+    margin: 24px 0;
+  }
+  .warning-box {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+  }
+  .warning-text {
+    font-size: 14px;
+    color: #92400e;
+    margin: 0;
+  }
+  a { color: hsl(347, 91%, 51%); text-decoration: underline; }
+</style>`;
+
+// Generate application status change email with spam-optimized content
 export const generateStatusChangeEmail = (
   applicationData: {
     fullName: string;
@@ -142,135 +415,118 @@ export const generateStatusChangeEmail = (
     status: string;
   }
 ): EmailContent => {
-  const statusMessages: Record<string, { subject: string; message: string }> = {
-    inReview: {
-      subject: 'Your Application Status Update',
-      message: 'Your application status has been updated to: Under Review. We will notify you once our review is complete.',
-    },
-    approved: {
-      subject: 'Your Application Has Been Approved!',
-      message: 'Congratulations! Your application has been approved. Welcome to the Local Cooks community!',
-    },
-    rejected: {
-      subject: 'Update on Your Application',
-      message: 'We regret to inform you that your application has not been approved at this time.',
-    },
-    cancelled: {
-      subject: 'Your Application Has Been Cancelled',
-      message: 'Your application has been cancelled as requested.',
-    },
+  // Create professional, non-promotional subject line
+  const getSubjectLine = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'Application Approved - Local Cooks Community';
+      case 'rejected':
+        return 'Application Update - Local Cooks Community';
+      case 'under_review':
+        return 'Application Under Review - Local Cooks Community';
+      default:
+        return 'Application Status Update - Local Cooks Community';
+    }
   };
 
-  const statusStyles: Record<string, { badge: string; badgeBg: string; badgeShadow: string; emoji: string; cta?: { text: string; url: string } }> = {
-    inReview: {
-      badge: 'In Review',
-      badgeBg: 'linear-gradient(90deg, #fef9c3 0%, #fde68a 100%)',
-      badgeShadow: '0 2px 8px 0 rgba(234,179,8,0.10)',
-      emoji: '🔎',
-    },
-    approved: {
-      badge: 'Approved',
-      badgeBg: 'linear-gradient(90deg, #bbf7d0 0%, #4ade80 100%)',
-      badgeShadow: '0 2px 8px 0 rgba(16,185,129,0.10)',
-      emoji: '🎉',
-      cta: {
-        text: 'Get Started',
-        url: 'https://local-cooks-community.vercel.app/auth?redirect=dashboard',
-      },
-    },
-    rejected: {
-      badge: 'Not Approved',
-      badgeBg: 'linear-gradient(90deg, #fee2e2 0%, #fecaca 100%)',
-      badgeShadow: '0 2px 8px 0 rgba(239,68,68,0.10)',
-      emoji: '❌',
-    },
-    cancelled: {
-      badge: 'Cancelled',
-      badgeBg: 'linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 100%)',
-      badgeShadow: '0 2px 8px 0 rgba(107,114,128,0.10)',
-      emoji: '🛑',
-    },
+  const subject = getSubjectLine(applicationData.status);
+
+  // Generate plain text version for better deliverability
+  const generatePlainText = (status: string, fullName: string) => {
+    const statusMessages = {
+      approved: `Congratulations! Your application has been approved.`,
+      rejected: `Thank you for your application. After careful review, we are unable to move forward at this time.`,
+      under_review: `Your application is currently under review by our team.`,
+      pending: `Your application has been received and is pending review.`
+    };
+
+    return `Hello ${fullName},
+
+${statusMessages[status as keyof typeof statusMessages] || 'Your application status has been updated.'}
+
+Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
+
+Thank you for your interest in Local Cooks Community.
+
+ If you have any questions, please contact us at ${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}.
+
+Best regards,
+Local Cooks Community Team
+
+---
+This is an automated message from Local Cooks Community.
+Visit: https://local-cooks-community.vercel.app
+`;
   };
 
-  const { subject, message } = statusMessages[applicationData.status] || {
-    subject: 'Update on Your Application Status',
-    message: `Your application status has been updated to: ${applicationData.status}`,
+  const getMessage = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'Congratulations! Your application has been approved. You can now proceed to the next steps in your Local Cooks journey.';
+      case 'rejected':
+        return 'Thank you for your application. After careful review, we are unable to move forward with your application at this time. We appreciate your interest in Local Cooks.';
+      case 'under_review':
+        return 'Your application is currently under review by our team. We will notify you once the review is complete.';
+      case 'pending':
+        return 'Your application has been received and is pending review. We will contact you with updates soon.';
+      default:
+        return 'Your application status has been updated. Please check your dashboard for more details.';
+    }
   };
-  const style = statusStyles[applicationData.status] || statusStyles['inReview'];
 
+  const message = getMessage(applicationData.status);
+
+  // Simplified, professional HTML template
   const html = `
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
-    <tr>
-      <td align="center" style="padding:0;margin:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
-          <tr>
-            <td style="padding:0;">
-              <!-- Header -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);padding:0;">
-                <tr>
-                  <td style="padding:32px 32px 16px 32px;text-align:center;">
-                    <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
-                    <h1 style="margin:12px 0 0 0";font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
-                  </td>
-                </tr>
-              </table>
-              <!-- Status Badge -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td align="center" style="padding:32px 32px 0 32px;">
-                    <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:600;border-radius:999px;background:${style.badgeBg};box-shadow:${style.badgeShadow};color:#222;letter-spacing:0.5px;vertical-align:middle;">
-                      <span style="font-size:1.5rem;vertical-align:middle;margin-right:8px;">${style.emoji}</span>
-                      ${style.badge}
-                    </span>
-                  </td>
-                </tr>
-              </table>
-              <!-- Main Content -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:32px 32px 0 32px;">
-                    <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#4f46e5;margin:0 0 12px 0;letter-spacing:-0.5px;">Hello ${applicationData.fullName},</h2>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 18px 0;">${message}</p>
-                    <div style="margin:24px 0 0 0;">
-                      <span style="display:inline-block;font-family:'Segoe UI',Arial,sans-serif;font-size:1rem;font-weight:500;color:#6366f1;background:linear-gradient(90deg,#eef2ff 0%,#c7d2fe 100%);padding:8px 20px;border-radius:8px;box-shadow:0 1px 4px 0 rgba(99,102,241,0.07);">Status: <strong>${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}</strong></span>
-                    </div>
-                  </td>
-                </tr>
-                <!-- CTA Button for Approved -->
-                ${applicationData.status === 'approved' && style.cta ? `
-                <tr>
-                  <td align="center" style="padding:32px 32px 0 32px;">
-                    <a href="${style.cta.url}" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#22d3ee 0%,#4ade80 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(34,211,238,0.13);text-decoration:none;transition:box-shadow 0.2s;">${style.cta.text} &rarr;</a>
-                  </td>
-                </tr>
-                ` : ''}
-                <!-- Divider -->
-                <tr>
-                  <td style="padding:40px 32px 0 32px;">
-                    <div style="height:1px;width:100%;background:linear-gradient(90deg,#e0e7ff 0%,#f3f4f6 100%);opacity:0.7;"></div>
-                  </td>
-                </tr>
-                <!-- Footer -->
-                <tr>
-                  <td style="padding:32px 32px 32px 32px;text-align:center;">
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">Thank you for your interest in <a href="https://localcooks.ca" style="color:#6366f1;font-weight:600;text-decoration:none;">Local Cooks</a>!</p>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">If you have any questions, just reply to this email or contact us at <a href="mailto:support@localcooks.community" style="color:#6366f1;text-decoration:underline;">support@localcooks.community</a>.</p>
-                    <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);opacity:0.18;"></div>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        ${message}
+      </p>
+      <div class="status-badge">Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}</div>
+      
+      ${applicationData.status === 'approved' ? `
+      <a href="https://local-cooks-community.vercel.app/auth?redirect=/dashboard" class="cta-button">Access Your Dashboard</a>
+      ` : ''}
+      
+      <p class="message">
+        If you have any questions, please contact us at 
+        <a href="mailto:${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}">${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in Local Cooks Community!</p>
+      <div class="footer-links">
+        <a href="https://local-cooks-community.vercel.app">Visit our website</a> • 
+        <a href="mailto:${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}">Contact Support</a>
+      </div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>
   `;
 
   return {
     to: applicationData.email,
     subject,
+    text: generatePlainText(applicationData.status, applicationData.fullName),
     html,
   };
 };
@@ -295,140 +551,76 @@ export const generateFullVerificationEmail = (
   const { username, password } = generateVendorCredentials(userData.fullName, userData.phone);
   
   const html = `
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
-    <tr>
-      <td align="center" style="padding:0;margin:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎉 You're Fully Verified! Here are your Vendor Login Credentials</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Congratulations ${userData.fullName}!</h2>
+      <p class="message">
+        🎊 Your documents have been approved and you are now <strong>fully verified</strong>! You can now start accepting orders and serving customers through our Local Cooks platform.
+      </p>
+      <div class="status-badge approved">Status: Approved ✓</div>
+      
+      <div class="info-box">
+        <strong>Your Login Credentials:</strong>
+        <table class="credentials-table">
           <tr>
-            <td style="padding:0;">
-              <!-- Header -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);padding:0;">
-                <tr>
-                  <td style="padding:32px 32px 16px 32px;text-align:center;">
-                    <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
-                    <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Verification Complete Badge -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td align="center" style="padding:32px 32px 0 32px;">
-                    <span style="display:inline-block;padding:12px 32px;font-size:1.2rem;font-weight:700;border-radius:999px;background:linear-gradient(90deg,#bbf7d0 0%,#4ade80 100%);box-shadow:0 4px 16px 0 rgba(16,185,129,0.15);color:#166534;letter-spacing:0.5px;vertical-align:middle;">
-                      <span style="font-size:1.8rem;vertical-align:middle;margin-right:10px;">🎉</span>
-                      FULLY VERIFIED
-                    </span>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Main Content -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:32px 32px 0 32px;">
-                    <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.6rem;font-weight:700;color:#16a34a;margin:0 0 16px 0;letter-spacing:-0.5px;text-align:center;">Congratulations ${userData.fullName}!</h2>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 24px 0;text-align:center;">
-                      🎊 Your documents have been approved and you are now <strong>fully verified</strong>! You can now start accepting orders and serving customers through our Local Cooks platform.
-                    </p>
-                  </td>
-                </tr>
-                
-                <!-- Vendor Login Credentials -->
-                <tr>
-                  <td style="padding:0 32px;">
-                    <div style="background:linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%);border:2px solid #0284c7;border-radius:12px;padding:24px;margin-bottom:24px;">
-                                             <h3 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.3rem;font-weight:700;color:#0284c7;margin:0 0 16px 0;text-align:center;">
-                         🔑 Your Vendor Shop Login Credentials
-                       </h3>
-                       <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1rem;color:#0369a1;margin:0 0 20px 0;text-align:center;">
-                         Use these credentials to access your vendor shop at localcook.shop:
-                      </p>
-                      
-                      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">
-                        <tr>
-                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-radius:8px 8px 0 0;">
-                            <strong style="font-family:'Segoe UI',Arial,sans-serif;color:#0284c7;font-size:0.9rem;">USERNAME:</strong>
-                          </td>
-                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-left:none;border-radius:0 8px 0 0;">
-                            <code style="font-family:'Courier New',monospace;font-size:1.1rem;color:#1e293b;font-weight:600;">${username}</code>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-top:none;border-radius:0 0 8px 0;">
-                            <strong style="font-family:'Segoe UI',Arial,sans-serif;color:#0284c7;font-size:0.9rem;">PASSWORD:</strong>
-                          </td>
-                          <td style="padding:12px 16px;background:#fff;border:1px solid #bae6fd;border-left:none;border-top:none;border-radius:0 0 8px 8px;">
-                            <code style="font-family:'Courier New',monospace;font-size:1.1rem;color:#1e293b;font-weight:600;">${password}</code>
-                          </td>
-                        </tr>
-                      </table>
-                      
-                      <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px;text-align:center;">
-                        <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.9rem;color:#92400e;margin:0;line-height:1.4;">
-                          <strong>⚠️ Important:</strong> Please change your password after your first login for security purposes.
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-                
-                <!-- Next Steps -->
-                <tr>
-                  <td style="padding:0 32px 24px 32px;">
-                    <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1px solid #22c55e;border-radius:12px;padding:20px;">
-                                             <h4 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;font-weight:600;color:#16a34a;margin:0 0 12px 0;">🚀 What's Next?</h4>
-                       <ul style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#166534;margin:0;padding-left:20px;line-height:1.6;">
-                         <li>Click the "Access Vendor Login" button above or visit the link provided - you'll be automatically redirected to setup after login</li>
-                         <li><strong>Set up your Stripe payment profile</strong> for secure payment processing (you'll be guided through this automatically)</li>
-                         <li>Complete your vendor profile and add your menu items</li>
-                         <li>Set up your shop preferences and availability</li>
-                         <li>Start accepting orders from hungry customers!</li>
-                         <li><strong>Remember to change your password after first login</strong></li>
-                       </ul>
-                    </div>
-                  </td>
-                </tr>
-                
-                <!-- CTA Button -->
-                <tr>
-                  <td align="center" style="padding:0 32px 32px 32px;">
-                    <a href="${process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php'}" style="display:inline-block;padding:16px 40px;font-size:1.1rem;font-weight:700;color:#fff;background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);border-radius:999px;box-shadow:0 4px 16px 0 rgba(34,197,94,0.20);text-decoration:none;transition:box-shadow 0.2s;">
-                      Access Vendor Login →
-                    </a>
-                  </td>
-                </tr>
-                
-                <!-- Divider -->
-                <tr>
-                  <td style="padding:0 32px;">
-                    <div style="height:1px;width:100%;background:linear-gradient(90deg,#e0e7ff 0%,#f3f4f6 100%);opacity:0.7;"></div>
-                  </td>
-                </tr>
-                
-                <!-- Footer -->
-                <tr>
-                  <td style="padding:32px 32px 32px 32px;text-align:center;">
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
-                      Welcome to the <strong>Local Cooks</strong> verified vendor community!
-                    </p>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">
-                      If you need help, contact us at <a href="mailto:${process.env.VENDOR_SUPPORT_EMAIL || 'support@localcooks.shop'}" style="color:#16a34a;text-decoration:underline;">vendor support</a>
-                    </p>
-                    <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#16a34a 0%,#22c55e 100%);opacity:0.18;"></div>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">
-                      &copy; ${new Date().getFullYear()} Local Cooks Community
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
+            <td>Username:</td>
+            <td><code>${username}</code></td>
+          </tr>
+          <tr>
+            <td>Password:</td>
+            <td><code>${password}</code></td>
           </tr>
         </table>
-      </td>
-    </tr>
-  </table>
-  `;
+      </div>
+      
+      <div class="warning-box">
+        <p class="warning-text">
+          <strong>Important:</strong> Please change your password after your first login for security.
+        </p>
+      </div>
+      
+      <a href="${process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php'}" class="cta-button">Access Vendor Login →</a>
+      
+      <div class="divider"></div>
+      
+      <div class="info-box">
+        <strong>🚀 What's Next?</strong>
+        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
+          <li>Click the "Access Vendor Login" button above or visit the link provided - you'll be automatically redirected to setup after login</li>
+          <li><strong>Set up your Stripe payment profile</strong> for secure payment processing (you'll be guided through this automatically)</li>
+          <li>Complete your vendor profile and add your menu items</li>
+          <li>Set up your shop preferences and availability</li>
+          <li>Start accepting orders from hungry customers!</li>
+          <li><strong>Remember to change your password after first login</strong></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Welcome to the <strong>Local Cooks</strong> verified vendor community!</p>
+      <div class="footer-links">
+        <a href="mailto:${process.env.VENDOR_SUPPORT_EMAIL || 'support@localcooks.shop'}">vendor support</a>
+      </div>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
 
   return {
     to: userData.email,
@@ -444,80 +636,44 @@ export const generateApplicationWithDocumentsEmail = (
     email: string;
   }
 ): EmailContent => {
+  const supportEmail = getSupportEmail();
+  
   const html = `
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
-    <tr>
-      <td align="center" style="padding:0;margin:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
-          <tr>
-            <td style="padding:0;">
-              <!-- Header -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);padding:0;">
-                <tr>
-                  <td style="padding:32px 32px 16px 32px;text-align:center;">
-                    <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
-                    <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Status Badge -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td align="center" style="padding:32px 32px 0 32px;">
-                    <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:600;border-radius:999px;background:linear-gradient(90deg,#bbf7d0 0%,#4ade80 100%);box-shadow:0 2px 8px 0 rgba(16,185,129,0.10);color:#166534;letter-spacing:0.5px;vertical-align:middle;">
-                      <span style="font-size:1.5rem;vertical-align:middle;margin-right:8px;">📄✅</span>
-                      Application & Documents Received
-                    </span>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Main Content -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:32px 32px 0 32px;">
-                    <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#4f46e5;margin:0 0 12px 0;letter-spacing:-0.5px;">Hello ${applicationData.fullName},</h2>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 18px 0;">
-                      Thank you for submitting your application to Local Cooks! We have received both your application and your supporting documents.
-                    </p>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 18px 0;">
-                      Our team will now review your application and documents together. You'll receive another email once the review is complete.
-                    </p>
-                    <div style="margin:24px 0 0 0;">
-                      <span style="display:inline-block;font-family:'Segoe UI',Arial,sans-serif;font-size:1rem;font-weight:500;color:#6366f1;background:linear-gradient(90deg,#eef2ff 0%,#c7d2fe 100%);padding:8px 20px;border-radius:8px;box-shadow:0 1px 4px 0 rgba(99,102,241,0.07);">Status: <strong>Under Review</strong></span>
-                    </div>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Divider -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:40px 32px 0 32px;">
-                    <div style="height:1px;width:100%;background:linear-gradient(90deg,#e0e7ff 0%,#f3f4f6 100%);opacity:0.7;"></div>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Footer -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:32px 32px 32px 32px;text-align:center;">
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">Thank you for your interest in <a href="https://localcooks.ca" style="color:#6366f1;font-weight:600;text-decoration:none;">Local Cooks</a>!</p>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">If you have any questions, just reply to this email or contact us at <a href="mailto:support@localcooks.community" style="color:#6366f1;text-decoration:underline;">support@localcooks.community</a>.</p>
-                    <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);opacity:0.18;"></div>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-  `;
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Application and Documents Received - Under Review</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        Thank you for submitting your application to Local Cooks! We have received both your application and your supporting documents.
+      </p>
+      <p class="message">
+        Our team will now review your application and documents together. You'll receive another email once the review is complete.
+      </p>
+      <div class="status-badge">Status: Under Review</div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="https://localcooks.ca" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
 
   return {
     to: applicationData.email,
@@ -533,89 +689,44 @@ export const generateApplicationWithoutDocumentsEmail = (
     email: string;
   }
 ): EmailContent => {
+  const supportEmail = getSupportEmail();
+  
   const html = `
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(135deg,#f8fafc 0%,#eef2ff 100%);padding:0;margin:0;min-height:100vh;">
-    <tr>
-      <td align="center" style="padding:0;margin:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;margin:40px auto 0 auto;background:#fff;border-radius:18px;box-shadow:0 4px 32px 0 rgba(0,0,0,0.07);overflow:hidden;">
-          <tr>
-            <td style="padding:0;">
-              <!-- Header -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);padding:0;">
-                <tr>
-                  <td style="padding:32px 32px 16px 32px;text-align:center;">
-                    <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" style="display:inline-block;height:48px;width:auto;vertical-align:middle;" />
-                    <h1 style="margin:12px 0 0 0;font-family: 'Lobster', cursive, sans-serif;font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;">Local Cooks</h1>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Status Badge -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td align="center" style="padding:32px 32px 0 32px;">
-                    <span style="display:inline-block;padding:10px 28px;font-size:1.1rem;font-weight:600;border-radius:999px;background:linear-gradient(90deg,#bbf7d0 0%,#4ade80 100%);box-shadow:0 2px 8px 0 rgba(16,185,129,0.10);color:#166534;letter-spacing:0.5px;vertical-align:middle;">
-                      <span style="font-size:1.5rem;vertical-align:middle;margin-right:8px;">📝</span>
-                      Application Received
-                    </span>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Main Content -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:32px 32px 0 32px;">
-                    <h2 style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.5rem;font-weight:700;color:#4f46e5;margin:0 0 12px 0;letter-spacing:-0.5px;">Hello ${applicationData.fullName},</h2>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 18px 0;">
-                      Thank you for submitting your application to Local Cooks! We have received your application and it will be reviewed soon.
-                    </p>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:1.1rem;line-height:1.7;color:#222;margin:0 0 18px 0;">
-                      <strong>Next Steps:</strong> Please visit your dashboard to upload the required documents to complete your application.
-                    </p>
-                    <div style="margin:24px 0 0 0;">
-                      <span style="display:inline-block;font-family:'Segoe UI',Arial,sans-serif;font-size:1rem;font-weight:500;color:#6366f1;background:linear-gradient(90deg,#eef2ff 0%,#c7d2fe 100%);padding:8px 20px;border-radius:8px;box-shadow:0 1px 4px 0 rgba(99,102,241,0.07);">Status: <strong>Under Review</strong></span>
-                    </div>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- CTA Button -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td align="center" style="padding:32px 32px 0 32px;">
-                    <a href="https://local-cooks-community.vercel.app/auth?redirect=dashboard" style="display:inline-block;padding:14px 32px;font-size:1rem;font-weight:600;text-decoration:none;color:#fff;background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);border-radius:8px;box-shadow:0 4px 12px 0 rgba(99,102,241,0.25);transition:all 0.2s ease;">Upload Documents</a>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Divider -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:40px 32px 0 32px;">
-                    <div style="height:1px;width:100%;background:linear-gradient(90deg,#e0e7ff 0%,#f3f4f6 100%);opacity:0.7;"></div>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Footer -->
-              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                <tr>
-                  <td style="padding:32px 32px 32px 32px;text-align:center;">
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">Thank you for your interest in <a href="https://localcooks.ca" style="color:#6366f1;font-weight:600;text-decoration:none;">Local Cooks</a>!</p>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.95rem;color:#888;line-height:1.6;margin:0 0 8px 0;">If you have any questions, just reply to this email or contact us at <a href="mailto:support@localcooks.community" style="color:#6366f1;text-decoration:underline;">support@localcooks.community</a>.</p>
-                    <div style="margin:24px auto 0 auto;width:60px;height:4px;border-radius:2px;background:linear-gradient(90deg,#6366f1 0%,#818cf8 100%);opacity:0.18;"></div>
-                    <p style="font-family:'Segoe UI',Arial,sans-serif;font-size:0.85rem;color:#bbb;line-height:1.5;margin:18px 0 0 0;">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-  `;
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Cooks Application Confirmation - Next Steps</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        Thank you for submitting your application to Local Cooks! We have received your application and it will be reviewed soon.
+      </p>
+      <p class="message">
+        <strong>Next Steps:</strong> Please visit your dashboard to upload the required documents to complete your application.
+      </p>
+      <div class="status-badge">Status: Under Review</div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="https://localcooks.ca" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
 
   return {
     to: applicationData.email,
@@ -623,3 +734,283 @@ export const generateApplicationWithoutDocumentsEmail = (
     html,
   };
 };
+
+export async function sendApplicationReceivedEmail(applicationData: any) {
+  const supportEmail = getSupportEmail();
+  const organizationName = getOrganizationName();
+  
+  const subject = `Application Received - ${organizationName}`;
+  
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        Thank you for submitting your application to join ${organizationName}. 
+        We've received your application and our team will review it shortly.
+      </p>
+      <div class="status-badge">Status: Under Review</div>
+      <div class="info-box">
+        <strong>What happens next?</strong><br>
+        Our team typically reviews applications within 2-3 business days. 
+        You'll receive an email notification once we've made a decision.
+      </div>
+      <a href="https://local-cooks-community.vercel.app/auth?redirect=/dashboard" class="cta-button">Track Application Status</a>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
+      <div class="footer-links">
+        <a href="mailto:${supportEmail}">Support</a> • 
+        <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> • 
+        <a href="https://local-cooks-community.vercel.app/privacy">Privacy Policy</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const textContent = `
+Application Received - ${organizationName}
+
+Hello ${applicationData.fullName},
+
+Thank you for submitting your application to join ${organizationName}. We've received your application and our team will review it shortly.
+
+Status: Under Review
+
+What happens next?
+Our team typically reviews applications within 2-3 business days. You'll receive an email notification once we've made a decision.
+
+Track your application status: https://local-cooks-community.vercel.app/auth?redirect=/dashboard
+
+Thank you for your interest in ${organizationName}!
+
+If you have any questions, contact us at ${supportEmail}
+
+© ${new Date().getFullYear()} ${organizationName}
+`;
+
+     return sendEmail({
+     to: applicationData.email,
+     subject,
+     html: htmlContent,
+     text: textContent
+   });
+ }
+ 
+ export async function sendApplicationApprovedEmail(userData: any, username: string, password: string) {
+  const supportEmail = getSupportEmail();
+  const organizationName = getOrganizationName();
+  
+  const subject = `Application Approved - ${organizationName}`;
+  
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Congratulations ${userData.fullName}!</h2>
+      <p class="message">
+        We're excited to inform you that your application has been approved! 
+        Welcome to the ${organizationName}.
+      </p>
+      <div class="status-badge approved">Status: Approved ✓</div>
+      
+      <div class="info-box">
+        <strong>Your Login Credentials:</strong>
+        <table class="credentials-table">
+          <tr>
+            <td>Username:</td>
+            <td><code>${username}</code></td>
+          </tr>
+          <tr>
+            <td>Password:</td>
+            <td><code>${password}</code></td>
+          </tr>
+        </table>
+      </div>
+      
+      <div class="warning-box">
+        <p class="warning-text">
+          <strong>Important:</strong> Please change your password after your first login for security.
+        </p>
+      </div>
+      
+      <a href="https://local-cooks-community.vercel.app/auth?redirect=/dashboard" class="cta-button">Access Your Dashboard</a>
+      
+      <div class="divider"></div>
+      
+      <div class="info-box">
+        <strong>🚀 What's Next?</strong>
+        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
+          <li>Log in to your dashboard using the credentials above</li>
+          <li>Complete your profile setup</li>
+          <li>Start managing your cook profile</li>
+          <li>Connect with the community</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Welcome to ${organizationName}!</p>
+      <div class="footer-links">
+        <a href="mailto:${supportEmail}">Support</a> • 
+        <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> • 
+        <a href="https://local-cooks-community.vercel.app/privacy">Privacy Policy</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const textContent = `
+Application Approved - ${organizationName}
+
+Congratulations ${userData.fullName}!
+
+We're excited to inform you that your application has been approved! Welcome to the ${organizationName}.
+
+Status: Approved ✓
+
+Your Login Credentials:
+Username: ${username}
+Password: ${password}
+
+IMPORTANT: Please change your password after your first login for security.
+
+Access your dashboard: https://local-cooks-community.vercel.app/auth?redirect=/dashboard
+
+What's Next?
+- Log in to your dashboard using the credentials above
+- Complete your profile setup
+- Start managing your cook profile
+- Connect with the community
+
+Welcome to ${organizationName}!
+
+If you have any questions, contact us at ${supportEmail}
+
+© ${new Date().getFullYear()} ${organizationName}
+`;
+
+     return sendEmail({
+     to: userData.email,
+     subject,
+     html: htmlContent,
+     text: textContent
+   });
+ }
+ 
+ export async function sendApplicationRejectedEmail(applicationData: any, reason?: string) {
+  const supportEmail = getSupportEmail();
+  const organizationName = getOrganizationName();
+  
+  const subject = `Application Update - ${organizationName}`;
+  
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        Thank you for your interest in joining ${organizationName}. 
+        After careful review, we're unable to approve your application at this time.
+      </p>
+      <div class="status-badge rejected">Status: Not Approved</div>
+      
+      ${reason ? `
+      <div class="info-box">
+        <strong>Feedback:</strong><br>
+        ${reason}
+      </div>
+      ` : ''}
+      
+      <div class="info-box">
+        <strong>Next Steps:</strong><br>
+        We encourage you to gain more experience and reapply in the future. 
+        We'd be happy to reconsider your application when you're ready.
+      </div>
+      
+      <a href="https://local-cooks-community.vercel.app/apply" class="cta-button">Learn More About Requirements</a>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
+      <div class="footer-links">
+        <a href="mailto:${supportEmail}">Support</a> • 
+        <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> • 
+        <a href="https://local-cooks-community.vercel.app/privacy">Privacy Policy</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const textContent = `
+Application Update - ${organizationName}
+
+Hello ${applicationData.fullName},
+
+Thank you for your interest in joining ${organizationName}. After careful review, we're unable to approve your application at this time.
+
+Status: Not Approved
+
+${reason ? `Feedback: ${reason}\n\n` : ''}Next Steps:
+We encourage you to gain more experience and reapply in the future. We'd be happy to reconsider your application when you're ready.
+
+Learn more about requirements: https://local-cooks-community.vercel.app/apply
+
+Thank you for your interest in ${organizationName}!
+
+If you have any questions, contact us at ${supportEmail}
+
+© ${new Date().getFullYear()} ${organizationName}
+`;
+
+     return sendEmail({
+     to: applicationData.email,
+     subject,
+     html: htmlContent,
+     text: textContent
+   });
+ }

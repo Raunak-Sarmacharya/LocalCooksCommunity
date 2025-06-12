@@ -196,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const actionCodeSettings = {
-    url: window.location.origin + "/auth-page", // or your login page
+    url: window.location.origin + "/auth", // Fixed to match correct auth route
     handleCodeInApp: true,
   };
 
