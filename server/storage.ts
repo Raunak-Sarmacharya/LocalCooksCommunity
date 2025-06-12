@@ -12,6 +12,8 @@ const MemoryStore = createMemoryStore(session);
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined>;
+  updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined>;
   getUserByOAuthId(provider: string, oauthId: string): Promise<User | undefined>;
   createUser(user: {
     username: string;
@@ -19,6 +21,7 @@ export interface IStorage {
     role?: "admin" | "applicant";
     googleId?: string;
     facebookId?: string;
+    firebaseUid?: string;
   }): Promise<User>;
   createOAuthUser(user: {
     username: string;
@@ -100,6 +103,17 @@ export class MemStorage implements IStorage {
     );
   }
 
+  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
+    // For in-memory storage, we don't have firebase_uid field, so return undefined
+    // This will fall back to username/email lookup
+    return undefined;
+  }
+
+  async updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined> {
+    // For in-memory storage, we don't store firebase_uid, so just return the user
+    return this.getUser(userId);
+  }
+
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     if (!googleId) return undefined;
     for (const user of Array.from(this.users.values())) {
@@ -121,7 +135,7 @@ export class MemStorage implements IStorage {
     return undefined;
   }
 
-  async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string }): Promise<User> {
+  async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string, firebaseUid?: string }): Promise<User> {
     // Ensure insertUser has the required properties
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
@@ -368,6 +382,35 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
+    // Note: The schema doesn't include firebase_uid, but the actual database has it
+    // We'll use a raw query to access it
+    if (!pool) return undefined;
+    
+    try {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
+      return result.rows[0] || undefined;
+    } catch (error) {
+      console.error('Error getting user by firebase_uid:', error);
+      return undefined;
+    }
+  }
+
+  async updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined> {
+    if (!pool) return undefined;
+    
+    try {
+      const result = await pool.query(
+        'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
+        [firebaseUid, userId]
+      );
+      return result.rows[0] || undefined;
+    } catch (error) {
+      console.error('Error updating user firebase_uid:', error);
+      return undefined;
+    }
+  }
+
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     if (!googleId) return undefined;
     const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
@@ -385,12 +428,34 @@ export class DatabaseStorage implements IStorage {
     return undefined;
   }
 
-  async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string }): Promise<User> {
+  async createUser(insertUser: InsertUser & { googleId?: string, facebookId?: string, firebaseUid?: string }): Promise<User> {
     // Ensure insertUser has the required properties
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
     
+    // Use raw query to include firebase_uid since it's not in the schema
+    if (pool && insertUser.firebaseUid) {
+      try {
+        const result = await pool.query(
+          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+          [
+            insertUser.username,
+            insertUser.password,
+            insertUser.role || 'applicant',
+            insertUser.googleId || null,
+            insertUser.facebookId || null,
+            insertUser.firebaseUid
+          ]
+        );
+        return result.rows[0];
+      } catch (error) {
+        console.error('Error creating user with firebase_uid:', error);
+        throw error;
+      }
+    }
+    
+    // Fallback to schema-based insert without firebase_uid
     const [user] = await db
       .insert(users)
       .values({

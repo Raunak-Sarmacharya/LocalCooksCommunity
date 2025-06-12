@@ -25,6 +25,7 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").default("applicant").notNull(),
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
+  firebaseUid: text("firebase_uid").unique(),
   isVerified: boolean("is_verified").default(false).notNull(),
 });
 
@@ -114,6 +115,7 @@ export const insertUserSchema = z.object({
   role: z.enum(["admin", "applicant"]).default("applicant"),
   googleId: z.string().optional(),
   facebookId: z.string().optional(),
+  firebaseUid: z.string().optional(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

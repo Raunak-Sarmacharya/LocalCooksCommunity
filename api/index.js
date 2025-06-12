@@ -3554,14 +3554,15 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     return res.status(400).json({ error: 'Missing uid or email' });
   }
   try {
-    // Check if user exists by firebase_uid
+    // Check if user exists by firebase_uid first, then by username/email
     let user = null;
     if (pool) {
-      let result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
-      if (result.rows.length > 0) {
-        user = result.rows[0];
+      // First, try to find by firebase_uid
+      const firebaseResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
+      if (firebaseResult.rows.length > 0) {
+        user = firebaseResult.rows[0];
       } else {
-        // PATCH: Try to find by username (case-insensitive) if no firebase_uid match
+        // Try to find by username and update with firebase_uid
         if (displayName) {
           const usernameResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [displayName]);
           if (usernameResult.rows.length > 0) {
@@ -3573,23 +3574,40 @@ app.post('/api/firebase-sync-user', async (req, res) => {
             user = updateResult.rows[0];
           }
         }
+        
+        // If not found by username, try by email in username field
+        if (!user && email) {
+          const emailResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [email]);
+          if (emailResult.rows.length > 0) {
+            // Update this user to set firebase_uid
+            const updateResult = await pool.query(
+              'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
+              [uid, emailResult.rows[0].id]
+            );
+            user = updateResult.rows[0];
+          }
+        }
+        
         // If still not found, create new user
         if (!user) {
           const insertResult = await pool.query(
-            'INSERT INTO users (username, role, firebase_uid, email) VALUES ($1, $2, $3, $4) RETURNING *',
-            [displayName || email, role || 'applicant', uid, email]
+            'INSERT INTO users (username, password, role, firebase_uid) VALUES ($1, $2, $3, $4) RETURNING *',
+            [displayName || email, '', role || 'applicant', uid]
           );
           user = insertResult.rows[0];
         }
       }
     } else {
       // In-memory fallback
+      // Try to find by firebase_uid first
       for (const u of users.values()) {
         if (u.firebase_uid === uid) {
           user = u;
           break;
         }
       }
+      
+      // If not found by firebase_uid, try by username and update
       if (!user && displayName) {
         for (const u of users.values()) {
           if (u.username && u.username.toLowerCase() === displayName.toLowerCase()) {
@@ -3599,9 +3617,22 @@ app.post('/api/firebase-sync-user', async (req, res) => {
           }
         }
       }
+      
+      // If not found by username, try by email and update
+      if (!user && email) {
+        for (const u of users.values()) {
+          if (u.username && u.username.toLowerCase() === email.toLowerCase()) {
+            u.firebase_uid = uid;
+            user = u;
+            break;
+          }
+        }
+      }
+      
+      // If still not found, create new user
       if (!user) {
         const id = Date.now();
-        user = { id, username: displayName || email, role: role || 'applicant', firebase_uid: uid, email };
+        user = { id, username: displayName || email, role: role || 'applicant', password: '', firebase_uid: uid };
         users.set(id, user);
       }
     }
