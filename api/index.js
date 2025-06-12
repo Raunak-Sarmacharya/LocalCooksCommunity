@@ -3036,16 +3036,23 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
       req.session.userId = req.headers['x-user-id'];
       await new Promise(resolve => req.session.save(resolve));
     }
-    // --- PATCH: Always resolve to integer user id ---
+    
+    // Convert Firebase UIDs to integer user IDs
     let requestedUser = await getUser(req.params.userId);
     if (!requestedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-    // --- END PATCH ---
-    // Verify user can access this data (either their own or admin)
+    
+    // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
-    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'Session user not found' });
+    }
+    const sessionUserIntId = sessionUser.id;
+    
+    // Verify user can access this data (either their own or admin)
+    if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
     const progress = await getMicrolearningProgress(userId);
@@ -3108,17 +3115,25 @@ app.post("/api/microlearning/progress", async (req, res) => {
       req.session.userId = req.headers['x-user-id'];
       await new Promise(resolve => req.session.save(resolve));
     }
+    
     const { userId: rawUserId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
-    // --- PATCH: Always resolve to integer user id ---
+    
+    // Convert Firebase UIDs to integer user IDs
     let requestedUser = await getUser(rawUserId);
     if (!requestedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-    // --- END PATCH ---
-    // Verify user can update this data (either their own or admin)
+    
+    // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
-    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'Session user not found' });
+    }
+    const sessionUserIntId = sessionUser.id;
+    
+    // Verify user can update this data (either their own or admin)
+    if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
     // Check if user has approved application for videos beyond the first one
@@ -3177,17 +3192,25 @@ app.post("/api/microlearning/complete", async (req, res) => {
     if (!sessionUserId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
+    
     const { userId: rawUserId, completionDate, videoProgress } = req.body;
-    // --- PATCH: Always resolve to integer user id ---
+    
+    // Convert Firebase UIDs to integer user IDs
     let requestedUser = await getUser(rawUserId);
     if (!requestedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-    // --- END PATCH ---
-    // Verify user can complete this (either their own or admin)
+    
+    // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
-    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'Session user not found' });
+    }
+    const sessionUserIntId = sessionUser.id;
+    
+    // Verify user can complete this (either their own or admin)
+    if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
     // Check if user has approved application to complete full training
@@ -3257,11 +3280,22 @@ app.get("/api/microlearning/completion/:userId", async (req, res) => {
       await new Promise(resolve => req.session.save(resolve));
     }
 
-    const userId = parseInt(req.params.userId);
+    // Convert Firebase UIDs to integer user IDs
+    let requestedUser = await getUser(req.params.userId);
+    if (!requestedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const userId = requestedUser.id;
+    
+    // Get session user and convert to integer ID
+    const sessionUser = await getUser(sessionUserId);
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'Session user not found' });
+    }
+    const sessionUserIntId = sessionUser.id;
     
     // Verify user can access this completion (either their own or admin)
-    const sessionUser = await getUser(sessionUserId);
-    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+    if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -3287,11 +3321,22 @@ app.get('/api/microlearning/certificate-status/:userId', async (req, res) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const userId = parseInt(req.params.userId);
+    // Convert Firebase UIDs to integer user IDs
+    let requestedUser = await getUser(req.params.userId);
+    if (!requestedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const userId = requestedUser.id;
+    
+    // Get session user and convert to integer ID
+    const sessionUser = await getUser(sessionUserId);
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'Session user not found' });
+    }
+    const sessionUserIntId = sessionUser.id;
     
     // Verify user can access this status (either their own or admin)
-    const sessionUser = await getUser(sessionUserId);
-    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+    if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
