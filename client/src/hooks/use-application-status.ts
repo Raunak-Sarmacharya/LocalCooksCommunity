@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 
@@ -7,18 +7,18 @@ import { useQuery } from "@tanstack/react-query";
  * Returns helper functions and loading state for homepage CTA buttons
  */
 export function useApplicationStatus() {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
 
   // Fetch user's applications to determine CTA logic
   const { data: applications = [], isLoading: applicationsLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.id || user.role === "admin") {
+      if (!user?.uid || user.role === "admin") {
         return [];
       }
 
       const headers: Record<string, string> = {
-        'X-User-ID': user.id.toString()
+        'X-User-ID': user.uid.toString()
       };
 
       const response = await fetch(queryKey[0] as string, {

@@ -1,11 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 
 export default function CTASection() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handlePrimaryClick = () => {

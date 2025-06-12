@@ -1,22 +1,22 @@
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import MicrolearningModule from '@/components/microlearning/MicrolearningModule';
-import { useAuth } from '@/hooks/use-auth';
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import React from 'react';
 import { useLocation } from 'wouter';
 
 export default function Microlearning() {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useFirebaseAuth();
   const [, navigate] = useLocation();
 
   // Redirect to login if not authenticated
   React.useEffect(() => {
-    if (!isLoading && !user) {
+    if (!loading && !user) {
       navigate('/auth');
     }
-  }, [user, isLoading, navigate]);
+  }, [user, loading, navigate]);
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -42,7 +42,7 @@ export default function Microlearning() {
       <Header />
       <main className="flex-grow pt-20 md:pt-24 pb-12">
         <MicrolearningModule 
-          userId={user.id}
+          userId={user.uid}
           onComplete={handleComplete}
         />
       </main>

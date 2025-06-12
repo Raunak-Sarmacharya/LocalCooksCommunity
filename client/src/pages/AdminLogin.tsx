@@ -1,30 +1,29 @@
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
 } from "@/components/ui/form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { useAuth } from "@/hooks/use-auth";
+import { Input } from "@/components/ui/input";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
-import { Redirect, useLocation } from "wouter";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { ChefHat, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { Redirect, useLocation } from "wouter";
+import { z } from "zod";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -34,7 +33,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -72,9 +71,9 @@ export default function AdminLogin() {
       console.log('Admin login successful, user data:', userData);
       
       // Store userId in localStorage for persistence
-      if (userData?.id) {
-        localStorage.setItem('userId', userData.id.toString());
-        console.log('Saved userId to localStorage:', userData.id);
+      if (userData?.uid) {
+        localStorage.setItem('userId', userData.uid.toString());
+        console.log('Saved userId to localStorage:', userData.uid);
         
         // Update query client with user data
         queryClient.setQueryData(["/api/user"], userData);
@@ -95,7 +94,7 @@ export default function AdminLogin() {
   };
 
   // Redirect if already logged in
-  if (user && !isLoading) {
+  if (user && !loading) {
     if (user.role === 'admin') {
       return <Redirect to="/admin" />;
     } else {

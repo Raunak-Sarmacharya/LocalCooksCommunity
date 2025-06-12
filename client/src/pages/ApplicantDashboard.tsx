@@ -1,48 +1,48 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import {
-  formatApplicationStatus,
-  formatKitchenPreference,
-  getStatusBadgeColor
+    formatApplicationStatus,
+    formatKitchenPreference,
+    getStatusBadgeColor
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  Award,
-  BadgeCheck,
-  CalendarDays,
-  CheckCircle,
-  ChefHat,
-  Clock,
-  CreditCard,
-  DollarSign,
-  Download,
-  ExternalLink,
-  FileText,
-  GraduationCap,
-  Info,
-  Loader2,
-  Shield,
-  Star,
-  Trophy,
-  XCircle
+    Award,
+    BadgeCheck,
+    CalendarDays,
+    CheckCircle,
+    ChefHat,
+    Clock,
+    CreditCard,
+    DollarSign,
+    Download,
+    ExternalLink,
+    FileText,
+    GraduationCap,
+    Info,
+    Loader2,
+    Shield,
+    Star,
+    Trophy,
+    XCircle
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "wouter";
@@ -80,13 +80,13 @@ const itemVariants = {
 };
 
 export default function ApplicantDashboard() {
-  const { user, logoutMutation } = useAuth();
+  const { user, logout } = useFirebaseAuth();
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
   // Debug authentication state
   console.log('ApplicantDashboard - Authentication state:', {
     isLoggedIn: !!user,
-    userId: user?.id,
+    userId: user?.uid,
     userRole: user?.role,
     localStorageUserId: localStorage.getItem('userId')
   });
@@ -95,7 +95,7 @@ export default function ApplicantDashboard() {
   const { data: applications, isLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.id) {
+      if (!user?.uid) {
         throw new Error("User not authenticated");
       }
       
@@ -107,7 +107,7 @@ export default function ApplicantDashboard() {
       console.log('ApplicantDashboard: Fetching applications data...');
 
       const headers: Record<string, string> = {
-        'X-User-ID': user.id.toString(),
+        'X-User-ID': user.uid.toString(),
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
@@ -291,16 +291,16 @@ export default function ApplicantDashboard() {
 
   // Query microlearning completion status
   const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
-    queryKey: ["microlearning-completion", user?.id],
+    queryKey: ["microlearning-completion", user?.uid],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!user?.uid) return null;
       
       try {
-        const response = await fetch(`/api/microlearning/completion/${user.id}`, {
+        const response = await fetch(`/api/microlearning/completion/${user.uid}`, {
           method: "GET",
           credentials: 'include',
           headers: {
-            'X-User-ID': user.id.toString(),
+            'X-User-ID': user.uid.toString(),
           },
         });
 
@@ -318,7 +318,7 @@ export default function ApplicantDashboard() {
         return null;
       }
     },
-    enabled: Boolean(user?.id),
+    enabled: Boolean(user?.uid),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
   });
@@ -327,7 +327,7 @@ export default function ApplicantDashboard() {
   useEffect(() => {
     if (microlearningCompletion?.confirmed && !isLoadingCompletion) {
       // Check if this is a new completion (not from initial load)
-      const isNewCompletion = !localStorage.getItem(`completion-celebrated-${user?.id}`);
+      const isNewCompletion = !localStorage.getItem(`completion-celebrated-${user?.uid}`);
       
       if (isNewCompletion) {
         setTimeout(() => {
@@ -339,10 +339,10 @@ export default function ApplicantDashboard() {
         }, 1000);
         
         // Mark as celebrated so we don't show it again
-        localStorage.setItem(`completion-celebrated-${user?.id}`, "true");
+        localStorage.setItem(`completion-celebrated-${user?.uid}`, "true");
       }
     }
-  }, [microlearningCompletion, isLoadingCompletion, user?.id]);
+  }, [microlearningCompletion, isLoadingCompletion, user?.uid]);
 
   // Enhanced force refresh function for applicant dashboard
   const forceApplicantRefresh = async () => {
@@ -396,8 +396,8 @@ export default function ApplicantDashboard() {
     mutationFn: async (applicationId: number) => {
       // Include user ID in header
       const headers: Record<string, string> = {};
-      if (user?.id) {
-        headers['X-User-ID'] = user.id.toString();
+      if (user?.uid) {
+        headers['X-User-ID'] = user.uid.toString();
       }
 
       const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
@@ -423,7 +423,7 @@ export default function ApplicantDashboard() {
   });
 
   const handleLogout = () => {
-    logoutMutation.mutate();
+    logout();
   };
 
   return (
@@ -437,7 +437,7 @@ export default function ApplicantDashboard() {
                 {/* Get user's full name from latest application, fallback to username */}
                 {(() => {
                   // Use consistent naming convention like header navigation - just use username
-                  const displayName = user?.username || "";
+                  const displayName = user?.displayName || "";
                   
                   // Determine if user is fully verified
                   let isFullyVerified = false;
@@ -535,11 +535,11 @@ export default function ApplicantDashboard() {
                         className="bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={async () => {
                           try {
-                            const response = await fetch(`/api/microlearning/certificate/${user?.id}`, {
+                            const response = await fetch(`/api/microlearning/certificate/${user?.uid}`, {
                               method: 'GET',
                               headers: {
-                                'X-User-ID': user?.id.toString() || '',
-                                'Authorization': `Bearer ${user?.id}`,
+                                'X-User-ID': user?.uid.toString() || '',
+                                'Authorization': `Bearer ${user?.uid}`,
                               },
                               credentials: 'include'
                             });
@@ -553,7 +553,7 @@ export default function ApplicantDashboard() {
                                 const url = window.URL.createObjectURL(pdfBlob);
                                 const link = document.createElement('a');
                                 link.href = url;
-                                link.download = `LocalCooks-Certificate-${user?.username}.pdf`;
+                                link.download = `LocalCooks-Certificate-${user?.displayName}.pdf`;
                                 document.body.appendChild(link);
                                 link.click();
                                 document.body.removeChild(link);

@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
-import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
+import AboutSection from "@/components/home/AboutSection";
+import BenefitsSection from "@/components/home/BenefitsSection";
+import CTASection from "@/components/home/CTASection";
 import HeroSection from "@/components/home/HeroSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
-import BenefitsSection from "@/components/home/BenefitsSection";
-import AboutSection from "@/components/home/AboutSection";
-import CTASection from "@/components/home/CTASection";
+import Footer from "@/components/layout/Footer";
+import Header from "@/components/layout/Header";
 import StatusEmailTest from "@/components/test/StatusEmailTest";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useEffect, useState } from "react";
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const [showTestTool, setShowTestTool] = useState(false);
 
   // Add automatic scroll to sections when hash URL changes

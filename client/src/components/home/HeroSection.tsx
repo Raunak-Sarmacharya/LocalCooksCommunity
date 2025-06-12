@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
 import { useLocation } from "wouter";
@@ -8,7 +8,7 @@ import chefCookingImage from "../../assets/chef-cooking.png";
 
 export default function HeroSection() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handlePrimaryClick = () => {

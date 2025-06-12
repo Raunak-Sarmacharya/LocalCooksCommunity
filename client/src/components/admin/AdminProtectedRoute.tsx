@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Redirect, useLocation } from "wouter";
 
@@ -7,18 +7,18 @@ interface AdminProtectedRouteProps {
 }
 
 export default function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const { user, isLoading, error } = useAuth();
+  const { user, loading, error } = useFirebaseAuth();
   const [, setLocation] = useLocation();
 
   // Debug logging
   console.log('AdminProtectedRoute - Auth state:', {
-    isLoading,
+    loading,
     hasUser: !!user,
     userRole: user?.role,
     isAdmin: user?.role === 'admin'
   });
 
-  if (isLoading) {
+  if (loading) {
     console.log('AdminProtectedRoute - Still loading user data...');
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -39,6 +39,6 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
     return <Redirect to="/admin/login" />;
   }
 
-  console.log('AdminProtectedRoute - Admin access granted for user:', user.username);
+  console.log('AdminProtectedRoute - Admin access granted for user:', user.displayName);
   return <>{children}</>;
 }

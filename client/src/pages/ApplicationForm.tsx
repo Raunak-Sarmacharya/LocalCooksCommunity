@@ -7,7 +7,7 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -81,7 +81,7 @@ function FormStep() {
 }
 
 export default function ApplicationForm() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
 
   // Redirect to auth page if user is not logged in, or to admin dashboard if user is admin
@@ -98,12 +98,12 @@ export default function ApplicationForm() {
   const { data: applications, isLoading: applicationsLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.id) {
+      if (!user?.uid) {
         throw new Error("User not authenticated");
       }
 
       const headers: Record<string, string> = {
-        'X-User-ID': user.id.toString()
+        'X-User-ID': user.uid.toString()
       };
 
       const response = await fetch(queryKey[0] as string, {

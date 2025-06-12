@@ -3,13 +3,13 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { CheckCircle } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Success() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">

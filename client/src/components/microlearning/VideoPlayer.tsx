@@ -45,7 +45,7 @@ export default function VideoPlayer({
   const [watchedSegments, setWatchedSegments] = useState<{start: number, end: number}[]>([]);
   const [totalWatchedSeconds, setTotalWatchedSeconds] = useState(0);
   const [videoCompleted, setVideoCompleted] = useState(isCompleted);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [lastTimeUpdate, setLastTimeUpdate] = useState(0);
@@ -63,7 +63,7 @@ export default function VideoPlayer({
     setWatchedSegments([]);
     setTotalWatchedSeconds(0);
     setLastTimeUpdate(0);
-    setIsLoading(true);
+    setLoading(true);
     setHasError(false);
     setErrorMessage('');
     setShouldShowCompletePrompt(false);
@@ -113,21 +113,21 @@ export default function VideoPlayer({
 
     const handleLoadedMetadata = () => {
       setVideoDuration(video.duration);
-      setIsLoading(false);
+      setLoading(false);
       setHasError(false);
     };
 
     const handleLoadStart = () => {
-      setIsLoading(true);
+      setLoading(true);
       setHasError(false);
     };
 
     const handleCanPlay = () => {
-      setIsLoading(false);
+      setLoading(false);
     };
 
     const handleError = () => {
-      setIsLoading(false);
+      setLoading(false);
       setHasError(true);
       setErrorMessage('Failed to load video. Please check your internet connection and try again.');
     };
@@ -332,7 +332,7 @@ export default function VideoPlayer({
               allowFullScreen
               className="w-full h-full"
               onLoad={() => {
-                setIsLoading(false);
+                setLoading(false);
                 setHasError(false);
                 // Trigger start event for progress tracking
                 if (!hasStarted) {
@@ -349,7 +349,7 @@ export default function VideoPlayer({
                 }
               }}
               onError={() => {
-                setIsLoading(false);
+                setLoading(false);
                 setHasError(true);
                 setErrorMessage('Failed to load Streamable video. Please check your internet connection and try again.');
               }}
@@ -368,7 +368,7 @@ export default function VideoPlayer({
         )}
         
         {/* Loading Overlay */}
-        {isLoading && !hasError && (
+        {loading && !hasError && (
           <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
             <div className="text-center text-white">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
@@ -390,7 +390,7 @@ export default function VideoPlayer({
                 size="sm"
                 onClick={() => {
                   setHasError(false);
-                  setIsLoading(true);
+                  setLoading(true);
                   if (videoRef.current) {
                     videoRef.current.load();
                   }
@@ -404,7 +404,7 @@ export default function VideoPlayer({
         )}
         
         {/* Subtle Completion Banner - Top of video */}
-        {showCompletionBanner && !isLoading && !hasError && (
+        {showCompletionBanner && !loading && !hasError && (
           <div className="absolute top-4 left-4 right-4 z-10">
             <div className="bg-green-600/90 backdrop-blur-sm text-white px-4 py-3 rounded-lg shadow-lg border border-green-500/50">
               <div className="flex items-center justify-between gap-3">
@@ -445,7 +445,7 @@ export default function VideoPlayer({
         )}
 
         {/* Completion Badge - Bottom right corner */}
-        {videoCompleted && !isLoading && !hasError && (
+        {videoCompleted && !loading && !hasError && (
           <div className="absolute bottom-4 right-4 z-10">
             <div className="bg-green-600 text-white px-3 py-2 rounded-full shadow-lg border border-green-500 flex items-center gap-2">
               <CheckCircle className="h-4 w-4" />
@@ -455,7 +455,7 @@ export default function VideoPlayer({
         )}
 
         {/* Subtle Completion Prompt - appears when video should have ended but didn't */}
-        {shouldShowCompletePrompt && !videoCompleted && !isLoading && !hasError && (
+        {shouldShowCompletePrompt && !videoCompleted && !loading && !hasError && (
           <div className="absolute bottom-4 right-4">
             <div className="bg-black/80 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-white/20">
               <div className="flex items-center gap-3">
@@ -481,7 +481,7 @@ export default function VideoPlayer({
         )}
 
         {/* Play/Pause Overlay - Only for standard videos and when not showing completion overlay */}
-        {!isStreamableUrl && !isPlaying && !videoCompleted && !isLoading && !hasError && (
+        {!isStreamableUrl && !isPlaying && !videoCompleted && !loading && !hasError && (
           <div 
             className="absolute inset-0 bg-black/30 flex items-center justify-center cursor-pointer transition-opacity hover:bg-black/40"
             onClick={togglePlayPause}

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { GraduationCap, LogOut, Menu, User, X } from "lucide-react";
@@ -21,18 +21,18 @@ const hasActiveApplication = (applications?: Application[]) => {
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
-  const { user, logoutMutation } = useAuth();
+  const { user, logout } = useFirebaseAuth();
 
   // Fetch applicant's applications if they are logged in
   const { data: applications } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.id) {
+      if (!user?.uid) {
         throw new Error("User not authenticated");
       }
 
       const headers: Record<string, string> = {
-        'X-User-ID': user.id.toString()
+        'X-User-ID': user.uid.toString()
       };
 
       const response = await fetch(queryKey[0] as string, {
@@ -80,7 +80,7 @@ export default function Header() {
   };
 
   const handleLogout = () => {
-    logoutMutation.mutate();
+    logout();
   };
 
   const scrollToSection = useCallback((sectionId: string, event?: React.MouseEvent) => {
@@ -105,12 +105,12 @@ export default function Header() {
     if (user?.role === "admin") {
       return {
         href: "/admin",
-        text: `${user.username}'s Admin Dashboard`
+        text: `${user.displayName}'s Admin Dashboard`
       };
     } else {
       return {
         href: "/dashboard",
-        text: `${user?.username}'s Dashboard`
+        text: `${user?.displayName}'s Dashboard`
       };
     }
   };
@@ -209,7 +209,7 @@ export default function Header() {
                 className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
               >
                 <User className="h-4 w-4" />
-                {user.username}'s Dashboard
+                {user.displayName}'s Dashboard
               </Link>
               <Button
                 variant="ghost"

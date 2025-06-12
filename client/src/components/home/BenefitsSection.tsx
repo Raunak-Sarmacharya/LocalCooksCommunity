@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { Calendar, Camera, CreditCard, Medal, Megaphone, Settings, TrendingUp, Wallet } from "lucide-react";
 import { useLocation } from "wouter";
@@ -54,7 +54,7 @@ const mainBenefits = [
 
 export default function BenefitsSection() {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
   const handleApplicationClick = () => {

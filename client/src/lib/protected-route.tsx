@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import React from "react";
 import { Redirect, Route } from "wouter";
@@ -9,9 +9,9 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ path, component: Component }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useFirebaseAuth();
 
-  if (isLoading) {
+  if (loading) {
     return (
       <Route path={path}>
         <div className="flex items-center justify-center min-h-screen">
