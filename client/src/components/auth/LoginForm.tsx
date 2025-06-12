@@ -25,9 +25,10 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 interface LoginFormProps {
   onSuccess?: () => void;
+  setHasAttemptedLogin?: (v: boolean) => void;
 }
 
-export default function LoginForm({ onSuccess }: LoginFormProps) {
+export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginFormProps) {
   const { login, signInWithGoogle, loading, error, sendEmailLink, handleEmailLinkSignIn } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [showEmailLink, setShowEmailLink] = useState(false);
@@ -46,6 +47,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   }, []);
 
   const onSubmit = async (data: LoginFormData) => {
+    setHasAttemptedLogin?.(true);
     setFormError(null);
     try {
       await login(data.email, data.password);
@@ -72,7 +74,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         type="button"
         className="w-full mb-5 flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-900 font-semibold shadow-sm hover:bg-gray-50 transition"
         style={{ boxShadow: "0 1px 2px rgba(60,64,67,.08)" }}
-        onClick={signInWithGoogle}
+        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(); }}
         disabled={loading}
         aria-label="Continue with Google"
       >

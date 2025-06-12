@@ -10,6 +10,7 @@ export default function AuthPage() {
   const [location, setLocation] = useLocation();
   const { user, loading } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
 
   // Get redirect path from URL if it exists
   const getRedirectPath = () => {
@@ -22,19 +23,20 @@ export default function AuthPage() {
     }
   };
 
-  // Redirect to the appropriate page if already logged in
+  // Redirect to the appropriate page if already logged in and login was attempted
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && hasAttemptedLogin) {
       setTimeout(() => setLocation(getRedirectPath()), 500);
     }
-  }, [user, loading]);
+  }, [user, loading, hasAttemptedLogin]);
 
   if (loading) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
-  if (user) return null;
+  if (user && hasAttemptedLogin) return null;
 
   const handleSuccess = () => {
+    setHasAttemptedLogin(true);
     setTimeout(() => setLocation(getRedirectPath()), 500);
   };
 
@@ -66,10 +68,10 @@ export default function AuthPage() {
               <TabsTrigger value="register">Register</TabsTrigger>
             </TabsList>
             <TabsContent value="login">
-              <LoginForm onSuccess={handleSuccess} />
+              <LoginForm onSuccess={handleSuccess} setHasAttemptedLogin={setHasAttemptedLogin} />
             </TabsContent>
             <TabsContent value="register">
-              <RegisterForm onSuccess={handleSuccess} />
+              <RegisterForm onSuccess={handleSuccess} setHasAttemptedLogin={setHasAttemptedLogin} />
             </TabsContent>
           </Tabs>
         </div>
