@@ -3,7 +3,7 @@ import RegisterForm from "@/components/auth/RegisterForm";
 import Logo from "@/components/ui/logo";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 export default function AuthPage() {
@@ -11,31 +11,64 @@ export default function AuthPage() {
   const { user, loading, logout } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get redirect path from URL if it exists
   const getRedirectPath = () => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const redirectPath = urlParams.get('redirect') || '/';
-      return redirectPath;
+      // Prevent redirecting back to auth page
+      return redirectPath === '/auth' ? '/' : redirectPath;
     } catch {
       return '/';
     }
   };
 
-  // Redirect to the appropriate page if already logged in and login was attempted
+  // Handle initial load detection
   useEffect(() => {
-    if (!loading && user && hasAttemptedLogin) {
-      setTimeout(() => setLocation(getRedirectPath()), 500);
+    if (!loading) {
+      // Small delay to let Firebase auth settle
+      const timer = setTimeout(() => setIsInitialLoad(false), 100);
+      return () => clearTimeout(timer);
     }
-  }, [user, loading, hasAttemptedLogin]);
+  }, [loading]);
 
-  if (loading) {
+  // Redirect logic - only after initial load is complete
+  useEffect(() => {
+    // Clear any existing redirect timeout
+    if (redirectTimeoutRef.current) {
+      clearTimeout(redirectTimeoutRef.current);
+      redirectTimeoutRef.current = null;
+    }
+
+    // Only handle redirects after initial load and when user is authenticated
+    if (!loading && !isInitialLoad && user && hasAttemptedLogin) {
+      const redirectPath = getRedirectPath();
+      // Only redirect if we're not already going to the auth page
+      if (location !== redirectPath && redirectPath !== '/auth') {
+        redirectTimeoutRef.current = setTimeout(() => {
+          setLocation(redirectPath);
+        }, 300); // Reduced timeout for better UX
+      }
+    }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, [user, loading, hasAttemptedLogin, location, isInitialLoad]);
+
+  if (loading || isInitialLoad) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
   // If user is already logged in and did NOT just log in, show a friendly message and options
-  if (user && !hasAttemptedLogin) {
+  // But only show this if we're sure the session is established (not during initial load)
+  if (user && !hasAttemptedLogin && !isInitialLoad) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <Logo className="h-12 mb-6" />
@@ -54,7 +87,9 @@ export default function AuthPage() {
             className="bg-gray-100 text-gray-700 px-6 py-2 rounded font-semibold hover:bg-gray-200 transition border border-gray-300"
             onClick={async () => {
               await logout();
-              window.location.reload();
+              setHasAttemptedLogin(false);
+              setIsInitialLoad(true); // Reset initial load state
+              // Stay on auth page instead of reloading
             }}
           >
             Switch Account
@@ -64,11 +99,16 @@ export default function AuthPage() {
     );
   }
 
-  if (user && hasAttemptedLogin) return null;
+  // Don't render anything while redirecting
+  if (user && hasAttemptedLogin && !isInitialLoad) return null;
 
   const handleSuccess = () => {
     setHasAttemptedLogin(true);
-    setTimeout(() => setLocation(getRedirectPath()), 500);
+    const redirectPath = getRedirectPath();
+    // Only redirect if not going back to auth
+    if (redirectPath !== '/auth') {
+      // Let the useEffect handle the redirect with proper timing
+    }
   };
 
   return (
