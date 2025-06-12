@@ -8,7 +8,7 @@ import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
-  const { user } = useFirebaseAuth();
+  const { user, loading } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
   // Get redirect path from URL if it exists
@@ -24,12 +24,14 @@ export default function AuthPage() {
 
   // Redirect to the appropriate page if already logged in
   useEffect(() => {
-    if (user) {
+    if (!loading && user) {
       setTimeout(() => setLocation(getRedirectPath()), 500);
     }
-    // eslint-disable-next-line
-  }, [user]);
+  }, [user, loading]);
 
+  if (loading) {
+    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
+  }
   if (user) return null;
 
   const handleSuccess = () => {
