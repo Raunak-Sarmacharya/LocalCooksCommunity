@@ -82,6 +82,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             updatedAt: serverTimestamp(),
           });
         }
+        // --- Ensure Neon DB is always updated with latest UID ---
+        try {
+          await fetch("/api/firebase-sync-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              role: role || "applicant"
+            })
+          });
+        } catch (err) {
+          console.error("Failed to sync Firebase user to Neon DB:", err);
+        }
+        // --- End Neon DB sync ---
         setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
