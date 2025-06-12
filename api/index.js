@@ -201,7 +201,7 @@ app.use(session({
   cookie: {
     secure: isProduction, // true in production, false in development
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
     path: '/',
     sameSite: 'lax'
   }
@@ -3554,19 +3554,33 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     return res.status(400).json({ error: 'Missing uid or email' });
   }
   try {
-    // Check if user exists
+    // Check if user exists by firebase_uid
     let user = null;
     if (pool) {
-      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
+      let result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
       if (result.rows.length > 0) {
         user = result.rows[0];
       } else {
-        // Create new user
-        const insertResult = await pool.query(
-          'INSERT INTO users (username, role, firebase_uid, email) VALUES ($1, $2, $3, $4) RETURNING *',
-          [displayName || email, role || 'applicant', uid, email]
-        );
-        user = insertResult.rows[0];
+        // PATCH: Try to find by username (case-insensitive) if no firebase_uid match
+        if (displayName) {
+          const usernameResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [displayName]);
+          if (usernameResult.rows.length > 0) {
+            // Update this user to set firebase_uid
+            const updateResult = await pool.query(
+              'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
+              [uid, usernameResult.rows[0].id]
+            );
+            user = updateResult.rows[0];
+          }
+        }
+        // If still not found, create new user
+        if (!user) {
+          const insertResult = await pool.query(
+            'INSERT INTO users (username, role, firebase_uid, email) VALUES ($1, $2, $3, $4) RETURNING *',
+            [displayName || email, role || 'applicant', uid, email]
+          );
+          user = insertResult.rows[0];
+        }
       }
     } else {
       // In-memory fallback
@@ -3574,6 +3588,15 @@ app.post('/api/firebase-sync-user', async (req, res) => {
         if (u.firebase_uid === uid) {
           user = u;
           break;
+        }
+      }
+      if (!user && displayName) {
+        for (const u of users.values()) {
+          if (u.username && u.username.toLowerCase() === displayName.toLowerCase()) {
+            u.firebase_uid = uid;
+            user = u;
+            break;
+          }
         }
       }
       if (!user) {
