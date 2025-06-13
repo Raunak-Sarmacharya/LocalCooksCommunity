@@ -339,10 +339,17 @@ async function createUser(userData) {
   if (pool) {
     try {
       const hashedPassword = userData.password; // Already hashed before this point
-      // Patch: support firebase_uid
+      // Patch: support firebase_uid, is_verified, has_seen_welcome
       const result = await pool.query(
-        'INSERT INTO users (username, password, role, firebase_uid) VALUES ($1, $2, $3, $4) RETURNING *',
-        [userData.username, hashedPassword, userData.role || 'applicant', userData.firebase_uid || null]
+        `INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [
+          userData.username,
+          hashedPassword,
+          userData.role || 'applicant',
+          userData.firebase_uid || null,
+          userData.is_verified !== undefined ? userData.is_verified : false,
+          userData.has_seen_welcome !== undefined ? userData.has_seen_welcome : false
+        ]
       );
       return result.rows[0];
     } catch (error) {

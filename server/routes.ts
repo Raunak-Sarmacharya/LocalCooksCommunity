@@ -1674,6 +1674,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Endpoint to set has_seen_welcome = true for the current user
+  app.post('/api/user/seen-welcome', async (req, res) => {
+    try {
+      if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      const user = req.user;
+      await storage.setUserHasSeenWelcome(user.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error setting has_seen_welcome:', error);
+      res.status(500).json({ error: 'Failed to update welcome status' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
