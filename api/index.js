@@ -195,16 +195,19 @@ console.log('Setting up session with', {
 
 app.use(session({
   secret: sessionSecret,
-  resave: true,
-  saveUninitialized: true,
+  resave: false,
+  saveUninitialized: false,
   store: sessionStore,
   cookie: {
-    secure: isProduction, // true in production, false in development
+    secure: isProduction, // true in production (HTTPS), false in development
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     path: '/',
-    sameSite: 'lax'
-  }
+    sameSite: isProduction ? 'strict' : 'lax', // Stricter in production
+    domain: undefined // Let the browser determine the domain
+  },
+  name: 'connect.sid', // Explicit session name
+  proxy: isProduction // Trust proxy in production (for Vercel)
 }));
 
 // Add middleware to log session info on each request
@@ -648,19 +651,41 @@ app.post('/api/admin-login', async (req, res) => {
     req.session.userId = admin.id;
     req.session.user = adminWithoutPassword; // Store full user object (without password)
 
-    // Ensure session is saved before responding
-    await new Promise(resolve => req.session.save(err => {
-      if (err) {
-        console.error('Error saving session:', err);
-      } else {
-        console.log('Session saved successfully with userId:', admin.id);
-        console.log('Session user data cached:', { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role });
-      }
-      resolve();
-    }));
+    console.log('Setting session data:', {
+      sessionId: req.session.id,
+      userId: admin.id,
+      userData: { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role }
+    });
 
-    // Return user data
-    return res.status(200).json(adminWithoutPassword);
+    // Force session regeneration to ensure fresh session
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error('Session regeneration error:', err);
+        return res.status(500).json({ error: 'Session creation failed' });
+      }
+      
+      // Set session data again after regeneration
+      req.session.userId = admin.id;
+      req.session.user = adminWithoutPassword;
+      
+      // Save session explicitly
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error('Error saving session:', saveErr);
+          return res.status(500).json({ error: 'Session save failed' });
+        } else {
+          console.log('Session saved successfully with userId:', admin.id);
+          console.log('Final session ID:', req.session.id);
+          console.log('Session user data cached:', { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role });
+        }
+        
+        // Return user data with session info
+        return res.status(200).json({
+          ...adminWithoutPassword,
+          sessionId: req.session.id // Include session ID for debugging
+        });
+      });
+    });
   } catch (error) {
     console.error('Admin login error:', error);
     res.status(500).json({ error: 'Admin login failed', message: error.message });
