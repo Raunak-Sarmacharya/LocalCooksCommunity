@@ -763,22 +763,22 @@ app.get('/api/user', async (req, res) => {
   });
 
   // Get user ID from session or header
-  const userId = req.session.userId || req.headers['x-user-id'];
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
 
-  if (!userId) {
+  if (!rawUserId) {
     console.log('No userId in session or header, returning 401');
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
   // Store user ID in session if it's not there
-  if (!req.session.userId && userId) {
-    console.log('Storing userId in session from header:', userId);
-    req.session.userId = userId;
+  if (!req.session.userId && rawUserId) {
+    console.log('Storing userId in session from header:', rawUserId);
+    req.session.userId = rawUserId;
     await new Promise(resolve => req.session.save(resolve));
   }
 
   try {
-    console.log('Fetching user with ID:', userId);
+    console.log('Fetching user with ID:', rawUserId);
 
     // If we have the user cached in session, use that
     if (req.session.user) {
@@ -786,7 +786,7 @@ app.get('/api/user', async (req, res) => {
       return res.status(200).json(req.session.user);
     }
 
-    const user = await getUser(userId);
+    const user = await getUser(rawUserId);
     if (!user) {
       console.log('User not found in database, destroying session');
       req.session.destroy(() => { });
@@ -870,10 +870,9 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
     console.log('Headers:', JSON.stringify(req.headers, null, 2));
     
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
-    const requestedUserId = parseInt(req.params.userId);
     
     console.log('Session User ID:', sessionUserId);
-    console.log('Requested User ID:', requestedUserId);
+    console.log('Requested User ID:', req.params.userId);
     
     if (!sessionUserId) {
       return res.json({
@@ -884,16 +883,39 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
       });
     }
     
+    // Convert Firebase UIDs to integer user IDs
     const sessionUser = await getUser(sessionUserId);
-    const completion = await getMicrolearningCompletion(requestedUserId);
+    if (!sessionUser) {
+      return res.json({
+        authenticated: false,
+        error: 'Session user not found',
+        sessionUserId: sessionUserId
+      });
+    }
+    const sessionUserIntId = sessionUser.id;
+    
+    let requestedUser = await getUser(req.params.userId);
+    if (!requestedUser) {
+      return res.json({
+        authenticated: true,
+        error: 'Requested user not found',
+        sessionUserId: sessionUserId,
+        requestedUserId: req.params.userId
+      });
+    }
+    const requestedUserIntId = requestedUser.id;
+    
+    const completion = await getMicrolearningCompletion(requestedUserIntId);
     
     res.json({
       authenticated: true,
       sessionUserId: sessionUserId,
-      requestedUserId: requestedUserId,
+      sessionUserIntId: sessionUserIntId,
+      requestedUserId: req.params.userId,
+      requestedUserIntId: requestedUserIntId,
       sessionUser: sessionUser ? { id: sessionUser.id, username: sessionUser.username, role: sessionUser.role } : null,
       completion: completion ? { confirmed: completion.confirmed, completedAt: completion.completedAt } : null,
-      canAccess: parseInt(sessionUserId) === requestedUserId || sessionUser?.role === 'admin'
+      canAccess: sessionUserIntId === requestedUserIntId || sessionUser?.role === 'admin'
     });
   } catch (error) {
     console.error('Debug auth error:', error);
@@ -918,17 +940,25 @@ app.post('/api/applications', upload.fields([
   console.log('Files received:', req.files ? Object.keys(req.files) : 'No files');
 
   // Get userId from session OR from header if session is not working
-  const userId = req.session.userId || req.headers['x-user-id'];
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
 
-  if (!userId) {
+  if (!rawUserId) {
     console.log('No userId in session or header, returning 401');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
+  // Convert Firebase UID to integer user ID
+  const user = await getUser(rawUserId);
+  if (!user) {
+    console.log('User not found for ID:', rawUserId);
+    return res.status(401).json({ error: 'User not found' });
+  }
+  const userId = user.id;
+
   // Store user ID in session as a backup
-  if (!req.session.userId && userId) {
-    console.log('Storing userId in session from header:', userId);
-    req.session.userId = userId;
+  if (!req.session.userId && rawUserId) {
+    console.log('Storing userId in session from header:', rawUserId);
+    req.session.userId = rawUserId;
     await new Promise((resolve) => req.session.save(resolve));
   }
 
@@ -1272,16 +1302,16 @@ app.get('/api/applications', async (req, res) => {
   });
 
   // Get user ID from session or header
-  const userId = req.session.userId || req.headers['x-user-id'];
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
 
-  if (!userId) {
+  if (!rawUserId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
-    // First check if the user is an admin
-    const user = await getUser(userId);
+    // First check if the user is an admin - convert Firebase UID to integer ID
+    const user = await getUser(rawUserId);
     console.log('User from DB:', user ? { id: user.id, username: user.username, role: user.role } : null);
 
     if (!user || user.role !== 'admin') {
@@ -1293,9 +1323,9 @@ app.get('/api/applications', async (req, res) => {
     }
 
     // Store user ID in session if it's not there
-    if (!req.session.userId && userId) {
-      console.log('Storing userId in session from header:', userId);
-      req.session.userId = userId;
+    if (!req.session.userId && rawUserId) {
+      console.log('Storing userId in session from header:', rawUserId);
+      req.session.userId = rawUserId;
       await new Promise(resolve => req.session.save(resolve));
     }
 
@@ -1362,35 +1392,20 @@ app.get('/api/applications/my-applications', async (req, res) => {
   });
 
   // Get user ID from session or header
-  let userId = req.session.userId || req.headers['x-user-id'];
+  let rawUserId = req.session.userId || req.headers['x-user-id'];
 
-  if (!userId) {
+  if (!rawUserId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  // If userId is not an integer, look up by firebase_uid
-  if (isNaN(Number(userId))) {
-    if (pool) {
-      const result = await pool.query('SELECT id FROM users WHERE firebase_uid = $1', [userId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: 'User not found' });
-      }
-      userId = result.rows[0].id;
-      req.session.userId = userId; // Optionally store for session
-      await new Promise(resolve => req.session.save(resolve));
-    } else {
-      // Fallback for in-memory
-      for (const [id, user] of users.entries()) {
-        if (user.firebase_uid === userId) {
-          userId = id;
-          req.session.userId = userId;
-          await new Promise(resolve => req.session.save(resolve));
-          break;
-        }
-      }
-    }
+  // Convert Firebase UID to integer user ID
+  const user = await getUser(rawUserId);
+  if (!user) {
+    console.log('User not found for ID:', rawUserId);
+    return res.status(401).json({ error: 'User not found' });
   }
+  const userId = user.id;
 
   try {
     // Get from database if available
@@ -1491,17 +1506,25 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
   });
 
   // Get user ID from session or header
-  const userId = req.session.userId || req.headers['x-user-id'];
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
 
-  if (!userId) {
+  if (!rawUserId) {
     console.log('No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
+  // Convert Firebase UID to integer user ID
+  const user = await getUser(rawUserId);
+  if (!user) {
+    console.log('User not found for ID:', rawUserId);
+    return res.status(401).json({ error: 'User not found' });
+  }
+  const userId = user.id;
+
   // Store user ID in session if it's not there
-  if (!req.session.userId && userId) {
-    console.log('Storing userId in session from header:', userId);
-    req.session.userId = userId;
+  if (!req.session.userId && rawUserId) {
+    console.log('Storing userId in session from header:', rawUserId);
+    req.session.userId = rawUserId;
     await new Promise(resolve => req.session.save(resolve));
   }
 
@@ -1586,32 +1609,33 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
 // Update application status endpoint (admin only)
 app.patch('/api/applications/:id/status', async (req, res) => {
   // Check if user is authenticated via session or X-User-ID header
-  const userId = req.session.userId || (req.headers['x-user-id'] ? parseInt(req.headers['x-user-id']) : null);
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
 
   console.log('Status update request - Auth info:', {
     sessionUserId: req.session.userId,
     headerUserId: req.headers['x-user-id'],
-    resolvedUserId: userId
+    rawUserId: rawUserId
   });
 
-  if (!userId) {
+  if (!rawUserId) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
   try {
-    // First check if the user is an admin
-    const user = await getUser(userId);
+    // First check if the user is an admin - convert Firebase UID to integer ID
+    const user = await getUser(rawUserId);
     if (!user || user.role !== 'admin') {
       return res.status(403).json({
         error: 'Forbidden',
         message: 'Only administrators can update application status'
       });
     }
+    const userId = user.id;
 
     // Store user ID in session if it's not there
-    if (!req.session.userId && userId) {
-      console.log('Storing userId in session from header:', userId);
-      req.session.userId = userId;
+    if (!req.session.userId && rawUserId) {
+      console.log('Storing userId in session from header:', rawUserId);
+      req.session.userId = rawUserId;
       await new Promise(resolve => req.session.save(resolve));
     }
 
@@ -1731,9 +1755,15 @@ app.get('/api/init-db', async (req, res) => {
 app.get("/api/files/documents/:filename", async (req, res) => {
   try {
     // Check if user is authenticated
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    // Convert Firebase UID to integer user ID
+    const user = await getUser(rawUserId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
     }
 
     // File serving not supported in serverless environment
@@ -1767,13 +1797,21 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     });
 
     // Check if user is authenticated
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       console.log("❌ Authentication failed - no userId found");
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    console.log("✅ User authenticated with ID:", userId);
+    // Convert Firebase UID to integer user ID
+    const authenticatedUser = await getUser(rawUserId);
+    if (!authenticatedUser) {
+      console.log("❌ User not found for ID:", rawUserId);
+      return res.status(401).json({ message: "User not found" });
+    }
+    const userId = authenticatedUser.id;
+
+    console.log("✅ User authenticated with Firebase UID:", rawUserId, "-> integer ID:", userId);
 
     const applicationId = parseInt(req.params.id);
     if (isNaN(applicationId)) {
@@ -1815,16 +1853,15 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       }
     });
 
-    // Get user to check if admin
-    const user = await getUser(userId);
+    // Check if user owns the application or is admin (use already retrieved user)
     console.log("👤 User details:", {
-      found: !!user,
-      role: user?.role,
-      isAdmin: user?.role === "admin"
+      found: !!authenticatedUser,
+      role: authenticatedUser?.role,
+      isAdmin: authenticatedUser?.role === "admin"
     });
     
     // Check if user owns the application or is admin
-    if (application.user_id !== parseInt(userId) && user?.role !== "admin") {
+    if (application.user_id !== userId && authenticatedUser?.role !== "admin") {
       console.log("❌ Access denied - user doesn't own application and is not admin");
       return res.status(403).json({ message: "Access denied" });
     }
@@ -2015,15 +2052,16 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
 app.patch("/api/applications/:id/document-verification", async (req, res) => {
   try {
     // Check if user is authenticated and is an admin
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await getUser(userId);
+    const user = await getUser(rawUserId);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
+    const userId = user.id;
 
     const applicationId = parseInt(req.params.id);
     if (isNaN(applicationId)) {
@@ -2047,7 +2085,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
 
     // Build update data for applications table (document verification fields)
     const updateData = {
-      documents_reviewed_by: parseInt(userId),
+      documents_reviewed_by: userId,
       documents_reviewed_at: new Date()
     };
 
@@ -2268,8 +2306,8 @@ app.post("/api/upload-file",
       });
       
       // Check if user is authenticated
-      const userId = req.session.userId || req.headers['x-user-id'];
-      if (!userId) {
+      const rawUserId = req.session.userId || req.headers['x-user-id'];
+      if (!rawUserId) {
         console.log('❌ Upload: No userId in session or header, returning 401');
         // Clean up uploaded file
         if (req.file && req.file.path) {
@@ -2282,12 +2320,28 @@ app.post("/api/upload-file",
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      console.log('✅ Upload: User authenticated:', userId);
+      // Convert Firebase UID to integer user ID
+      const user = await getUser(rawUserId);
+      if (!user) {
+        console.log('❌ Upload: User not found for ID:', rawUserId);
+        // Clean up uploaded file
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (e) {
+            console.error('Error cleaning up file:', e);
+          }
+        }
+        return res.status(401).json({ error: "User not found" });
+      }
+      const userId = user.id;
+
+      console.log('✅ Upload: User authenticated:', rawUserId, '-> integer ID:', userId);
 
       // Store user ID in session as a backup (for Vercel session persistence)
-      if (!req.session.userId && userId) {
-        console.log('🔄 Upload: Storing userId in session from header:', userId);
-        req.session.userId = userId;
+      if (!req.session.userId && rawUserId) {
+        console.log('🔄 Upload: Storing userId in session from header:', rawUserId);
+        req.session.userId = rawUserId;
         await new Promise((resolve) => req.session.save(resolve));
       }
 
@@ -2487,10 +2541,17 @@ app.get('/api/debug-admin', async (req, res) => {
 app.get("/api/document-verification", async (req, res) => {
   try {
     // Check if user is authenticated
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
+
+    // Convert Firebase UID to integer user ID
+    const user = await getUser(rawUserId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    const userId = user.id;
 
     if (!pool) {
       return res.status(500).json({ message: "Database not available" });
@@ -2591,12 +2652,12 @@ async function getSessionStats() {
 app.get("/api/admin/sessions/stats", async (req, res) => {
   try {
     // Check if user is authenticated and is an admin
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await getUser(userId);
+    const user = await getUser(rawUserId);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
@@ -2622,12 +2683,12 @@ app.get("/api/admin/sessions/stats", async (req, res) => {
 app.post("/api/admin/sessions/cleanup", async (req, res) => {
   try {
     // Check if user is authenticated and is an admin
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await getUser(userId);
+    const user = await getUser(rawUserId);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
@@ -2653,12 +2714,12 @@ app.post("/api/admin/sessions/cleanup", async (req, res) => {
 app.post("/api/admin/sessions/cleanup-old", async (req, res) => {
   try {
     // Check if user is authenticated and is an admin
-    const userId = req.session.userId || req.headers['x-user-id'];
-    if (!userId) {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const user = await getUser(userId);
+    const user = await getUser(rawUserId);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
@@ -3410,10 +3471,10 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     
     // If no session userId, try to authenticate using the requested userId and verify it exists
     if (!sessionUserId) {
-      const requestedUserId = parseInt(req.params.userId);
+      const requestedUserId = req.params.userId;
       console.log('No session userId found, attempting to verify requested userId:', requestedUserId);
       
-      // Check if the requested user exists in the database
+      // Check if the requested user exists in the database (handles both Firebase UID and integer ID)
       const requestedUser = await getUser(requestedUserId);
       if (requestedUser) {
         console.log('Requested user exists, treating as authenticated:', requestedUser.username);
@@ -3459,14 +3520,23 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
       await new Promise(resolve => req.session.save(resolve));
     }
 
-    const userId = parseInt(req.params.userId);
+    // Convert Firebase UIDs to integer user IDs
+    let requestedUser = await getUser(req.params.userId);
+    if (!requestedUser) {
+      return res.status(404).json({ message: 'Requested user not found' });
+    }
+    const userId = requestedUser.id;
     console.log('Parsed userId:', userId);
     
     // Verify user can access this certificate (either their own or admin)
     const sessionUser = await getUser(sessionUserId);
+    if (!sessionUser) {
+      return res.status(401).json({ message: 'Session user not found' });
+    }
+    const sessionUserIntId = sessionUser.id;
     console.log('Session user:', sessionUser ? { id: sessionUser.id, username: sessionUser.username, role: sessionUser.role } : null);
     
-    if (parseInt(sessionUserId) !== userId && sessionUser?.role !== 'admin') {
+    if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       console.log('Access denied - userId mismatch and not admin');
       return res.status(403).json({ message: 'Access denied' });
     }
