@@ -85,60 +85,79 @@ export default function AuthPage() {
 
   // Fetch user meta after login
   useEffect(() => {
-    if (!loading && user && !hasCheckedUser.current) {
-      hasCheckedUser.current = true;
-      console.log('Fetching user meta for Firebase user:', user.uid);
-      
-      const fetchUserMeta = async () => {
-        try {
-          // Get Firebase auth token
-          const firebaseUser = auth.currentUser;
-          if (!firebaseUser) {
-            console.error('No Firebase user available');
-            return;
-          }
+    if (!loading && user) {
+      // Always check user meta for authenticated users, but prevent duplicate calls
+      if (!hasCheckedUser.current) {
+        hasCheckedUser.current = true;
+        console.log('🔍 AUTH PAGE DEBUG - Fetching user meta for Firebase user:', user.uid);
+        console.log('🔍 AUTH PAGE DEBUG - Current state:', {
+          loading,
+          hasUser: !!user,
+          hasAttemptedLogin,
+          isInitialLoad,
+          showWelcome,
+          showVerifyEmail
+        });
+        
+        const fetchUserMeta = async () => {
+          try {
+            // Get Firebase auth token
+            const firebaseUser = auth.currentUser;
+            if (!firebaseUser) {
+              console.error('No Firebase user available');
+              return;
+            }
 
-          const token = await firebaseUser.getIdToken();
-          
-          const response = await fetch('/api/user', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (response.ok) {
-            const userData = await response.json();
-            console.log('User data from API:', userData);
-            setUserMeta(userData);
+            const token = await firebaseUser.getIdToken();
             
-            // Check if user needs to verify email
-            if (!userData.is_verified) {
-              console.log('User not verified, showing email verification screen');
-              setVerifyEmailAddress(userData.username || userData.email || '');
-              setShowVerifyEmail(true);
-              return;
-            }
+            const response = await fetch('/api/user', {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
             
-            // Check if user needs to see welcome screen
-            if (userData.is_verified && !userData.has_seen_welcome) {
-              console.log('User verified but hasn\'t seen welcome, showing welcome screen');
-              setShowWelcome(true);
-              return;
+            if (response.ok) {
+              const userData = await response.json();
+              console.log('🔍 AUTH PAGE DEBUG - User data from API:', userData);
+              console.log('🔍 AUTH PAGE DEBUG - Welcome logic check:', {
+                is_verified: userData.is_verified,
+                has_seen_welcome: userData.has_seen_welcome,
+                shouldShowWelcome: userData.is_verified && !userData.has_seen_welcome
+              });
+              setUserMeta(userData);
+              
+              // Check if user needs to verify email
+              if (!userData.is_verified) {
+                console.log('❌ User not verified, showing email verification screen');
+                setVerifyEmailAddress(userData.username || userData.email || '');
+                setShowVerifyEmail(true);
+                return;
+              }
+              
+              // Check if user needs to see welcome screen
+              if (userData.is_verified && !userData.has_seen_welcome) {
+                console.log('🎉 User verified but hasn\'t seen welcome, showing welcome screen');
+                setShowWelcome(true);
+                return;
+              }
+              
+              // User is verified and has seen welcome, redirect to dashboard
+              console.log('✅ User verified and has seen welcome, redirecting to dashboard');
+              setLocation('/dashboard');
+            } else {
+              console.error('Failed to fetch user data:', response.status);
             }
-            
-            // User is verified and has seen welcome, redirect to dashboard
-            console.log('User verified and has seen welcome, redirecting to dashboard');
-            setLocation('/dashboard');
-          } else {
-            console.error('Failed to fetch user data:', response.status);
+          } catch (error) {
+            console.error('Error fetching user meta:', error);
           }
-        } catch (error) {
-          console.error('Error fetching user meta:', error);
-        }
-      };
-      
-      fetchUserMeta();
+        };
+        
+        fetchUserMeta();
+      }
+    } else if (!user) {
+      // Reset the check when user logs out
+      hasCheckedUser.current = false;
     }
   }, [loading, user, setLocation]);
 
@@ -173,40 +192,7 @@ export default function AuthPage() {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
-  // If user is already logged in and did NOT just log in, show a friendly message and options
-  // But only show this if we're sure the session is established (not during initial load)
-  if (user && !hasAttemptedLogin && !isInitialLoad) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <Logo className="h-12 mb-6" />
-        <h1 className="text-2xl font-bold mb-2">You're already logged in</h1>
-        <p className="mb-6 text-gray-600">
-          Welcome back, <span className="font-semibold">{user.displayName || user.email}</span>!
-        </p>
-        <div className="flex gap-4">
-          <button
-            className="bg-primary text-white px-6 py-2 rounded font-semibold hover:bg-primary/90 transition"
-            onClick={() => setLocation(user.role === 'admin' ? '/admin' : '/dashboard')}
-          >
-            Go to {user.role === 'admin' ? 'Admin Dashboard' : 'Dashboard'}
-          </button>
-          <button
-            className="bg-gray-100 text-gray-700 px-6 py-2 rounded font-semibold hover:bg-gray-200 transition border border-gray-300"
-            onClick={async () => {
-              await logout();
-              setHasAttemptedLogin(false);
-              setIsInitialLoad(true); // Reset initial load state
-              // Stay on auth page instead of reloading
-            }}
-          >
-            Switch Account
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Show welcome screen if needed
+  // Show welcome screen if needed (CHECK THIS FIRST!)
   if (showWelcome) {
     return <WelcomeScreen onContinue={async () => {
       await handleWelcomeContinue();
@@ -238,6 +224,39 @@ export default function AuthPage() {
       }}
       resendLoading={verifyEmailLoading}
     />;
+  }
+
+  // If user is already logged in and did NOT just log in, show a friendly message and options
+  // But only show this if we're sure the session is established (not during initial load)
+  if (user && !hasAttemptedLogin && !isInitialLoad) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <Logo className="h-12 mb-6" />
+        <h1 className="text-2xl font-bold mb-2">You're already logged in</h1>
+        <p className="mb-6 text-gray-600">
+          Welcome back, <span className="font-semibold">{user.displayName || user.email}</span>!
+        </p>
+        <div className="flex gap-4">
+          <button
+            className="bg-primary text-white px-6 py-2 rounded font-semibold hover:bg-primary/90 transition"
+            onClick={() => setLocation(user.role === 'admin' ? '/admin' : '/dashboard')}
+          >
+            Go to {user.role === 'admin' ? 'Admin Dashboard' : 'Dashboard'}
+          </button>
+          <button
+            className="bg-gray-100 text-gray-700 px-6 py-2 rounded font-semibold hover:bg-gray-200 transition border border-gray-300"
+            onClick={async () => {
+              await logout();
+              setHasAttemptedLogin(false);
+              setIsInitialLoad(true); // Reset initial load state
+              // Stay on auth page instead of reloading
+            }}
+          >
+            Switch Account
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Don't render anything while redirecting
