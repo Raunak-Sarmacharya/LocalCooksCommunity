@@ -4004,31 +4004,14 @@ app.post('/api/firebase-sync-user', async (req, res) => {
         if (firebaseResult.rows.length > 0) {
           user = firebaseResult.rows[0];
           console.log(`✅ Found existing user by Firebase UID: ${user.id} (${user.username})`);
-        } else {
-          // STEP 3: Check by displayName (fallback)
-          if (displayName && displayName !== email) {
-            console.log(`🔍 No user found by UID, checking by displayName: ${displayName}`);
-            const usernameResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [displayName]);
-            
-            if (usernameResult.rows.length > 0) {
-              user = usernameResult.rows[0];
-              console.log(`✅ Found existing user by displayName: ${user.id} (${user.username})`);
-              
-              // Update Firebase UID
-              const updateResult = await pool.query(
-                'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
-                [uid, user.id]
-              );
-              user = updateResult.rows[0];
-            }
-          }
         }
         
-        // STEP 4: Create new user if none found
+        // STEP 3: Create new user if none found
         if (!user) {
           const isUserVerified = emailVerified === true;
           console.log(`➕ Creating new user for email: ${email}, Firebase UID: ${uid}`);
           console.log(`   - emailVerified: ${emailVerified}, setting is_verified: ${isUserVerified}`);
+          console.log(`   - displayName: ${displayName} (NOT used for username to prevent duplicates)`);
           
           const insertResult = await pool.query(
             'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
@@ -4036,6 +4019,10 @@ app.post('/api/firebase-sync-user', async (req, res) => {
           );
           user = insertResult.rows[0];
           console.log(`✨ Created new user: ${user.id} (${user.username})`);
+          console.log(`   - is_verified in DB: ${user.is_verified}`);
+          console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+        } else {
+          console.log(`✅ Using existing user: ${user.id} (${user.username})`);
           console.log(`   - is_verified in DB: ${user.is_verified}`);
           console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
         }
@@ -4065,16 +4052,7 @@ app.post('/api/firebase-sync-user', async (req, res) => {
         }
       }
       
-      // If not found by firebase_uid, try by displayName
-      if (!user && displayName && displayName !== email) {
-        for (const u of users.values()) {
-          if (u.username && u.username.toLowerCase() === displayName.toLowerCase()) {
-            u.firebase_uid = uid;
-            user = u;
-            break;
-          }
-        }
-      }
+      // Skip displayName check to prevent duplicate users
       
       // Create new user if none found
       if (!user) {
