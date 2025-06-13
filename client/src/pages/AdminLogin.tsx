@@ -16,7 +16,7 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useHybridAuth } from "@/hooks/use-hybrid-auth";
 import { queryClient } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChefHat, Loader2 } from "lucide-react";
@@ -33,7 +33,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
-  const { user, loading } = useFirebaseAuth();
+  const { user, loading, isAdmin } = useHybridAuth();
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -79,13 +79,16 @@ export default function AdminLogin() {
           queryClient.setQueryData(["/api/user"], userData);
           console.log('Updated query client with user data');
           
+          // Invalidate and refetch user data to trigger hybrid auth update
+          await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+          
           // Admin login successful - redirect immediately
           console.log('Admin login successful, redirecting to admin panel...');
           
-          // Add a small delay to ensure session is saved, then redirect
+          // Add a small delay to ensure session is saved and queries are updated
           setTimeout(() => {
             window.location.href = '/admin';
-          }, 500);
+          }, 800);
         } else {
           throw new Error('Invalid admin user data returned');
         }
@@ -97,14 +100,16 @@ export default function AdminLogin() {
     }
   };
 
-  // Redirect if already logged in
-  if (user && !loading) {
-    if (user.role === 'admin') {
-      return <Redirect to="/admin" />;
-    } else {
-      // Non-admin users should be redirected away from admin login
-      return <Redirect to="/dashboard" />;
-    }
+  // Redirect if already logged in as admin
+  if (!loading && isAdmin) {
+    console.log('Admin already logged in, redirecting to admin panel');
+    return <Redirect to="/admin" />;
+  }
+  
+  // Redirect non-admin users
+  if (!loading && user && !isAdmin) {
+    console.log('Non-admin user detected, redirecting to dashboard');
+    return <Redirect to="/dashboard" />;
   }
 
   return (

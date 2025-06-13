@@ -51,14 +51,14 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       {/* Google Auth Button */}
       <Button
         type="button"
-        className="w-full mb-5 flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-900 font-semibold shadow-sm hover:bg-gray-50 transition"
+        className="w-full mb-5 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-900 font-semibold shadow-sm hover:bg-gray-50 transition h-12"
         style={{ boxShadow: "0 1px 2px rgba(60,64,67,.08)" }}
         onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(); }}
         disabled={loading}
         aria-label="Continue with Google"
       >
         {/* Inline Google SVG icon from the internet */}
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48" className="flex-shrink-0">
           <g>
             <path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C35.64 2.36 30.18 0 24 0 14.82 0 6.73 5.48 2.69 13.44l7.98 6.2C12.13 13.13 17.62 9.5 24 9.5z"/>
             <path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.43-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.65 7.01l7.19 5.6C43.98 37.36 46.1 31.44 46.1 24.55z"/>
@@ -67,7 +67,7 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
             <path fill="none" d="M0 0h48v48H0z"/>
           </g>
         </svg>
-        Continue with Google
+        <span>Continue with Google</span>
       </Button>
 
       {/* Divider */}
@@ -94,9 +94,9 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
                 <FormLabel>Email</FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     <Input
-                      className="pl-10"
+                      className="pl-10 h-12"
                       placeholder="Enter your email"
                       autoComplete="email"
                       {...field}
@@ -116,10 +116,10 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
                 <FormLabel>Password</FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     <Input
                       type="password"
-                      className="pl-10"
+                      className="pl-10 h-12"
                       placeholder="Enter your password"
                       autoComplete="current-password"
                       {...field}

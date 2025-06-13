@@ -91,7 +91,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
         >
           {/* Icon */}
           {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none">
               {icon}
             </div>
           )}
@@ -102,7 +102,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
             type={inputType}
             value={value}
             className={cn(
-              "w-full px-4 py-3 border rounded-lg outline-none transition-all duration-200",
+              "w-full px-4 py-3 border rounded-lg outline-none transition-all duration-200 h-12",
               "placeholder-transparent peer",
               icon ? "pl-10" : "",
               showPasswordToggle ? "pr-12" : "",
@@ -126,7 +126,11 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           {/* Floating Label */}
           {label && (
             <motion.label
-              className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none origin-left z-10"
+              className={cn(
+                "absolute pointer-events-none origin-left z-10 transition-all duration-200",
+                icon ? "left-10" : "left-4",
+                "top-1/2 -translate-y-1/2"
+              )}
               variants={labelVariants}
               animate={getLabelState()}
               style={{
