@@ -206,27 +206,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }),
           });
 
-                     if (response.ok) {
-             const data = await response.json();
-             console.log('✅ Hybrid login successful:', data.authMethod);
-             
-             // Create a pseudo-Firebase user object for compatibility
-             const neonUser = data.user;
-             
-             // Store session information for NeonDB users
-             localStorage.setItem('authMethod', data.authMethod);
-             localStorage.setItem('userId', neonUser.id?.toString() || '');
-             setUser({
-               uid: neonUser.firebase_uid || `neon_${neonUser.id}`,
-               email: email,
-               displayName: neonUser.username,
-               photoURL: null,
-               emailVerified: true, // Assume verified for NeonDB users
-               providers: ['neon-database'],
-               role: neonUser.role,
-             });
-             
-             return; // Success, exit the function
+                               if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Hybrid login successful:', data.authMethod);
+            console.log('Session info:', data.session);
+            
+            // Create a pseudo-Firebase user object for compatibility
+            const neonUser = data.user;
+            
+            // Store session information for NeonDB users
+            localStorage.setItem('authMethod', data.authMethod);
+            // Use the session userId for consistency with backend
+            localStorage.setItem('userId', data.session?.userId || neonUser.id?.toString() || '');
+            
+            setUser({
+              uid: data.session?.userId || neonUser.firebase_uid || `neon_${neonUser.id}`,
+              email: email,
+              displayName: neonUser.username,
+              photoURL: null,
+              emailVerified: true, // Assume verified for NeonDB users
+              providers: ['neon-database'],
+              role: neonUser.role,
+            });
+            
+            return; // Success, exit the function
           } else {
             const errorData = await response.json();
             throw new Error(errorData.message || 'Database authentication failed');
