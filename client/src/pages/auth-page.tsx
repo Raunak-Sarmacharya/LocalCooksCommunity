@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   return (
@@ -34,6 +35,10 @@ export default function AuthPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [userMeta, setUserMeta] = useState<{ is_verified: boolean; has_seen_welcome: boolean } | null>(null);
+  const [showVerifyEmail, setShowVerifyEmail] = useState(false);
+  const [verifyEmailLoading, setVerifyEmailLoading] = useState(false);
+  const [verifyEmailError, setVerifyEmailError] = useState<string | null>(null);
+  const [verifyEmailAddress, setVerifyEmailAddress] = useState<string | null>(null);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get redirect path from URL if it exists
@@ -67,6 +72,9 @@ export default function AuthPage() {
             setUserMeta({ is_verified: data.is_verified, has_seen_welcome: data.has_seen_welcome });
             if (data.is_verified && !data.has_seen_welcome) {
               setShowWelcome(true);
+            } else if (!data.is_verified) {
+              setShowVerifyEmail(true);
+              setVerifyEmailAddress(data.username || user.email || null);
             }
           }
         })
@@ -146,6 +154,33 @@ export default function AuthPage() {
       setUserMeta((meta) => meta ? { ...meta, has_seen_welcome: true } : meta);
       setLocation("/dashboard");
     }} />;
+  }
+
+  // Show verify email screen if needed
+  if (showVerifyEmail && verifyEmailAddress) {
+    return <EmailVerificationScreen
+      email={verifyEmailAddress}
+      onResend={async () => {
+        setVerifyEmailError(null);
+        setVerifyEmailLoading(true);
+        try {
+          await fetch("/api/auth/send-verification-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: verifyEmailAddress, fullName: user?.displayName || "" })
+          });
+        } catch (e: any) {
+          setVerifyEmailError("Failed to resend verification email. Please try again later.");
+        } finally {
+          setVerifyEmailLoading(false);
+        }
+      }}
+      onGoBack={() => {
+        setShowVerifyEmail(false);
+        setHasAttemptedLogin(false);
+      }}
+      resendLoading={verifyEmailLoading}
+    />;
   }
 
   // Don't render anything while redirecting
