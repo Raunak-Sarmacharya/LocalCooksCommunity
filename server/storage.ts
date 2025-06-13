@@ -90,6 +90,7 @@ export class MemStorage implements IStorage {
       facebookId: null,
       firebaseUid: null,
       isVerified: true,
+      has_seen_welcome: true,
     };
     this.users.set(adminUser.id, adminUser);
     console.log("Development: Default admin user created (username: admin, password: localcooks)");
@@ -153,7 +154,8 @@ export class MemStorage implements IStorage {
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
       firebaseUid: insertUser.firebaseUid || null,
-      isVerified: false,
+      isVerified: (insertUser as any).isVerified !== undefined ? (insertUser as any).isVerified : false,
+      has_seen_welcome: (insertUser as any).has_seen_welcome !== undefined ? (insertUser as any).has_seen_welcome : false,
     };
 
     this.users.set(user.id, user);

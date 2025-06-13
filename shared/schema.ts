@@ -27,6 +27,7 @@ export const users = pgTable("users", {
   facebookId: text("facebook_id").unique(),
   firebaseUid: text("firebase_uid").unique(),
   isVerified: boolean("is_verified").default(false).notNull(),
+  has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
 });
 
 // Define the applications table

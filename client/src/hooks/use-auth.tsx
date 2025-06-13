@@ -40,6 +40,8 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
+  isUserVerified: (user: any) => boolean;
+  updateUserVerification: () => Promise<AuthUser | null>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -348,8 +350,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to check if user is verified
+  const isUserVerified = (user: any) => {
+    return user && user.is_verified === true;
+  };
+
+  // Update user verification status
+  const updateUserVerification = async () => {
+    try {
+      const response = await fetch('/api/user', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        return userData;
+      }
+    } catch (error) {
+      console.error('Error updating user verification:', error);
+    }
+    return null;
+  };
+
+  const authContextValue = {
+    user,
+    loading,
+    error,
+    login,
+    signup,
+    logout,
+    signInWithGoogle,
+    sendEmailLink,
+    handleEmailLinkSignIn,
+    isUserVerified,
+    updateUserVerification,
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, signup, logout, signInWithGoogle, sendEmailLink, handleEmailLinkSignIn }}>
+    <AuthContext.Provider value={authContextValue}>
       {children}
     </AuthContext.Provider>
   );

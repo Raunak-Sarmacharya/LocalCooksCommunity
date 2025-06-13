@@ -5806,7 +5806,7 @@ app.get("/api/auth/verify-email", async (req, res) => {
     const { email } = result.rows[0];
 
     // Mark email as verified
-    await pool.query('UPDATE users SET email_verified = true, updated_at = NOW() WHERE email = $1', [email]);
+    await pool.query('UPDATE users SET is_verified = true, updated_at = NOW() WHERE email = $1', [email]);
 
     // Clear verification token
     await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
