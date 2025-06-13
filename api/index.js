@@ -5085,4 +5085,219 @@ app.get('/api/session-test', (req, res) => {
   });
 });
 
+// New Hybrid Login Endpoint - tries Firebase first, then NeonDB
+app.post('/api/hybrid-login', async (req, res) => {
+  try {
+    const { email, password, username } = req.body;
+    const loginIdentifier = email || username;
+
+    console.log('=== HYBRID LOGIN ATTEMPT ===');
+    console.log('Login identifier:', loginIdentifier);
+    console.log('Has password:', !!password);
+
+    if (!loginIdentifier || !password) {
+      return res.status(400).json({ 
+        error: 'Email/Username and password are required' 
+      });
+    }
+
+    let authResult = null;
+    let authMethod = null;
+    let neonUser = null;
+
+    // Step 1: Try Firebase Authentication (for users who have Firebase accounts)
+    if (email && firebaseAdmin) {
+      try {
+        console.log('🔥 Attempting Firebase authentication...');
+        const { getAuth } = await import('firebase-admin/auth');
+        const auth = getAuth(firebaseAdmin);
+        
+        // Note: Firebase Admin SDK doesn't have direct password verification
+        // We would need the Firebase client SDK for that, but since we're on the server,
+        // we'll check if the user exists in Firebase and then verify against our database
+        
+        try {
+          const firebaseUser = await auth.getUserByEmail(email);
+          console.log('Firebase user found:', firebaseUser.uid);
+          
+          // Check if this Firebase user is linked to a Neon user
+          if (pool) {
+            const result = await pool.query(
+              'SELECT * FROM users WHERE firebase_uid = $1',
+              [firebaseUser.uid]
+            );
+            
+            if (result.rows.length > 0) {
+              const linkedUser = result.rows[0];
+              console.log('Found linked Neon user for Firebase user');
+              
+              // Verify password against Neon database
+              const passwordMatch = await comparePasswords(password, linkedUser.password);
+              
+              if (passwordMatch) {
+                console.log('✅ Firebase-linked user authenticated via Neon password');
+                authResult = {
+                  firebaseUid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  emailVerified: firebaseUser.emailVerified
+                };
+                authMethod = 'firebase-neon-hybrid';
+                neonUser = linkedUser;
+              } else {
+                console.log('❌ Password mismatch for Firebase-linked user');
+              }
+            }
+          }
+        } catch (firebaseError) {
+          console.log('Firebase user not found or error:', firebaseError.message);
+          // This is expected if user doesn't exist in Firebase, continue to Neon auth
+        }
+      } catch (firebaseError) {
+        console.log('Firebase authentication attempt failed:', firebaseError.message);
+        // Continue to Neon authentication
+      }
+    }
+
+    // Step 2: If Firebase auth failed, try NeonDB authentication
+    if (!authResult) {
+      console.log('🗃️ Attempting Neon database authentication...');
+      
+      // First try to find user by username
+      let user = await getUserByUsername(loginIdentifier);
+      
+      // If not found by username, try to find by email in applications table
+      if (!user && loginIdentifier.includes('@')) {
+        console.log('Trying email lookup in applications table...');
+        try {
+          const emailResult = await pool.query(`
+            SELECT u.* FROM users u 
+            JOIN applications a ON u.id = a.user_id 
+            WHERE LOWER(a.email) = LOWER($1) 
+            ORDER BY a.created_at DESC 
+            LIMIT 1
+          `, [loginIdentifier]);
+          
+          if (emailResult.rows.length > 0) {
+            user = emailResult.rows[0];
+            console.log('Found user by email in applications table:', user.username);
+          }
+        } catch (emailError) {
+          console.error('Error searching by email:', emailError);
+        }
+      }
+      
+      if (user) {
+        console.log('Found Neon user:', user.username);
+        
+        // Verify password
+        const passwordMatch = await comparePasswords(password, user.password);
+        
+        if (passwordMatch) {
+          console.log('✅ Neon database authentication successful');
+          authResult = {
+            userId: user.id,
+            username: user.username,
+            role: user.role
+          };
+          authMethod = 'neon-database';
+          neonUser = user;
+        } else {
+          console.log('❌ Password mismatch for Neon user');
+        }
+      } else {
+        console.log('❌ User not found in Neon database');
+      }
+    }
+
+    // Step 3: Handle authentication result
+    if (!authResult || !neonUser) {
+      console.log('❌ Authentication failed on both Firebase and Neon');
+      return res.status(401).json({ 
+        error: 'Invalid credentials',
+        message: 'Email/username or password is incorrect',
+        debug: {
+          triedFirebase: !!email && !!firebaseAdmin,
+          triedNeon: true,
+          identifier: loginIdentifier
+        }
+      });
+    }
+
+    // Remove password before sending to client
+    const { password: _, ...userWithoutPassword } = neonUser;
+
+    // Set session for compatibility
+    req.session.userId = neonUser.firebase_uid || neonUser.id.toString();
+    req.session.user = userWithoutPassword;
+
+    console.log('✅ Hybrid login successful:', {
+      authMethod,
+      userId: neonUser.id,
+      username: neonUser.username,
+      role: neonUser.role
+    });
+
+    // Save session
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+      }
+      
+      res.status(200).json({
+        success: true,
+        authMethod,
+        user: {
+          ...userWithoutPassword,
+          authMethod
+        },
+        firebase: authResult.firebaseUid ? {
+          uid: authResult.firebaseUid,
+          email: authResult.email,
+          emailVerified: authResult.emailVerified
+        } : null,
+        message: authMethod === 'firebase-neon-hybrid' 
+          ? 'Authenticated via Firebase account linked to database'
+          : 'Authenticated via database'
+      });
+    });
+
+  } catch (error) {
+    console.error('Hybrid login error:', error);
+    res.status(500).json({ 
+      error: 'Login failed', 
+      message: error.message 
+    });
+  }
+});
+
+// Hybrid Admin Authentication
+async function requireHybridAdmin(req, res, next) {
+  try {
+    // First authenticate the user
+    await new Promise((resolve, reject) => {
+      requireHybridAuth(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    // Then check if they're an admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Admin access required',
+        message: 'This endpoint requires admin privileges',
+        userRole: req.user?.role || 'none'
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Hybrid admin auth error:', error);
+    return res.status(401).json({ 
+      error: 'Authentication failed',
+      message: 'Please login as an admin'
+    });
+  }
+}
+
 export default app;
