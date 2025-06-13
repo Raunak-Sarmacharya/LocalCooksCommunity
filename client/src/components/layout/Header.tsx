@@ -21,7 +21,44 @@ const hasActiveApplication = (applications?: Application[]) => {
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
-  const { user, logout } = useFirebaseAuth();
+  const firebaseAuth = useFirebaseAuth();
+  const hybridAuth = useHybridAuth();
+  
+  // Use hybrid auth if available (covers both Firebase and session auth)
+  const { user, logout } = hybridAuth.user ? { 
+    user: hybridAuth.user, 
+    logout: async () => {
+      console.log('Header logout - Auth method:', hybridAuth.user?.authMethod);
+      // Handle logout for both auth types
+      if (hybridAuth.user?.authMethod === 'session') {
+        // Session logout
+        try {
+          console.log('Performing session logout...');
+          await fetch('/api/logout', {
+            method: 'POST',
+            credentials: 'include'
+          });
+          console.log('Session logout successful, redirecting...');
+          window.location.href = '/';
+        } catch (error) {
+          console.error('Session logout failed:', error);
+          firebaseAuth.logout();
+        }
+      } else {
+        // Firebase logout
+        console.log('Performing Firebase logout...');
+        firebaseAuth.logout();
+      }
+    }
+  } : firebaseAuth;
+  
+  // Debug logging for header state
+  console.log('Header component state:', {
+    hybridUser: hybridAuth.user,
+    firebaseUser: firebaseAuth.user,
+    usingHybrid: !!hybridAuth.user,
+    finalUser: user
+  });
 
   // Fetch applicant's applications if they are logged in
   const { data: applications } = useQuery<Application[]>({
@@ -105,12 +142,12 @@ export default function Header() {
     if (user?.role === "admin") {
       return {
         href: "/admin",
-        text: `${user.displayName}'s Admin Dashboard`
+        text: `${user.displayName || user.username || 'Admin'}'s Admin Dashboard`
       };
     } else {
       return {
         href: "/dashboard",
-        text: `${user?.displayName}'s Dashboard`
+        text: `${user?.displayName || user.username || 'User'}'s Dashboard`
       };
     }
   };
@@ -204,13 +241,13 @@ export default function Header() {
         <div className="flex items-center gap-2 md:hidden">
           {user && (
             <>
-              <Link 
-                href={getDashboardInfo().href}
-                className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
-              >
-                <User className="h-4 w-4" />
-                {user.displayName}'s Dashboard
-              </Link>
+                              <Link 
+                  href={getDashboardInfo().href}
+                  className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
+                >
+                  <User className="h-4 w-4" />
+                  {user.displayName || user.username || 'User'}'s Dashboard
+                </Link>
               <Button
                 variant="ghost"
                 size="sm"
