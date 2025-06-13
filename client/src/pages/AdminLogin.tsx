@@ -70,28 +70,31 @@ export default function AdminLogin() {
       const userData = await response.json();
       console.log('Admin login successful, user data:', userData);
       
-              // Store userId in localStorage for persistence
-        if (userData?.id) {
-          localStorage.setItem('userId', userData.id.toString());
-          console.log('Saved userId to localStorage:', userData.id);
-          
-          // Update query client with user data
-          queryClient.setQueryData(["/api/user"], userData);
-          console.log('Updated query client with user data');
-          
-          // Invalidate and refetch user data to trigger hybrid auth update
-          await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-          
-          // Admin login successful - redirect immediately
-          console.log('Admin login successful, redirecting to admin panel...');
-          
-          // Add a small delay to ensure session is saved and queries are updated
-          setTimeout(() => {
-            window.location.href = '/admin';
-          }, 800);
-        } else {
-          throw new Error('Invalid admin user data returned');
-        }
+      // Ensure we have valid user data
+      if (!userData?.id || userData.role !== 'admin') {
+        throw new Error('Invalid admin user data returned');
+      }
+
+      // Store userId in localStorage for persistence
+      localStorage.setItem('userId', userData.id.toString());
+      console.log('Saved userId to localStorage:', userData.id);
+      
+      // Update query client with user data and invalidate to trigger refetch
+      queryClient.setQueryData(["/api/user"], userData);
+      console.log('Updated query client with user data');
+      
+      // Invalidate all auth-related queries to force refresh
+      await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/user"] });
+      
+      console.log('Admin login successful, navigating to admin panel...');
+      
+      // Add a small delay to ensure session/auth state is updated
+      setTimeout(() => {
+        console.log('Redirecting to admin panel...');
+        navigate('/admin');
+      }, 500);
+      
     } catch (error: any) {
       console.error('Admin login error:', error);
       setErrorMessage(error.message || 'Failed to login');

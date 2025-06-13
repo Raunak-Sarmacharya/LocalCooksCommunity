@@ -641,9 +641,12 @@ app.post('/api/admin-login', async (req, res) => {
 
     console.log('Admin login successful for:', username);
 
-    // Set session
+    // Remove sensitive info
+    const { password: _, ...adminWithoutPassword } = admin;
+
+    // Set session with full user data
     req.session.userId = admin.id;
-    req.session.user = { id: admin.id, username: admin.username, role: admin.role };
+    req.session.user = adminWithoutPassword; // Store full user object (without password)
 
     // Ensure session is saved before responding
     await new Promise(resolve => req.session.save(err => {
@@ -651,14 +654,12 @@ app.post('/api/admin-login', async (req, res) => {
         console.error('Error saving session:', err);
       } else {
         console.log('Session saved successfully with userId:', admin.id);
+        console.log('Session user data cached:', { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role });
       }
       resolve();
     }));
 
-    // Remove sensitive info
-    const { password: _, ...adminWithoutPassword } = admin;
-
-    // Return user and save in localStorage for header auth
+    // Return user data
     return res.status(200).json(adminWithoutPassword);
   } catch (error) {
     console.error('Admin login error:', error);
@@ -812,8 +813,8 @@ app.get('/api/user', async (req, res) => {
     console.log('Fetching user with ID:', rawUserId);
 
     // If we have the user cached in session, use that
-    if (req.session.user) {
-      console.log('Using cached user from session');
+    if (req.session.user && req.session.user.id) {
+      console.log('Using cached user from session:', { id: req.session.user.id, username: req.session.user.username, role: req.session.user.role });
       return res.status(200).json(req.session.user);
     }
 
@@ -824,13 +825,16 @@ app.get('/api/user', async (req, res) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    console.log('User found in database, returning user data');
+    console.log('User found in database:', { id: user.id, username: user.username, role: user.role });
 
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
 
     // Cache user in session for future requests
     req.session.user = userWithoutPassword;
+
+    // Save session to ensure user data is cached
+    await new Promise(resolve => req.session.save(resolve));
 
     res.status(200).json(userWithoutPassword);
   } catch (error) {

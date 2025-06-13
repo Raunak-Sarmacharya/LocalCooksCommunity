@@ -27,17 +27,22 @@ function useSessionAuth() {
       try {
         const response = await fetch("/api/user", {
           credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         });
         
         if (!response.ok) {
           if (response.status === 401) {
+            console.log('Session auth: Not authenticated (401)');
             return null; // Not authenticated via session
           }
           throw new Error(`Session auth failed: ${response.status}`);
         }
         
         const userData = await response.json();
-        console.log('Session auth data:', userData);
+        console.log('Session auth successful:', userData);
         
         return {
           ...userData,
@@ -48,8 +53,13 @@ function useSessionAuth() {
         return null;
       }
     },
-    retry: false,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: (failureCount, error) => {
+      // Only retry on network errors, not 401s
+      return failureCount < 2 && !error?.message?.includes('401');
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 }
 
