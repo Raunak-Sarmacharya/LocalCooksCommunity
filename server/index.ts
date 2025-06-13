@@ -43,11 +43,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
-  
-  // Register Firebase authentication routes 
-  // These routes use Firebase Auth tokens instead of sessions
+  // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication
   registerFirebaseRoutes(app);
+  
+  // Create HTTP server for Firebase-only architecture
+  const { createServer } = await import('http');
+  const server = createServer(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
