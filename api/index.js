@@ -786,11 +786,14 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/user', async (req, res) => {
   // Debug session info
-  console.log('GET /api/user - Session data:', {
+  console.log('GET /api/user - Request details:', {
     sessionId: req.session.id,
     userId: req.session.userId || null,
+    sessionUser: req.session.user ? { id: req.session.user.id, username: req.session.user.username, role: req.session.user.role } : null,
+    cookies: req.headers.cookie || 'No cookies',
     headers: {
-      'x-user-id': req.headers['x-user-id'] || null
+      'x-user-id': req.headers['x-user-id'] || null,
+      'user-agent': req.headers['user-agent'] || null
     }
   });
 
@@ -799,7 +802,8 @@ app.get('/api/user', async (req, res) => {
 
   if (!rawUserId) {
     console.log('No userId in session or header, returning 401');
-    return res.status(401).json({ error: 'Not authenticated' });
+    console.log('Session object:', JSON.stringify(req.session, null, 2));
+    return res.status(401).json({ error: 'Not authenticated', debug: { sessionId: req.session.id, hasCookies: !!req.headers.cookie } });
   }
 
   // Store user ID in session if it's not there
@@ -4837,6 +4841,37 @@ app.get('/api/test-admin', async (req, res) => {
     console.error('Admin test error:', error);
     res.status(500).json({ error: 'Test failed', message: error.message });
   }
+});
+
+// Debug endpoint for session troubleshooting
+app.get('/api/debug-session', (req, res) => {
+  console.log('=== SESSION DEBUG ===');
+  console.log('Session ID:', req.session.id);
+  console.log('Session data:', JSON.stringify(req.session, null, 2));
+  console.log('Cookies:', req.headers.cookie);
+  console.log('User-Agent:', req.headers['user-agent']);
+  
+  res.json({
+    sessionId: req.session.id,
+    sessionData: req.session,
+    cookies: req.headers.cookie,
+    userAgent: req.headers['user-agent'],
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Test endpoint to debug session persistence
+app.get('/api/session-test', (req, res) => {
+  const sessionCounter = req.session.counter || 0;
+  req.session.counter = sessionCounter + 1;
+
+  res.status(200).json({
+    sessionId: req.session.id,
+    counter: req.session.counter,
+    userId: req.session.userId || null,
+    isAuthenticated: !!req.session.userId,
+    cookiePresent: !!req.headers.cookie
+  });
 });
 
 export default app;

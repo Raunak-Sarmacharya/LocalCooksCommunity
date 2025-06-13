@@ -79,21 +79,15 @@ export default function AdminLogin() {
       localStorage.setItem('userId', userData.id.toString());
       console.log('Saved userId to localStorage:', userData.id);
       
-      // Update query client with user data and invalidate to trigger refetch
-      queryClient.setQueryData(["/api/user"], userData);
-      console.log('Updated query client with user data');
+      // Clear all cached data and force a complete refresh
+      queryClient.clear();
+      console.log('Cleared all query cache');
       
-      // Invalidate all auth-related queries to force refresh
-      await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/user"] });
+      console.log('Admin login successful, reloading page to establish session...');
       
-      console.log('Admin login successful, navigating to admin panel...');
-      
-      // Add a small delay to ensure session/auth state is updated
-      setTimeout(() => {
-        console.log('Redirecting to admin panel...');
-        navigate('/admin');
-      }, 500);
+      // Use window.location.href to force a complete page reload 
+      // This ensures the session cookie is properly established
+      window.location.href = '/admin';
       
     } catch (error: any) {
       console.error('Admin login error:', error);
