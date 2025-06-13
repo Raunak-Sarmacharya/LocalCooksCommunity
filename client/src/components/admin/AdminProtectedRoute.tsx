@@ -1,4 +1,4 @@
-import { useHybridAuth } from "@/hooks/use-hybrid-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Redirect, useLocation } from "wouter";
 
@@ -7,15 +7,17 @@ interface AdminProtectedRouteProps {
 }
 
 export default function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const { user, loading, error, isAdmin } = useHybridAuth();
+  const { user, loading, error } = useFirebaseAuth();
   const [, setLocation] = useLocation();
+  
+  // Check if user is admin
+  const isAdmin = user?.role === 'admin';
 
   // Debug logging
-  console.log('AdminProtectedRoute - Hybrid auth state:', {
+  console.log('AdminProtectedRoute - Firebase auth state:', {
     loading,
     hasUser: !!user,
     userRole: user?.role,
-    authMethod: user?.authMethod,
     isAdmin,
     error
   });
@@ -64,6 +66,6 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
     return <Redirect to="/admin/login" />;
   }
 
-  console.log('AdminProtectedRoute - Admin access granted for user:', user.username || user.displayName, `(${user.authMethod})`);
+  console.log('AdminProtectedRoute - Admin access granted for user:', user.displayName || user.email);
   return <>{children}</>;
 }

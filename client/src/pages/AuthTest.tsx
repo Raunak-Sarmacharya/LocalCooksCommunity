@@ -2,11 +2,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useHybridAuth } from "@/hooks/use-hybrid-auth";
 import { useQuery } from "@tanstack/react-query";
 
 export default function AuthTest() {
-  const hybridAuth = useHybridAuth();
   const firebaseAuth = useFirebaseAuth();
   
   // Manual session check
@@ -33,34 +31,29 @@ export default function AuthTest() {
     <div className="container mx-auto p-6 space-y-6">
       <h1 className="text-3xl font-bold">Authentication Test Page</h1>
       
-      {/* Hybrid Auth Status */}
+      {/* Firebase Auth Status (Primary) */}
       <Card>
         <CardHeader>
-          <CardTitle>Hybrid Authentication Status</CardTitle>
-          <CardDescription>Combined Firebase + Session authentication</CardDescription>
+          <CardTitle>Firebase Authentication Status</CardTitle>
+          <CardDescription>Primary authentication system</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
-            <Badge variant={hybridAuth.loading ? "secondary" : "default"}>
-              {hybridAuth.loading ? "Loading" : "Ready"}
+            <Badge variant={firebaseAuth.loading ? "secondary" : "default"}>
+              {firebaseAuth.loading ? "Loading" : "Ready"}
             </Badge>
-            {hybridAuth.user && (
-              <Badge variant={hybridAuth.isAdmin ? "destructive" : "outline"}>
-                {hybridAuth.isAdmin ? "Admin" : "User"}
-              </Badge>
-            )}
-            {hybridAuth.user?.authMethod && (
-              <Badge variant="outline">
-                {hybridAuth.user.authMethod}
+            {firebaseAuth.user && (
+              <Badge variant={firebaseAuth.user.role === 'admin' ? "destructive" : "outline"}>
+                {firebaseAuth.user.role === 'admin' ? "Admin" : "User"}
               </Badge>
             )}
           </div>
           
-          {hybridAuth.user ? (
+          {firebaseAuth.user ? (
             <div className="bg-green-50 p-3 rounded-lg">
-              <h4 className="font-medium text-green-800">Authenticated User:</h4>
+              <h4 className="font-medium text-green-800">Authenticated Firebase User:</h4>
               <pre className="text-sm text-green-700 mt-1">
-                {JSON.stringify(hybridAuth.user, null, 2)}
+                {JSON.stringify(firebaseAuth.user, null, 2)}
               </pre>
             </div>
           ) : (

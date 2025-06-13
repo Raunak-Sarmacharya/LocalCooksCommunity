@@ -1,5 +1,5 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
-import { useHybridAuth } from "@/hooks/use-hybrid-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
@@ -32,16 +32,15 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
-  const { user, loading, isAdmin } = useHybridAuth();
+  const { user, loading } = useFirebaseAuth();
+  const isAdmin = user?.role === 'admin';
 
   // Debug authentication state
   console.log('Admin Dashboard - Authentication state:', {
     loading,
     isLoggedIn: !!user,
-    userId: user?.id,
     userRole: user?.role,
-    isAdmin,
-    authMethod: user?.authMethod
+    isAdmin
   });
 
   // Fetch all applications - use session auth since admin logged in via session
