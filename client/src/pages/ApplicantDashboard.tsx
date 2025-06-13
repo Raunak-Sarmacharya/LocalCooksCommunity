@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
+import { useUserSync } from "@/hooks/use-user-sync";
 import {
     formatApplicationStatus,
     formatKitchenPreference,
@@ -39,6 +40,7 @@ import {
     GraduationCap,
     Info,
     Loader2,
+    RefreshCw,
     Shield,
     Star,
     Trophy,
@@ -81,6 +83,7 @@ const itemVariants = {
 
 export default function ApplicantDashboard() {
   const { user, logout } = useFirebaseAuth();
+  const { syncUser, isSyncing, syncError, syncSuccess } = useUserSync();
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
   // Debug authentication state
@@ -424,6 +427,23 @@ export default function ApplicantDashboard() {
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleSyncAccount = () => {
+    syncUser();
+    if (syncSuccess) {
+      toast({
+        title: "Account Synced",
+        description: "Your account has been synced. Your applications should now be visible.",
+      });
+    }
+    if (syncError) {
+      toast({
+        title: "Sync Failed",
+        description: "Failed to sync your account. Please try again or contact support.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -1043,19 +1063,43 @@ export default function ApplicantDashboard() {
             ) : (
               <>
                 <h2 className="text-2xl font-semibold mb-2">No applications yet</h2>
-                <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                <p className="text-gray-600 mb-6 max-w-md mx-auto">
                   You haven't submitted any applications to Local Cooks yet. Start your application now to join our growing community of talented chefs!
                 </p>
-                <Button
-                  asChild
-                  size="lg"
-                  className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
-                >
-                  <Link href="/apply">
-                    <ChefHat className="mr-2 h-5 w-5" />
-                    Start Your Application
-                  </Link>
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
+                  >
+                    <Link href="/apply">
+                      <ChefHat className="mr-2 h-5 w-5" />
+                      Start Your Application
+                    </Link>
+                  </Button>
+                  <Button
+                    onClick={handleSyncAccount}
+                    disabled={isSyncing}
+                    variant="outline"
+                    size="lg"
+                    className="rounded-full px-6 md:px-8 w-full sm:w-auto"
+                  >
+                    {isSyncing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Sync Account
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-500 mt-4">
+                  Can't see your applications? Try syncing your account first.
+                </p>
               </>
             )}
 

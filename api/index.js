@@ -692,6 +692,73 @@ app.post('/api/admin-login', async (req, res) => {
   }
 });
 
+// Manual user sync endpoint for current user
+app.post('/api/sync-current-user', async (req, res) => {
+  try {
+    const { uid, email, displayName } = req.body;
+    
+    if (!uid) {
+      return res.status(400).json({ error: 'Firebase UID required' });
+    }
+    
+    console.log('Manual sync request for Firebase UID:', uid);
+    
+    // Check if user already exists
+    let user = await getUser(uid);
+    
+    if (user) {
+      console.log('User already synced:', { id: user.id, username: user.username, role: user.role });
+      return res.json({
+        success: true,
+        alreadySynced: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          firebase_uid: user.firebase_uid
+        }
+      });
+    }
+    
+    // Call the existing sync endpoint
+    const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uid: uid,
+        email: email || `firebase_user_${uid}@manual-sync.local`,
+        displayName: displayName || `User_${uid.slice(-8)}`,
+        role: 'applicant'
+      })
+    });
+    
+    if (syncResponse.ok) {
+      const syncData = await syncResponse.json();
+      console.log('Manual sync successful:', syncData);
+      
+      // Get the updated user
+      user = await getUser(uid);
+      
+      return res.json({
+        success: true,
+        synced: true,
+        user: syncData.user || user
+      });
+    } else {
+      const errorData = await syncResponse.json();
+      console.log('Manual sync failed:', syncResponse.status, errorData);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Sync failed', 
+        details: errorData 
+      });
+    }
+  } catch (error) {
+    console.error('Manual sync error:', error);
+    res.status(500).json({ error: 'Manual sync failed', message: error.message });
+  }
+});
+
 // Debug endpoint to check user sync status
 app.get('/api/debug/user-sync/:uid', async (req, res) => {
   try {
@@ -1516,8 +1583,20 @@ app.get('/api/applications/my-applications', async (req, res) => {
     sessionId: req.session.id,
     userId: req.session.userId || null,
     headers: {
-      'x-user-id': req.headers['x-user-id'] || null
-    }
+      'x-user-id': req.headers['x-user-id'] || null,
+      'user-agent': req.headers['user-agent'] || null,
+      'cache-control': req.headers['cache-control'] || null
+    },
+    method: req.method,
+    url: req.url,
+    timestamp: new Date().toISOString()
+  });
+
+  // Force no-cache response
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
   });
 
   // Get user ID from session or header
@@ -1530,6 +1609,12 @@ app.get('/api/applications/my-applications', async (req, res) => {
 
   // Convert Firebase UID to integer user ID
   let user = await getUser(rawUserId);
+  
+  console.log('User lookup result:', {
+    rawUserId: rawUserId,
+    userFound: !!user,
+    userDetails: user ? { id: user.id, username: user.username, role: user.role, firebase_uid: user.firebase_uid } : null
+  });
   
   // If user not found and rawUserId looks like a Firebase UID, try to auto-sync
   if (!user && typeof rawUserId === 'string' && rawUserId.length > 10 && !rawUserId.match(/^\d+$/)) {
@@ -1554,6 +1639,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
         
         // Try to get user again after sync
         user = await getUser(rawUserId);
+        console.log('User after auto-sync:', user ? { id: user.id, username: user.username, role: user.role } : 'Still not found');
       } else {
         console.log('Auto-sync failed:', syncResponse.status);
       }
@@ -1568,6 +1654,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
   }
   
   const userId = user.id;
+  console.log('Using database user ID for applications query:', userId);
 
   try {
     // Get from database if available
