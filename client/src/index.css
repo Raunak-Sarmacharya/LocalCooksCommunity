@@ -25,6 +25,22 @@
   --destructive-foreground: 60 9.1% 97.8%;
   --ring: 347 91% 51%;
   --radius: 0.5rem;
+  
+  /* Enhanced Animation Variables */
+  --auth-primary-blue: #4285f4;
+  --auth-primary-blue-hover: #5a95f5;
+  --auth-primary-blue-light: rgba(66, 133, 244, 0.1);
+  --auth-success-green: #28a745;
+  --auth-error-red: #dc3545;
+  --auth-warning-yellow: #ffc107;
+  --auth-text-primary: #1a1a1a;
+  --auth-text-secondary: #6b7280;
+  --auth-border-color: #e5e7eb;
+  --auth-background-light: #f9fafb;
+  --auth-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --auth-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --auth-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --auth-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
 .dark {
@@ -71,6 +87,226 @@
   /* Prevent cursor from changing to text selection (I-beam) when hovering over text */
   p, span, h1, h2, h3, h4, h5, h6, div {
     cursor: default;
+  }
+}
+
+/* Enhanced Authentication Animations */
+@layer components {
+  /* Smooth glassmorphism effect */
+  .auth-glass {
+    backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  /* Premium button animations */
+  .auth-button {
+    @apply relative overflow-hidden transition-all duration-300 ease-out;
+    transform-style: preserve-3d;
+  }
+
+  .auth-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease-in-out;
+  }
+
+  .auth-button:hover::before {
+    left: 100%;
+  }
+
+  /* Enhanced input animations */
+  .auth-input {
+    @apply transition-all duration-300 ease-out;
+    transform-origin: center;
+  }
+
+  .auth-input:focus {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 3px var(--auth-primary-blue-light);
+  }
+
+  /* Loading spinner with premium feel */
+  .auth-spinner {
+    animation: auth-spin 1s linear infinite;
+    filter: drop-shadow(0 2px 4px rgba(66, 133, 244, 0.3));
+  }
+
+  @keyframes auth-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Floating animation for elements */
+  .auth-float {
+    animation: auth-float 3s ease-in-out infinite;
+  }
+
+  @keyframes auth-float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+
+  /* Pulse animation for loading states */
+  .auth-pulse {
+    animation: auth-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes auth-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Elegant slide-in animation */
+  .auth-slide-in {
+    animation: auth-slide-in 0.6s ease-out forwards;
+  }
+
+  @keyframes auth-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Success checkmark animation */
+  .auth-checkmark {
+    animation: auth-checkmark 0.6s ease-in-out forwards;
+  }
+
+  @keyframes auth-checkmark {
+    0% {
+      transform: scale(0);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.2);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Error shake animation */
+  .auth-shake {
+    animation: auth-shake 0.5s ease-in-out;
+  }
+
+  @keyframes auth-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+
+  /* Gradient background animation */
+  .auth-gradient-bg {
+    background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+    background-size: 400% 400%;
+    animation: auth-gradient 15s ease infinite;
+  }
+
+  @keyframes auth-gradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  /* Tab switching animation */
+  .auth-tab-indicator {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Form field focus ring */
+  .auth-focus-ring {
+    box-shadow: 0 0 0 3px var(--auth-primary-blue-light);
+    border-color: var(--auth-primary-blue);
+  }
+
+  /* Button states */
+  .auth-button-primary {
+    background: linear-gradient(135deg, var(--auth-primary-blue), var(--auth-primary-blue-hover));
+    box-shadow: 0 4px 14px 0 rgba(66, 133, 244, 0.39);
+    transition: all 0.3s ease;
+  }
+
+  .auth-button-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px 0 rgba(66, 133, 244, 0.5);
+  }
+
+  .auth-button-primary:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 14px 0 rgba(66, 133, 244, 0.39);
+  }
+
+  /* Loading dots animation */
+  .auth-loading-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .auth-loading-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--auth-primary-blue);
+    animation: auth-dot-bounce 1.4s ease-in-out infinite both;
+  }
+
+  .auth-loading-dot:nth-child(1) { animation-delay: -0.32s; }
+  .auth-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+
+  @keyframes auth-dot-bounce {
+    0%, 80%, 100% {
+      transform: scale(0);
+      opacity: 0.5;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Password strength indicator */
+  .auth-strength-bar {
+    height: 3px;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+    transform-origin: left;
+    animation: auth-strength-grow 0.3s ease-out;
+  }
+
+  @keyframes auth-strength-grow {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  /* Email verification animation */
+  .auth-email-bounce {
+    animation: auth-email-bounce 2s ease-in-out infinite;
+  }
+
+  @keyframes auth-email-bounce {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    25% {
+      transform: translateY(-5px) rotate(-2deg);
+    }
+    75% {
+      transform: translateY(-5px) rotate(2deg);
+    }
   }
 }
 
@@ -156,7 +392,7 @@ button, .button, a[role="button"], [type="button"], [type="submit"] {
   @apply min-h-[44px]; /* Minimum height for touch targets */
 }
 
-/* Responsive improvements */
+/* Enhanced Mobile Responsiveness */
 @media (max-width: 640px) {
   .container {
     padding-left: 1rem;
@@ -198,50 +434,66 @@ button, .button, a[role="button"], [type="button"], [type="submit"] {
     padding-left: 1.5rem;
     padding-right: 1.5rem;
   }
-  
-  /* Better form inputs on mobile */
-  input, select, textarea, button {
-    font-size: 16px !important; /* Prevent auto-zoom on iOS */
+
+  /* Enhanced auth mobile styles */
+  .auth-glass {
+    backdrop-filter: blur(10px);
   }
-  
-  /* Adjust spacing and layout */
-  .gap-8 {
-    gap: 1.5rem;
+
+  .auth-button {
+    min-height: 48px;
+    font-size: 1rem;
   }
-  
-  .gap-12 {
-    gap: 2rem;
-  }
-  
-  /* Ensure touch targets are at least 44px */
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
+
+  .auth-input {
+    min-height: 48px;
+    font-size: 16px; /* Prevents zoom on iOS */
   }
 }
 
-/* Ensure proper spacing on mobile */
-@media (max-width: 480px) {
-  .container {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .auth-button {
+    border: 0.5px solid transparent;
+  }
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .auth-float,
+  .auth-gradient-bg,
+  .auth-email-bounce,
+  .auth-loading-dot,
+  .auth-spinner {
+    animation: none;
   }
   
-  .px-4 {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+  .auth-button,
+  .auth-input,
+  .auth-tab-indicator {
+    transition: none;
+  }
+}
+
+/* Dark mode enhancements */
+@media (prefers-color-scheme: dark) {
+  .auth-glass {
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
   
-  /* Stack buttons on very small screens */
-  .button-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    width: 100%;
+  .auth-button-primary {
+    background: linear-gradient(135deg, #4285f4, #1a73e8);
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .auth-button:hover {
+    transform: none;
   }
   
-  /* Full-width elements on small screens */
-  .mobile-full {
-    width: 100%;
+  .auth-button:active {
+    transform: scale(0.98);
   }
 }

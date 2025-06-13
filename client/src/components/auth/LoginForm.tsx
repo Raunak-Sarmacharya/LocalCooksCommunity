@@ -10,9 +10,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import clsx from "clsx";
-import { ArrowLeft, CheckCircle2, Loader2, Lock, Mail } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Loader2, Lock, Mail } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -29,22 +28,12 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginFormProps) {
-  const { login, signInWithGoogle, loading, error, sendEmailLink, handleEmailLinkSignIn } = useFirebaseAuth();
+  const { login, signInWithGoogle, loading, error } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
-  const [showEmailLink, setShowEmailLink] = useState(false);
-  const [emailForLink, setEmailForLink] = useState("");
-  const [linkSent, setLinkSent] = useState(false);
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
-
-  useEffect(() => {
-    handleEmailLinkSignIn().then(() => {
-      if (onSuccess) onSuccess();
-    });
-    // eslint-disable-next-line
-  }, []);
 
   const onSubmit = async (data: LoginFormData) => {
     setHasAttemptedLogin?.(true);
@@ -52,16 +41,6 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
     try {
       await login(data.email, data.password);
       if (onSuccess) onSuccess();
-    } catch (e: any) {
-      setFormError(e.message);
-    }
-  };
-
-  const handleSendEmailLink = async () => {
-    setFormError(null);
-    try {
-      await sendEmailLink(emailForLink);
-      setLinkSent(true);
     } catch (e: any) {
       setFormError(e.message);
     }
@@ -98,144 +77,83 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
         <div className="flex-1 h-px bg-gray-200" />
       </div>
 
-      {/* Animated Section Switch */}
-      <div className={clsx("transition-all duration-300", showEmailLink ? "opacity-100" : "")}>
-        {!showEmailLink ? (
-          <>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                {(formError || error) && (
-                  <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 flex items-center gap-2">
-                    <Lock className="w-4 h-4" />
-                    {formError || error}
-                  </div>
-                )}
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <Input
-                            className="pl-10"
-                            placeholder="Enter your email"
-                            autoComplete="email"
-                            {...field}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <Input
-                            type="password"
-                            className="pl-10"
-                            placeholder="Enter your password"
-                            autoComplete="current-password"
-                            {...field}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Logging in...
-                    </>
-                  ) : (
-                    "Login"
-                  )}
-                </Button>
-              </form>
-            </Form>
-            <div className="mt-4 text-center">
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-blue-600 hover:underline font-medium"
-                onClick={() => setShowEmailLink(true)}
-                aria-label="Sign in with email link (passwordless)"
-              >
-                <Mail className="w-4 h-4 mr-2 inline" />
-                Sign in with email link (passwordless)
-              </Button>
+      {/* Login Form */}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          {(formError || error) && (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 flex items-center gap-2">
+              <Lock className="w-4 h-4" />
+              {formError || error}
             </div>
-          </>
-        ) : (
-          <div className="space-y-5 animate-fade-in">
-            {linkSent ? (
-              <div className="rounded-md bg-green-50 p-3 text-sm text-green-700 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                Email link sent! Check your inbox.
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label htmlFor="email-link" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email for sign-in link
-                  </label>
+          )}
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
-                      id="email-link"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={emailForLink}
-                      onChange={e => setEmailForLink(e.target.value)}
-                      disabled={loading}
                       className="pl-10"
+                      placeholder="Enter your email"
                       autoComplete="email"
+                      {...field}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">We'll send a secure sign-in link to your email.</p>
-                </div>
-                <Button
-                  type="button"
-                  className="w-full mt-2"
-                  onClick={handleSendEmailLink}
-                  disabled={loading || !emailForLink}
-                  aria-label="Send sign-in link"
-                >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
-                  Send sign-in link
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="w-full mt-2 text-gray-600 hover:text-blue-600 flex items-center justify-center"
-                  onClick={() => setShowEmailLink(false)}
-                  aria-label="Back to password login"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to password login
-                </Button>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      type="password"
+                      className="pl-10"
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      {...field}
+                    />
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Logging in...
               </>
+            ) : (
+              "Login"
             )}
-            {formError && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-500 flex items-center gap-2">
-                <Lock className="w-4 h-4" />
-                {formError}
-              </div>
-            )}
-          </div>
-        )}
+          </Button>
+        </form>
+      </Form>
+      
+      {/* Forgot Password Link */}
+      <div className="mt-4 text-center">
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full text-blue-600 hover:underline font-medium"
+          aria-label="Forgot password"
+        >
+          <Mail className="w-4 h-4 mr-2 inline" />
+          Forgot your password?
+        </Button>
       </div>
     </div>
   );

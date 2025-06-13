@@ -3758,4 +3758,386 @@ app.post('/api/firebase-sync-user', async (req, res) => {
   }
 });
 
+// ===================================
+// ENHANCED FIREBASE AUTHENTICATION
+// ===================================
+
+// Initialize Firebase Admin SDK for enhanced auth
+let firebaseAdmin;
+try {
+  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
+    
+    if (getApps().length === 0) {
+      const firebaseConfig = {
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      };
+      
+      firebaseAdmin = initializeApp({
+        credential: cert(firebaseConfig),
+        projectId: process.env.FIREBASE_PROJECT_ID,
+      });
+      
+      console.log('✅ Enhanced Firebase Admin SDK initialized');
+    } else {
+      firebaseAdmin = getApps()[0];
+    }
+  } else {
+    console.log('⚠️ Enhanced Firebase Admin SDK configuration missing');
+  }
+} catch (error) {
+  console.error('❌ Enhanced Firebase Admin SDK initialization failed:', error);
+}
+
+// Enhanced Firebase token verification
+async function verifyFirebaseToken(token) {
+  try {
+    if (!firebaseAdmin) {
+      throw new Error('Enhanced Firebase Admin SDK not initialized');
+    }
+    
+    const { getAuth } = await import('firebase-admin/auth');
+    const auth = getAuth(firebaseAdmin);
+    const decodedToken = await auth.verifyIdToken(token);
+    return decodedToken;
+  } catch (error) {
+    console.error('Enhanced token verification error:', error);
+    return null;
+  }
+}
+
+// Enhanced Firebase Auth Middleware
+async function verifyFirebaseAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    req.firebaseUser = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      email_verified: decodedToken.email_verified,
+    };
+
+    next();
+  } catch (error) {
+    console.error('Enhanced Firebase auth verification error:', error);
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Token verification failed' 
+    });
+  }
+}
+
+// Enhanced Firebase Auth with User Loading Middleware
+async function requireFirebaseAuthWithUser(req, res, next) {
+  try {
+    await verifyFirebaseAuth(req, res, () => {});
+    
+    if (!req.firebaseUser) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Firebase authentication required' 
+      });
+    }
+
+    // Load Neon user from Firebase UID
+    let neonUser = null;
+    if (pool) {
+      const result = await pool.query(
+        'SELECT * FROM users WHERE firebase_uid = $1',
+        [req.firebaseUser.uid]
+      );
+      neonUser = result.rows[0] || null;
+    } else {
+      // In-memory fallback
+      for (const user of users.values()) {
+        if (user.firebase_uid === req.firebaseUser.uid) {
+          neonUser = user;
+          break;
+        }
+      }
+    }
+    
+    if (!neonUser) {
+      return res.status(404).json({ 
+        error: 'User not found', 
+        message: 'No matching user in database. Please complete registration.' 
+      });
+    }
+
+    req.neonUser = {
+      id: neonUser.id,
+      username: neonUser.username,
+      role: neonUser.role,
+      firebaseUid: neonUser.firebase_uid || undefined,
+    };
+
+    console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
+    next();
+  } catch (error) {
+    console.error('Enhanced Firebase auth with user verification error:', error);
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      message: 'Authentication verification failed' 
+    });
+  }
+}
+
+// Enhanced Admin Role Verification
+function requireAdmin(req, res, next) {
+  if (!req.neonUser) {
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Authentication required' 
+    });
+  }
+
+  if (req.neonUser.role !== 'admin') {
+    return res.status(403).json({ 
+      error: 'Forbidden', 
+      message: 'Admin access required' 
+    });
+  }
+
+  next();
+}
+
+// ===================================
+// ENHANCED FIREBASE ROUTES
+// ===================================
+
+// Enhanced Get Current User Profile
+app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    res.json({
+      neonUser: {
+        id: req.neonUser.id,
+        username: req.neonUser.username,
+        role: req.neonUser.role,
+      },
+      firebaseUser: {
+        uid: req.firebaseUser.uid,
+        email: req.firebaseUser.email,
+        emailVerified: req.firebaseUser.email_verified,
+      }
+    });
+  } catch (error) {
+    console.error('Error getting enhanced user profile:', error);
+    res.status(500).json({ error: 'Failed to get user profile' });
+  }
+});
+
+// Enhanced Submit Application
+app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    // Validate the request body (you can add zod validation here if needed)
+    const applicationData = {
+      ...req.body,
+      userId: req.neonUser.id
+    };
+
+    console.log(`📝 Enhanced application: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id}`);
+
+    // Use existing createApplication logic or replicate it here
+    let application;
+    if (pool) {
+      const result = await pool.query(
+        `INSERT INTO applications (
+          user_id, full_name, email, phone, food_safety_license, 
+          food_establishment_cert, kitchen_preference, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [
+          applicationData.userId,
+          applicationData.fullName,
+          applicationData.email,
+          applicationData.phone,
+          applicationData.foodSafetyLicense,
+          applicationData.foodEstablishmentCert,
+          applicationData.kitchenPreference,
+          'inReview',
+          new Date()
+        ]
+      );
+      application = result.rows[0];
+    } else {
+      // In-memory fallback
+      const id = Date.now();
+      application = {
+        id,
+        user_id: applicationData.userId,
+        full_name: applicationData.fullName,
+        email: applicationData.email,
+        phone: applicationData.phone,
+        food_safety_license: applicationData.foodSafetyLicense,
+        food_establishment_cert: applicationData.foodEstablishmentCert,
+        kitchen_preference: applicationData.kitchenPreference,
+        status: 'inReview',
+        created_at: new Date()
+      };
+    }
+
+    res.json({ 
+      success: true, 
+      application,
+      message: 'Application submitted successfully'
+    });
+  } catch (error) {
+    console.error('Error creating enhanced application:', error);
+    res.status(500).json({ 
+      error: 'Failed to create application',
+      message: error.message
+    });
+  }
+});
+
+// Enhanced Get User's Applications
+app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    let applications = [];
+    
+    if (pool) {
+      const result = await pool.query(
+        'SELECT * FROM applications WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.neonUser.id]
+      );
+      applications = result.rows;
+    } else {
+      // In-memory fallback
+      applications = Array.from(applications.values()).filter(
+        app => app.user_id === req.neonUser.id
+      );
+    }
+    
+    console.log(`📋 Enhanced retrieval: ${applications.length} applications for Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id}`);
+
+    res.json(applications);
+  } catch (error) {
+    console.error('Error getting enhanced user applications:', error);
+    res.status(500).json({ error: 'Failed to get applications' });
+  }
+});
+
+// Enhanced Admin Routes
+app.get('/api/firebase/admin/applications', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    let applications = [];
+    
+    if (pool) {
+      const result = await pool.query('SELECT * FROM applications ORDER BY created_at DESC');
+      applications = result.rows;
+    } else {
+      // In-memory fallback
+      applications = Array.from(applications.values());
+    }
+    
+    console.log(`👑 Enhanced admin ${req.firebaseUser.uid} requested all applications`);
+
+    res.json(applications);
+  } catch (error) {
+    console.error('Error getting enhanced admin applications:', error);
+    res.status(500).json({ error: 'Failed to get applications' });
+  }
+});
+
+// Enhanced Dashboard Data
+app.get('/api/firebase/dashboard', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const userId = req.neonUser.id;
+    const firebaseUid = req.firebaseUser.uid;
+
+    console.log(`🏠 Enhanced dashboard: Firebase UID ${firebaseUid} → Neon User ID ${userId}`);
+
+    // Get applications and microlearning progress
+    let applications = [];
+    let microlearningProgress = [];
+
+    if (pool) {
+      const [appResult, progressResult] = await Promise.all([
+        pool.query('SELECT * FROM applications WHERE user_id = $1', [userId]),
+        getMicrolearningProgress(userId)
+      ]);
+      applications = appResult.rows;
+      microlearningProgress = progressResult;
+    }
+
+    res.json({
+      user: {
+        id: userId,
+        username: req.neonUser.username,
+        role: req.neonUser.role,
+        firebaseUid: firebaseUid
+      },
+      applications,
+      microlearningProgress,
+      stats: {
+        totalApplications: applications.length,
+        approvedApplications: applications.filter(app => app.status === 'approved').length,
+        completedLessons: microlearningProgress.length
+      }
+    });
+  } catch (error) {
+    console.error('Error getting enhanced dashboard data:', error);
+    res.status(500).json({ error: 'Failed to get dashboard data' });
+  }
+});
+
+// Enhanced Microlearning Progress
+app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const { videoId, progress, completed } = req.body;
+    const userId = req.neonUser.id;
+
+    console.log(`📺 Enhanced video progress: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${userId}`);
+
+    await updateVideoProgress({
+      userId,
+      videoId,
+      progress,
+      completed
+    });
+
+    res.json({ success: true, message: 'Progress updated' });
+  } catch (error) {
+    console.error('Error updating enhanced video progress:', error);
+    res.status(500).json({ error: 'Failed to update progress' });
+  }
+});
+
+// Enhanced Health Check
+app.get('/api/firebase-health', (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    message: 'Enhanced Firebase Auth → Neon DB bridge is working',
+    architecture: 'Hybrid: Stateless JWT + Legacy Session Support',
+    auth: {
+      firebaseConfigured: !!process.env.FIREBASE_PROJECT_ID,
+      neonConfigured: !!process.env.DATABASE_URL,
+      legacySessionsActive: true,
+      enhancedFirebaseActive: !!firebaseAdmin
+    }
+  });
+});
+
+console.log('🔥 Enhanced Firebase authentication routes added to existing API');
+console.log('✨ Hybrid architecture: Both session-based and Firebase JWT authentication available');
+
 export default app;
