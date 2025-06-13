@@ -55,6 +55,7 @@ export default function AuthPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [userMeta, setUserMeta] = useState<any>(null);
+  const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showVerifyEmail, setShowVerifyEmail] = useState(false);
   const [verifyEmailLoading, setVerifyEmailLoading] = useState(false);
   const [verifyEmailError, setVerifyEmailError] = useState<string | null>(null);
@@ -101,6 +102,9 @@ export default function AuthPage() {
         
         const fetchUserMeta = async () => {
           try {
+            setUserMetaLoading(true);
+            console.log('🔄 Starting user meta fetch...');
+            
             // Get Firebase auth token
             const firebaseUser = auth.currentUser;
             if (!firebaseUser) {
@@ -150,6 +154,8 @@ export default function AuthPage() {
             }
           } catch (error) {
             console.error('Error fetching user meta:', error);
+          } finally {
+            setUserMetaLoading(false);
           }
         };
         
@@ -188,12 +194,24 @@ export default function AuthPage() {
     };
   }, [user, loading, hasAttemptedLogin, location, isInitialLoad, showWelcome]);
 
-  if (loading || isInitialLoad) {
+  if (loading || isInitialLoad || userMetaLoading) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
+  // DEBUG: Log current state
+  console.log('🔍 AUTH PAGE RENDER DEBUG:', {
+    hasUser: !!user,
+    hasAttemptedLogin,
+    isInitialLoad,
+    showWelcome,
+    showVerifyEmail,
+    hasCheckedUser: hasCheckedUser.current,
+    userMeta: userMeta ? { is_verified: userMeta.is_verified, has_seen_welcome: userMeta.has_seen_welcome } : null
+  });
+
   // Show welcome screen if needed (CHECK THIS FIRST!)
   if (showWelcome) {
+    console.log('🎉 SHOWING WELCOME SCREEN');
     return <WelcomeScreen onContinue={async () => {
       await handleWelcomeContinue();
     }} />;
@@ -259,8 +277,8 @@ export default function AuthPage() {
     );
   }
 
-  // Don't render anything while redirecting
-  if (user && hasAttemptedLogin && !isInitialLoad && !showWelcome) return null;
+  // Don't render anything while redirecting, but ONLY if we've checked user meta
+  if (user && hasAttemptedLogin && !isInitialLoad && !showWelcome && hasCheckedUser.current) return null;
 
   const handleSuccess = () => {
     setHasAttemptedLogin(true);
