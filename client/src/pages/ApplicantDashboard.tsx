@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
-import { useUserSync } from "@/hooks/use-user-sync";
+
 import {
     formatApplicationStatus,
     formatKitchenPreference,
@@ -83,7 +83,7 @@ const itemVariants = {
 
 export default function ApplicantDashboard() {
   const { user, logout } = useFirebaseAuth();
-  const { syncUser, isSyncing, syncError, syncSuccess } = useUserSync();
+
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
   // Debug authentication state
@@ -430,20 +430,9 @@ export default function ApplicantDashboard() {
   };
 
   const handleSyncAccount = () => {
-    syncUser();
-    if (syncSuccess) {
-      toast({
-        title: "Account Synced",
-        description: "Your account has been synced. Your applications should now be visible.",
-      });
-    }
-    if (syncError) {
-      toast({
-        title: "Sync Failed",
-        description: "Failed to sync your account. Please try again or contact support.",
-        variant: "destructive",
-      });
-    }
+    // Sync is now handled automatically by the auth system
+    // Just refresh the applications data
+    window.location.reload();
   };
 
   return (
