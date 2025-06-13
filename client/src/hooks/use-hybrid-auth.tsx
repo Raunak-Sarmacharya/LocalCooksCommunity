@@ -25,6 +25,9 @@ function useSessionAuth() {
     queryKey: ["/api/user"],
     queryFn: async () => {
       try {
+        console.log('Session auth: Making request to /api/user...');
+        console.log('Session auth: Document cookie:', document.cookie);
+        
         const response = await fetch("/api/user", {
           credentials: "include",
           headers: {
@@ -33,11 +36,18 @@ function useSessionAuth() {
           }
         });
         
+        console.log('Session auth: Response status:', response.status);
+        console.log('Session auth: Response headers:', Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
           if (response.status === 401) {
             console.log('Session auth: Not authenticated (401)');
+            const errorText = await response.text();
+            console.log('Session auth: Error response:', errorText);
             return null; // Not authenticated via session
           }
+          const errorText = await response.text();
+          console.error('Session auth: Failed with status', response.status, ':', errorText);
           throw new Error(`Session auth failed: ${response.status}`);
         }
         
@@ -49,7 +59,7 @@ function useSessionAuth() {
           authMethod: 'session' as const
         };
       } catch (error) {
-        console.log('Session auth failed:', error);
+        console.error('Session auth failed:', error);
         return null;
       }
     },
@@ -57,7 +67,7 @@ function useSessionAuth() {
       // Only retry on network errors, not 401s
       return failureCount < 2 && !error?.message?.includes('401');
     },
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 30 * 1000, // 30 seconds for debugging
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
