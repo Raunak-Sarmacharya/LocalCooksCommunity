@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Add missing unique constraints required by ON CONFLICT clauses
+ALTER TABLE password_reset_tokens ADD CONSTRAINT IF NOT EXISTS password_reset_tokens_user_id_unique UNIQUE (user_id);
+ALTER TABLE email_verification_tokens ADD CONSTRAINT IF NOT EXISTS email_verification_tokens_email_unique UNIQUE (email);
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
