@@ -86,6 +86,7 @@ export class MemStorage implements IStorage {
       role: "admin",
       googleId: null,
       facebookId: null,
+      firebaseUid: null,
       isVerified: true,
     };
     this.users.set(adminUser.id, adminUser);
@@ -149,6 +150,7 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "applicant",
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
+      firebaseUid: insertUser.firebaseUid || null,
       isVerified: false,
     };
 

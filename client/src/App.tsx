@@ -10,10 +10,10 @@ import { queryClient } from "./lib/queryClient";
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
+import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import Home from "@/pages/Home";
-import Success from "@/pages/Success";
-import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
+import Success from "@/pages/Success";
 
 // Lazy load larger components
 const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
@@ -37,7 +37,7 @@ function Router() {
         <Route path="/" component={Home} />
         <ProtectedRoute path="/apply" component={ApplicationForm} />
         <Route path="/success" component={Success} />
-        <Route path="/auth" component={AuthPage} />
+        <Route path="/auth" component={EnhancedAuthPage} />
         <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning" component={Microlearning} />

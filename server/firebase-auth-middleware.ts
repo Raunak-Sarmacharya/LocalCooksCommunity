@@ -11,7 +11,7 @@ declare global {
         email?: string;
         email_verified?: boolean;
       };
-      user?: {
+      neonUser?: {
         id: number;
         username: string;
         role: "admin" | "applicant";
@@ -91,7 +91,7 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     }
 
     // Set both Firebase and Neon user info on request
-    req.user = {
+    req.neonUser = {
       id: neonUser.id,
       username: neonUser.username,
       role: neonUser.role,
@@ -137,7 +137,7 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
       // Try to load Neon user (NO SESSIONS)
       const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
       if (neonUser) {
-        req.user = {
+        req.neonUser = {
           id: neonUser.id,
           username: neonUser.username,
           role: neonUser.role,
@@ -160,14 +160,14 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
  * NO SESSIONS - Role check based on Neon user data
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
+  if (!req.neonUser) {
     return res.status(401).json({ 
       error: 'Unauthorized', 
       message: 'Authentication required' 
     });
   }
 
-  if (req.user.role !== 'admin') {
+  if (req.neonUser.role !== 'admin') {
     return res.status(403).json({ 
       error: 'Forbidden', 
       message: 'Admin access required' 

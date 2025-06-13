@@ -51,14 +51,14 @@ export function registerFirebaseRoutes(app: Express) {
   // 🔥 Get Current User Profile (with Firebase Auth)
   app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      // req.user is now populated by middleware with Neon user data
+      // req.neonUser is now populated by middleware with Neon user data
       // req.firebaseUser contains Firebase auth data
       
       res.json({
         neonUser: {
-          id: req.user!.id,
-          username: req.user!.username,
-          role: req.user!.role,
+          id: req.neonUser!.id,
+          username: req.neonUser!.username,
+          role: req.neonUser!.role,
         },
         firebaseUser: {
           uid: req.firebaseUser!.uid,
@@ -89,10 +89,10 @@ export function registerFirebaseRoutes(app: Express) {
       // Associate application with the authenticated Neon user
       const applicationData = {
         ...parsedData.data,
-        userId: req.user!.id // This is the Neon user ID from the middleware
+        userId: req.neonUser!.id // This is the Neon user ID from the middleware
       };
 
-      console.log(`📝 Creating application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.user!.id}`);
+      console.log(`📝 Creating application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
 
       const application = await firebaseStorage.createApplication(applicationData);
 
@@ -114,9 +114,9 @@ export function registerFirebaseRoutes(app: Express) {
   app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       // Get applications for the authenticated Neon user
-      const applications = await firebaseStorage.getApplicationsByUserId(req.user!.id);
+      const applications = await firebaseStorage.getApplicationsByUserId(req.neonUser!.id);
       
-      console.log(`📋 Retrieved ${applications.length} applications: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.user!.id}`);
+      console.log(`📋 Retrieved ${applications.length} applications: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
 
       res.json(applications);
     } catch (error) {
@@ -145,7 +145,7 @@ export function registerFirebaseRoutes(app: Express) {
       // This demonstrates the translation pattern:
       // Firebase UID → Neon User ID → Data from multiple tables
       
-      const userId = req.user!.id; // Neon user ID
+      const userId = req.neonUser!.id; // Neon user ID
       const firebaseUid = req.firebaseUser!.uid; // Firebase UID
 
       console.log(`🏠 Dashboard request: Firebase UID ${firebaseUid} → Neon User ID ${userId}`);
@@ -159,8 +159,8 @@ export function registerFirebaseRoutes(app: Express) {
       res.json({
         user: {
           id: userId,
-          username: req.user!.username,
-          role: req.user!.role,
+          username: req.neonUser!.username,
+          role: req.neonUser!.role,
           firebaseUid: firebaseUid
         },
         applications,
@@ -181,7 +181,7 @@ export function registerFirebaseRoutes(app: Express) {
   app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       const { videoId, progress, completed } = req.body;
-      const userId = req.user!.id; // Neon user ID from Firebase UID translation
+      const userId = req.neonUser!.id; // Neon user ID from Firebase UID translation
 
       console.log(`📺 Video progress update: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${userId}`);
 

@@ -35,9 +35,9 @@ export class APIClient {
     const url = `${this.baseURL}${endpoint}`;
     
     // Set up headers
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string>),
     };
 
     // Add Firebase auth token if required
@@ -106,7 +106,7 @@ export class APIClient {
   async postFormData(endpoint: string, formData: FormData, requireAuth: boolean = true): Promise<Response> {
     const url = `${this.baseURL}${endpoint}`;
     
-    const headers: HeadersInit = {};
+    const headers: Record<string, string> = {};
 
     // Add Firebase auth token if required
     if (requireAuth) {
