@@ -5791,4 +5791,115 @@ app.get("/api/auth/verify-email", async (req, res) => {
   }
 });
 
+// Debug endpoint to check if email exists in Firebase
+app.post('/api/debug/check-firebase-user', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email required' });
+    }
+
+    // Check if Firebase Admin is available
+    const admin = require('firebase-admin');
+    if (!admin.apps.length) {
+      return res.status(500).json({ 
+        error: 'Firebase Admin not configured',
+        message: 'Cannot check Firebase users'
+      });
+    }
+
+    try {
+      // Try to get user by email
+      const userRecord = await admin.auth().getUserByEmail(email);
+      
+      return res.json({
+        exists: true,
+        user: {
+          uid: userRecord.uid,
+          email: userRecord.email,
+          emailVerified: userRecord.emailVerified,
+          disabled: userRecord.disabled,
+          metadata: {
+            creationTime: userRecord.metadata.creationTime,
+            lastSignInTime: userRecord.metadata.lastSignInTime
+          }
+        },
+        suggestion: 'User exists in Firebase. You can either use a different email or delete this user.'
+      });
+    } catch (firebaseError) {
+      if (firebaseError.code === 'auth/user-not-found') {
+        return res.json({
+          exists: false,
+          message: 'User does not exist in Firebase',
+          suggestion: 'Email should be available for registration'
+        });
+      } else {
+        throw firebaseError;
+      }
+    }
+  } catch (error) {
+    console.error('Error checking Firebase user:', error);
+    res.status(500).json({ 
+      error: 'Failed to check user', 
+      message: error.message 
+    });
+  }
+});
+
+// Debug endpoint to delete user from Firebase (use with caution)
+app.post('/api/debug/delete-firebase-user', async (req, res) => {
+  try {
+    const { email, confirmDelete } = req.body;
+    
+    if (!email || !confirmDelete) {
+      return res.status(400).json({ 
+        error: 'Email and confirmDelete=true required',
+        message: 'This endpoint requires explicit confirmation'
+      });
+    }
+
+    // Check if Firebase Admin is available
+    const admin = require('firebase-admin');
+    if (!admin.apps.length) {
+      return res.status(500).json({ 
+        error: 'Firebase Admin not configured',
+        message: 'Cannot delete Firebase users'
+      });
+    }
+
+    try {
+      // Get user first
+      const userRecord = await admin.auth().getUserByEmail(email);
+      
+      // Delete user
+      await admin.auth().deleteUser(userRecord.uid);
+      
+      console.log(`Deleted Firebase user: ${email} (${userRecord.uid})`);
+      
+      return res.json({
+        success: true,
+        message: `User ${email} deleted from Firebase`,
+        deletedUid: userRecord.uid
+      });
+    } catch (firebaseError) {
+      if (firebaseError.code === 'auth/user-not-found') {
+        return res.json({
+          success: true,
+          message: 'User did not exist in Firebase',
+          alreadyDeleted: true
+        });
+      } else {
+        throw firebaseError;
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting Firebase user:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete user', 
+      message: error.message 
+    });
+  }
+});
+
 export default app;
