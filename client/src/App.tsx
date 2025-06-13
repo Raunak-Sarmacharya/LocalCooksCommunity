@@ -10,6 +10,7 @@ import { queryClient } from "./lib/queryClient";
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
+import AdminLoginTest from "@/pages/AdminLoginTest";
 import AuthTest from "@/pages/AuthTest";
 import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import Home from "@/pages/Home";
@@ -40,6 +41,7 @@ function Router() {
         <Route path="/success" component={Success} />
         <Route path="/auth" component={EnhancedAuthPage} />
         <Route path="/auth-test" component={AuthTest} />
+        <Route path="/admin-test" component={AdminLoginTest} />
         <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning" component={Microlearning} />
