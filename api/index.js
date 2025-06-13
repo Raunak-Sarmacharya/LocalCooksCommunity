@@ -3918,62 +3918,102 @@ app.post('/api/firebase-sync-user', async (req, res) => {
   if (!uid || !email) {
     return res.status(400).json({ error: 'Missing uid or email' });
   }
+  
+  console.log(`🔄 Firebase sync request for email: ${email}, uid: ${uid}`);
+  
   try {
-    // Check if user exists by firebase_uid first, then by username/email
     let user = null;
+    
     if (pool) {
-      // First, try to find by firebase_uid
-      const firebaseResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
-      if (firebaseResult.rows.length > 0) {
-        user = firebaseResult.rows[0];
+      // STEP 1: Check if user already exists by EMAIL first (primary check)
+      console.log(`🔍 Checking if user exists by email: ${email}`);
+      const emailResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [email]);
+      
+      if (emailResult.rows.length > 0) {
+        user = emailResult.rows[0];
+        console.log(`✅ Found existing user by email: ${user.id} (${user.username})`);
+        
+        // Update Firebase UID if not set
+        if (!user.firebase_uid) {
+          console.log(`🔗 Linking existing user ${user.id} to Firebase UID ${uid}`);
+          const updateResult = await pool.query(
+            'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
+            [uid, user.id]
+          );
+          user = updateResult.rows[0];
+        } else if (user.firebase_uid !== uid) {
+          console.log(`⚠️  User ${user.id} already has different Firebase UID: ${user.firebase_uid} vs ${uid}`);
+          return res.status(409).json({ 
+            error: 'Email already registered with different account',
+            message: 'This email is already associated with another Firebase account'
+          });
+        }
       } else {
-        // Try to find by username and update with firebase_uid
-        if (displayName) {
-          const usernameResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [displayName]);
-          if (usernameResult.rows.length > 0) {
-            // Update this user to set firebase_uid
-            const updateResult = await pool.query(
-              'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
-              [uid, usernameResult.rows[0].id]
-            );
-            user = updateResult.rows[0];
+        // STEP 2: Check by Firebase UID (secondary check)
+        console.log(`🔍 No user found by email, checking by Firebase UID: ${uid}`);
+        const firebaseResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
+        
+        if (firebaseResult.rows.length > 0) {
+          user = firebaseResult.rows[0];
+          console.log(`✅ Found existing user by Firebase UID: ${user.id} (${user.username})`);
+        } else {
+          // STEP 3: Check by displayName (fallback)
+          if (displayName && displayName !== email) {
+            console.log(`🔍 No user found by UID, checking by displayName: ${displayName}`);
+            const usernameResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [displayName]);
+            
+            if (usernameResult.rows.length > 0) {
+              user = usernameResult.rows[0];
+              console.log(`✅ Found existing user by displayName: ${user.id} (${user.username})`);
+              
+              // Update Firebase UID
+              const updateResult = await pool.query(
+                'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
+                [uid, user.id]
+              );
+              user = updateResult.rows[0];
+            }
           }
         }
         
-        // If not found by username, try by email in username field
-        if (!user && email) {
-          const emailResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [email]);
-          if (emailResult.rows.length > 0) {
-            // Update this user to set firebase_uid
-            const updateResult = await pool.query(
-              'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
-              [uid, emailResult.rows[0].id]
-            );
-            user = updateResult.rows[0];
-          }
-        }
-        
-        // If still not found, create new user
+        // STEP 4: Create new user if none found
         if (!user) {
+          console.log(`➕ Creating new user for email: ${email}, Firebase UID: ${uid}`);
           const insertResult = await pool.query(
             'INSERT INTO users (username, password, role, firebase_uid) VALUES ($1, $2, $3, $4) RETURNING *',
-            [displayName || email, '', role || 'applicant', uid]
+            [email, '', role || 'applicant', uid]
           );
           user = insertResult.rows[0];
+          console.log(`✨ Created new user: ${user.id} (${user.username})`);
         }
       }
     } else {
-      // In-memory fallback
-      // Try to find by firebase_uid first
+      // In-memory fallback with same email-first logic
+      console.log(`📝 Using in-memory storage (no database connection)`);
+      
+      // Try to find by email first
       for (const u of users.values()) {
-        if (u.firebase_uid === uid) {
+        if (u.username && u.username.toLowerCase() === email.toLowerCase()) {
           user = u;
+          if (!u.firebase_uid) {
+            u.firebase_uid = uid;
+          }
           break;
         }
       }
       
-      // If not found by firebase_uid, try by username and update
-      if (!user && displayName) {
+      // If not found by email, try by firebase_uid
+      if (!user) {
+        for (const u of users.values()) {
+          if (u.firebase_uid === uid) {
+            user = u;
+            break;
+          }
+        }
+      }
+      
+      // If not found by firebase_uid, try by displayName
+      if (!user && displayName && displayName !== email) {
         for (const u of users.values()) {
           if (u.username && u.username.toLowerCase() === displayName.toLowerCase()) {
             u.firebase_uid = uid;
@@ -3983,27 +4023,19 @@ app.post('/api/firebase-sync-user', async (req, res) => {
         }
       }
       
-      // If not found by username, try by email and update
-      if (!user && email) {
-        for (const u of users.values()) {
-          if (u.username && u.username.toLowerCase() === email.toLowerCase()) {
-            u.firebase_uid = uid;
-            user = u;
-            break;
-          }
-        }
-      }
-      
-      // If still not found, create new user
+      // Create new user if none found
       if (!user) {
         const id = Date.now();
-        user = { id, username: displayName || email, role: role || 'applicant', password: '', firebase_uid: uid };
+        user = { id, username: email, role: role || 'applicant', password: '', firebase_uid: uid };
         users.set(id, user);
+        console.log(`✨ Created new in-memory user: ${id} (${email})`);
       }
     }
+    
+    console.log(`✅ Firebase sync completed for email: ${email}, user ID: ${user.id}`);
     res.json({ success: true, user });
   } catch (error) {
-    console.error('Error syncing Firebase user:', error);
+    console.error('❌ Error syncing Firebase user:', error);
     res.status(500).json({ error: 'Failed to sync user', message: error.message });
   }
 });
@@ -5787,6 +5819,104 @@ app.get("/api/auth/verify-email", async (req, res) => {
     console.error("Error in email verification:", error);
     return res.status(500).json({ 
       message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
+// Check if user exists by email in both Firebase and NeonDB
+app.post('/api/check-user-exists', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email required' });
+    }
+
+    console.log(`🔍 Checking if user exists: ${email}`);
+    
+    let firebaseExists = false;
+    let neonExists = false;
+    let firebaseUser = null;
+    let neonUser = null;
+
+    // Check Firebase
+    try {
+      const admin = require('firebase-admin');
+      if (admin.apps.length) {
+        const userRecord = await admin.auth().getUserByEmail(email);
+        firebaseExists = true;
+        firebaseUser = {
+          uid: userRecord.uid,
+          email: userRecord.email,
+          emailVerified: userRecord.emailVerified,
+          disabled: userRecord.disabled
+        };
+        console.log(`🔥 Firebase: User EXISTS (${userRecord.uid})`);
+      }
+    } catch (firebaseError) {
+      if (firebaseError.code === 'auth/user-not-found') {
+        console.log(`🔥 Firebase: User does NOT exist`);
+      } else {
+        console.error('Firebase check error:', firebaseError.message);
+      }
+    }
+
+    // Check NeonDB
+    try {
+      if (pool) {
+        const result = await pool.query('SELECT id, username, role, firebase_uid FROM users WHERE LOWER(username) = LOWER($1)', [email]);
+        if (result.rows.length > 0) {
+          neonExists = true;
+          neonUser = result.rows[0];
+          console.log(`🗃️  NeonDB: User EXISTS (ID: ${neonUser.id})`);
+        } else {
+          console.log(`🗃️  NeonDB: User does NOT exist`);
+        }
+      }
+    } catch (neonError) {
+      console.error('NeonDB check error:', neonError.message);
+    }
+
+    // Determine the result
+    let canRegister = !firebaseExists && !neonExists;
+    let status = 'available';
+    let message = 'Email is available for registration';
+    
+    if (firebaseExists && neonExists) {
+      status = 'exists_both';
+      message = 'User exists in both Firebase and NeonDB';
+      canRegister = false;
+    } else if (firebaseExists) {
+      status = 'exists_firebase';
+      message = 'User exists in Firebase but not in NeonDB';
+      canRegister = false;
+    } else if (neonExists) {
+      status = 'exists_neon';
+      message = 'User exists in NeonDB but not in Firebase';
+      canRegister = false;
+    }
+
+    console.log(`📊 Result for ${email}: ${status} (canRegister: ${canRegister})`);
+
+    return res.json({
+      email,
+      canRegister,
+      status,
+      message,
+      firebase: {
+        exists: firebaseExists,
+        user: firebaseUser
+      },
+      neon: {
+        exists: neonExists,
+        user: neonUser
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error checking user existence:', error);
+    res.status(500).json({ 
+      error: 'Failed to check user existence', 
+      message: error.message 
     });
   }
 });
