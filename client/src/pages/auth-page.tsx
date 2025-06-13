@@ -150,7 +150,13 @@ export default function AuthPage() {
               console.log('✅ User verified and has seen welcome, redirecting to dashboard');
               setLocation('/dashboard');
             } else {
-              console.error('Failed to fetch user data:', response.status);
+              console.error('❌ Failed to fetch user data:', response.status);
+              const errorData = await response.text();
+              console.error('❌ Error response:', errorData);
+              console.error('❌ Request headers:', {
+                'Authorization': `Bearer ${token.substring(0, 20)}...`,
+                'Content-Type': 'application/json'
+              });
             }
           } catch (error) {
             console.error('Error fetching user meta:', error);
