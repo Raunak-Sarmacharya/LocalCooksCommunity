@@ -28,16 +28,11 @@ const itemVariants = {
 };
 
 const emailIconVariants = {
-  idle: {
-    scale: 1,
-    rotate: 0,
-    transition: { duration: 0.3 }
-  },
+  idle: { scale: 1 },
   bounce: {
     scale: [1, 1.1, 1],
-    rotate: [0, -5, 5, 0],
     transition: {
-      duration: 0.6,
+      duration: 1,
       repeat: Infinity,
       repeatDelay: 2
     }
@@ -50,44 +45,35 @@ export default function EmailVerificationScreen({
   onGoBack,
   resendLoading = false
 }: EmailVerificationScreenProps) {
-  const [countdown, setCountdown] = useState(0);
-  const [resendState, setResendState] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [resendCount, setResendCount] = useState(0);
+  const [resendDisabled, setResendDisabled] = useState(false);
+  const [resendTimer, setResendTimer] = useState(60);
+  const [resendError, setResendError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
+    let timer: NodeJS.Timeout;
+    if (resendDisabled && resendTimer > 0) {
+      timer = setInterval(() => {
+        setResendTimer(prev => prev - 1);
       }, 1000);
-      return () => clearInterval(timer);
+    } else if (resendTimer === 0) {
+      setResendDisabled(false);
+      setResendTimer(60);
     }
-  }, [countdown]);
+    return () => clearInterval(timer);
+  }, [resendDisabled, resendTimer]);
 
   const handleResend = async () => {
-    setResendState('loading');
     try {
+      setResendError(null);
+      setResendDisabled(true);
+      setResendCount(prev => prev + 1);
       await onResend();
-      setResendState('success');
-      setCountdown(60); // 60 second cooldown
-      
-      // Reset to idle after showing success
-      setTimeout(() => {
-        setResendState('idle');
-      }, 2000);
     } catch (error) {
-      setResendState('idle');
+      setResendError('Failed to resend verification email. Please try again later.');
+      setResendDisabled(false);
+      setResendTimer(0);
     }
-  };
-
-  const getResendButtonState = () => {
-    if (resendLoading || resendState === 'loading') return 'loading';
-    if (resendState === 'success') return 'success';
-    return 'idle';
   };
 
   return (
@@ -145,77 +131,59 @@ export default function EmailVerificationScreen({
         <p className="text-gray-600 text-sm leading-relaxed">
           Click the link to verify your account and unlock your learning journey.
         </p>
+        {resendCount > 0 && (
+          <p className="text-sm text-gray-500 mt-2">
+            {resendCount === 1 ? 'Verification email resent.' : `Verification email resent ${resendCount} times.`}
+          </p>
+        )}
       </motion.div>
 
       {/* Resend Button */}
-      <motion.div variants={itemVariants} className="mb-6">
+      <motion.div variants={itemVariants} className="flex justify-center">
         <AnimatedButton
-          state={getResendButtonState()}
-          loadingText="Sending..."
-          successText="Email sent!"
           onClick={handleResend}
-          disabled={countdown > 0 || resendLoading}
-          variant="primary"
-          className={countdown > 0 ? "opacity-50 cursor-not-allowed" : ""}
+          disabled={resendDisabled || resendLoading}
+          className="flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4" />
-          {countdown > 0 ? `Resend in ${countdown}s` : 'Resend Email'}
+          {resendLoading ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Sending...
+            </>
+          ) : resendDisabled ? (
+            <>
+              <Clock className="w-4 h-4" />
+              Resend in {resendTimer}s
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" />
+              Resend verification email
+            </>
+          )}
         </AnimatedButton>
       </motion.div>
 
-      {/* Help Options */}
-      <motion.div variants={itemVariants} className="space-y-4">
-        <div className="flex items-center justify-center text-sm text-gray-500">
-          <Clock className="w-4 h-4 mr-2" />
-          <span>Didn't receive it? Check your spam folder</span>
-        </div>
-        
-        <div className="flex items-center justify-center text-sm text-gray-500">
-          <Mail className="w-4 h-4 mr-2" />
-          <span>Wrong email? 
-            <button 
-              onClick={onGoBack}
-              className="text-blue-600 hover:underline ml-1"
-            >
-              Go back
-            </button>
-          </span>
-        </div>
-      </motion.div>
+      {/* Error Message */}
+      {resendError && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 text-center text-red-600 text-sm"
+        >
+          {resendError}
+        </motion.div>
+      )}
 
-      {/* Success Animation */}
-      <AnimatePresence>
-        {resendState === 'success' && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: -20 }}
-            className="fixed inset-0 flex items-center justify-center z-50 bg-black/20 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", duration: 0.5 }}
-              className="bg-white rounded-xl p-6 shadow-2xl max-w-sm mx-4 text-center"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring" }}
-                className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4"
-              >
-                <CheckCircle2 className="w-8 h-8 text-green-600" />
-              </motion.div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Email Sent!
-              </h3>
-              <p className="text-gray-600 text-sm">
-                Check your inbox for the verification link.
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Spam Folder Note */}
+      <motion.div
+        variants={itemVariants}
+        className="mt-8 p-4 bg-yellow-50 rounded-lg border border-yellow-100"
+      >
+        <p className="text-sm text-yellow-800">
+          <strong>Not seeing the email?</strong> Check your spam folder or try using a different email address.
+        </p>
+      </motion.div>
     </motion.div>
   );
 } 
