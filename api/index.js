@@ -918,7 +918,106 @@ app.post('/api/logout', (req, res) => {
   });
 });
 
-app.get('/api/user', async (req, res) => {
+// ===================================
+// 🔥 FIREBASE ROUTES (PRIORITY - MUST COME FIRST)
+// ===================================
+
+// 🔥 Firebase-Compatible Get Current User (for auth page)
+app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
+  try {
+    if (!req.firebaseUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    console.log('🔥 FIREBASE /api/user route hit for UID:', req.firebaseUser.uid);
+
+    // Get user from database by Firebase UID
+    let user = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
+      user = result.rows[0] || null;
+    } else {
+      // In-memory fallback
+      for (const u of users.values()) {
+        if (u.firebase_uid === req.firebaseUser.uid) {
+          user = u;
+          break;
+        }
+      }
+    }
+    
+    if (!user) {
+      console.log('❌ Firebase user not found in database for UID:', req.firebaseUser.uid);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log('✅ Firebase user found:', {
+      id: user.id,
+      username: user.username,
+      is_verified: user.is_verified,
+      has_seen_welcome: user.has_seen_welcome
+    });
+
+    res.json({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      is_verified: user.is_verified,
+      has_seen_welcome: user.has_seen_welcome,
+      firebaseUid: user.firebase_uid
+    });
+  } catch (error) {
+    console.error('Error getting Firebase user:', error);
+    res.status(500).json({ error: 'Failed to get user data' });
+  }
+});
+
+// 🔥 Set has_seen_welcome = true for current Firebase user
+app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
+  try {
+    if (!req.firebaseUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    console.log('🔥 FIREBASE /api/user/seen-welcome route hit for UID:', req.firebaseUser.uid);
+
+    // Get user from database by Firebase UID
+    let user = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
+      user = result.rows[0] || null;
+      
+      if (user) {
+        await pool.query('UPDATE users SET has_seen_welcome = true WHERE id = $1', [user.id]);
+        console.log(`✅ Set has_seen_welcome = true for user ${user.id}`);
+      }
+    } else {
+      // In-memory fallback
+      for (const u of users.values()) {
+        if (u.firebase_uid === req.firebaseUser.uid) {
+          u.has_seen_welcome = true;
+          user = u;
+          break;
+        }
+      }
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error setting has_seen_welcome:', error);
+    res.status(500).json({ error: 'Failed to update welcome status' });
+  }
+});
+
+// ===================================
+// 📱 SESSION ROUTES (FALLBACK)
+// ===================================
+
+app.get('/api/user-session', async (req, res) => {
   // Debug session info
   console.log('GET /api/user - Request details:', {
     sessionId: req.session.id,
@@ -3921,12 +4020,19 @@ app.post("/api/test-status-email", async (req, res) => {
 
 // Endpoint to sync Firebase user to SQL users table
 app.post('/api/firebase-sync-user', async (req, res) => {
-  const { uid, email, displayName, role } = req.body;
+  const { uid, email, displayName, role, emailVerified } = req.body;
   if (!uid || !email) {
     return res.status(400).json({ error: 'Missing uid or email' });
   }
   
   console.log(`🔄 Firebase sync request for email: ${email}, uid: ${uid}`);
+  console.log(`🔍 PRODUCTION SYNC DEBUG:`);
+  console.log(`   - Firebase UID: ${uid}`);
+  console.log(`   - Email: ${email}`);
+  console.log(`   - Display Name: ${displayName}`);
+  console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
+  console.log(`   - emailVerified type: ${typeof emailVerified}`);
+  console.log(`   - Role: ${role}`);
   
   try {
     let user = null;
@@ -3985,13 +4091,18 @@ app.post('/api/firebase-sync-user', async (req, res) => {
         
         // STEP 4: Create new user if none found
         if (!user) {
+          const isUserVerified = emailVerified === true;
           console.log(`➕ Creating new user for email: ${email}, Firebase UID: ${uid}`);
+          console.log(`   - emailVerified: ${emailVerified}, setting is_verified: ${isUserVerified}`);
+          
           const insertResult = await pool.query(
-            'INSERT INTO users (username, password, role, firebase_uid) VALUES ($1, $2, $3, $4) RETURNING *',
-            [email, '', role || 'applicant', uid]
+            'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [email, '', role || 'applicant', uid, isUserVerified, false]
           );
           user = insertResult.rows[0];
           console.log(`✨ Created new user: ${user.id} (${user.username})`);
+          console.log(`   - is_verified in DB: ${user.is_verified}`);
+          console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
         }
       }
     } else {
@@ -4033,9 +4144,19 @@ app.post('/api/firebase-sync-user', async (req, res) => {
       // Create new user if none found
       if (!user) {
         const id = Date.now();
-        user = { id, username: email, role: role || 'applicant', password: '', firebase_uid: uid };
+        const isUserVerified = emailVerified === true;
+        user = { 
+          id, 
+          username: email, 
+          role: role || 'applicant', 
+          password: '', 
+          firebase_uid: uid,
+          is_verified: isUserVerified,
+          has_seen_welcome: false
+        };
         users.set(id, user);
         console.log(`✨ Created new in-memory user: ${id} (${email})`);
+        console.log(`   - is_verified: ${isUserVerified}, has_seen_welcome: false`);
       }
     }
     
