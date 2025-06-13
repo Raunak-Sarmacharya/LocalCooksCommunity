@@ -72,6 +72,62 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
+  // 🔥 Get Current User (Firebase compatible /api/user endpoint)
+  app.get('/api/user', verifyFirebaseAuth, async (req: Request, res: Response) => {
+    try {
+      if (!req.firebaseUser) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get user from database by Firebase UID
+      let user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+      
+      if (!user) {
+        // Auto-sync user if not found
+        user = await syncFirebaseUserToNeon({
+          uid: req.firebaseUser.uid,
+          email: req.firebaseUser.email,
+          emailVerified: req.firebaseUser.email_verified,
+          role: 'applicant'
+        });
+      }
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        is_verified: (user as any).isVerified,
+        has_seen_welcome: (user as any).has_seen_welcome,
+        firebaseUid: (user as any).firebaseUid
+      });
+    } catch (error) {
+      console.error('Error getting user:', error);
+      res.status(500).json({ error: 'Failed to get user data' });
+    }
+  });
+
+  // 🔥 Set has_seen_welcome = true for current user
+  app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req: Request, res: Response) => {
+    try {
+      if (!req.firebaseUser) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get user from database by Firebase UID
+      const user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      await firebaseStorage.setUserHasSeenWelcome(user.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error setting has_seen_welcome:', error);
+      res.status(500).json({ error: 'Failed to update welcome status' });
+    }
+  });
+
   // 🔥 Submit Application (with Firebase Auth, NO SESSIONS)
   app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {

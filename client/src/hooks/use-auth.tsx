@@ -358,13 +358,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Update user verification status
   const updateUserVerification = async () => {
     try {
+      // Get current Firebase user and token
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated Firebase user');
+        return null;
+      }
+
+      const token = await currentUser.getIdToken();
+      
       const response = await fetch('/api/user', {
-        credentials: 'include'
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
         return userData;
+      } else {
+        console.error('Failed to fetch user data:', response.status);
       }
     } catch (error) {
       console.error('Error updating user verification:', error);
