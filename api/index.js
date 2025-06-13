@@ -4349,12 +4349,24 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
     
     // Try session auth first
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    console.log('Checking session authentication:', {
+      sessionUserId,
+      sessionId: req.session.id,
+      headerUserId: req.headers['x-user-id']
+    });
+    
     if (sessionUserId) {
       const user = await getUser(sessionUserId);
+      console.log('Found user:', user ? `${user.id}:${user.username}:${user.role}` : null);
+      
       if (user && user.role === 'admin') {
         authUser = user;
         console.log('Authenticated via session:', user.username);
+      } else if (user) {
+        console.log('User found but not admin:', user.role);
       }
+    } else {
+      console.log('No session userId found');
     }
     
     // If no session auth, try Firebase (for future use)
@@ -4784,6 +4796,42 @@ app.post('/api/debug-login', async (req, res) => {
   } catch (error) {
     console.error('Debug login error:', error);
     res.status(500).json({ error: 'Debug failed', message: error.message });
+  }
+});
+
+// Quick admin test endpoint
+app.get('/api/test-admin', async (req, res) => {
+  try {
+    // Check if admin user exists
+    const admin = await getUserByUsername('admin');
+    
+    if (!admin) {
+      return res.json({
+        adminExists: false,
+        message: 'Admin user not found in database'
+      });
+    }
+    
+    // Test password comparison
+    const passwordWorks = await comparePasswords('localcooks', admin.password);
+    
+    res.json({
+      adminExists: true,
+      adminInfo: {
+        id: admin.id,
+        username: admin.username,
+        role: admin.role,
+        passwordLength: admin.password ? admin.password.length : 0
+      },
+      passwordTest: {
+        works: passwordWorks,
+        message: passwordWorks ? 'Password matches' : 'Password does not match'
+      },
+      hardcodedTest: 'localcooks' === 'localcooks' ? 'Hardcoded check passes' : 'Hardcoded check fails'
+    });
+  } catch (error) {
+    console.error('Admin test error:', error);
+    res.status(500).json({ error: 'Test failed', message: error.message });
   }
 });
 
