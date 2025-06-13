@@ -4044,30 +4044,24 @@ app.post('/api/firebase-sync-user', async (req, res) => {
 // ENHANCED FIREBASE AUTHENTICATION
 // ===================================
 
-// Initialize Firebase Admin SDK for enhanced auth
+// Initialize Firebase Admin SDK for enhanced auth using VITE variables
 let firebaseAdmin;
 try {
-  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
+  if (process.env.VITE_FIREBASE_PROJECT_ID) {
+    const { initializeApp, getApps } = await import('firebase-admin/app');
     
     if (getApps().length === 0) {
-      const firebaseConfig = {
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      };
-      
       firebaseAdmin = initializeApp({
-        credential: cert(firebaseConfig),
-        projectId: process.env.FIREBASE_PROJECT_ID,
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
       
-      console.log('✅ Enhanced Firebase Admin SDK initialized');
+      console.log('✅ Enhanced Firebase Admin SDK initialized with project:', process.env.VITE_FIREBASE_PROJECT_ID);
     } else {
       firebaseAdmin = getApps()[0];
+      console.log('✅ Using existing Firebase Admin app');
     }
   } else {
-    console.log('⚠️ Enhanced Firebase Admin SDK configuration missing');
+    console.log('⚠️ Enhanced Firebase Admin SDK configuration missing - no VITE_FIREBASE_PROJECT_ID');
   }
 } catch (error) {
   console.error('❌ Enhanced Firebase Admin SDK initialization failed:', error);
@@ -4434,7 +4428,7 @@ app.get('/api/firebase-health', (req, res) => {
     message: 'Enhanced Firebase Auth → Neon DB bridge is working',
     architecture: 'Hybrid: Stateless JWT + Legacy Session Support',
     auth: {
-      firebaseConfigured: !!process.env.FIREBASE_PROJECT_ID,
+      firebaseConfigured: !!process.env.VITE_FIREBASE_PROJECT_ID,
       neonConfigured: !!process.env.DATABASE_URL,
       legacySessionsActive: true,
       enhancedFirebaseActive: !!firebaseAdmin
@@ -5462,7 +5456,7 @@ app.get('/api/debug-hybrid-login', async (req, res) => {
         nodeEnv: process.env.NODE_ENV,
         hasFirebaseAdmin: !!firebaseAdmin,
         hasPool: !!pool,
-        firebaseConfigExists: !!(process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT)
+        firebaseConfigExists: !!process.env.VITE_FIREBASE_PROJECT_ID
       },
       functions: {
         getUserByUsername: typeof getUserByUsername,
@@ -5844,16 +5838,18 @@ app.post('/api/check-user-exists', async (req, res) => {
     try {
       console.log(`🔥 Attempting Firebase check for: ${email}`);
       
-             // Check if we have Firebase Admin configured
+             // Check if we have Firebase Admin configured (using VITE_ variables)
        console.log(`🔥 Environment check:`, {
-         FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
-         FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
-         FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
-         VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID
+         VITE_FIREBASE_API_KEY: !!process.env.VITE_FIREBASE_API_KEY,
+         VITE_FIREBASE_AUTH_DOMAIN: !!process.env.VITE_FIREBASE_AUTH_DOMAIN,
+         VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID,
+         VITE_FIREBASE_STORAGE_BUCKET: !!process.env.VITE_FIREBASE_STORAGE_BUCKET,
+         VITE_FIREBASE_MESSAGING_SENDER_ID: !!process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+         VITE_FIREBASE_APP_ID: !!process.env.VITE_FIREBASE_APP_ID
        });
        
-       if (!process.env.FIREBASE_PROJECT_ID) {
-         console.log(`🔥 Firebase Admin not configured (missing FIREBASE_PROJECT_ID)`);
+       if (!process.env.VITE_FIREBASE_PROJECT_ID) {
+         console.log(`🔥 Firebase Admin not configured (missing VITE_FIREBASE_PROJECT_ID)`);
          firebaseError = 'Firebase not configured';
       } else {
         // Use dynamic import for ES modules compatibility
@@ -5862,40 +5858,27 @@ app.post('/api/check-user-exists', async (req, res) => {
         if (!admin.default.apps.length) {
           console.log(`🔥 Firebase Admin not initialized - attempting to initialize`);
           
-                     // Try to initialize Firebase Admin
+                     // Try to initialize Firebase Admin using VITE_ variables
            try {
-             // Use FIREBASE_ variables if available, otherwise try VITE_ variables as fallback
-             const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
-             const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-             const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+             const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
              
-             const serviceAccount = {
-               projectId,
-               clientEmail,
-               privateKey,
-             };
+             console.log(`🔥 Attempting Firebase Admin initialization with project: ${projectId}`);
 
-             console.log(`🔥 Service account check:`, {
-               projectId: !!projectId,
-               clientEmail: !!clientEmail,
-               privateKey: !!privateKey
-             });
-
-             if (serviceAccount.clientEmail && serviceAccount.privateKey) {
-               admin.default.initializeApp({
-                 credential: admin.default.credential.cert(serviceAccount),
-                 projectId: projectId,
-               });
-               console.log(`🔥 Firebase Admin initialized successfully with project: ${projectId}`);
-             } else if (projectId) {
-               // Try without credentials (some environments provide default credentials)
-               admin.default.initializeApp({
-                 projectId: projectId,
-               });
-               console.log(`🔥 Firebase Admin initialized with default credentials for project: ${projectId}`);
+             // Since we only have client-side variables, try to initialize without service account
+             // This will work in some environments or we'll rely on client-side checks
+             if (projectId) {
+               try {
+                 admin.default.initializeApp({
+                   projectId: projectId,
+                 });
+                 console.log(`🔥 Firebase Admin initialized with default credentials for project: ${projectId}`);
+               } catch (initError) {
+                 console.log(`🔥 Firebase Admin initialization failed, will use client-side checks only:`, initError.message);
+                 firebaseError = 'Firebase Admin unavailable, using client-side checks';
+               }
              } else {
-               console.log(`🔥 Firebase Admin credentials not available`);
-               firebaseError = 'Firebase credentials not configured';
+               console.log(`🔥 No Firebase project ID available`);
+               firebaseError = 'Firebase project not configured';
              }
           } catch (initError) {
             console.error(`🔥 Firebase Admin initialization failed:`, initError.message);
@@ -6007,10 +5990,25 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
     // Check if Firebase Admin is available
     const admin = await import('firebase-admin');
     if (!admin.default.apps.length) {
-      return res.status(500).json({ 
-        error: 'Firebase Admin not configured',
-        message: 'Cannot check Firebase users'
-      });
+      // Try to initialize with VITE variables
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+      if (projectId) {
+        try {
+          admin.default.initializeApp({
+            projectId: projectId,
+          });
+        } catch (e) {
+          return res.status(500).json({ 
+            error: 'Firebase Admin not configured',
+            message: 'Cannot check Firebase users'
+          });
+        }
+      } else {
+        return res.status(500).json({ 
+          error: 'Firebase Admin not configured',
+          message: 'Cannot check Firebase users'
+        });
+      }
     }
 
     try {
@@ -6066,10 +6064,25 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
     // Check if Firebase Admin is available
     const admin = await import('firebase-admin');
     if (!admin.default.apps.length) {
-      return res.status(500).json({ 
-        error: 'Firebase Admin not configured',
-        message: 'Cannot delete Firebase users'
-      });
+      // Try to initialize with VITE variables
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+      if (projectId) {
+        try {
+          admin.default.initializeApp({
+            projectId: projectId,
+          });
+        } catch (e) {
+          return res.status(500).json({ 
+            error: 'Firebase Admin not configured',
+            message: 'Cannot delete Firebase users'
+          });
+        }
+      } else {
+        return res.status(500).json({ 
+          error: 'Firebase Admin not configured',
+          message: 'Cannot delete Firebase users'
+        });
+      }
     }
 
     try {
