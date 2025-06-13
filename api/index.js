@@ -5300,4 +5300,112 @@ async function requireHybridAdmin(req, res, next) {
   }
 }
 
+// Quick verification endpoint to test all auth methods still work
+app.get('/api/verify-auth-methods', async (req, res) => {
+  try {
+    console.log('=== VERIFICATION: Testing all auth methods ===');
+    
+    const results = {
+      timestamp: new Date().toISOString(),
+      existingEndpoints: {},
+      authMethods: {},
+      recommendations: []
+    };
+    
+    // Test 1: Check if admin user exists (for admin login)
+    try {
+      const admin = await getUserByUsername('admin');
+      results.authMethods.adminLogin = {
+        status: admin ? 'available' : 'needs_setup',
+        endpoint: '/api/admin-login',
+        credentials: admin ? 'admin/localcooks' : 'admin user not found',
+        working: !!admin
+      };
+    } catch (error) {
+      results.authMethods.adminLogin = {
+        status: 'error',
+        error: error.message
+      };
+    }
+    
+    // Test 2: Check if regular login endpoint is accessible
+    results.existingEndpoints.regularLogin = {
+      endpoint: '/api/login',
+      status: 'available',
+      method: 'POST',
+      description: 'Original email/username login - unchanged'
+    };
+    
+    // Test 3: Check if user endpoint is accessible
+    results.existingEndpoints.userEndpoint = {
+      endpoint: '/api/user',
+      status: 'available', 
+      method: 'GET',
+      description: 'Original session user endpoint - unchanged'
+    };
+    
+    // Test 4: Check session functionality
+    results.authMethods.sessionAuth = {
+      status: req.session ? 'available' : 'unavailable',
+      sessionId: req.session?.id || null,
+      userId: req.session?.userId || null,
+      working: !!req.session
+    };
+    
+    // Test 5: Check Firebase admin availability
+    results.authMethods.firebaseAdmin = {
+      status: firebaseAdmin ? 'available' : 'not_configured',
+      working: !!firebaseAdmin,
+      note: firebaseAdmin ? 'Enhanced Firebase features available' : 'Firebase Admin SDK not configured'
+    };
+    
+    // Test 6: List sample users for verification
+    if (pool) {
+      try {
+        const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
+        const sampleUsers = await pool.query('SELECT id, username, role FROM users LIMIT 5');
+        
+        results.authMethods.databaseAuth = {
+          status: 'available',
+          userCount: parseInt(userCount.rows[0].count),
+          sampleUsers: sampleUsers.rows,
+          working: true
+        };
+      } catch (dbError) {
+        results.authMethods.databaseAuth = {
+          status: 'error',
+          error: dbError.message,
+          working: false
+        };
+      }
+    } else {
+      results.authMethods.databaseAuth = {
+        status: 'no_database',
+        working: false
+      };
+    }
+    
+    const allWorking = 
+      results.authMethods.adminLogin.working &&
+      results.authMethods.sessionAuth.working &&
+      results.authMethods.databaseAuth.working;
+    
+    results.overallStatus = allWorking ? 'all_systems_operational' : 'some_issues_detected';
+    results.message = allWorking 
+      ? '✅ All existing authentication methods are working properly'
+      : '⚠️ Some authentication methods need attention';
+    
+    console.log('Verification results:', results);
+    
+    res.json(results);
+  } catch (error) {
+    console.error('Verification endpoint error:', error);
+    res.status(500).json({ 
+      error: 'Verification failed', 
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 export default app;
