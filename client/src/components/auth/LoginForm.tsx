@@ -40,7 +40,7 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
     setFormError(null);
     try {
       await login(data.email, data.password);
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(); // Auth page will handle verification and redirect
     } catch (e: any) {
       setFormError(e.message);
     }

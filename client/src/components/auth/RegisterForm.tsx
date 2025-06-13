@@ -41,7 +41,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
     setFormError(null);
     try {
       await signup(data.email, data.password, data.displayName);
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(); // Auth page will handle verification and redirect
     } catch (e: any) {
       setFormError(e.message);
     }
