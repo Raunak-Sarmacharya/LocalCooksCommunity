@@ -1,12 +1,12 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import { useHybridAuth } from "@/hooks/use-hybrid-auth";
-import { apiRequest } from "@/lib/api";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
     formatKitchenPreference,
     getStatusBadgeColor
 } from "@/lib/applicationSchema";
+import { apiRequest } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
