@@ -613,6 +613,14 @@ app.post('/api/admin-login', async (req, res) => {
 
     // Check password - first try exact match for 'localcooks'
     let passwordMatches = false;
+    
+    console.log('Admin user found:', {
+      id: admin.id,
+      username: admin.username,
+      role: admin.role,
+      passwordLength: admin.password ? admin.password.length : 0
+    });
+    console.log('Provided password:', password);
 
     if (password === 'localcooks') {
       passwordMatches = true;
@@ -4188,6 +4196,7 @@ app.get('/api/firebase-health', (req, res) => {
   console.log('📧 Email-based login now supported alongside username login');
   console.log('🚀 Hybrid endpoints: /api/hybrid/* support both auth methods');
   console.log('👥 Admin support: Both Firebase and session admins fully supported');
+  console.log('🐛 Debug endpoints: /api/debug-login, /api/auth-status available for troubleshooting');
 
 // Utility function to create admin user in Firebase (run once)
 async function createAdminInFirebase() {
@@ -4262,8 +4271,12 @@ async function requireHybridAuth(req, res, next) {
     
     // Fallback to session auth
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    console.log('Checking session auth - userId:', sessionUserId, 'sessionId:', req.session.id);
+    
     if (sessionUserId) {
       const user = await getUser(sessionUserId);
+      console.log('Found user for session:', user ? `${user.id}:${user.username}:${user.role}` : 'null');
+      
       if (user) {
         req.user = {
           id: user.id,
@@ -4272,7 +4285,7 @@ async function requireHybridAuth(req, res, next) {
           authMethod: 'session'
         };
         req.neonUser = req.user; // For backward compatibility
-        console.log(`📱 Hybrid auth: Session user ${user.id}`);
+        console.log(`📱 Hybrid auth: Session user ${user.id} (${user.username}, ${user.role})`);
         return next();
       }
     }
@@ -4289,27 +4302,101 @@ async function requireHybridAuth(req, res, next) {
 
 // Hybrid Admin Authentication
 async function requireHybridAdmin(req, res, next) {
-  await requireHybridAuth(req, res, () => {
-    if (req.user.role !== 'admin') {
+  try {
+    // First authenticate the user
+    await new Promise((resolve, reject) => {
+      requireHybridAuth(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    // Then check if they're an admin
+    if (!req.user || req.user.role !== 'admin') {
       return res.status(403).json({ 
         error: 'Admin access required',
-        message: 'This endpoint requires admin privileges'
+        message: 'This endpoint requires admin privileges',
+        userRole: req.user?.role || 'none'
       });
     }
+    
     next();
-  });
+  } catch (error) {
+    console.error('Hybrid admin auth error:', error);
+    return res.status(401).json({ 
+      error: 'Authentication failed',
+      message: 'Please login as an admin'
+    });
+  }
 }
 
 // Add this endpoint to manually sync admin to Firebase
-app.post('/api/sync-admin-to-firebase', requireHybridAdmin, async (req, res) => {
+app.post('/api/sync-admin-to-firebase', async (req, res) => {
   try {
+    console.log('Sync admin endpoint called');
+    console.log('Session data:', { 
+      sessionId: req.session.id, 
+      userId: req.session.userId,
+      user: req.session.user 
+    });
+    console.log('Headers:', {
+      'x-user-id': req.headers['x-user-id'],
+      'authorization': req.headers.authorization ? 'present' : 'missing'
+    });
+    
+    // Check if user is authenticated (session or Firebase)
+    let authUser = null;
+    
+    // Try session auth first
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (sessionUserId) {
+      const user = await getUser(sessionUserId);
+      if (user && user.role === 'admin') {
+        authUser = user;
+        console.log('Authenticated via session:', user.username);
+      }
+    }
+    
+    // If no session auth, try Firebase (for future use)
+    if (!authUser && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        await verifyFirebaseAuth(req, res, () => {});
+        if (req.firebaseUser) {
+          const result = await pool.query(
+            'SELECT * FROM users WHERE firebase_uid = $1 AND role = $2',
+            [req.firebaseUser.uid, 'admin']
+          );
+          if (result.rows.length > 0) {
+            authUser = result.rows[0];
+            console.log('Authenticated via Firebase:', authUser.username);
+          }
+        }
+      } catch (firebaseError) {
+        console.log('Firebase auth failed:', firebaseError.message);
+      }
+    }
+    
+    if (!authUser) {
+      return res.status(401).json({ 
+        error: 'Admin authentication required',
+        message: 'Please login as an admin first',
+        debug: {
+          sessionUserId,
+          sessionId: req.session.id,
+          hasFirebaseAuth: !!req.headers.authorization
+        }
+      });
+    }
+    
+    console.log('Creating admin in Firebase...');
     const firebaseUser = await createAdminInFirebase();
     
     // Update the admin user in Neon DB with Firebase UID
     if (pool) {
+      console.log('Updating admin user with Firebase UID...');
       await pool.query(
         'UPDATE users SET firebase_uid = $1 WHERE id = $2',
-        [firebaseUser.uid, req.user.id]
+        [firebaseUser.uid, authUser.id]
       );
     }
     
@@ -4318,11 +4405,16 @@ app.post('/api/sync-admin-to-firebase', requireHybridAdmin, async (req, res) => 
       message: 'Admin user synced to Firebase',
       firebaseUid: firebaseUser.uid,
       email: 'admin@localcooks.com',
-      authMethod: req.user.authMethod
+      neonUserId: authUser.id,
+      username: authUser.username
     });
   } catch (error) {
     console.error('Error syncing admin to Firebase:', error);
-    res.status(500).json({ error: 'Failed to sync admin to Firebase' });
+    res.status(500).json({ 
+      error: 'Failed to sync admin to Firebase',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -4599,6 +4691,99 @@ app.get('/api/auth-status', async (req, res) => {
   } catch (error) {
     console.error('Error getting auth status:', error);
     res.status(500).json({ error: 'Failed to get authentication status' });
+  }
+});
+
+// Debug endpoint for troubleshooting login issues
+app.post('/api/debug-login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    console.log('=== DEBUG LOGIN ===');
+    console.log('Username:', username);
+    console.log('Password length:', password ? password.length : 0);
+    
+    const debugInfo = {
+      step1_input: { username, passwordProvided: !!password },
+      step2_usernameLookup: null,
+      step3_emailLookup: null,
+      step4_passwordCheck: null,
+      step5_finalResult: null
+    };
+    
+    // Step 1: Try username lookup
+    let user = await getUserByUsername(username);
+    debugInfo.step2_usernameLookup = {
+      found: !!user,
+      userInfo: user ? { id: user.id, username: user.username, role: user.role } : null
+    };
+    
+    // Step 2: If no user found by username, try email lookup
+    if (!user && username.includes('@')) {
+      console.log('Trying email lookup...');
+      try {
+        const emailResult = await pool.query(`
+          SELECT u.* FROM users u 
+          JOIN applications a ON u.id = a.user_id 
+          WHERE LOWER(a.email) = LOWER($1) 
+          ORDER BY a.created_at DESC 
+          LIMIT 1
+        `, [username]);
+        
+        if (emailResult.rows.length > 0) {
+          user = emailResult.rows[0];
+          debugInfo.step3_emailLookup = {
+            found: true,
+            userInfo: { id: user.id, username: user.username, role: user.role }
+          };
+        } else {
+          debugInfo.step3_emailLookup = { found: false, reason: 'No user found with this email' };
+        }
+      } catch (emailError) {
+        debugInfo.step3_emailLookup = { found: false, error: emailError.message };
+      }
+    }
+    
+    // Step 3: Check password if user found
+    if (user && password) {
+      try {
+        const passwordMatch = await comparePasswords(password, user.password);
+        debugInfo.step4_passwordCheck = {
+          match: passwordMatch,
+          storedPasswordLength: user.password ? user.password.length : 0
+        };
+        
+        if (passwordMatch) {
+          debugInfo.step5_finalResult = {
+            success: true,
+            userId: user.id,
+            username: user.username,
+            role: user.role
+          };
+        } else {
+          debugInfo.step5_finalResult = { success: false, reason: 'Password mismatch' };
+        }
+      } catch (passwordError) {
+        debugInfo.step4_passwordCheck = { error: passwordError.message };
+      }
+    } else if (!user) {
+      debugInfo.step5_finalResult = { success: false, reason: 'User not found' };
+    } else {
+      debugInfo.step5_finalResult = { success: false, reason: 'No password provided' };
+    }
+    
+    // Also check available users for reference
+    const availableUsers = await pool.query('SELECT id, username, role FROM users ORDER BY id LIMIT 10');
+    debugInfo.availableUsers = availableUsers.rows;
+    
+    // Check applications with emails
+    const availableEmails = await pool.query('SELECT DISTINCT email, user_id FROM applications ORDER BY user_id LIMIT 10');
+    debugInfo.availableEmails = availableEmails.rows;
+    
+    res.json(debugInfo);
+  } catch (error) {
+    console.error('Debug login error:', error);
+    res.status(500).json({ error: 'Debug failed', message: error.message });
   }
 });
 
