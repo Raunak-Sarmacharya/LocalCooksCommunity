@@ -5581,4 +5581,214 @@ app.get('/api/verify-auth-methods', async (req, res) => {
   }
 });
 
+// Password reset request endpoint
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Check if user exists
+    const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    
+    if (userResult.rows.length === 0) {
+      // Don't reveal if user exists or not for security
+      return res.status(200).json({ 
+        message: "If an account with this email exists, you will receive a password reset link." 
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate reset token (expires in 1 hour)
+    const crypto = await import('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+    
+    // Store reset token in database
+    await pool.query(`
+      INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
+      VALUES ($1, $2, $3, NOW()) 
+      ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
+    `, [user.id, resetToken, resetTokenExpiry]);
+
+    // Generate reset URL
+    const resetUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/reset-password?token=${resetToken}`;
+
+    // Send password reset email
+    const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
+    const emailContent = generatePasswordResetEmail({
+      fullName: user.display_name || user.username,
+      email: user.email,
+      resetToken,
+      resetUrl
+    });
+
+    const emailSent = await sendEmail(emailContent, {
+      trackingId: `password_reset_${user.id}_${Date.now()}`
+    });
+
+    if (emailSent) {
+      console.log(`Password reset email sent to ${email}`);
+      return res.status(200).json({ 
+        message: "If an account with this email exists, you will receive a password reset link." 
+      });
+    } else {
+      console.error(`Failed to send password reset email to ${email}`);
+      return res.status(500).json({ 
+        message: "Error sending password reset email. Please try again later." 
+      });
+    }
+  } catch (error) {
+    console.error("Error in forgot password:", error);
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
+// Password reset confirmation endpoint
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: "Token and new password are required" });
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters long" });
+    }
+
+    // Verify reset token and get user
+    const result = await pool.query(`
+      SELECT u.* FROM users u 
+      JOIN password_reset_tokens prt ON u.id = prt.user_id 
+      WHERE prt.token = $1 AND prt.expires_at > NOW()
+    `, [token]);
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid or expired reset token" });
+    }
+
+    const user = result.rows[0];
+
+    // Update password
+    const bcrypt = await import('bcryptjs');
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hashedPassword, user.id]);
+
+    // Clear reset token
+    await pool.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [user.id]);
+
+    console.log(`Password successfully reset for user ${user.id}`);
+    return res.status(200).json({ message: "Password reset successfully" });
+
+  } catch (error) {
+    console.error("Error in reset password:", error);
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
+// Email verification endpoint
+app.post("/api/auth/send-verification-email", async (req, res) => {
+  try {
+    const { email, fullName } = req.body;
+
+    if (!email || !fullName) {
+      return res.status(400).json({ message: "Email and full name are required" });
+    }
+
+    // Generate verification token
+    const crypto = await import('crypto');
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
+    
+    // Store verification token
+    await pool.query(`
+      INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
+      VALUES ($1, $2, $3, NOW()) 
+      ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
+    `, [email, verificationToken, verificationTokenExpiry]);
+
+    // Generate verification URL
+    const verificationUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/verify-email?token=${verificationToken}`;
+
+    // Send verification email
+    const { sendEmail, generateEmailVerificationEmail } = await import('../server/email.js');
+    const emailContent = generateEmailVerificationEmail({
+      fullName,
+      email,
+      verificationToken,
+      verificationUrl
+    });
+
+    const emailSent = await sendEmail(emailContent, {
+      trackingId: `email_verification_${email}_${Date.now()}`
+    });
+
+    if (emailSent) {
+      console.log(`Email verification sent to ${email}`);
+      return res.status(200).json({ 
+        message: "Verification email sent successfully" 
+      });
+    } else {
+      console.error(`Failed to send verification email to ${email}`);
+      return res.status(500).json({ 
+        message: "Error sending verification email. Please try again later." 
+      });
+    }
+  } catch (error) {
+    console.error("Error sending verification email:", error);
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
+// Email verification confirmation endpoint
+app.get("/api/auth/verify-email", async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ message: "Verification token is required" });
+    }
+
+    // Verify token and get email
+    const result = await pool.query(
+      'SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid or expired verification token" });
+    }
+
+    const { email } = result.rows[0];
+
+    // Mark email as verified
+    await pool.query('UPDATE users SET email_verified = true, updated_at = NOW() WHERE email = $1', [email]);
+
+    // Clear verification token
+    await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
+
+    console.log(`Email verified successfully: ${email}`);
+    
+    // Redirect to success page
+    return res.redirect(`${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth?verified=true`);
+
+  } catch (error) {
+    console.error("Error in email verification:", error);
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
 export default app;

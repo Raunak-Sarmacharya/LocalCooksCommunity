@@ -1054,38 +1054,65 @@ export default function MicrolearningModule({
                             }
                             
                             const isNextLocked = !isLastModule && (!nextCanAccess || isLimitedAccess);
-
+                            
                             return (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => !isLastModule && nextCanAccess && setCurrentVideoIndex(nextIndex)}
-                                disabled={isLastModule || isNextLocked}
-                                className="flex items-center justify-center gap-2 w-full"
-                                title={
-                                  isLastModule ? "This is the last module" :
-                                  isLimitedAccess ? "Complete your application to unlock more modules" :
-                                  !currentCompleted ? "Complete this module to unlock the next one" :
-                                  undefined
-                                }
-                              >
-                                {isLimitedAccess ? (
-                                  <>
-                                    <Lock className="h-4 w-4 flex-shrink-0" />
-                                    <span className="truncate">Locked</span>
-                                  </>
-                                ) : !currentCompleted && accessLevel === 'full' ? (
-                                  <>
-                                    <span className="truncate">Complete First</span>
-                                    <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="truncate">Next</span>
-                                    <ChevronRight className="h-4 w-4 flex-shrink-0" />
-                                  </>
-                                )}
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                {/* Previous Button */}
+                                <button
+                                  onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
+                                  disabled={currentVideoIndex === 0}
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    currentVideoIndex === 0
+                                      ? 'text-gray-400 cursor-not-allowed'
+                                      : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                  Previous
+                                </button>
+                                
+                                {/* Video Counter */}
+                                <div className="px-4 py-2 bg-gray-100 rounded-lg text-sm font-medium text-gray-600">
+                                  {currentVideoIndex + 1} of {currentModuleVideos.length}
+                                </div>
+                                
+                                {/* Next Button */}
+                                <button
+                                  onClick={() => !isNextLocked && setCurrentVideoIndex(nextIndex)}
+                                  disabled={isNextLocked}
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    isNextLocked
+                                      ? 'text-gray-400 cursor-not-allowed bg-gray-50'
+                                      : 'text-white bg-primary hover:bg-primary/90'
+                                  }`}
+                                  title={
+                                    isLimitedAccess
+                                      ? 'Upgrade to full access to continue'
+                                      : !currentCompleted && !completionConfirmed && user?.role !== 'admin'
+                                      ? 'Complete the current video to proceed'
+                                      : isLastModule
+                                      ? 'End of module'
+                                      : ''
+                                  }
+                                >
+                                  {isLastModule ? (
+                                    <>
+                                      <span>End of Module</span>
+                                      <CheckCircle className="h-4 w-4" />
+                                    </>
+                                  ) : isNextLocked ? (
+                                    <>
+                                      <span>Locked</span>
+                                      <Lock className="h-4 w-4" />
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>Next</span>
+                                      <ChevronRight className="h-4 w-4" />
+                                    </>
+                                  )}
+                                </button>
+                              </div>
                             );
                           })()}
                         </div>

@@ -704,3 +704,116 @@ export class DatabaseStorage implements IStorage {
 export const storage = process.env.DATABASE_URL
   ? new DatabaseStorage()
   : new MemStorage();
+
+export const getUserByEmail = async (email: string): Promise<DatabaseUser | null> => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error getting user by email:', error);
+    return null;
+  }
+};
+
+export const storePasswordResetToken = async (userId: string, token: string, expiry: Date): Promise<void> => {
+  try {
+    await pool.query(
+      'INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()',
+      [userId, token, expiry]
+    );
+  } catch (error) {
+    console.error('Error storing password reset token:', error);
+    throw new Error('Failed to store reset token');
+  }
+};
+
+export const getUserByResetToken = async (token: string): Promise<DatabaseUser | null> => {
+  try {
+    const result = await pool.query(
+      `SELECT u.* FROM users u 
+       JOIN password_reset_tokens prt ON u.id = prt.user_id 
+       WHERE prt.token = $1 AND prt.expires_at > NOW()`,
+      [token]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error getting user by reset token:', error);
+    return null;
+  }
+};
+
+export const updateUserPassword = async (userId: string, hashedPassword: string): Promise<void> => {
+  try {
+    await pool.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hashedPassword, userId]
+    );
+  } catch (error) {
+    console.error('Error updating user password:', error);
+    throw new Error('Failed to update password');
+  }
+};
+
+export const clearPasswordResetToken = async (userId: string): Promise<void> => {
+  try {
+    await pool.query(
+      'DELETE FROM password_reset_tokens WHERE user_id = $1',
+      [userId]
+    );
+  } catch (error) {
+    console.error('Error clearing password reset token:', error);
+    throw new Error('Failed to clear reset token');
+  }
+};
+
+export const storeEmailVerificationToken = async (email: string, token: string, expiry: Date): Promise<void> => {
+  try {
+    await pool.query(
+      'INSERT INTO email_verification_tokens (email, token, expires_at, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()',
+      [email, token, expiry]
+    );
+  } catch (error) {
+    console.error('Error storing email verification token:', error);
+    throw new Error('Failed to store verification token');
+  }
+};
+
+export const getEmailVerificationToken = async (token: string): Promise<{email: string} | null> => {
+  try {
+    const result = await pool.query(
+      'SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
+      [token]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error getting email verification token:', error);
+    return null;
+  }
+};
+
+export const markEmailAsVerified = async (email: string): Promise<void> => {
+  try {
+    await pool.query(
+      'UPDATE users SET email_verified = true, updated_at = NOW() WHERE email = $1',
+      [email]
+    );
+  } catch (error) {
+    console.error('Error marking email as verified:', error);
+    throw new Error('Failed to mark email as verified');
+  }
+};
+
+export const clearEmailVerificationToken = async (token: string): Promise<void> => {
+  try {
+    await pool.query(
+      'DELETE FROM email_verification_tokens WHERE token = $1',
+      [token]
+    );
+  } catch (error) {
+    console.error('Error clearing email verification token:', error);
+    throw new Error('Failed to clear verification token');
+  }
+};

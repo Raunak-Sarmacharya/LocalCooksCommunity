@@ -72,6 +72,28 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
         new Promise(resolve => setTimeout(resolve, 1200)) // Slightly longer for registration
       ]);
 
+      // Send verification email
+      try {
+        const response = await fetch('/api/auth/send-verification-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: data.email,
+            fullName: data.displayName,
+          }),
+        });
+
+        if (response.ok) {
+          console.log('Verification email sent successfully');
+        } else {
+          console.warn('Failed to send verification email, but registration succeeded');
+        }
+      } catch (emailError) {
+        console.warn('Email sending failed, but registration succeeded:', emailError);
+      }
+
       setAuthState('success');
       setShowLoadingOverlay(false);
       setEmailForVerification(data.email);
@@ -111,12 +133,27 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
   };
 
   const handleResendVerification = async () => {
-    // This would typically call a resend verification email function
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 1000);
-    });
+    try {
+      const response = await fetch('/api/auth/send-verification-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: emailForVerification,
+          fullName: form.getValues('displayName'),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resend verification email');
+      }
+
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Failed to resend verification email:', error);
+      throw error;
+    }
   };
 
   const getButtonState = () => {
