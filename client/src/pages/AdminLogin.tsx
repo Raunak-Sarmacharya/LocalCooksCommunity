@@ -70,21 +70,40 @@ export default function AdminLogin() {
       const userData = await response.json();
       console.log('Admin login successful, user data:', userData);
       
-      // Store userId in localStorage for persistence
-      if (userData?.uid) {
-        localStorage.setItem('userId', userData.uid.toString());
-        console.log('Saved userId to localStorage:', userData.uid);
-        
-        // Update query client with user data
-        queryClient.setQueryData(["/api/user"], userData);
-        console.log('Updated query client with user data');
-        
-        // Force a complete page reload to ensure clean state
-        console.log('Reloading page to ensure clean authentication state...');
-        window.location.href = '/admin';
-      } else {
-        throw new Error('Invalid admin user data returned');
-      }
+              // Store userId in localStorage for persistence
+        if (userData?.id) {
+          localStorage.setItem('userId', userData.id.toString());
+          console.log('Saved userId to localStorage:', userData.id);
+          
+          // Update query client with user data
+          queryClient.setQueryData(["/api/user"], userData);
+          console.log('Updated query client with user data');
+          
+          // Check if user can be synced to Firebase for enhanced features
+          if (userData.role === 'admin') {
+            try {
+              const syncResponse = await fetch('/api/sync-admin-to-firebase', {
+                method: 'POST',
+                credentials: 'include'
+              });
+              
+              if (syncResponse.ok) {
+                const syncResult = await syncResponse.json();
+                console.log('Admin synced to Firebase:', syncResult);
+              } else {
+                console.log('Firebase sync not available or failed (this is optional)');
+              }
+            } catch (syncError) {
+              console.log('Firebase sync failed (this is optional):', syncError);
+            }
+          }
+          
+          // Force a complete page reload to ensure clean state
+          console.log('Reloading page to ensure clean authentication state...');
+          window.location.href = '/admin';
+        } else {
+          throw new Error('Invalid admin user data returned');
+        }
     } catch (error: any) {
       console.error('Admin login error:', error);
       setErrorMessage(error.message || 'Failed to login');

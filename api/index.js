@@ -705,9 +705,32 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await getUserByUsername(username);
+    // First try to find user by username
+    let user = await getUserByUsername(username);
+    
+    // If not found by username, try to find by email in applications table
+    if (!user && username.includes('@')) {
+      console.log('Username looks like email, searching applications table...');
+      try {
+        const emailResult = await pool.query(`
+          SELECT u.* FROM users u 
+          JOIN applications a ON u.id = a.user_id 
+          WHERE LOWER(a.email) = LOWER($1) 
+          ORDER BY a.created_at DESC 
+          LIMIT 1
+        `, [username]);
+        
+        if (emailResult.rows.length > 0) {
+          user = emailResult.rows[0];
+          console.log('Found user by email in applications table:', user.username);
+        }
+      } catch (emailError) {
+        console.error('Error searching by email:', emailError);
+      }
+    }
+    
     if (!user) {
-      console.log('Login failed: User not found');
+      console.log('Login failed: User not found by username or email');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -3924,14 +3947,37 @@ function requireAdmin(req, res, next) {
 // ENHANCED FIREBASE ROUTES
 // ===================================
 
-// Enhanced Get Current User Profile
-app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
+// Enhanced Get Current User Profile (Firebase + Hybrid Support)
+app.get('/api/user/profile', async (req, res) => {
   try {
+    // Try hybrid auth first (supports both Firebase and session)
+    await requireHybridAuth(req, res, () => {});
+    
+    if (req.user) {
+      return res.json({
+        neonUser: {
+          id: req.user.id,
+          username: req.user.username,
+          role: req.user.role,
+          authMethod: req.user.authMethod
+        },
+        firebaseUser: req.firebaseUser ? {
+          uid: req.firebaseUser.uid,
+          email: req.firebaseUser.email,
+          emailVerified: req.firebaseUser.email_verified,
+        } : null
+      });
+    }
+    
+    // Fallback to Firebase-only auth for backward compatibility
+    await requireFirebaseAuthWithUser(req, res, () => {});
+    
     res.json({
       neonUser: {
         id: req.neonUser.id,
         username: req.neonUser.username,
         role: req.neonUser.role,
+        authMethod: 'firebase'
       },
       firebaseUser: {
         uid: req.firebaseUser.uid,
@@ -4137,7 +4183,423 @@ app.get('/api/firebase-health', (req, res) => {
   });
 });
 
-console.log('🔥 Enhanced Firebase authentication routes added to existing API');
-console.log('✨ Hybrid architecture: Both session-based and Firebase JWT authentication available');
+  console.log('🔥 Enhanced Firebase authentication routes added to existing API');
+  console.log('✨ Hybrid architecture: Both session-based and Firebase JWT authentication available');
+  console.log('📧 Email-based login now supported alongside username login');
+  console.log('🚀 Hybrid endpoints: /api/hybrid/* support both auth methods');
+  console.log('👥 Admin support: Both Firebase and session admins fully supported');
+
+// Utility function to create admin user in Firebase (run once)
+async function createAdminInFirebase() {
+  try {
+    const admin = require('firebase-admin');
+    
+    // Check if admin user exists in Firebase
+    try {
+      const adminUser = await admin.auth().getUserByEmail('admin@localcooks.com');
+      console.log('Admin user already exists in Firebase:', adminUser.uid);
+      return adminUser;
+    } catch (error) {
+      // User doesn't exist, create them
+      console.log('Creating admin user in Firebase...');
+      
+      const adminUser = await admin.auth().createUser({
+        email: 'admin@localcooks.com',
+        password: 'localcooks',
+        displayName: 'Admin',
+        emailVerified: true,
+      });
+      
+      // Set custom claims for admin role
+      await admin.auth().setCustomUserClaims(adminUser.uid, {
+        role: 'admin',
+        isAdmin: true
+      });
+      
+      console.log('Admin user created in Firebase:', adminUser.uid);
+      return adminUser;
+    }
+  } catch (error) {
+    console.error('Failed to create admin in Firebase:', error);
+    throw error;
+  }
+}
+
+// Hybrid Authentication - supports both session and Firebase
+async function requireHybridAuth(req, res, next) {
+  try {
+    // Try Firebase auth first
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        await verifyFirebaseAuth(req, res, () => {});
+        if (req.firebaseUser) {
+          // Load Neon user from Firebase UID
+          let neonUser = null;
+          if (pool) {
+            const result = await pool.query(
+              'SELECT * FROM users WHERE firebase_uid = $1',
+              [req.firebaseUser.uid]
+            );
+            neonUser = result.rows[0] || null;
+          }
+          
+          if (neonUser) {
+            req.user = {
+              id: neonUser.id,
+              username: neonUser.username,
+              role: neonUser.role,
+              authMethod: 'firebase'
+            };
+            req.neonUser = req.user; // For backward compatibility
+            console.log(`🔥 Hybrid auth: Firebase user ${req.firebaseUser.uid} → Neon user ${neonUser.id}`);
+            return next();
+          }
+        }
+      } catch (firebaseError) {
+        console.log('Firebase auth failed, trying session auth...');
+      }
+    }
+    
+    // Fallback to session auth
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (sessionUserId) {
+      const user = await getUser(sessionUserId);
+      if (user) {
+        req.user = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          authMethod: 'session'
+        };
+        req.neonUser = req.user; // For backward compatibility
+        console.log(`📱 Hybrid auth: Session user ${user.id}`);
+        return next();
+      }
+    }
+    
+    return res.status(401).json({ 
+      error: 'Authentication required',
+      message: 'Please login with either Firebase or session authentication'
+    });
+  } catch (error) {
+    console.error('Hybrid auth error:', error);
+    return res.status(500).json({ error: 'Authentication error' });
+  }
+}
+
+// Hybrid Admin Authentication
+async function requireHybridAdmin(req, res, next) {
+  await requireHybridAuth(req, res, () => {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Admin access required',
+        message: 'This endpoint requires admin privileges'
+      });
+    }
+    next();
+  });
+}
+
+// Add this endpoint to manually sync admin to Firebase
+app.post('/api/sync-admin-to-firebase', requireHybridAdmin, async (req, res) => {
+  try {
+    const firebaseUser = await createAdminInFirebase();
+    
+    // Update the admin user in Neon DB with Firebase UID
+    if (pool) {
+      await pool.query(
+        'UPDATE users SET firebase_uid = $1 WHERE id = $2',
+        [firebaseUser.uid, req.user.id]
+      );
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Admin user synced to Firebase',
+      firebaseUid: firebaseUser.uid,
+      email: 'admin@localcooks.com',
+      authMethod: req.user.authMethod
+    });
+  } catch (error) {
+    console.error('Error syncing admin to Firebase:', error);
+    res.status(500).json({ error: 'Failed to sync admin to Firebase' });
+  }
+});
+
+// Endpoint to help users find their login credentials
+app.post('/api/find-login-info', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    // Search for user by email in applications table
+    const result = await pool.query(`
+      SELECT u.username, u.role, u.firebase_uid, a.email, a.full_name 
+      FROM users u 
+      JOIN applications a ON u.id = a.user_id 
+      WHERE LOWER(a.email) = LOWER($1) 
+      ORDER BY a.created_at DESC 
+      LIMIT 1
+    `, [email]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'No account found with this email',
+        suggestion: 'Try registering a new account or check if you used a different email'
+      });
+    }
+    
+    const userInfo = result.rows[0];
+    
+    const loginOptions = [
+      {
+        method: 'Firebase Login (Enhanced)',
+        url: '/auth',
+        credentials: `Email: ${userInfo.email} + your password`,
+        available: !!userInfo.firebase_uid,
+        description: 'Modern authentication with enhanced features'
+      },
+      {
+        method: 'Email Login (Legacy)',
+        url: '/auth',
+        credentials: `Email: ${userInfo.email} + your password`,
+        available: true,
+        description: 'Traditional email/password login'
+      },
+      {
+        method: 'Username Login (Legacy)', 
+        url: '/auth',
+        credentials: `Username: ${userInfo.username} + your password`,
+        available: true,
+        description: 'Username-based login'
+      }
+    ];
+    
+    if (userInfo.role === 'admin') {
+      loginOptions.push({
+        method: 'Admin Panel Login',
+        url: '/admin/login',
+        credentials: `Username: ${userInfo.username} + your password`,
+        available: true,
+        description: 'Direct admin panel access'
+      });
+    }
+    
+    res.json({
+      found: true,
+      username: userInfo.username,
+      email: userInfo.email,
+      name: userInfo.full_name,
+      role: userInfo.role,
+      firebaseEnabled: !!userInfo.firebase_uid,
+      loginOptions
+    });
+    
+  } catch (error) {
+    console.error('Error finding login info:', error);
+    res.status(500).json({ error: 'Failed to find login information' });
+  }
+});
+
+// Hybrid User Profile Endpoint
+app.get('/api/hybrid/user/profile', requireHybridAuth, async (req, res) => {
+  try {
+    // Get additional user data if available
+    let applicationData = null;
+    if (pool) {
+      const appResult = await pool.query(
+        'SELECT email, full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [req.user.id]
+      );
+      applicationData = appResult.rows[0] || null;
+    }
+    
+    res.json({
+      user: {
+        id: req.user.id,
+        username: req.user.username,
+        role: req.user.role,
+        authMethod: req.user.authMethod,
+        email: applicationData?.email || null,
+        fullName: applicationData?.full_name || null,
+        phone: applicationData?.phone || null
+      },
+      firebase: req.firebaseUser ? {
+        uid: req.firebaseUser.uid,
+        email: req.firebaseUser.email,
+        emailVerified: req.firebaseUser.email_verified
+      } : null
+    });
+  } catch (error) {
+    console.error('Error getting hybrid user profile:', error);
+    res.status(500).json({ error: 'Failed to get user profile' });
+  }
+});
+
+// Hybrid Applications Endpoint
+app.get('/api/hybrid/applications', requireHybridAuth, async (req, res) => {
+  try {
+    let applications = [];
+    
+    if (pool) {
+      const result = await pool.query(
+        'SELECT * FROM applications WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.user.id]
+      );
+      applications = result.rows;
+    }
+    
+    res.json({
+      applications,
+      authMethod: req.user.authMethod,
+      userId: req.user.id
+    });
+  } catch (error) {
+    console.error('Error getting hybrid applications:', error);
+    res.status(500).json({ error: 'Failed to get applications' });
+  }
+});
+
+// Hybrid Admin Dashboard Endpoint
+app.get('/api/hybrid/admin/dashboard', requireHybridAdmin, async (req, res) => {
+  try {
+    let stats = {};
+    
+    if (pool) {
+      // Get user statistics
+      const userStats = await pool.query('SELECT role, COUNT(*) as count FROM users GROUP BY role');
+      const appStats = await pool.query('SELECT status, COUNT(*) as count FROM applications GROUP BY status');
+      
+      stats = {
+        users: userStats.rows.reduce((acc, row) => ({ ...acc, [row.role]: parseInt(row.count) }), {}),
+        applications: appStats.rows.reduce((acc, row) => ({ ...acc, [row.status]: parseInt(row.count) }), {})
+      };
+    }
+    
+    res.json({
+      admin: {
+        id: req.user.id,
+        username: req.user.username,
+        role: req.user.role,
+        authMethod: req.user.authMethod
+      },
+      stats,
+      message: `Welcome ${req.user.username}! You're authenticated via ${req.user.authMethod}.`
+    });
+  } catch (error) {
+    console.error('Error getting hybrid admin dashboard:', error);
+    res.status(500).json({ error: 'Failed to get admin dashboard data' });
+  }
+});
+
+// Comprehensive Authentication Status Endpoint
+app.get('/api/auth-status', async (req, res) => {
+  try {
+    const status = {
+      session: null,
+      firebase: null,
+      hybrid: null,
+      recommendations: []
+    };
+    
+    // Check session auth
+    const sessionUserId = req.session.userId || req.headers['x-user-id'];
+    if (sessionUserId) {
+      const user = await getUser(sessionUserId);
+      if (user) {
+        status.session = {
+          authenticated: true,
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          firebaseUid: user.firebase_uid || null
+        };
+      }
+    }
+    
+    // Check Firebase auth
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const decodedToken = await verifyFirebaseToken(token);
+        
+        if (decodedToken) {
+          status.firebase = {
+            authenticated: true,
+            uid: decodedToken.uid,
+            email: decodedToken.email,
+            emailVerified: decodedToken.email_verified
+          };
+          
+          // Try to find linked Neon user
+          if (pool) {
+            const result = await pool.query(
+              'SELECT * FROM users WHERE firebase_uid = $1',
+              [decodedToken.uid]
+            );
+            if (result.rows.length > 0) {
+              status.firebase.linkedNeonUser = {
+                id: result.rows[0].id,
+                username: result.rows[0].username,
+                role: result.rows[0].role
+              };
+            }
+          }
+        }
+      } catch (firebaseError) {
+        status.firebase = { authenticated: false, error: firebaseError.message };
+      }
+    }
+    
+    // Determine hybrid status
+    status.hybrid = {
+      authenticated: !!(status.session?.authenticated || status.firebase?.authenticated),
+      primaryMethod: status.firebase?.authenticated ? 'firebase' : 
+                    status.session?.authenticated ? 'session' : null,
+      bothAvailable: !!(status.session?.authenticated && status.firebase?.authenticated)
+    };
+    
+    // Add recommendations
+    if (!status.hybrid.authenticated) {
+      status.recommendations.push({
+        action: 'login',
+        message: 'Please login using either /auth (modern) or /admin/login (admin)',
+        urls: ['/auth', '/admin/login']
+      });
+    } else {
+      if (status.session?.authenticated && !status.session.firebaseUid) {
+        status.recommendations.push({
+          action: 'sync-to-firebase',
+          message: 'Sync your account to Firebase for enhanced features',
+          url: '/api/sync-admin-to-firebase'
+        });
+      }
+      
+      if (status.firebase?.authenticated && !status.firebase.linkedNeonUser) {
+        status.recommendations.push({
+          action: 'sync-to-neon',
+          message: 'Link your Firebase account to the database',
+          url: '/api/firebase-sync-user'
+        });
+      }
+    }
+    
+    res.json({
+      timestamp: new Date().toISOString(),
+      authStatus: status,
+      availableEndpoints: {
+        legacy: ['/api/login', '/api/admin-login', '/api/user'],
+        firebase: ['/api/user/profile', '/api/firebase/*'],
+        hybrid: ['/api/hybrid/user/profile', '/api/hybrid/applications', '/api/hybrid/admin/dashboard']
+      }
+    });
+  } catch (error) {
+    console.error('Error getting auth status:', error);
+    res.status(500).json({ error: 'Failed to get authentication status' });
+  }
+});
 
 export default app;
