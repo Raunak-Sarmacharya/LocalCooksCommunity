@@ -5844,10 +5844,17 @@ app.post('/api/check-user-exists', async (req, res) => {
     try {
       console.log(`🔥 Attempting Firebase check for: ${email}`);
       
-      // Check if we have Firebase Admin configured
-      if (!process.env.FIREBASE_PROJECT_ID) {
-        console.log(`🔥 Firebase Admin not configured (missing FIREBASE_PROJECT_ID)`);
-        firebaseError = 'Firebase not configured';
+             // Check if we have Firebase Admin configured
+       console.log(`🔥 Environment check:`, {
+         FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+         FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
+         FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
+         VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID
+       });
+       
+       if (!process.env.FIREBASE_PROJECT_ID) {
+         console.log(`🔥 Firebase Admin not configured (missing FIREBASE_PROJECT_ID)`);
+         firebaseError = 'Firebase not configured';
       } else {
         // Use dynamic import for ES modules compatibility
         const admin = await import('firebase-admin');
@@ -5855,24 +5862,41 @@ app.post('/api/check-user-exists', async (req, res) => {
         if (!admin.default.apps.length) {
           console.log(`🔥 Firebase Admin not initialized - attempting to initialize`);
           
-          // Try to initialize Firebase Admin
-          try {
-            const serviceAccount = {
-              projectId: process.env.FIREBASE_PROJECT_ID,
-              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-              privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-            };
+                     // Try to initialize Firebase Admin
+           try {
+             // Use FIREBASE_ variables if available, otherwise try VITE_ variables as fallback
+             const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
+             const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+             const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+             
+             const serviceAccount = {
+               projectId,
+               clientEmail,
+               privateKey,
+             };
 
-            if (serviceAccount.clientEmail && serviceAccount.privateKey) {
-              admin.default.initializeApp({
-                credential: admin.default.credential.cert(serviceAccount),
-                projectId: process.env.FIREBASE_PROJECT_ID,
-              });
-              console.log(`🔥 Firebase Admin initialized successfully`);
-            } else {
-              console.log(`🔥 Firebase Admin credentials not available`);
-              firebaseError = 'Firebase credentials not configured';
-            }
+             console.log(`🔥 Service account check:`, {
+               projectId: !!projectId,
+               clientEmail: !!clientEmail,
+               privateKey: !!privateKey
+             });
+
+             if (serviceAccount.clientEmail && serviceAccount.privateKey) {
+               admin.default.initializeApp({
+                 credential: admin.default.credential.cert(serviceAccount),
+                 projectId: projectId,
+               });
+               console.log(`🔥 Firebase Admin initialized successfully with project: ${projectId}`);
+             } else if (projectId) {
+               // Try without credentials (some environments provide default credentials)
+               admin.default.initializeApp({
+                 projectId: projectId,
+               });
+               console.log(`🔥 Firebase Admin initialized with default credentials for project: ${projectId}`);
+             } else {
+               console.log(`🔥 Firebase Admin credentials not available`);
+               firebaseError = 'Firebase credentials not configured';
+             }
           } catch (initError) {
             console.error(`🔥 Firebase Admin initialization failed:`, initError.message);
             firebaseError = 'Firebase initialization failed';
