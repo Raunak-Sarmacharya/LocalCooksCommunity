@@ -66,13 +66,51 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
     setShowLoadingOverlay(true);
 
     try {
-      // Minimum loading time for smooth UX
+      // Step 1: Check if user already exists in Firebase or NeonDB
+      console.log(`🔍 Checking if email exists: ${data.email}`);
+      
+      const checkResponse = await fetch('/api/check-user-exists', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.email,
+        }),
+      });
+
+      if (checkResponse.ok) {
+        const checkData = await checkResponse.json();
+        console.log('User existence check result:', checkData);
+
+        if (!checkData.canRegister) {
+          setShowLoadingOverlay(false);
+          setAuthState('error');
+          
+          if (checkData.status === 'exists_firebase') {
+            setFormError('This email is already registered. Please try logging in instead.');
+          } else if (checkData.status === 'exists_neon') {
+            setFormError('This email is already registered in our system. Please try logging in instead.');
+          } else if (checkData.status === 'exists_both') {
+            setFormError('This email is already registered. Please try logging in instead.');
+          } else {
+            setFormError('This email is already in use. Please use a different email or try logging in.');
+          }
+          return;
+        }
+      } else {
+        console.warn('User existence check failed, proceeding with registration anyway');
+      }
+
+      // Step 2: Proceed with Firebase registration
+      console.log(`✅ Email available, proceeding with Firebase registration: ${data.email}`);
+      
       await Promise.all([
         signup(data.email, data.password, data.displayName),
-        new Promise(resolve => setTimeout(resolve, 1200)) // Slightly longer for registration
+        new Promise(resolve => setTimeout(resolve, 1200)) // Minimum loading time for UX
       ]);
 
-      // Send verification email
+      // Step 3: Send verification email
       try {
         const response = await fetch('/api/auth/send-verification-email', {
           method: 'POST',
@@ -86,12 +124,12 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
         });
 
         if (response.ok) {
-          console.log('Verification email sent successfully');
+          console.log('✅ Verification email sent successfully');
         } else {
-          console.warn('Failed to send verification email, but registration succeeded');
+          console.warn('⚠️ Failed to send verification email, but registration succeeded');
         }
       } catch (emailError) {
-        console.warn('Email sending failed, but registration succeeded:', emailError);
+        console.warn('⚠️ Email sending failed, but registration succeeded:', emailError);
       }
 
       setAuthState('success');
@@ -102,7 +140,15 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
     } catch (e: any) {
       setShowLoadingOverlay(false);
       setAuthState('error');
-      setFormError(e.message);
+      
+      // Handle Firebase-specific errors
+      if (e.message.includes('EMAIL_EXISTS') || e.message.includes('email-already-in-use')) {
+        setFormError('This email is already registered. Please try logging in instead.');
+      } else {
+        setFormError(e.message);
+      }
+      
+      console.error('❌ Registration failed:', e);
     }
   };
 
