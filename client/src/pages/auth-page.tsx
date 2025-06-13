@@ -176,7 +176,8 @@ export default function AuthPage() {
     }
 
     // Only handle redirects after initial load and when user is authenticated
-    if (!loading && !isInitialLoad && user && hasAttemptedLogin && !showWelcome) {
+    // CRITICAL: Don't redirect if we're still loading user meta or if welcome screen should show
+    if (!loading && !isInitialLoad && user && hasAttemptedLogin && !showWelcome && !userMetaLoading && hasCheckedUser.current) {
       const redirectPath = getRedirectPath();
       // Only redirect if we're not already going to the auth page
       if (location !== redirectPath && redirectPath !== '/auth') {
@@ -192,7 +193,7 @@ export default function AuthPage() {
         clearTimeout(redirectTimeoutRef.current);
       }
     };
-  }, [user, loading, hasAttemptedLogin, location, isInitialLoad, showWelcome]);
+  }, [user, loading, hasAttemptedLogin, location, isInitialLoad, showWelcome, userMetaLoading]);
 
   if (loading || isInitialLoad || userMetaLoading) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
