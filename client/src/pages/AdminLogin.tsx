@@ -16,7 +16,7 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useHybridAuth } from "@/hooks/use-hybrid-auth";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChefHat, Loader2 } from "lucide-react";
@@ -33,7 +33,8 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
-  const { user, loading, isAdmin } = useHybridAuth();
+  const { user, loading } = useFirebaseAuth();
+  const isAdmin = user?.role === 'admin';
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
