@@ -6,12 +6,34 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
+function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-blue-100">
+      <Logo className="h-16 mb-8" />
+      <div className="bg-white rounded-2xl shadow-xl p-10 max-w-md w-full text-center">
+        <h1 className="text-3xl font-bold text-blue-700 mb-4">Welcome to Local Cooks! 🎉</h1>
+        <p className="text-gray-700 mb-6">
+          We're excited to have you join our community. Start your culinary journey, connect with fellow cooks, and unlock new opportunities!
+        </p>
+        <button
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all text-lg"
+          onClick={onContinue}
+        >
+          Continue to Dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
   const { user, loading, logout } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [userMeta, setUserMeta] = useState<{ is_verified: boolean; has_seen_welcome: boolean } | null>(null);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get redirect path from URL if it exists
@@ -35,6 +57,23 @@ export default function AuthPage() {
     }
   }, [loading]);
 
+  // Fetch user meta after login
+  useEffect(() => {
+    if (!loading && user && hasAttemptedLogin) {
+      fetch("/api/user", { credentials: "include" })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data && typeof data.is_verified !== "undefined" && typeof data.has_seen_welcome !== "undefined") {
+            setUserMeta({ is_verified: data.is_verified, has_seen_welcome: data.has_seen_welcome });
+            if (data.is_verified && !data.has_seen_welcome) {
+              setShowWelcome(true);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user, loading, hasAttemptedLogin]);
+
   // Redirect logic - only after initial load is complete
   useEffect(() => {
     // Clear any existing redirect timeout
@@ -44,7 +83,7 @@ export default function AuthPage() {
     }
 
     // Only handle redirects after initial load and when user is authenticated
-    if (!loading && !isInitialLoad && user && hasAttemptedLogin) {
+    if (!loading && !isInitialLoad && user && hasAttemptedLogin && !showWelcome) {
       const redirectPath = getRedirectPath();
       // Only redirect if we're not already going to the auth page
       if (location !== redirectPath && redirectPath !== '/auth') {
@@ -60,7 +99,7 @@ export default function AuthPage() {
         clearTimeout(redirectTimeoutRef.current);
       }
     };
-  }, [user, loading, hasAttemptedLogin, location, isInitialLoad]);
+  }, [user, loading, hasAttemptedLogin, location, isInitialLoad, showWelcome]);
 
   if (loading || isInitialLoad) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
@@ -99,8 +138,18 @@ export default function AuthPage() {
     );
   }
 
+  // Show welcome screen if needed
+  if (showWelcome && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+    return <WelcomeScreen onContinue={async () => {
+      await fetch("/api/user/seen-welcome", { method: "POST", credentials: "include" });
+      setShowWelcome(false);
+      setUserMeta((meta) => meta ? { ...meta, has_seen_welcome: true } : meta);
+      setLocation("/dashboard");
+    }} />;
+  }
+
   // Don't render anything while redirecting
-  if (user && hasAttemptedLogin && !isInitialLoad) return null;
+  if (user && hasAttemptedLogin && !isInitialLoad && !showWelcome) return null;
 
   const handleSuccess = () => {
     setHasAttemptedLogin(true);
@@ -213,7 +262,7 @@ export default function AuthPage() {
                   <polyline points="22 4 12 14.01 9 11.01"></polyline>
                 </svg>
               </div>
-              Manage your cook profile
+              Receive support from our team
             </li>
           </ul>
         </div>

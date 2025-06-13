@@ -49,6 +49,8 @@ export interface IStorage {
 
   // Session store for authentication
   sessionStore: session.Store;
+
+  setUserHasSeenWelcome(userId: number | string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -249,10 +251,14 @@ export class MemStorage implements IStorage {
     // Create user with OAuth provider details
     const insertData: InsertUser & {
       googleId?: string,
-      facebookId?: string
+      facebookId?: string,
+      isVerified?: boolean,
+      has_seen_welcome?: boolean
     } = {
       ...rest,
       password: '', // No password for OAuth users
+      isVerified: oauth_provider === 'google' ? true : false,
+      has_seen_welcome: false,
     };
 
     // Set the appropriate OAuth ID based on provider
@@ -359,6 +365,18 @@ export class MemStorage implements IStorage {
   async createMicrolearningCompletion(completionData: any): Promise<any> {
     this.microlearningCompletions.set(completionData.userId, completionData);
     return completionData;
+  }
+
+  async setUserHasSeenWelcome(userId: number | string): Promise<void> {
+    try {
+      await pool.query(
+        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
+        [userId]
+      );
+    } catch (error) {
+      console.error('Error setting has_seen_welcome:', error);
+      throw new Error('Failed to set has_seen_welcome');
+    }
   }
 }
 
@@ -543,10 +561,14 @@ export class DatabaseStorage implements IStorage {
     // Create user with OAuth provider details
     const insertData: InsertUser & {
       googleId?: string,
-      facebookId?: string
+      facebookId?: string,
+      isVerified?: boolean,
+      has_seen_welcome?: boolean
     } = {
       ...rest,
       password: '', // No password for OAuth users
+      isVerified: oauth_provider === 'google' ? true : false,
+      has_seen_welcome: false,
     };
 
     // Set the appropriate OAuth ID based on provider
@@ -695,6 +717,18 @@ export class DatabaseStorage implements IStorage {
         })
         .returning();
       return inserted;
+    }
+  }
+
+  async setUserHasSeenWelcome(userId: number | string): Promise<void> {
+    try {
+      await pool.query(
+        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
+        [userId]
+      );
+    } catch (error) {
+      console.error('Error setting has_seen_welcome:', error);
+      throw new Error('Failed to set has_seen_welcome');
     }
   }
 }
