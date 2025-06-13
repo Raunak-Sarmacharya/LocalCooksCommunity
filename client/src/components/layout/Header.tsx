@@ -22,42 +22,73 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
-  const hybridAuth = useHybridAuth();
   
-  // Use hybrid auth if available (covers both Firebase and session auth)
-  const { user, logout } = hybridAuth.user ? { 
-    user: hybridAuth.user, 
-    logout: async () => {
-      console.log('Header logout - Auth method:', hybridAuth.user?.authMethod);
-      // Handle logout for both auth types
-      if (hybridAuth.user?.authMethod === 'session') {
-        // Session logout
-        try {
-          console.log('Performing session logout...');
-          await fetch('/api/logout', {
-            method: 'POST',
-            credentials: 'include'
-          });
-          console.log('Session logout successful, redirecting...');
-          window.location.href = '/';
-        } catch (error) {
-          console.error('Session logout failed:', error);
-          firebaseAuth.logout();
+  // Check for session-based auth (for admin users)
+  const { data: sessionUser } = useQuery({
+    queryKey: ["/api/user"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user", {
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null; // Not authenticated via session
+          }
+          throw new Error(`Session auth failed: ${response.status}`);
         }
-      } else {
-        // Firebase logout
-        console.log('Performing Firebase logout...');
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'session'
+        };
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Use session auth if available, otherwise fallback to Firebase
+  const user = sessionUser || firebaseAuth.user;
+  
+  const logout = async () => {
+    if (sessionUser) {
+      // Session logout
+      try {
+        console.log('Performing session logout...');
+        await fetch('/api/logout', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        console.log('Session logout successful, redirecting...');
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Session logout failed:', error);
         firebaseAuth.logout();
       }
+    } else {
+      // Firebase logout
+      console.log('Performing Firebase logout...');
+      firebaseAuth.logout();
     }
-  } : firebaseAuth;
+  };
   
   // Debug logging for header state
   console.log('Header component state:', {
-    hybridUser: hybridAuth.user,
+    sessionUser,
     firebaseUser: firebaseAuth.user,
-    usingHybrid: !!hybridAuth.user,
-    finalUser: user
+    finalUser: user,
+    userRole: user?.role
   });
 
   // Fetch applicant's applications if they are logged in
@@ -150,6 +181,11 @@ export default function Header() {
         text: `${user?.displayName || user.username || 'User'}'s Dashboard`
       };
     }
+  };
+
+  // Helper function to get user display name
+  const getUserDisplayName = () => {
+    return user?.displayName || user?.username || 'User';
   };
 
   return (
@@ -246,7 +282,7 @@ export default function Header() {
                   className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
                 >
                   <User className="h-4 w-4" />
-                  {user.displayName || user.username || 'User'}'s Dashboard
+                  {getUserDisplayName()}
                 </Link>
               <Button
                 variant="ghost"
@@ -332,7 +368,7 @@ export default function Header() {
                     onClick={closeMenu}
                   >
                     <User className="h-4 w-4" />
-                    {getDashboardInfo().text}
+                    {getUserDisplayName()}
                   </Link>
                 </li>
                 <li>
