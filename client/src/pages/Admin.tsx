@@ -1,12 +1,12 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
-import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useHybridAuth } from "@/hooks/use-hybrid-auth";
+import { apiRequest } from "@/lib/api";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
     formatKitchenPreference,
     getStatusBadgeColor
 } from "@/lib/applicationSchema";
-import { apiRequest } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -32,17 +32,19 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
-  const { user, logout } = useFirebaseAuth();
+  const { user, loading, isAdmin } = useHybridAuth();
 
   // Debug authentication state
   console.log('Admin Dashboard - Authentication state:', {
+    loading,
     isLoggedIn: !!user,
-    userId: user?.uid,
+    userId: user?.id,
     userRole: user?.role,
-    localStorageUserId: localStorage.getItem('userId')
+    isAdmin,
+    authMethod: user?.authMethod
   });
 
-  // Fetch all applications with user ID in header
+  // Fetch all applications - use session auth since admin logged in via session
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
     queryKey: ["/api/applications"],
     queryFn: async ({ queryKey }) => {
@@ -55,13 +57,11 @@ function AdminDashboard() {
         'Expires': '0',
       };
 
-      // Include user ID in header for authentication
-      if (user?.uid) {
-        headers['X-User-ID'] = user.uid.toString();
-      }
+      // Don't add X-User-ID header since we're using session auth
+      // The session will automatically provide authentication
 
       const response = await fetch(queryKey[0] as string, {
-        credentials: 'include',
+        credentials: 'include', // Important: include session cookies
         headers
       });
 
@@ -100,7 +100,7 @@ function AdminDashboard() {
       console.log('Admin: Normalized application data', normalizedData);
       return normalizedData;
     },
-    enabled: !!user, // Only run query when user is authenticated
+    enabled: !!user && isAdmin, // Only fetch if user is admin
     // Intelligent auto-refresh for admin dashboard
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) return 20000; // 20 seconds if no data or invalid data
@@ -141,18 +141,9 @@ function AdminDashboard() {
   // Mutation to update application status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number, status: string }) => {
-      // Create custom headers with user ID for authentication
-      const customHeaders: Record<string, string> = {};
-
-      // Include user ID in header for authentication
-      if (user?.uid) {
-        customHeaders['X-User-ID'] = user.uid.toString();
-        console.log('Adding X-User-ID header for status update:', user.uid);
-      }
-
       try {
         console.log(`Updating application ${id} status to ${status}`);
-        const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status }, customHeaders);
+        const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status });
         console.log('Status update response:', response.status);
         return response.json();
       } catch (error) {
@@ -178,43 +169,19 @@ function AdminDashboard() {
       console.log('Status update successful with email notification:', data);
     },
     onError: (error) => {
-      console.error('Status update error details:', error);
-
-      // Check if it's an authentication error
-      const isAuthError = error.message?.includes('Authentication') ||
-        error.message?.includes('401') ||
-        error.message?.includes('403');
-
-      if (isAuthError) {
-        toast({
-          title: "Authentication Error",
-          description: "Your session may have expired. Please refresh the page or log in again.",
-          variant: "destructive",
-        });
-
-        // Refresh the auth state
-        queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      } else {
-        toast({
-          title: "Error updating status",
-          description: error.message || "Please try again.",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error updating status",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
   // Mutation to update document verification status
   const updateDocumentStatusMutation = useMutation({
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
-      const customHeaders: Record<string, string> = {};
-      
-      if (user?.uid) {
-        customHeaders['X-User-ID'] = user.uid.toString();
-      }
-
       const updateData = { [field]: status };
-      const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData, customHeaders);
+      const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData);
       return response.json();
     },
     onSuccess: async (data, variables) => {
@@ -316,9 +283,25 @@ function AdminDashboard() {
     updateDocumentStatusMutation.mutate({ id, field, status });
   };
 
-  // Handle logout
-  const handleLogout = () => {
-    logout();
+  // Handle logout - session-based logout
+  const handleLogout = async () => {
+    try {
+      // Call session logout API
+      await fetch('/api/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      // Clear query cache
+      queryClient.clear();
+      
+      // Redirect to login
+      navigate('/admin/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force redirect even if logout fails
+      navigate('/admin/login');
+    }
   };
 
   // Helper function to toggle card expansion

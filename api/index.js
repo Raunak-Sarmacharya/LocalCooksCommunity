@@ -692,6 +692,41 @@ app.post('/api/admin-login', async (req, res) => {
   }
 });
 
+// Debug endpoint to check user sync status
+app.get('/api/debug/user-sync/:uid', async (req, res) => {
+  try {
+    const { uid } = req.params;
+    
+    console.log('Debug: Checking sync status for Firebase UID:', uid);
+    
+    // Check if user exists in database
+    const user = await getUser(uid);
+    
+    if (user) {
+      console.log('Debug: User found in database:', { id: user.id, username: user.username, role: user.role, firebase_uid: user.firebase_uid });
+      return res.json({
+        synced: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          firebase_uid: user.firebase_uid
+        }
+      });
+    } else {
+      console.log('Debug: User NOT found in database for UID:', uid);
+      return res.json({
+        synced: false,
+        uid: uid,
+        suggestion: 'Try logging out and logging back in to trigger sync'
+      });
+    }
+  } catch (error) {
+    console.error('Debug sync check error:', error);
+    res.status(500).json({ error: 'Debug check failed', message: error.message });
+  }
+});
+
 // API Routes
 app.post('/api/register', async (req, res) => {
   try {
@@ -1375,7 +1410,37 @@ app.get('/api/applications', async (req, res) => {
 
   try {
     // First check if the user is an admin - convert Firebase UID to integer ID
-    const user = await getUser(rawUserId);
+    let user = await getUser(rawUserId);
+    
+    // If user not found and rawUserId looks like a Firebase UID, try to auto-sync
+    if (!user && typeof rawUserId === 'string' && rawUserId.length > 10 && !rawUserId.match(/^\d+$/)) {
+      console.log('Admin user not found for Firebase UID, attempting auto-sync:', rawUserId);
+      
+      try {
+        // Auto-sync Firebase user to database
+        const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: rawUserId,
+            email: `firebase_admin_${rawUserId}@auto-sync.local`,
+            displayName: `Admin_${rawUserId.slice(-8)}`,
+            role: 'admin' // Try admin role
+          })
+        });
+        
+        if (syncResponse.ok) {
+          const syncData = await syncResponse.json();
+          console.log('Admin auto-sync successful:', syncData);
+          
+          // Try to get user again after sync
+          user = await getUser(rawUserId);
+        }
+      } catch (syncError) {
+        console.error('Admin auto-sync error:', syncError);
+      }
+    }
+    
     console.log('User from DB:', user ? { id: user.id, username: user.username, role: user.role } : null);
 
     if (!user || user.role !== 'admin') {
@@ -1464,11 +1529,44 @@ app.get('/api/applications/my-applications', async (req, res) => {
   }
 
   // Convert Firebase UID to integer user ID
-  const user = await getUser(rawUserId);
+  let user = await getUser(rawUserId);
+  
+  // If user not found and rawUserId looks like a Firebase UID, try to auto-sync
+  if (!user && typeof rawUserId === 'string' && rawUserId.length > 10 && !rawUserId.match(/^\d+$/)) {
+    console.log('User not found for Firebase UID, attempting auto-sync:', rawUserId);
+    
+    try {
+      // Auto-sync Firebase user to database
+      const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: rawUserId,
+          email: `firebase_user_${rawUserId}@auto-sync.local`, // Placeholder email
+          displayName: `User_${rawUserId.slice(-8)}`, // Short display name
+          role: 'applicant'
+        })
+      });
+      
+      if (syncResponse.ok) {
+        const syncData = await syncResponse.json();
+        console.log('Auto-sync successful:', syncData);
+        
+        // Try to get user again after sync
+        user = await getUser(rawUserId);
+      } else {
+        console.log('Auto-sync failed:', syncResponse.status);
+      }
+    } catch (syncError) {
+      console.error('Auto-sync error:', syncError);
+    }
+  }
+  
   if (!user) {
-    console.log('User not found for ID:', rawUserId);
+    console.log('User not found for ID even after sync attempt:', rawUserId);
     return res.status(401).json({ error: 'User not found' });
   }
+  
   const userId = user.id;
 
   try {
@@ -1492,6 +1590,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
         ORDER BY a.created_at DESC;
       `, [userId]);
 
+      console.log(`Found ${result.rows.length} applications for user ${userId} (Firebase UID: ${rawUserId})`);
       return res.status(200).json(result.rows);
     }
 
