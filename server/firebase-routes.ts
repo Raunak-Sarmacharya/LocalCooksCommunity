@@ -19,14 +19,14 @@ export function registerFirebaseRoutes(app: Express) {
         return res.status(401).json({ error: 'Firebase authentication required' });
       }
 
-      const { displayName, role } = req.body;
+      const { displayName, role, emailVerified } = req.body;
 
       // Sync Firebase user to Neon database (NO SESSIONS NEEDED)
       const user = await syncFirebaseUserToNeon({
         uid: req.firebaseUser.uid,
         email: req.firebaseUser.email,
         displayName,
-        emailVerified: req.firebaseUser.email_verified,
+        emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
         role: role || 'applicant'
       });
 

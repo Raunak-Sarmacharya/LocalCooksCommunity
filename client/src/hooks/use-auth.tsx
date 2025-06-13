@@ -97,24 +97,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
           
-          // --- Ensure Neon DB is synced (only for fresh logins or new users) ---
+          // --- Sync with Backend Database (modern Firebase architecture) ---
           if (!isSessionRestoration || !userSnap.exists()) {
             try {
+              const token = await firebaseUser.getIdToken();
               await fetch("/api/firebase-sync-user", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`
+                },
                 body: JSON.stringify({
                   uid: firebaseUser.uid,
                   email: firebaseUser.email,
                   displayName: firebaseUser.displayName,
+                  emailVerified: firebaseUser.emailVerified,
                   role: role || "applicant"
                 })
               });
+              console.log("✅ User synced with backend database");
             } catch (err) {
-              console.error("Failed to sync Firebase user to Neon DB:", err);
+              console.error("❌ Failed to sync Firebase user to backend:", err);
             }
           }
-          // --- End Neon DB sync ---
+          // --- End backend sync ---
           
           setUser({
             uid: firebaseUser.uid,
@@ -126,43 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role,
           });
         } else {
-          // Check if user is logged in via NeonDB session when Firebase user is null
-          const authMethod = localStorage.getItem('authMethod');
-          const userId = localStorage.getItem('userId');
-          
-          if ((authMethod === 'neon-database' || authMethod === 'firebase-neon-hybrid') && userId) {
-            try {
-              // Try to get user info from session
-              const response = await fetch('/api/user', {
-                credentials: 'include'
-              });
-              
-              if (response.ok) {
-                const sessionUser = await response.json();
-                console.log('Restored session user:', sessionUser);
-                
-                setUser({
-                  uid: sessionUser.firebase_uid || `neon_${sessionUser.id}`,
-                  email: sessionUser.email || null,
-                  displayName: sessionUser.username,
-                  photoURL: null,
-                  emailVerified: true,
-                  providers: ['neon-database'],
-                  role: sessionUser.role,
-                });
-                return; // Exit early if session user found
-              } else {
-                // Session expired, clear localStorage
-                localStorage.removeItem('authMethod');
-                localStorage.removeItem('userId');
-              }
-            } catch (sessionError) {
-              console.warn('Failed to restore session:', sessionError);
-              localStorage.removeItem('authMethod');
-              localStorage.removeItem('userId');
-            }
-          }
-          
+          // No Firebase user, set to null
           setUser(null);
         }
       } catch (err) {
@@ -180,72 +150,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, [isInitializing]);
 
-  const login = async (email: string, password: string) => {
+    const login = async (email: string, password: string) => {
     setError(null);
     setLoading(true);
     try {
-      // Try Firebase authentication first
+      // Pure Firebase authentication - modern, secure, stateless
       await signInWithEmailAndPassword(auth, email, password);
     } catch (firebaseError: any) {
-      console.log('Firebase authentication failed:', firebaseError.message);
-      
-      // If Firebase auth fails with invalid credentials, try hybrid login (NeonDB fallback)
-      if (firebaseError.code === 'auth/invalid-credential' || 
-          firebaseError.code === 'auth/user-not-found' ||
-          firebaseError.code === 'auth/wrong-password') {
-        
-        console.log('Attempting fallback to NeonDB authentication...');
-        
-        try {
-          const response = await fetch('/api/hybrid-login', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              email,
-              password,
-            }),
-          });
-
-                               if (response.ok) {
-            const data = await response.json();
-            console.log('✅ Hybrid login successful:', data.authMethod);
-            console.log('Session info:', data.session);
-            
-            // Create a pseudo-Firebase user object for compatibility
-            const neonUser = data.user;
-            
-            // Store session information for NeonDB users
-            localStorage.setItem('authMethod', data.authMethod);
-            // Use the session userId for consistency with backend
-            localStorage.setItem('userId', data.session?.userId || neonUser.id?.toString() || '');
-            
-            setUser({
-              uid: data.session?.userId || neonUser.firebase_uid || `neon_${neonUser.id}`,
-              email: email,
-              displayName: neonUser.username,
-              photoURL: null,
-              emailVerified: true, // Assume verified for NeonDB users
-              providers: ['neon-database'],
-              role: neonUser.role,
-            });
-            
-            return; // Success, exit the function
-          } else {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Database authentication failed');
-          }
-        } catch (neonError: any) {
-          console.error('Hybrid login also failed:', neonError.message);
-          setError(`Authentication failed: ${neonError.message}`);
-          return;
-        }
-      } else {
-        // For other Firebase errors (network, etc.), just show the Firebase error
-        setError(firebaseError.message);
-        return;
-      }
+      console.error('Firebase authentication failed:', firebaseError.message);
+      setError(firebaseError.message);
     } finally {
       setLoading(false);
     }
@@ -270,26 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLoading(true);
     try {
-      // Check if user is logged in via NeonDB session
-      const authMethod = localStorage.getItem('authMethod');
-      
-      if (authMethod === 'neon-database' || authMethod === 'firebase-neon-hybrid') {
-        // Also call the session logout endpoint for NeonDB users
-        try {
-          await fetch('/api/logout', {
-            method: 'POST',
-            credentials: 'include'
-          });
-        } catch (sessionError) {
-          console.warn('Session logout failed:', sessionError);
-        }
-        
-        // Clear localStorage
-        localStorage.removeItem('authMethod');
-        localStorage.removeItem('userId');
-      }
-      
-      // Always try Firebase logout (it will silently fail if not signed in via Firebase)
+      // Simple Firebase logout - clean and stateless
       await signOut(auth);
     } catch (e: any) {
       setError(e.message);

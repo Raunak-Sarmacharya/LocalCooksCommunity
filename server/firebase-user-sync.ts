@@ -52,16 +52,19 @@ export async function syncFirebaseUserToNeon(userData: FirebaseUserData): Promis
     }
 
     // Step 3: Create new user in Neon DB
+    const isUserVerified = emailVerified === true;
+    console.log(`🔍 Creating user with emailVerified=${emailVerified}, setting isVerified=${isUserVerified}`);
+    
     const newUser = await firebaseStorage.createUser({
       username: displayName || email || `firebase_${uid}`,
       password: '', // Empty password for Firebase users
       role: role || 'applicant',
       firebaseUid: uid,
-      isVerified: emailVerified === true, // Google users are verified, email/password users need verification
+      isVerified: isUserVerified, // Google users are verified, email/password users need verification
       has_seen_welcome: false // All new users should see welcome screen
     });
 
-    console.log(`✨ Created new Neon user ${newUser.id} for Firebase UID ${uid} (verified: ${emailVerified === true})`);
+    console.log(`✨ Created new Neon user ${newUser.id} for Firebase UID ${uid} (emailVerified: ${emailVerified}, isVerified: ${(newUser as any).isVerified})`);
     return newUser;
 
   } catch (error) {
