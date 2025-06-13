@@ -15,25 +15,25 @@ const inputVariants = {
   idle: {
     scale: 1,
     borderColor: "rgb(229, 231, 235)", // gray-200
-    backgroundColor: "rgb(255, 255, 255)",
-    boxShadow: "0 0 0 0px rgba(66, 133, 244, 0)",
+    backgroundColor: "rgba(249, 250, 251, 0.5)", // gray-50/50
+    boxShadow: "0 0 0 0px rgba(59, 130, 246, 0)",
     transition: { duration: 0.2 }
   },
   focus: {
-    scale: 1.01,
-    borderColor: "rgb(66, 133, 244)", // blue-500
-    backgroundColor: "rgb(249, 250, 251)", // gray-50
-    boxShadow: "0 0 0 3px rgba(66, 133, 244, 0.1)",
+    scale: 1.005,
+    borderColor: "rgb(59, 130, 246)", // blue-500
+    backgroundColor: "rgb(255, 255, 255)", // white
+    boxShadow: "0 0 0 4px rgba(59, 130, 246, 0.1)",
     transition: { duration: 0.2 }
   },
   valid: {
     borderColor: "rgb(34, 197, 94)", // green-500
-    backgroundColor: "rgb(247, 254, 231)", // green-50
+    backgroundColor: "rgba(240, 253, 244, 0.5)", // green-50/50
     transition: { duration: 0.3 }
   },
   invalid: {
     borderColor: "rgb(239, 68, 68)", // red-500
-    backgroundColor: "rgb(254, 242, 242)", // red-50
+    backgroundColor: "rgba(254, 242, 242, 0.5)", // red-50/50
     x: [-2, 2, -2, 2, 0], // Shake animation
     transition: { duration: 0.5 }
   }
@@ -43,17 +43,17 @@ const labelVariants = {
   idle: {
     y: 0,
     scale: 1,
-    color: "rgb(107, 114, 128)", // gray-500
+    color: "rgb(156, 163, 175)", // gray-400
     transition: { duration: 0.2 }
   },
   focus: {
-    y: -8,
+    y: -10,
     scale: 0.85,
-    color: "rgb(66, 133, 244)", // blue-500
+    color: "rgb(59, 130, 246)", // blue-500
     transition: { duration: 0.2 }
   },
   filled: {
-    y: -8,
+    y: -10,
     scale: 0.85,
     color: "rgb(107, 114, 128)", // gray-500
     transition: { duration: 0.2 }
@@ -91,7 +91,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
         >
           {/* Icon */}
           {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors z-10 pointer-events-none">
               {icon}
             </div>
           )}
@@ -102,9 +102,9 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
             type={inputType}
             value={value}
             className={cn(
-              "w-full px-4 py-3 border rounded-lg outline-none transition-all duration-200 h-12",
-              "placeholder-transparent peer",
-              icon ? "pl-10" : "",
+              "w-full px-4 py-3 border rounded-xl outline-none transition-all duration-200 h-12 text-sm",
+              "placeholder-transparent peer placeholder:text-gray-400",
+              icon ? "pl-11" : "",
               showPasswordToggle ? "pr-12" : "",
               className
             )}
@@ -127,8 +127,8 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           {label && (
             <motion.label
               className={cn(
-                "absolute pointer-events-none origin-left z-10 transition-all duration-200",
-                icon ? "left-10" : "left-4",
+                "absolute pointer-events-none origin-left z-10 transition-all duration-200 text-sm font-medium",
+                icon ? "left-11" : "left-4",
                 "top-1/2 -translate-y-1/2"
               )}
               variants={labelVariants}
@@ -145,7 +145,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           {showPasswordToggle && (
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors z-10"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors z-10"
               onClick={() => setShowPassword(!showPassword)}
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
