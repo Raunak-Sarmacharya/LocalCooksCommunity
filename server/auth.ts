@@ -111,11 +111,11 @@ export function setupAuth(app: Express) {
               name: profile.displayName
             });
 
-            // Check if user exists
+            // Check if user exists by Google ID
             let user = await storage.getUserByOAuthId("google", profile.id);
             
             if (!user) {
-              // Create a new user
+              // First-time Google signup - create new user with proper fields
               const userData = {
                 oauth_provider: "google",
                 oauth_id: profile.id,
@@ -126,6 +126,18 @@ export function setupAuth(app: Express) {
 
               console.log('Creating new Google OAuth user:', userData.username);
               user = await storage.createOAuthUser(userData);
+              console.log('Created user with fields:', { 
+                id: user.id, 
+                isVerified: user.isVerified, 
+                has_seen_welcome: (user as any).has_seen_welcome 
+              });
+            } else {
+              console.log('Existing Google user logging in:', { 
+                id: user.id, 
+                username: user.username,
+                isVerified: user.isVerified,
+                has_seen_welcome: (user as any).has_seen_welcome 
+              });
             }
             
             console.log('Google OAuth authentication successful for user:', user.id);

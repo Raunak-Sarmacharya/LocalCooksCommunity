@@ -6,22 +6,41 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, Sparkles } from "lucide-react";
 
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-blue-100">
-      <Logo className="h-16 mb-8" />
-      <div className="bg-white rounded-2xl shadow-xl p-10 max-w-md w-full text-center">
-        <h1 className="text-3xl font-bold text-blue-700 mb-4">Welcome to Local Cooks! 🎉</h1>
-        <p className="text-gray-700 mb-6">
-          We're excited to have you join our community. Start your culinary journey, connect with fellow cooks, and unlock new opportunities!
-        </p>
-        <button
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-xl shadow transition-all text-lg"
-          onClick={onContinue}
-        >
-          Continue to Dashboard
-        </button>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-orange-100 p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Logo className="h-16 mx-auto mb-6" />
+          <div className="flex items-center justify-center mb-4">
+            <Sparkles className="h-8 w-8 text-orange-500 mr-2" />
+            <h1 className="text-3xl font-bold text-gray-900">Welcome to Local Cooks!</h1>
+          </div>
+          <p className="text-gray-600 text-lg">
+            We're excited to have you join our community of passionate home cooks and food lovers.
+          </p>
+        </div>
+
+        <Card className="shadow-xl border-0">
+          <CardContent className="p-8 text-center">
+            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">You're All Set!</h2>
+            <p className="text-gray-600 mb-6">
+              Your account is verified and ready to use. Let's start exploring delicious recipes and connecting with fellow cooks.
+            </p>
+            <Button 
+              onClick={onContinue}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+              size="lg"
+            >
+              Get Started
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -29,17 +48,18 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading, logout } = useFirebaseAuth();
+  const { user, loading, logout, updateUserVerification } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
-  const [userMeta, setUserMeta] = useState<{ is_verified: boolean; has_seen_welcome: boolean } | null>(null);
+  const [userMeta, setUserMeta] = useState<any>(null);
   const [showVerifyEmail, setShowVerifyEmail] = useState(false);
   const [verifyEmailLoading, setVerifyEmailLoading] = useState(false);
   const [verifyEmailError, setVerifyEmailError] = useState<string | null>(null);
   const [verifyEmailAddress, setVerifyEmailAddress] = useState<string | null>(null);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasCheckedUser = useRef(false);
 
   // Get redirect path from URL if it exists
   const getRedirectPath = () => {
@@ -64,23 +84,50 @@ export default function AuthPage() {
 
   // Fetch user meta after login
   useEffect(() => {
-    if (!loading && user && hasAttemptedLogin) {
-      fetch("/api/user", { credentials: "include" })
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
-          if (data && typeof data.is_verified !== "undefined" && typeof data.has_seen_welcome !== "undefined") {
-            setUserMeta({ is_verified: data.is_verified, has_seen_welcome: data.has_seen_welcome });
-            if (data.is_verified && !data.has_seen_welcome) {
-              setShowWelcome(true);
-            } else if (!data.is_verified) {
+    if (!loading && user && !hasCheckedUser.current) {
+      hasCheckedUser.current = true;
+      console.log('Fetching user meta for:', user.uid);
+      
+      const fetchUserMeta = async () => {
+        try {
+          const response = await fetch('/api/user', {
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            console.log('User data from API:', userData);
+            setUserMeta(userData);
+            
+            // Check if user needs to verify email
+            if (!userData.is_verified) {
+              console.log('User not verified, showing email verification screen');
+              setVerifyEmailAddress(userData.username || userData.email || '');
               setShowVerifyEmail(true);
-              setVerifyEmailAddress(data.username || user.email || null);
+              return;
             }
+            
+            // Check if user needs to see welcome screen
+            if (userData.is_verified && !userData.has_seen_welcome) {
+              console.log('User verified but hasn\'t seen welcome, showing welcome screen');
+              setShowWelcome(true);
+              return;
+            }
+            
+            // User is verified and has seen welcome, redirect to dashboard
+            console.log('User verified and has seen welcome, redirecting to dashboard');
+            setLocation('/dashboard');
+          } else {
+            console.error('Failed to fetch user data:', response.status);
           }
-        })
-        .catch(() => {});
+        } catch (error) {
+          console.error('Error fetching user meta:', error);
+        }
+      };
+      
+      fetchUserMeta();
     }
-  }, [user, loading, hasAttemptedLogin]);
+  }, [loading, user, setLocation]);
 
   // Redirect logic - only after initial load is complete
   useEffect(() => {
@@ -147,7 +194,7 @@ export default function AuthPage() {
   }
 
   // Show welcome screen if needed
-  if (showWelcome && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+  if (showWelcome) {
     return <WelcomeScreen onContinue={async () => {
       await fetch("/api/user/seen-welcome", { method: "POST", credentials: "include" });
       setShowWelcome(false);
