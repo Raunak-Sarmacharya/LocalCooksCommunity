@@ -53,7 +53,14 @@ export async function syncFirebaseUserToNeon(userData: FirebaseUserData): Promis
 
     // Step 3: Create new user in Neon DB
     const isUserVerified = emailVerified === true;
-    console.log(`🔍 Creating user with emailVerified=${emailVerified}, setting isVerified=${isUserVerified}`);
+    console.log(`🔍 FIREBASE SYNC DEBUG:`);
+    console.log(`   - Firebase UID: ${uid}`);
+    console.log(`   - Email: ${email}`);
+    console.log(`   - Display Name: ${displayName}`);
+    console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
+    console.log(`   - emailVerified type: ${typeof emailVerified}`);
+    console.log(`   - isUserVerified (calculated): ${isUserVerified}`);
+    console.log(`   - Role: ${role}`);
     
     const newUser = await firebaseStorage.createUser({
       username: displayName || email || `firebase_${uid}`,
@@ -64,7 +71,12 @@ export async function syncFirebaseUserToNeon(userData: FirebaseUserData): Promis
       has_seen_welcome: false // All new users should see welcome screen
     });
 
-    console.log(`✨ Created new Neon user ${newUser.id} for Firebase UID ${uid} (emailVerified: ${emailVerified}, isVerified: ${(newUser as any).isVerified})`);
+    console.log(`✨ CREATED USER RESULT:`);
+    console.log(`   - Neon User ID: ${newUser.id}`);
+    console.log(`   - Username: ${newUser.username}`);
+    console.log(`   - isVerified in DB: ${(newUser as any).isVerified}`);
+    console.log(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome}`);
+    console.log(`   - Firebase UID: ${(newUser as any).firebaseUid}`);
     return newUser;
 
   } catch (error) {

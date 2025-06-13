@@ -100,8 +100,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // --- Sync with Backend Database (modern Firebase architecture) ---
           if (!isSessionRestoration || !userSnap.exists()) {
             try {
+              console.log("🔥 FRONTEND SYNC DEBUG:");
+              console.log("   - Firebase UID:", firebaseUser.uid);
+              console.log("   - Email:", firebaseUser.email);
+              console.log("   - Display Name:", firebaseUser.displayName);
+              console.log("   - emailVerified (from Firebase):", firebaseUser.emailVerified);
+              console.log("   - emailVerified type:", typeof firebaseUser.emailVerified);
+              console.log("   - Role:", role || "applicant");
+              
               const token = await firebaseUser.getIdToken();
-              await fetch("/api/firebase-sync-user", {
+              const syncResponse = await fetch("/api/firebase-sync-user", {
                 method: "POST",
                 headers: { 
                   "Content-Type": "application/json",
@@ -115,7 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   role: role || "applicant"
                 })
               });
-              console.log("✅ User synced with backend database");
+              
+              if (syncResponse.ok) {
+                const syncResult = await syncResponse.json();
+                console.log("✅ User synced with backend database:", syncResult);
+              } else {
+                console.error("❌ Sync response not OK:", syncResponse.status);
+              }
             } catch (err) {
               console.error("❌ Failed to sync Firebase user to backend:", err);
             }
