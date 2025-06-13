@@ -5838,27 +5838,73 @@ app.post('/api/check-user-exists', async (req, res) => {
     let neonExists = false;
     let firebaseUser = null;
     let neonUser = null;
+    let firebaseError = null;
 
-    // Check Firebase
+    // Check Firebase with better error handling
     try {
-      const admin = require('firebase-admin');
-      if (admin.apps.length) {
-        const userRecord = await admin.auth().getUserByEmail(email);
-        firebaseExists = true;
-        firebaseUser = {
-          uid: userRecord.uid,
-          email: userRecord.email,
-          emailVerified: userRecord.emailVerified,
-          disabled: userRecord.disabled
-        };
-        console.log(`🔥 Firebase: User EXISTS (${userRecord.uid})`);
+      console.log(`🔥 Attempting Firebase check for: ${email}`);
+      
+      // Check if we have Firebase Admin configured
+      if (!process.env.FIREBASE_PROJECT_ID) {
+        console.log(`🔥 Firebase Admin not configured (missing FIREBASE_PROJECT_ID)`);
+        firebaseError = 'Firebase not configured';
+      } else {
+        // Use dynamic import for ES modules compatibility
+        const admin = await import('firebase-admin');
+        
+        if (!admin.default.apps.length) {
+          console.log(`🔥 Firebase Admin not initialized - attempting to initialize`);
+          
+          // Try to initialize Firebase Admin
+          try {
+            const serviceAccount = {
+              projectId: process.env.FIREBASE_PROJECT_ID,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            };
+
+            if (serviceAccount.clientEmail && serviceAccount.privateKey) {
+              admin.default.initializeApp({
+                credential: admin.default.credential.cert(serviceAccount),
+                projectId: process.env.FIREBASE_PROJECT_ID,
+              });
+              console.log(`🔥 Firebase Admin initialized successfully`);
+            } else {
+              console.log(`🔥 Firebase Admin credentials not available`);
+              firebaseError = 'Firebase credentials not configured';
+            }
+          } catch (initError) {
+            console.error(`🔥 Firebase Admin initialization failed:`, initError.message);
+            firebaseError = 'Firebase initialization failed';
+          }
+        }
+        
+        // Try to check user if Firebase is available
+        if (admin.default.apps.length > 0) {
+          try {
+            const userRecord = await admin.default.auth().getUserByEmail(email);
+            firebaseExists = true;
+            firebaseUser = {
+              uid: userRecord.uid,
+              email: userRecord.email,
+              emailVerified: userRecord.emailVerified,
+              disabled: userRecord.disabled
+            };
+            console.log(`🔥 Firebase: User EXISTS (${userRecord.uid})`);
+          } catch (getUserError) {
+            if (getUserError.code === 'auth/user-not-found') {
+              console.log(`🔥 Firebase: User does NOT exist`);
+              firebaseExists = false;
+            } else {
+              console.error(`🔥 Firebase getUserByEmail error:`, getUserError.message);
+              firebaseError = getUserError.message;
+            }
+          }
+        }
       }
     } catch (firebaseError) {
-      if (firebaseError.code === 'auth/user-not-found') {
-        console.log(`🔥 Firebase: User does NOT exist`);
-      } else {
-        console.error('Firebase check error:', firebaseError.message);
-      }
+      console.error('🔥 Firebase check failed:', firebaseError.message);
+      firebaseError = firebaseError.message;
     }
 
     // Check NeonDB
@@ -5898,20 +5944,24 @@ app.post('/api/check-user-exists', async (req, res) => {
 
     console.log(`📊 Result for ${email}: ${status} (canRegister: ${canRegister})`);
 
-    return res.json({
-      email,
-      canRegister,
-      status,
-      message,
-      firebase: {
-        exists: firebaseExists,
-        user: firebaseUser
-      },
-      neon: {
-        exists: neonExists,
-        user: neonUser
-      }
-    });
+         return res.json({
+       email,
+       canRegister,
+       status,
+       message,
+       firebase: {
+         exists: firebaseExists,
+         user: firebaseUser,
+         error: firebaseError
+       },
+       neon: {
+         exists: neonExists,
+         user: neonUser
+       },
+       suggestion: !canRegister ? 
+         'Email already exists. Try the client-side Firebase check or use a different email.' : 
+         'Email is available for registration.'
+     });
   } catch (error) {
     console.error('❌ Error checking user existence:', error);
     res.status(500).json({ 
@@ -5931,8 +5981,8 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
     }
 
     // Check if Firebase Admin is available
-    const admin = require('firebase-admin');
-    if (!admin.apps.length) {
+    const admin = await import('firebase-admin');
+    if (!admin.default.apps.length) {
       return res.status(500).json({ 
         error: 'Firebase Admin not configured',
         message: 'Cannot check Firebase users'
@@ -5941,7 +5991,7 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
 
     try {
       // Try to get user by email
-      const userRecord = await admin.auth().getUserByEmail(email);
+      const userRecord = await admin.default.auth().getUserByEmail(email);
       
       return res.json({
         exists: true,
@@ -5990,8 +6040,8 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
     }
 
     // Check if Firebase Admin is available
-    const admin = require('firebase-admin');
-    if (!admin.apps.length) {
+    const admin = await import('firebase-admin');
+    if (!admin.default.apps.length) {
       return res.status(500).json({ 
         error: 'Firebase Admin not configured',
         message: 'Cannot delete Firebase users'
@@ -6000,10 +6050,10 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
 
     try {
       // Get user first
-      const userRecord = await admin.auth().getUserByEmail(email);
+      const userRecord = await admin.default.auth().getUserByEmail(email);
       
       // Delete user
-      await admin.auth().deleteUser(userRecord.uid);
+      await admin.default.auth().deleteUser(userRecord.uid);
       
       console.log(`Deleted Firebase user: ${email} (${userRecord.uid})`);
       

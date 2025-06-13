@@ -69,6 +69,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       // Step 1: Check if user already exists in Firebase or NeonDB
       console.log(`🔍 Checking if email exists: ${data.email}`);
       
+      // First try server-side check
       const checkResponse = await fetch('/api/check-user-exists', {
         method: 'POST',
         headers: {
@@ -79,27 +80,55 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
         }),
       });
 
+      let canRegister = true;
+      let checkData = null;
+
       if (checkResponse.ok) {
-        const checkData = await checkResponse.json();
-        console.log('User existence check result:', checkData);
+        checkData = await checkResponse.json();
+        console.log('📊 Server-side check result:', checkData);
 
         if (!checkData.canRegister) {
-          setShowLoadingOverlay(false);
-          setAuthState('error');
-          
-          if (checkData.status === 'exists_firebase') {
-            setFormError('This email is already registered. Please try logging in instead.');
-          } else if (checkData.status === 'exists_neon') {
-            setFormError('This email is already registered in our system. Please try logging in instead.');
-          } else if (checkData.status === 'exists_both') {
-            setFormError('This email is already registered. Please try logging in instead.');
-          } else {
-            setFormError('This email is already in use. Please use a different email or try logging in.');
-          }
-          return;
+          canRegister = false;
         }
       } else {
-        console.warn('User existence check failed, proceeding with registration anyway');
+        console.warn('📊 Server-side check failed, trying client-side Firebase check');
+      }
+
+      // If server-side check failed or Firebase had errors, try client-side check
+      if (!checkData || checkData.firebase?.error) {
+        console.log(`🔍 Performing client-side Firebase check for: ${data.email}`);
+        
+        try {
+          const clientFirebaseCheck = await checkEmailExistsInFirebase(data.email);
+          console.log('🔥 Client-side Firebase check result:', clientFirebaseCheck);
+          
+          if (clientFirebaseCheck.exists) {
+            canRegister = false;
+            console.log(`❌ Client-side check: Email exists in Firebase`);
+          } else {
+            console.log(`✅ Client-side check: Email does not exist in Firebase`);
+          }
+        } catch (clientError) {
+          console.warn('🔥 Client-side Firebase check also failed:', clientError);
+          // Continue with registration attempt as last resort
+        }
+      }
+
+      // Block registration if email exists
+      if (!canRegister) {
+        setShowLoadingOverlay(false);
+        setAuthState('error');
+        
+        if (checkData?.status === 'exists_firebase' || checkData?.firebase?.exists) {
+          setFormError('This email is already registered. Please try logging in instead.');
+        } else if (checkData?.status === 'exists_neon') {
+          setFormError('This email is already registered in our system. Please try logging in instead.');
+        } else if (checkData?.status === 'exists_both') {
+          setFormError('This email is already registered. Please try logging in instead.');
+        } else {
+          setFormError('This email is already in use. Please use a different email or try logging in.');
+        }
+        return;
       }
 
       // Step 2: Proceed with Firebase registration
