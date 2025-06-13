@@ -302,8 +302,67 @@ export function setupAuth(app: Express) {
     res.json({
       id: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      is_verified: user.isVerified,
+      has_seen_welcome: (user as any).has_seen_welcome,
+      googleId: user.googleId,
+      facebookId: user.facebookId
     });
+  });
+
+  // Endpoint to set has_seen_welcome = true for the current user
+  app.post('/api/user/seen-welcome', async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      const user = req.user as User;
+      await storage.setUserHasSeenWelcome(user.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error setting has_seen_welcome:', error);
+      res.status(500).json({ error: 'Failed to update welcome status' });
+    }
+  });
+
+  // Debug endpoint to test OAuth user creation
+  app.get('/api/debug-oauth', async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      
+      const user = req.user as User;
+      console.log('Debug OAuth user:', {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        isVerified: user.isVerified,
+        has_seen_welcome: (user as any).has_seen_welcome,
+        googleId: user.googleId,
+        facebookId: user.facebookId
+      });
+      
+      // Also fetch directly from database to compare
+      const dbUser = await storage.getUser(user.id);
+      console.log('Debug OAuth user from DB:', dbUser);
+      
+      res.json({
+        sessionUser: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          isVerified: user.isVerified,
+          has_seen_welcome: (user as any).has_seen_welcome,
+          googleId: user.googleId,
+          facebookId: user.facebookId
+        },
+        dbUser: dbUser
+      });
+    } catch (error) {
+      console.error('Debug OAuth error:', error);
+      res.status(500).json({ error: 'Debug failed' });
+    }
   });
 
   // OAuth routes - only configured if credentials are available

@@ -56,10 +56,12 @@ export async function syncFirebaseUserToNeon(userData: FirebaseUserData): Promis
       username: displayName || email || `firebase_${uid}`,
       password: '', // Empty password for Firebase users
       role: role || 'applicant',
-      firebaseUid: uid
+      firebaseUid: uid,
+      isVerified: emailVerified === true, // Google users are verified, email/password users need verification
+      has_seen_welcome: false // All new users should see welcome screen
     });
 
-    console.log(`✨ Created new Neon user ${newUser.id} for Firebase UID ${uid}`);
+    console.log(`✨ Created new Neon user ${newUser.id} for Firebase UID ${uid} (verified: ${emailVerified === true})`);
     return newUser;
 
   } catch (error) {

@@ -56,21 +56,23 @@ export class FirebaseStorage {
     }
   }
 
-  async createUser(insertUser: InsertUser & { firebaseUid?: string }): Promise<User> {
+  async createUser(insertUser: InsertUser & { firebaseUid?: string, isVerified?: boolean, has_seen_welcome?: boolean }): Promise<User> {
     if (!insertUser.username) {
       throw new Error("Username is required");
     }
     
-    // Use raw query to include firebase_uid
+    // Use raw query to include firebase_uid, is_verified, and has_seen_welcome
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, firebase_uid) VALUES ($1, $2, $3, $4) RETURNING *',
+          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
           [
             insertUser.username,
             insertUser.password || '', // Empty password for Firebase users
             insertUser.role || 'applicant',
-            insertUser.firebaseUid
+            insertUser.firebaseUid,
+            insertUser.isVerified !== undefined ? insertUser.isVerified : false,
+            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false
           ]
         );
         return result.rows[0];
@@ -87,10 +89,26 @@ export class FirebaseStorage {
         username: insertUser.username,
         password: insertUser.password || '',
         role: insertUser.role || "applicant",
+        isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
+        has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
       })
       .returning();
 
     return user;
+  }
+
+  async setUserHasSeenWelcome(userId: number): Promise<void> {
+    if (!pool) return;
+    
+    try {
+      await pool.query(
+        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
+        [userId]
+      );
+    } catch (error) {
+      console.error('Error setting has_seen_welcome:', error);
+      throw new Error('Failed to set has_seen_welcome');
+    }
   }
 
   // ===== APPLICATION MANAGEMENT =====

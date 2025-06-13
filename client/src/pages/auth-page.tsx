@@ -9,6 +9,7 @@ import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Sparkles } from "lucide-react";
+import { auth } from "@/lib/firebase";
 
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   return (
@@ -86,12 +87,24 @@ export default function AuthPage() {
   useEffect(() => {
     if (!loading && user && !hasCheckedUser.current) {
       hasCheckedUser.current = true;
-      console.log('Fetching user meta for:', user.uid);
+      console.log('Fetching user meta for Firebase user:', user.uid);
       
       const fetchUserMeta = async () => {
         try {
+          // Get Firebase auth token
+          const firebaseUser = auth.currentUser;
+          if (!firebaseUser) {
+            console.error('No Firebase user available');
+            return;
+          }
+
+          const token = await firebaseUser.getIdToken();
+          
           const response = await fetch('/api/user', {
-            credentials: 'include'
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
           });
           
           if (response.ok) {
@@ -196,10 +209,7 @@ export default function AuthPage() {
   // Show welcome screen if needed
   if (showWelcome) {
     return <WelcomeScreen onContinue={async () => {
-      await fetch("/api/user/seen-welcome", { method: "POST", credentials: "include" });
-      setShowWelcome(false);
-      setUserMeta((meta) => meta ? { ...meta, has_seen_welcome: true } : meta);
-      setLocation("/dashboard");
+      await handleWelcomeContinue();
     }} />;
   }
 
@@ -239,6 +249,43 @@ export default function AuthPage() {
     // Only redirect if not going back to auth
     if (redirectPath !== '/auth') {
       // Let the useEffect handle the redirect with proper timing
+    }
+  };
+
+  const handleWelcomeContinue = async () => {
+    try {
+      console.log('Setting has_seen_welcome to true');
+      
+      // Get Firebase auth token
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        console.error('No Firebase user available');
+        setLocation('/dashboard');
+        return;
+      }
+
+      const token = await firebaseUser.getIdToken();
+      
+      const response = await fetch('/api/user/seen-welcome', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        console.log('Welcome seen status updated, redirecting to dashboard');
+        setLocation('/dashboard');
+      } else {
+        console.error('Failed to update welcome status:', response.status);
+        // Still redirect even if update fails
+        setLocation('/dashboard');
+      }
+    } catch (error) {
+      console.error('Error updating welcome status:', error);
+      // Still redirect even if update fails
+      setLocation('/dashboard');
     }
   };
 
