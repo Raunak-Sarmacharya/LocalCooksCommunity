@@ -47,18 +47,16 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
   };
 
   return (
-    <div className="w-full max-w-md mx-auto animate-fade-in">
+    <div className="w-full max-w-md mx-auto space-y-6">
       {/* Google Auth Button */}
       <Button
         type="button"
-        className="w-full mb-5 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-900 font-semibold shadow-sm hover:bg-gray-50 transition h-12"
-        style={{ boxShadow: "0 1px 2px rgba(60,64,67,.08)" }}
+        className="w-full h-12 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 rounded-xl"
         onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(); }}
         disabled={loading}
         aria-label="Continue with Google"
       >
-        {/* Inline Google SVG icon from the internet */}
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48" className="flex-shrink-0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48" className="flex-shrink-0">
           <g>
             <path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C35.64 2.36 30.18 0 24 0 14.82 0 6.73 5.48 2.69 13.44l7.98 6.2C12.13 13.13 17.62 9.5 24 9.5z"/>
             <path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.43-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.65 7.01l7.19 5.6C43.98 37.36 46.1 31.44 46.1 24.55z"/>
@@ -67,43 +65,49 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
             <path fill="none" d="M0 0h48v48H0z"/>
           </g>
         </svg>
-        <span>Continue with Google</span>
+        <span className="text-sm">Continue with Google</span>
       </Button>
 
       {/* Divider */}
-      <div className="flex items-center my-6">
-        <div className="flex-1 h-px bg-gray-200" />
-        <span className="mx-3 text-gray-400 text-xs uppercase tracking-wider">or</span>
-        <div className="flex-1 h-px bg-gray-200" />
+      <div className="relative flex items-center">
+        <div className="flex-grow border-t border-gray-200"></div>
+        <span className="flex-shrink mx-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Or</span>
+        <div className="flex-grow border-t border-gray-200"></div>
       </div>
 
       {/* Login Form */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
           {(formError || error) && (
-            <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              {formError || error}
+            <div className="rounded-xl bg-red-50 border border-red-100 p-4 flex items-start gap-3">
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-100 flex items-center justify-center mt-0.5">
+                <Lock className="w-3 h-3 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-800">Authentication failed</p>
+                <p className="text-xs text-red-600 mt-1">{formError || error}</p>
+              </div>
             </div>
           )}
+
           <FormField
             control={form.control}
             name="email"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email</FormLabel>
+              <FormItem className="space-y-2">
+                <FormLabel className="text-sm font-semibold text-gray-900">Email address</FormLabel>
                 <FormControl>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <div className="relative group">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
                     <Input
-                      className="pl-10 h-12"
-                      placeholder="Enter your email"
+                      className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400"
+                      placeholder="you@company.com"
                       autoComplete="email"
                       {...field}
                     />
                   </div>
                 </FormControl>
-                <FormMessage />
+                <FormMessage className="text-xs" />
               </FormItem>
             )}
           />
@@ -112,46 +116,49 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
             control={form.control}
             name="password"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Password</FormLabel>
+              <FormItem className="space-y-2">
+                <FormLabel className="text-sm font-semibold text-gray-900">Password</FormLabel>
                 <FormControl>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <div className="relative group">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
                     <Input
                       type="password"
-                      className="pl-10 h-12"
+                      className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400"
                       placeholder="Enter your password"
                       autoComplete="current-password"
                       {...field}
                     />
                   </div>
                 </FormControl>
-                <FormMessage />
+                <FormMessage className="text-xs" />
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full" disabled={loading}>
+
+          <Button 
+            type="submit" 
+            className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-200 text-sm" 
+            disabled={loading}
+          >
             {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Logging in...
-              </>
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Signing in...</span>
+              </div>
             ) : (
-              "Login"
+              "Sign in to your account"
             )}
           </Button>
         </form>
       </Form>
       
       {/* Forgot Password Link */}
-      <div className="mt-4 text-center">
+      <div className="text-center">
         <Button
           type="button"
           variant="ghost"
-          className="w-full text-blue-600 hover:underline font-medium"
-          aria-label="Forgot password"
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium p-0 h-auto hover:bg-transparent hover:underline"
         >
-          <Mail className="w-4 h-4 mr-2 inline" />
           Forgot your password?
         </Button>
       </div>
