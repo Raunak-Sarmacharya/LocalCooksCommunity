@@ -8,32 +8,21 @@ export function initializeFirebaseAdmin() {
   }
 
   try {
-    // Check if Firebase Admin is configured
-    if (!process.env.FIREBASE_PROJECT_ID) {
-      console.warn('Firebase Admin not configured - Firebase auth verification will be disabled');
+    // Check if Firebase Admin is configured using VITE variables
+    if (!process.env.VITE_FIREBASE_PROJECT_ID) {
+      console.warn('Firebase Admin not configured - Firebase auth verification will be disabled (missing VITE_FIREBASE_PROJECT_ID)');
       return null;
     }
 
-    // Initialize Firebase Admin
-    const serviceAccount = {
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    };
-
-    // If we have service account credentials, use them
-    if (serviceAccount.clientEmail && serviceAccount.privateKey) {
+    // Initialize Firebase Admin using VITE variables (no service account available)
+    try {
       firebaseAdmin = admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: process.env.FIREBASE_PROJECT_ID,
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
-      console.log('🔥 Firebase Admin initialized with service account credentials');
-    } else {
-      // Fallback to default credentials (works in some cloud environments)
-      firebaseAdmin = admin.initializeApp({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-      });
-      console.log('🔥 Firebase Admin initialized with default credentials');
+      console.log('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
+    } catch (error) {
+      console.log('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message);
+      return null;
     }
 
     return firebaseAdmin;
@@ -63,8 +52,7 @@ export async function verifyFirebaseToken(token: string): Promise<admin.auth.Dec
  * Check if Firebase Admin is properly configured
  */
 export function isFirebaseAdminConfigured(): boolean {
-  return !!process.env.FIREBASE_PROJECT_ID && 
-         (!!process.env.FIREBASE_CLIENT_EMAIL || !!process.env.GOOGLE_APPLICATION_CREDENTIALS);
+  return !!process.env.VITE_FIREBASE_PROJECT_ID;
 }
 
 export { firebaseAdmin };
