@@ -4196,6 +4196,30 @@ app.post('/api/firebase-sync-user', async (req, res) => {
             console.log(`✨ Successfully created new user: ${user.id} (${user.username})`);
             console.log(`   - is_verified in DB: ${user.is_verified}`);
             console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+            
+            // Send welcome email for new users
+            if (isUserVerified) {
+              try {
+                console.log(`📧 Sending welcome email to new user: ${email}`);
+                const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                const emailContent = generateWelcomeEmail({
+                  fullName: displayName || email.split('@')[0],
+                  email: email
+                });
+                
+                const emailSent = await sendEmail(emailContent, {
+                  trackingId: `welcome_${user.id}_${Date.now()}`
+                });
+                
+                if (emailSent) {
+                  console.log(`✅ Welcome email sent successfully to ${email}`);
+                } else {
+                  console.log(`⚠️ Welcome email failed to send to ${email}`);
+                }
+              } catch (emailError) {
+                console.error(`❌ Error sending welcome email to ${email}:`, emailError);
+              }
+            }
           } catch (insertError) {
             console.error(`❌ Failed to create user:`, insertError);
             
