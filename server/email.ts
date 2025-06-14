@@ -1164,3 +1164,90 @@ export const generateEmailVerificationEmail = (
     html,
   };
 };
+
+// Generate welcome email for new Google sign-up users
+export const generateWelcomeEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+  }
+): EmailContent => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎉 Welcome to Local Cooks Community!</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Welcome to Local Cooks, ${userData.fullName}! 🎉</h2>
+      <p class="message">
+        Thank you for joining our community! Your account has been successfully created and verified. We're thrilled to have you as part of the Local Cooks family.
+      </p>
+      
+      <div class="info-box">
+        <strong>🚀 Your Journey Starts Now!</strong><br>
+        Since you signed up with Google, your account is automatically verified and ready to go. Here's what you can do next:
+      </div>
+      
+      <div class="info-box">
+        <strong>✨ Next Steps:</strong>
+        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
+          <li><strong>Explore Your Dashboard</strong> - Get familiar with your new account</li>
+          <li><strong>Complete Food Safety Training</strong> - Start your learning modules</li>
+          <li><strong>Apply to Become a Cook</strong> - Join our verified cook network</li>
+          <li><strong>Connect with Community</strong> - Meet fellow food enthusiasts</li>
+        </ul>
+      </div>
+      
+      <a href="https://local-cooks-community.vercel.app/dashboard" class="cta-button" style="display: inline-block; margin: 20px 0;">
+        Go to My Dashboard
+      </a>
+      
+      <div class="info-box">
+        <strong>🍳 Why Local Cooks?</strong>
+        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
+          <li><strong>Verified Community</strong> - All cooks are food safety certified</li>
+          <li><strong>Local Focus</strong> - Connect with cooks in your neighborhood</li>
+          <li><strong>Quality Assured</strong> - Rigorous verification process</li>
+          <li><strong>Safe & Secure</strong> - Your safety is our top priority</li>
+        </ul>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div class="info-box">
+        <strong>Need Help Getting Started?</strong><br>
+        Our support team is here to help! Feel free to reach out if you have any questions about your account or the application process.
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Welcome to the <strong>Local Cooks</strong> community!</p>
+      <div class="footer-links">
+        <a href="mailto:${process.env.EMAIL_USER?.replace('noreply@', 'support@') || 'support@localcooks.shop'}">Contact Support</a> • 
+        <a href="https://local-cooks-community.vercel.app/dashboard">Dashboard</a> • 
+        <a href="https://local-cooks-community.vercel.app/apply">Apply Now</a>
+      </div>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: userData.email,
+    subject: '🎉 Welcome to Local Cooks Community!',
+    html,
+  };
+};
