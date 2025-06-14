@@ -251,14 +251,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const result = await signInWithPopup(auth, provider);
       
-      // CRITICAL: For new Google sign-ins, redirect to auth page to ensure welcome screen
-      console.log('🔥 GOOGLE SIGN-IN COMPLETED - Checking if new user');
+      // CRITICAL: For new Google sign-ins, set flag for welcome screen detection
+      console.log('🔥 GOOGLE SIGN-IN COMPLETED - Setting new user flag');
       if (result.user) {
-        // Small delay to let the auth state change process
-        setTimeout(() => {
-          console.log('🔥 REDIRECTING TO AUTH PAGE for welcome screen check');
-          window.location.href = '/auth';
-        }, 1000);
+        // Set flag to indicate this was a fresh Google sign-in
+        localStorage.setItem('localcooks_fresh_google_signin', 'true');
+        console.log('🔥 FRESH GOOGLE SIGN-IN FLAG SET');
       }
     } catch (e: any) {
       setError(e.message);
