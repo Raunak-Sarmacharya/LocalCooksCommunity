@@ -25,10 +25,10 @@ export default function Header() {
   
   // Check for session-based auth (for admin users)
   const { data: sessionUser } = useQuery({
-    queryKey: ["/api/user"],
+    queryKey: ["/api/user-session"],
     queryFn: async () => {
       try {
-        const response = await fetch("/api/user", {
+        const response = await fetch("/api/user-session", {
           credentials: "include",
           headers: {
             'Cache-Control': 'no-cache',

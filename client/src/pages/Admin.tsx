@@ -32,10 +32,10 @@ function AdminDashboard() {
 
   // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
-    queryKey: ["/api/user"],
+    queryKey: ["/api/user-session"],
     queryFn: async () => {
       try {
-        const response = await fetch("/api/user", {
+        const response = await fetch("/api/user-session", {
           credentials: "include",
           headers: {
             'Cache-Control': 'no-cache',
@@ -520,7 +520,7 @@ function AdminDashboard() {
       const cacheKeys = [
         ["/api/applications"],
         ["/api/applications/my-applications"],
-        ["/api/user"]
+        ["/api/user-session"]
       ];
       
       // Remove all related queries from cache
