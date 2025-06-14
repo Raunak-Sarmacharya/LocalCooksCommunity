@@ -142,6 +142,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
 
       // Step 3: Send verification email
       try {
+        console.log('📧 Sending verification email...');
         const response = await fetch('/api/auth/send-verification-email', {
           method: 'POST',
           headers: {
@@ -162,6 +163,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
         console.warn('⚠️ Email sending failed, but registration succeeded:', emailError);
       }
 
+      // Step 4: Show email verification screen
+      console.log('✅ Registration successful, showing verification screen');
       setAuthState('success');
       setShowLoadingOverlay(false);
       setEmailForVerification(data.email);
