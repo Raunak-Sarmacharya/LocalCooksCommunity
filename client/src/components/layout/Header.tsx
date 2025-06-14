@@ -23,11 +23,16 @@ export default function Header() {
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
   
-  // Check for session-based auth (for admin users)
+  // Check for session-based auth (for admin users ONLY)
   const { data: sessionUser } = useQuery({
     queryKey: ["/api/user-session"],
     queryFn: async () => {
       try {
+        // Only check session auth if no Firebase user is logged in
+        if (firebaseAuth.user) {
+          return null;
+        }
+        
         const response = await fetch("/api/user-session", {
           credentials: "include",
           headers: {
@@ -56,10 +61,11 @@ export default function Header() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    enabled: !firebaseAuth.user // Only enable if no Firebase user
   });
 
-  // Use session auth if available, otherwise fallback to Firebase
-  const user = sessionUser || firebaseAuth.user;
+  // Prioritize Firebase auth over session auth
+  const user = firebaseAuth.user || sessionUser;
   
   const logout = async () => {
     if (sessionUser) {

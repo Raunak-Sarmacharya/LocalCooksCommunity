@@ -928,46 +928,61 @@ app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
       if (user) {
         console.log(`📋 Found user ${user.id} (${user.username}), current has_seen_welcome: ${user.has_seen_welcome}`);
         
-        // Only update if not already seen
+        // Only update if not already true
         if (!user.has_seen_welcome) {
-          await pool.query('UPDATE users SET has_seen_welcome = true WHERE id = $1', [user.id]);
-          console.log(`✅ Updated has_seen_welcome = true for user ${user.id}`);
+          await pool.query(
+            'UPDATE users SET has_seen_welcome = $1 WHERE firebase_uid = $2',
+            [true, req.firebaseUser.uid]
+          );
           updated = true;
+          console.log(`✅ Updated has_seen_welcome to true for user ${user.id}`);
         } else {
-          console.log(`ℹ️  User ${user.id} has already seen welcome screen`);
+          console.log(`ℹ️ User ${user.id} has_seen_welcome was already true`);
         }
+        
+        res.json({ 
+          success: true, 
+          user: { 
+            id: user.id, 
+            username: user.username, 
+            has_seen_welcome: true 
+          }, 
+          updated 
+        });
+      } else {
+        console.log(`❌ User not found for UID: ${req.firebaseUser.uid}`);
+        res.status(404).json({ error: 'User not found in database' });
       }
     } else {
       // In-memory fallback
       for (const u of users.values()) {
         if (u.firebase_uid === req.firebaseUser.uid) {
+          u.has_seen_welcome = true;
           user = u;
-          if (!u.has_seen_welcome) {
-            u.has_seen_welcome = true;
-            console.log(`✅ Updated has_seen_welcome = true for in-memory user ${u.id}`);
-            updated = true;
-          }
+          updated = true;
           break;
         }
       }
+      
+      if (user) {
+        console.log(`✅ In-memory: Set has_seen_welcome to true for user ${user.id}`);
+        res.json({ 
+          success: true, 
+          user: { 
+            id: user.id, 
+            username: user.username, 
+            has_seen_welcome: true 
+          }, 
+          updated 
+        });
+      } else {
+        console.log(`❌ In-memory: User not found for UID: ${req.firebaseUser.uid}`);
+        res.status(404).json({ error: 'User not found in database' });
+      }
     }
-    
-    if (!user) {
-      console.error(`❌ User not found for Firebase UID: ${req.firebaseUser.uid}`);
-      return res.status(404).json({ 
-        error: 'User not found',
-        message: 'Please ensure your account is properly synced. Try logging out and back in.'
-      });
-    }
-
-    res.json({ 
-      success: true, 
-      updated: updated,
-      message: updated ? 'Welcome screen status updated' : 'Welcome screen already seen'
-    });
   } catch (error) {
-    console.error('❌ Error setting has_seen_welcome:', error);
-    res.status(500).json({ error: 'Failed to update welcome status', message: error.message });
+    console.error('❌ Error updating has_seen_welcome:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1019,6 +1034,58 @@ app.post('/api/debug/reset-welcome', verifyFirebaseAuth, async (req, res) => {
   } catch (error) {
     console.error('❌ Error resetting welcome screen:', error);
     res.status(500).json({ error: 'Failed to reset welcome screen' });
+  }
+});
+
+// 🧪 DEBUG: Reset user's has_seen_welcome to false for testing
+app.post('/api/user/reset-welcome', verifyFirebaseAuth, async (req, res) => {
+  try {
+    if (!req.firebaseUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    console.log('🧪 DEBUG - Resetting has_seen_welcome to false for UID:', req.firebaseUser.uid);
+
+    // Get user from database by Firebase UID
+    let user = null;
+    
+    if (pool) {
+      // First get the user
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
+      user = result.rows[0] || null;
+      
+      if (user) {
+        // Update has_seen_welcome to false
+        await pool.query(
+          'UPDATE users SET has_seen_welcome = $1 WHERE firebase_uid = $2',
+          [false, req.firebaseUser.uid]
+        );
+        
+        console.log(`🧪 DEBUG - Successfully reset has_seen_welcome to false for user ${user.id}`);
+        res.json({ success: true, message: 'has_seen_welcome reset to false' });
+      } else {
+        res.status(404).json({ error: 'User not found' });
+      }
+    } else {
+      // In-memory fallback
+      for (const u of users.values()) {
+        if (u.firebase_uid === req.firebaseUser.uid) {
+          u.has_seen_welcome = false;
+          user = u;
+          break;
+        }
+      }
+      
+      if (user) {
+        console.log(`🧪 DEBUG - In-memory: reset has_seen_welcome to false for user ${user.id}`);
+        res.json({ success: true, message: 'has_seen_welcome reset to false (in-memory)' });
+      } else {
+        res.status(404).json({ error: 'User not found' });
+      }
+    }
+  } catch (error) {
+    console.error('🧪 DEBUG - Error resetting has_seen_welcome:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
