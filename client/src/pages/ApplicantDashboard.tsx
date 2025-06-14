@@ -311,11 +311,19 @@ export default function ApplicantDashboard() {
       if (!user?.uid) return null;
       
       try {
-        const response = await fetch(`/api/microlearning/completion/${user.uid}`, {
+        // Get Firebase token for authentication
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error("No authenticated user found");
+        }
+        
+        const token = await currentUser.getIdToken();
+        
+        const response = await fetch(`/api/firebase/microlearning/completion/${user.uid}`, {
           method: "GET",
-          credentials: 'include',
           headers: {
-            'X-User-ID': user.uid.toString(),
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
           },
         });
 
@@ -599,13 +607,20 @@ export default function ApplicantDashboard() {
                         className="bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={async () => {
                           try {
-                            const response = await fetch(`/api/microlearning/certificate/${user?.uid}`, {
+                            // Get Firebase token for authentication
+                            const currentUser = auth.currentUser;
+                            if (!currentUser) {
+                              throw new Error("Authentication required. Please log in again.");
+                            }
+                            
+                            const token = await currentUser.getIdToken();
+                            
+                            const response = await fetch(`/api/firebase/microlearning/certificate/${user?.uid}`, {
                               method: 'GET',
                               headers: {
-                                'X-User-ID': user?.uid.toString() || '',
-                                'Authorization': `Bearer ${user?.uid}`,
-                              },
-                              credentials: 'include'
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                              }
                             });
                             
                             if (response.ok) {

@@ -4901,25 +4901,240 @@ app.get('/api/firebase/dashboard', requireFirebaseAuthWithUser, async (req, res)
   }
 });
 
-// Enhanced Microlearning Progress
+// ===============================
+// FIREBASE MICROLEARNING ENDPOINTS
+// ===============================
+
+// Get microlearning progress (Firebase)
+app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const requestedUserId = req.params.userId;
+    const currentUserId = req.neonUser.id;
+    
+    // Users can only access their own progress unless they're admin
+    if (req.firebaseUser.uid !== requestedUserId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get the user ID for the requested Firebase UID
+    let targetUser = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [requestedUserId]);
+      targetUser = result.rows[0];
+    }
+    
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const progress = await getMicrolearningProgress(targetUser.id);
+    
+    console.log(`📺 Firebase microlearning progress: UID ${requestedUserId} → User ID ${targetUser.id}`);
+    
+    res.json({
+      success: true,
+      progress: progress || [],
+      userId: targetUser.id,
+      firebaseUid: requestedUserId
+    });
+  } catch (error) {
+    console.error('Error getting Firebase microlearning progress:', error);
+    res.status(500).json({ message: 'Failed to get progress' });
+  }
+});
+
+// Update microlearning progress (Firebase)
 app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, async (req, res) => {
   try {
-    const { videoId, progress, completed } = req.body;
+    const { videoId, progress, completed, completedAt, watchedPercentage } = req.body;
     const userId = req.neonUser.id;
 
-    console.log(`📺 Enhanced video progress: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${userId}`);
+    console.log(`📺 Firebase video progress: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${userId}`);
 
-    await updateVideoProgress({
+    // Check if user has approved application for videos beyond the first one
+    const applicationStatus = await getApplicationStatus(userId);
+    const completion = await getMicrolearningCompletion(userId);
+    const isCompleted = completion?.confirmed || false;
+    const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
+    const isAdmin = req.neonUser.role === 'admin';
+    
+    // Admins and completed users have unrestricted access to all videos
+    if (!applicationStatus.hasApproved && !isAdmin && !isCompleted && videoId !== firstVideoId) {
+      const message = applicationStatus.hasPending 
+        ? 'Your application is under review. Full access will be granted once approved.'
+        : applicationStatus.hasRejected || applicationStatus.hasCancelled
+        ? 'Your previous application was not approved. Please submit a new application for full access.'
+        : 'Please submit an application to access all training videos.';
+      return res.status(403).json({ 
+        message: message,
+        accessLevel: 'limited',
+        firstVideoOnly: true,
+        applicationInfo: {
+          hasActive: applicationStatus.hasActive,
+          hasPending: applicationStatus.hasPending,
+          hasRejected: applicationStatus.hasRejected,
+          hasCancelled: applicationStatus.hasCancelled,
+          canApply: !applicationStatus.hasActive
+        }
+      });
+    }
+
+    const progressData = {
       userId,
       videoId,
-      progress,
-      completed
-    });
+      progress: Math.max(0, Math.min(100, progress)), // Clamp between 0-100
+      watchedPercentage: Math.max(0, Math.min(100, watchedPercentage || 0)), // Clamp between 0-100
+      completed: completed,
+      completedAt: completed ? (completedAt ? new Date(completedAt) : new Date()) : null,
+      updatedAt: new Date()
+    };
 
-    res.json({ success: true, message: 'Progress updated' });
+    await updateVideoProgress(progressData);
+
+    res.json({ success: true, message: 'Progress updated successfully' });
   } catch (error) {
-    console.error('Error updating enhanced video progress:', error);
+    console.error('Error updating Firebase video progress:', error);
     res.status(500).json({ error: 'Failed to update progress' });
+  }
+});
+
+// Complete microlearning (Firebase)
+app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const { completionDate, videoProgress } = req.body;
+    const userId = req.neonUser.id;
+    
+    console.log(`📺 Firebase microlearning completion: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${userId}`);
+    
+    // Check if user has approved application to complete full training
+    const applicationStatus = await getApplicationStatus(userId);
+    const isAdmin = req.neonUser.role === 'admin';
+    
+    // Admins can complete certification without application approval
+    if (!applicationStatus.hasApproved && !isAdmin) {
+      const message = applicationStatus.hasPending 
+        ? 'Your application is under review. Certification will be available once approved.'
+        : applicationStatus.hasRejected || applicationStatus.hasCancelled
+        ? 'Your previous application was not approved. Please submit a new application to complete certification.'
+        : 'Please submit an application to complete full certification.';
+      return res.status(403).json({ 
+        message: message,
+        accessLevel: 'limited',
+        requiresApproval: true,
+        applicationInfo: {
+          hasActive: applicationStatus.hasActive,
+          hasPending: applicationStatus.hasPending,
+          hasRejected: applicationStatus.hasRejected,
+          hasCancelled: applicationStatus.hasCancelled,
+          canApply: !applicationStatus.hasActive
+        }
+      });
+    }
+    
+    // Create completion record
+    const completion = await createMicrolearningCompletion({
+      userId,
+      completedAt: completionDate ? new Date(completionDate) : new Date(),
+      progress: videoProgress
+    });
+    
+    res.json({
+      success: true,
+      completion,
+      message: "Congratulations! You have completed the microlearning training."
+    });
+  } catch (error) {
+    console.error('Error completing Firebase microlearning:', error);
+    res.status(500).json({ message: 'Failed to complete microlearning' });
+  }
+});
+
+// Get microlearning completion status (Firebase)
+app.get('/api/firebase/microlearning/completion/:userId', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const requestedUserId = req.params.userId;
+    
+    // Users can only access their own completion unless they're admin
+    if (req.firebaseUser.uid !== requestedUserId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get the user ID for the requested Firebase UID
+    let targetUser = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [requestedUserId]);
+      targetUser = result.rows[0];
+    }
+    
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const completion = await getMicrolearningCompletion(targetUser.id);
+    
+    console.log(`📺 Firebase microlearning completion status: UID ${requestedUserId} → User ID ${targetUser.id}`);
+    
+    res.json({
+      success: true,
+      completion: completion || null,
+      userId: targetUser.id,
+      firebaseUid: requestedUserId
+    });
+  } catch (error) {
+    console.error('Error getting Firebase microlearning completion:', error);
+    res.status(500).json({ message: 'Failed to get completion status' });
+  }
+});
+
+// Get microlearning certificate (Firebase)
+app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const requestedUserId = req.params.userId;
+    
+    // Users can only access their own certificate unless they're admin
+    if (req.firebaseUser.uid !== requestedUserId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Get the user ID for the requested Firebase UID
+    let targetUser = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [requestedUserId]);
+      targetUser = result.rows[0];
+    }
+    
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Get completion status
+    const completion = await getMicrolearningCompletion(targetUser.id);
+    
+    if (!completion || !completion.confirmed) {
+      return res.status(404).json({ 
+        message: 'Certificate not available',
+        reason: completion ? 'Not confirmed' : 'Training not completed'
+      });
+    }
+    
+    console.log(`📺 Firebase microlearning certificate: UID ${requestedUserId} → User ID ${targetUser.id}`);
+    
+    // Generate certificate URL
+    const certificateUrl = `/api/microlearning/certificate/${targetUser.id}`;
+    
+    res.json({
+      success: true,
+      certificate: {
+        userId: targetUser.id,
+        firebaseUid: requestedUserId,
+        completedAt: completion.completedAt,
+        certificateUrl: certificateUrl,
+        confirmed: completion.confirmed
+      }
+    });
+  } catch (error) {
+    console.error('Error getting Firebase microlearning certificate:', error);
+    res.status(500).json({ message: 'Failed to get certificate' });
   }
 });
 

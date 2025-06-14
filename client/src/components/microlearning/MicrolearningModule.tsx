@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { useFirebaseAuth } from '@/hooks/use-auth';
+import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import {
     AlertCircle,
@@ -318,10 +319,19 @@ export default function MicrolearningModule({
 
   const loadUserProgress = async () => {
     try {
-      const response = await fetch(`/api/microlearning/progress/${userId || user?.uid}`, {
-        credentials: 'include',
+      // Get Firebase token for authentication
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated user found');
+        return;
+      }
+      
+      const token = await currentUser.getIdToken();
+      
+      const response = await fetch(`/api/firebase/microlearning/progress/${userId || user?.uid}`, {
         headers: {
-          'X-User-ID': String(userId || user?.uid || '')
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         }
       });
       
@@ -359,11 +369,20 @@ export default function MicrolearningModule({
 
   const updateVideoProgress = async (videoId: string, progress: number, completed: boolean = false, watchedPercentage: number = 0) => {
     try {
-      const response = await fetch('/api/microlearning/progress', {
+      // Get Firebase token for authentication
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated user found');
+        return;
+      }
+      
+      const token = await currentUser.getIdToken();
+      
+      const response = await fetch('/api/firebase/microlearning/progress', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-ID': String(userId || user?.uid || '')
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           userId: userId || user?.uid,
@@ -372,8 +391,7 @@ export default function MicrolearningModule({
           completed,
           watchedPercentage,
           completedAt: completed ? new Date() : undefined
-        }),
-        credentials: 'include'
+        })
       });
 
       if (response.ok) {
@@ -466,19 +484,27 @@ export default function MicrolearningModule({
     
     setIsSubmitting(true);
     try {
+      // Get Firebase token for authentication
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated user found');
+        return;
+      }
+      
+      const token = await currentUser.getIdToken();
+      
       // Submit completion to Always Food Safe API
-      const response = await fetch('/api/microlearning/complete', {
+      const response = await fetch('/api/firebase/microlearning/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-ID': String(userId || user?.uid || '')
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           userId: userId || user?.uid,
           completionDate: new Date(),
           videoProgress: userProgress
-        }),
-        credentials: 'include'
+        })
       });
 
       if (response.ok) {
@@ -688,16 +714,21 @@ export default function MicrolearningModule({
                         alert('Training completion not confirmed. Please complete the certification process first.');
                         return;
                       }
-                      const response = await fetch(`/api/microlearning/certificate/${currentUserId}`, {
+                      // Get Firebase token for authentication
+                      const firebaseUser = auth.currentUser;
+                      if (!firebaseUser) {
+                        alert('Authentication required. Please log in again.');
+                        return;
+                      }
+                      
+                      const token = await firebaseUser.getIdToken();
+                      
+                      const response = await fetch(`/api/firebase/microlearning/certificate/${currentUserId}`, {
                         method: 'GET',
                         headers: {
-                          'X-User-ID': currentUserId?.toString() || '',
-                          'Authorization': `Bearer ${currentUserId}`,
-                          ...(localStorage.getItem('user') && {
-                            'X-User-Context': localStorage.getItem('user') || ''
-                          })
-                        },
-                        credentials: 'include'
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        }
                       });
                       if (response.ok) {
                         const contentType = response.headers.get('content-type');
