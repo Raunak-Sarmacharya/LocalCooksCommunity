@@ -4210,16 +4210,102 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
     }
-  
-  console.log(`🔄 Firebase sync request for email: ${email}, uid: ${uid}`);
-  console.log(`🔍 ENHANCED SYNC DEBUG:`);
-  console.log(`   - Firebase UID: ${uid}`);
-  console.log(`   - Email: ${email}`);
-  console.log(`   - Display Name: ${displayName}`);
-  console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
-  console.log(`   - Role: ${role}`);
-  
+
+    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role);
+    
+    if (syncResult.success) {
+      res.json(syncResult);
+    } else {
+      res.status(500).json({ 
+        error: 'Sync failed', 
+        message: syncResult.error 
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in firebase-sync-user:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Sync failed', 
+        message: error.message 
+      });
+    }
+  }
+});
+
+// Enhanced Firebase User Registration Endpoint
+app.post('/api/firebase-register-user', async (req, res) => {
   try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    // Use verified token data for security
+    const uid = decodedToken.uid;
+    const email = decodedToken.email;
+    const emailVerified = decodedToken.email_verified;
+    const { displayName, role } = req.body;
+    
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Missing uid or email in token' });
+    }
+    
+    console.log(`📝 Firebase REGISTRATION request for email: ${email}, uid: ${uid}`);
+    
+    // Call sync logic directly instead of making internal fetch
+    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role);
+    
+    if (syncResult.success) {
+      console.log(`✅ Registration sync completed for ${email}`);
+      res.json({
+        success: true,
+        user: syncResult.user,
+        isNewUser: syncResult.created,
+        message: 'User registered successfully'
+      });
+    } else {
+      console.error(`❌ Registration sync failed for ${email}:`, syncResult.error);
+      res.status(500).json({
+        error: 'Registration failed',
+        message: syncResult.error
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in firebase-register-user:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Registration failed', 
+        message: error.message 
+      });
+    }
+  }
+});
+
+// Extract sync logic into a reusable function
+async function syncFirebaseUser(uid, email, emailVerified, displayName, role) {
+  try {
+    console.log(`🔄 Firebase sync for email: ${email}, uid: ${uid}`);
+    console.log(`🔍 ENHANCED SYNC DEBUG:`);
+    console.log(`   - Firebase UID: ${uid}`);
+    console.log(`   - Email: ${email}`);
+    console.log(`   - Display Name: ${displayName}`);
+    console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
+    console.log(`   - Role: ${role}`);
+    
     let user = null;
     let wasCreated = false;
     
@@ -4245,10 +4331,10 @@ app.post('/api/firebase-sync-user', async (req, res) => {
           // Check if this user already has a different Firebase UID
           if (user.firebase_uid && user.firebase_uid !== uid) {
             console.log(`⚠️  User ${user.id} already linked to different Firebase UID: ${user.firebase_uid} vs ${uid}`);
-            return res.status(409).json({ 
-              error: 'Email already registered with different account',
-              message: 'This email is already associated with another Firebase account'
-            });
+            return { 
+              success: false,
+              error: 'Email already registered with different account'
+            };
           }
           
           // Link this user to the Firebase UID if not already linked
@@ -4374,8 +4460,7 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     
     console.log(`✅ Firebase sync completed for email: ${email}, user ID: ${user.id} (${wasCreated ? 'CREATED' : 'EXISTING'})`);
     
-    // Return enhanced response
-    res.json({ 
+    return { 
       success: true, 
       user: {
         id: user.id,
@@ -4386,89 +4471,17 @@ app.post('/api/firebase-sync-user', async (req, res) => {
         has_seen_welcome: user.has_seen_welcome
       },
       created: wasCreated,
-      message: wasCreated ? 'New user created and synced' : 'Existing user found and synced'
-    });
-  } catch (error) {
-    console.error('❌ Error syncing Firebase user:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        error: 'Failed to sync user', 
-        message: error.message
-      });
-    }
-  }
-});
-
-// Enhanced Firebase User Registration Endpoint
-app.post('/api/firebase-register-user', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'No auth token provided' 
-      });
-    }
-
-    const token = authHeader.substring(7);
-    const decodedToken = await verifyFirebaseToken(token);
-
-    if (!decodedToken) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid auth token' 
-      });
-    }
-
-    const { uid, email, displayName, role, emailVerified, isRegistration } = req.body;
-    
-    if (!uid || !email) {
-      return res.status(400).json({ error: 'Missing uid or email' });
-    }
-    
-    console.log(`📝 Firebase REGISTRATION request for email: ${email}, uid: ${uid}`);
-    
-    // Use the same sync logic but mark as registration
-    const syncRequest = {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authHeader.substring(7)}` // Forward the auth token
-      },
-      body: JSON.stringify({ uid, email, displayName, role: role || 'applicant', emailVerified: emailVerified || false })
+      uid: uid,
+      email: email
     };
-    
-    // Call the existing sync endpoint internally
-    const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, syncRequest);
-    const syncResult = await syncResponse.json();
-    
-    if (syncResponse.ok) {
-      console.log(`✅ Registration sync completed for ${email}`);
-      res.json({
-        success: true,
-        user: syncResult.user,
-        isNewUser: syncResult.created,
-        message: 'User registered successfully'
-      });
-    } else {
-      console.error(`❌ Registration sync failed for ${email}:`, syncResult);
-      res.status(syncResponse.status).json(syncResult);
-    }
   } catch (error) {
-    console.error('❌ Error in firebase-register-user:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        error: 'Registration failed', 
-        message: error.message 
-      });
-    }
+    console.error(`❌ Firebase sync error for ${email}:`, error);
+    return {
+      success: false,
+      error: error.message
+    };
   }
-});
-
-// ===================================
-// ENHANCED FIREBASE AUTHENTICATION
-// ===================================
+}
 
 // Initialize Firebase Admin SDK for enhanced auth using VITE variables
 let firebaseAdmin;
