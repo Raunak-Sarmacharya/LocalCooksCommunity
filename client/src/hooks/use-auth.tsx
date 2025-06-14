@@ -148,9 +148,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // 2. It's not a session restoration (fresh login), OR
           // 3. User doesn't exist in Firestore (new user)
           if (pendingSync || !isSessionRestoration || !userSnap.exists()) {
+            console.log('🔥 SYNC DEBUG - About to sync user with backend');
             const syncSuccess = await syncUserWithBackend(firebaseUser, role);
             if (syncSuccess) {
               setPendingSync(false);
+              console.log('🔥 SYNC DEBUG - User synced successfully, should check welcome screen');
             }
           }
           
@@ -163,6 +165,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             providers,
             role,
           });
+          
+          // CRITICAL: For new users, ensure they go through auth page for welcome screen
+          if (pendingSync || !userSnap.exists()) {
+            console.log('🔥 NEW USER DETECTED - Should redirect to auth page for welcome screen');
+            // Set a flag that can be checked by components to show welcome screen
+            localStorage.setItem('localcooks_new_user', 'true');
+          }
         } else {
           // No Firebase user, set to null
           setUser(null);
@@ -240,7 +249,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider.setCustomParameters({
         prompt: 'select_account'
       });
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      
+      // CRITICAL: For new Google sign-ins, redirect to auth page to ensure welcome screen
+      console.log('🔥 GOOGLE SIGN-IN COMPLETED - Checking if new user');
+      if (result.user) {
+        // Small delay to let the auth state change process
+        setTimeout(() => {
+          console.log('🔥 REDIRECTING TO AUTH PAGE for welcome screen check');
+          window.location.href = '/auth';
+        }, 1000);
+      }
     } catch (e: any) {
       setError(e.message);
       setPendingSync(false);
