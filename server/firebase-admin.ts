@@ -20,8 +20,8 @@ export function initializeFirebaseAdmin() {
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
       console.log('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
-    } catch (error) {
-      console.log('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message);
+    } catch (error: any) {
+      console.log('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message || 'Unknown error');
       return null;
     }
 

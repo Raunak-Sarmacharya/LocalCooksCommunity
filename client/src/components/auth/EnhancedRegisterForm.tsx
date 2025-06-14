@@ -1,4 +1,5 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { checkEmailExistsInFirebase } from "@/utils/firebase-check";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Lock, Mail, User } from "lucide-react";
@@ -189,7 +190,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
 
     try {
       await Promise.all([
-        signInWithGoogle(),
+        signInWithGoogle(true), // Pass true for registration
         new Promise(resolve => setTimeout(resolve, 800))
       ]);
 

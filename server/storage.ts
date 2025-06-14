@@ -745,6 +745,8 @@ export const storage = process.env.DATABASE_URL
   ? new DatabaseStorage()
   : new MemStorage();
 
+// TEMPORARILY DISABLED - Missing DatabaseUser type
+/*
 export const getUserByEmail = async (email: string): Promise<DatabaseUser | null> => {
   try {
     const result = await pool.query(
@@ -757,7 +759,10 @@ export const getUserByEmail = async (email: string): Promise<DatabaseUser | null
     return null;
   }
 };
+*/
 
+// TEMPORARILY DISABLED - Password reset functionality incomplete
+/*
 export const storePasswordResetToken = async (userId: string, token: string, expiry: Date): Promise<void> => {
   try {
     await pool.query(
@@ -769,7 +774,10 @@ export const storePasswordResetToken = async (userId: string, token: string, exp
     throw new Error('Failed to store reset token');
   }
 };
+*/
 
+// TEMPORARILY DISABLED - Missing DatabaseUser type
+/*
 export const getUserByResetToken = async (token: string): Promise<DatabaseUser | null> => {
   try {
     const result = await pool.query(
@@ -784,7 +792,10 @@ export const getUserByResetToken = async (token: string): Promise<DatabaseUser |
     return null;
   }
 };
+*/
 
+// TEMPORARILY DISABLED - Password reset and email verification functionality incomplete
+/*
 export const updateUserPassword = async (userId: string, hashedPassword: string): Promise<void> => {
   try {
     await pool.query(
@@ -857,3 +868,4 @@ export const clearEmailVerificationToken = async (token: string): Promise<void> 
     throw new Error('Failed to clear verification token');
   }
 };
+*/

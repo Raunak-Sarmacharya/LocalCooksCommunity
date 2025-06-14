@@ -52,7 +52,7 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       <Button
         type="button"
         className="w-full h-12 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 rounded-xl"
-        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(); }}
+        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(false); }}
         disabled={loading}
         aria-label="Continue with Google"
       >

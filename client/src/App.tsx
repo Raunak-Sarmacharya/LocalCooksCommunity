@@ -68,8 +68,8 @@ function Router() {
                   } else {
                     alert('No Firebase user logged in');
                   }
-                } catch (error) {
-                  alert('Error: ' + error.message);
+                } catch (error: any) {
+                  alert('Error: ' + (error.message || 'Unknown error'));
                 }
               }}
               style={{ 
@@ -134,8 +134,8 @@ function Router() {
                       const errorText = await response.text();
                       alert('Error fetching debug data: ' + errorText);
                     }
-                  } catch (error) {
-                    alert('Error: ' + error.message);
+                  } catch (error: any) {
+                    alert('Error: ' + (error.message || 'Unknown error'));
                   }
                 }}
                 style={{ 
@@ -168,8 +168,8 @@ function Router() {
                     } else {
                       alert('No Firebase user logged in');
                     }
-                  } catch (error) {
-                    alert('Error: ' + error.message);
+                  } catch (error: any) {
+                    alert('Error: ' + (error.message || 'Unknown error'));
                   }
                 }}
                 style={{ 

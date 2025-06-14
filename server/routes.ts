@@ -1436,7 +1436,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Password reset request endpoint
+  // Password reset request endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
+  /*
   app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     try {
       const { email } = req.body;
@@ -1496,8 +1497,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  */
 
-  // Password reset confirmation endpoint
+  // Password reset confirmation endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
+  /*
   app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
     try {
       const { token, newPassword } = req.body;
@@ -1535,8 +1538,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  */
 
-  // Email verification endpoint
+  // Email verification endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
+  /*
   app.post("/api/auth/send-verification-email", async (req: Request, res: Response) => {
     try {
       const { email, fullName } = req.body;
@@ -1587,8 +1592,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  */
 
-  // Email verification confirmation endpoint
+  // Email verification confirmation endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
+  /*
   app.get("/api/auth/verify-email", async (req: Request, res: Response) => {
     try {
       const { token } = req.query;
@@ -1621,6 +1628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  */
 
   // Firebase user sync endpoint
   app.post('/api/firebase-sync-user', async (req: Request, res: Response) => {

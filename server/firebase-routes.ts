@@ -11,9 +11,9 @@ import { firebaseStorage } from './storage-firebase';
 
 export function registerFirebaseRoutes(app: Express) {
   
-  // 🔥 Firebase User Sync Endpoint
-  // This is called by the frontend when a user logs in/registers
-  app.post('/api/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res: Response) => {
+  // 🔥 Firebase User Registration Endpoint
+  // This is called during registration to create new users
+  app.post('/api/firebase-register-user', verifyFirebaseAuth, async (req: Request, res: Response) => {
     try {
       if (!req.firebaseUser) {
         return res.status(401).json({ error: 'Firebase authentication required' });
@@ -21,7 +21,22 @@ export function registerFirebaseRoutes(app: Express) {
 
       const { displayName, role, emailVerified } = req.body;
 
-      // Sync Firebase user to Neon database (NO SESSIONS NEEDED)
+      // Check if user already exists
+      const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+      if (existingUser) {
+        return res.status(409).json({ 
+          error: 'User already exists',
+          message: 'This account is already registered. Please sign in instead.',
+          user: {
+            id: existingUser.id,
+            username: existingUser.username,
+            role: existingUser.role,
+            firebaseUid: existingUser.firebaseUid
+          }
+        });
+      }
+
+      // Create new user during registration
       const user = await syncFirebaseUserToNeon({
         uid: req.firebaseUser.uid,
         email: req.firebaseUser.email,
@@ -37,6 +52,81 @@ export function registerFirebaseRoutes(app: Express) {
           username: user.username,
           role: user.role,
           firebaseUid: user.firebaseUid
+        },
+        message: 'Account created successfully'
+      });
+    } catch (error) {
+      console.error('Error registering Firebase user:', error);
+      res.status(500).json({ 
+        error: 'Failed to create account', 
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // 🔥 Firebase User Sync Endpoint (Legacy - for existing flows)
+  // This is called by the frontend when a user logs in/registers
+  app.post('/api/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res: Response) => {
+    try {
+      if (!req.firebaseUser) {
+        return res.status(401).json({ error: 'Firebase authentication required' });
+      }
+
+      const { displayName, role, emailVerified, isRegistration } = req.body;
+
+      // If this is explicitly marked as registration, allow user creation
+      if (isRegistration) {
+        // Check if user already exists
+        const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+        if (existingUser) {
+          return res.json({ 
+            success: true, 
+            user: {
+              id: existingUser.id,
+              username: existingUser.username,
+              role: existingUser.role,
+              firebaseUid: existingUser.firebaseUid
+            },
+            message: 'User already exists'
+          });
+        }
+
+        // Create new user during registration
+        const user = await syncFirebaseUserToNeon({
+          uid: req.firebaseUser.uid,
+          email: req.firebaseUser.email,
+          displayName,
+          emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
+          role: role || 'applicant'
+        });
+
+        return res.json({ 
+          success: true, 
+          user: {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            firebaseUid: user.firebaseUid
+          }
+        });
+      }
+
+      // For sign-in (not registration), only sync if user already exists
+      const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+      if (!existingUser) {
+        return res.status(404).json({ 
+          error: 'User not found',
+          message: 'This account is not registered with Local Cooks. Please create an account first.'
+        });
+      }
+
+      res.json({ 
+        success: true, 
+        user: {
+          id: existingUser.id,
+          username: existingUser.username,
+          role: existingUser.role,
+          firebaseUid: existingUser.firebaseUid
         }
       });
     } catch (error) {
@@ -73,6 +163,7 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // 🔥 Get Current User (Firebase compatible /api/user endpoint)
+  // IMPORTANT: This endpoint does NOT auto-create users for sign-in
   app.get('/api/user', verifyFirebaseAuth, async (req: Request, res: Response) => {
     try {
       if (!req.firebaseUser) {
@@ -80,15 +171,13 @@ export function registerFirebaseRoutes(app: Express) {
       }
 
       // Get user from database by Firebase UID
-      let user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+      const user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
       
       if (!user) {
-        // Auto-sync user if not found
-        user = await syncFirebaseUserToNeon({
-          uid: req.firebaseUser.uid,
-          email: req.firebaseUser.email,
-          emailVerified: req.firebaseUser.email_verified,
-          role: 'applicant'
+        // Do NOT auto-create for sign-in - return 404 to indicate user needs to register
+        return res.status(404).json({ 
+          error: 'User not found',
+          message: 'This account is not registered with Local Cooks. Please create an account first.'
         });
       }
 
