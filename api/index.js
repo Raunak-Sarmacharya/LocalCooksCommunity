@@ -1662,27 +1662,56 @@ app.get('/api/applications/my-applications', async (req, res) => {
     console.log('User not found for Firebase UID, attempting auto-sync:', rawUserId);
     
     try {
-      // Auto-sync Firebase user to database
-      const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: rawUserId,
-          email: `firebase_user_${rawUserId}@auto-sync.local`, // Placeholder email
-          displayName: `User_${rawUserId.slice(-8)}`, // Short display name
-          role: 'applicant'
-        })
-      });
+      // Check if we can get Firebase user info first
+      const firebaseUser = await verifyFirebaseToken(req.headers.authorization?.substring(7));
       
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json();
-        console.log('Auto-sync successful:', syncData);
+      if (firebaseUser) {
+        console.log('Firebase user info available for sync:', { 
+          uid: firebaseUser.uid, 
+          email: firebaseUser.email,
+          emailVerified: firebaseUser.email_verified 
+        });
         
-        // Try to get user again after sync
-        user = await getUser(rawUserId);
-        console.log('User after auto-sync:', user ? { id: user.id, username: user.username, role: user.role } : 'Still not found');
+        // Auto-sync Firebase user to database with real email
+        const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || `firebase_user_${rawUserId}@auto-sync.local`,
+            displayName: firebaseUser.name || `User_${rawUserId.slice(-8)}`,
+            emailVerified: firebaseUser.email_verified || false,
+            role: 'applicant'
+          })
+        });
+        
+        if (syncResponse.ok) {
+          const syncData = await syncResponse.json();
+          console.log('Auto-sync successful:', syncData);
+          
+          // Try to get user again after sync
+          user = await getUser(rawUserId);
+          console.log('User after auto-sync:', user ? { id: user.id, username: user.username, role: user.role } : 'Still not found');
+        } else {
+          console.log('Auto-sync failed:', syncResponse.status);
+        }
       } else {
-        console.log('Auto-sync failed:', syncResponse.status);
+        console.log('No Firebase token available for auto-sync, creating placeholder user');
+        // Fallback to placeholder sync
+        const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: rawUserId,
+            email: `firebase_user_${rawUserId}@auto-sync.local`,
+            displayName: `User_${rawUserId.slice(-8)}`,
+            role: 'applicant'
+          })
+        });
+        
+        if (syncResponse.ok) {
+          user = await getUser(rawUserId);
+        }
       }
     } catch (syncError) {
       console.error('Auto-sync error:', syncError);

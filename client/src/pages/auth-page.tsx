@@ -1,15 +1,15 @@
+import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 import LoginForm from "@/components/auth/LoginForm";
 import RegisterForm from "@/components/auth/RegisterForm";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import Logo from "@/components/ui/logo";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { CheckCircle2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { CheckCircle2, Sparkles } from "lucide-react";
-import { auth } from "@/lib/firebase";
 
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   return (
@@ -114,6 +114,28 @@ export default function AuthPage() {
 
             const token = await firebaseUser.getIdToken();
             
+            // First ensure user is synced to backend (in case it's a new user)
+            try {
+              console.log('🔄 Ensuring user is synced to backend...');
+              await fetch("/api/firebase-sync-user", {
+                method: "POST",
+                headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  uid: user.uid,
+                  email: user.email,
+                  displayName: user.displayName,
+                  emailVerified: user.emailVerified,
+                  role: user.role || "applicant"
+                })
+              });
+              console.log('✅ User sync completed');
+            } catch (syncError) {
+              console.log('⚠️ User sync failed, continuing:', syncError);
+            }
+            
             const response = await fetch('/api/user', {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -148,7 +170,10 @@ export default function AuthPage() {
               
               // User is verified and has seen welcome, redirect to dashboard
               console.log('✅ User verified and has seen welcome, redirecting to dashboard');
-              setLocation('/dashboard');
+              // Small delay to ensure proper state management
+              setTimeout(() => {
+                setLocation('/dashboard');
+              }, 500);
             } else {
               console.error('❌ Failed to fetch user data:', response.status);
               const errorData = await response.text();
