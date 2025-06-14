@@ -246,15 +246,23 @@ export default function AuthPage() {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
+  // Check for new user flag from localStorage
+  const isNewUser = localStorage.getItem('localcooks_new_user') === 'true';
+  
   // HIGHEST PRIORITY: Check for welcome screen FIRST before any other logic
-  if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+  if ((userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) || (isNewUser && userMeta)) {
     console.log('🎉 TOP PRIORITY WELCOME SCREEN - User needs onboarding');
     console.log('🎉 WELCOME SCREEN DATA:', {
       is_verified: userMeta.is_verified,
       has_seen_welcome: userMeta.has_seen_welcome,
       user_id: userMeta.id,
-      username: userMeta.username
+      username: userMeta.username,
+      isNewUser: isNewUser
     });
+    
+    // Clear the new user flag
+    localStorage.removeItem('localcooks_new_user');
+    
     return <WelcomeScreen onComplete={async () => {
       console.log('🎯 Welcome screen button clicked from top priority check');
       await handleWelcomeContinue();
