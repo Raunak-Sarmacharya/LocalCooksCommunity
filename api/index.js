@@ -441,6 +441,51 @@ async function initializeDatabase() {
         ON CONFLICT (username) DO NOTHING;
       `, [hashedPassword]);
 
+      // Create password reset and email verification tables
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL,
+          token VARCHAR(255) NOT NULL UNIQUE,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+      
+      // Add unique constraint for password reset tokens if it doesn't exist
+      await pool.query(`
+        DO $$ BEGIN
+          BEGIN
+            ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_user_id_unique UNIQUE (user_id);
+          EXCEPTION
+            WHEN duplicate_table THEN null;
+            WHEN duplicate_object THEN null;
+          END;
+        END $$;
+      `);
+      
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS email_verification_tokens (
+          id SERIAL PRIMARY KEY,
+          email VARCHAR(255) NOT NULL,
+          token VARCHAR(255) NOT NULL UNIQUE,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+      
+      // Add unique constraint for email verification tokens if it doesn't exist
+      await pool.query(`
+        DO $$ BEGIN
+          BEGIN
+            ALTER TABLE email_verification_tokens ADD CONSTRAINT email_verification_tokens_email_unique UNIQUE (email);
+          EXCEPTION
+            WHEN duplicate_table THEN null;
+            WHEN duplicate_object THEN null;
+          END;
+        END $$;
+      `);
+
       console.log('Database initialized successfully');
     } else {
       // Users table exists, but check if applications table exists and create it if needed
@@ -501,6 +546,67 @@ async function initializeDatabase() {
         console.log('Document verification fields are already in applications table');
 
         console.log('Applications table created successfully');
+      }
+
+      // Check and create password reset and email verification tables
+      const passwordResetTableCheck = await pool.query(`
+        SELECT to_regclass('public.password_reset_tokens') as table_exists;
+      `);
+
+      if (!passwordResetTableCheck.rows[0].table_exists) {
+        console.log('Creating password_reset_tokens table...');
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            token VARCHAR(255) NOT NULL UNIQUE,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+        
+        // Add unique constraint
+        await pool.query(`
+          DO $$ BEGIN
+            BEGIN
+              ALTER TABLE password_reset_tokens ADD CONSTRAINT password_reset_tokens_user_id_unique UNIQUE (user_id);
+            EXCEPTION
+              WHEN duplicate_table THEN null;
+              WHEN duplicate_object THEN null;
+            END;
+          END $$;
+        `);
+        console.log('Password reset tokens table created successfully');
+      }
+
+      const emailVerificationTableCheck = await pool.query(`
+        SELECT to_regclass('public.email_verification_tokens') as table_exists;
+      `);
+
+      if (!emailVerificationTableCheck.rows[0].table_exists) {
+        console.log('Creating email_verification_tokens table...');
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS email_verification_tokens (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            token VARCHAR(255) NOT NULL UNIQUE,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+        
+        // Add unique constraint
+        await pool.query(`
+          DO $$ BEGIN
+            BEGIN
+              ALTER TABLE email_verification_tokens ADD CONSTRAINT email_verification_tokens_email_unique UNIQUE (email);
+            EXCEPTION
+              WHEN duplicate_table THEN null;
+              WHEN duplicate_object THEN null;
+            END;
+          END $$;
+        `);
+        console.log('Email verification tokens table created successfully');
       }
 
       // Check if applications table has document fields and add them if missing
@@ -3523,17 +3629,29 @@ async function updateVideoProgress(progressData) {
 async function createMicrolearningCompletion(completionData) {
   if (pool) {
     try {
-      // Create table if it doesn't exist (same as above)
+      // Create table if it doesn't exist
       await pool.query(`
         CREATE TABLE IF NOT EXISTS microlearning_completions (
           id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL UNIQUE,
+          user_id INTEGER NOT NULL,
           completed_at TIMESTAMP NOT NULL,
           confirmed BOOLEAN NOT NULL DEFAULT FALSE,
           certificate_generated BOOLEAN NOT NULL DEFAULT FALSE,
           video_progress JSONB,
           created_at TIMESTAMP DEFAULT NOW()
         );
+      `);
+      
+      // Add unique constraint if it doesn't exist (for existing tables)
+      await pool.query(`
+        DO $$ BEGIN
+          BEGIN
+            ALTER TABLE microlearning_completions ADD CONSTRAINT microlearning_completions_user_id_unique UNIQUE (user_id);
+          EXCEPTION
+            WHEN duplicate_table THEN null;
+            WHEN duplicate_object THEN null;
+          END;
+        END $$;
       `);
 
       const result = await pool.query(`
