@@ -1,6 +1,7 @@
 import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import VerificationDebug from "@/components/auth/VerificationDebug";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -12,7 +13,7 @@ import { useLocation } from "wouter";
 
 export default function EnhancedAuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading, logout } = useFirebaseAuth();
+  const { user, loading, logout, updateUserVerification } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -38,6 +39,16 @@ export default function EnhancedAuthPage() {
     }
   };
 
+  // Check if this is an email verification redirect
+  const isEmailVerificationRedirect = () => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.has('verified') || window.location.href.includes('continueUrl');
+    } catch {
+      return false;
+    }
+  };
+
   // Handle initial load detection
   useEffect(() => {
     if (!loading) {
@@ -45,6 +56,34 @@ export default function EnhancedAuthPage() {
       return () => clearTimeout(timer);
     }
   }, [loading]);
+
+  // Handle email verification redirect
+  useEffect(() => {
+    if (!loading && user && isEmailVerificationRedirect()) {
+      console.log('📧 EMAIL VERIFICATION REDIRECT DETECTED - Updating verification status');
+      
+      const handleVerificationRedirect = async () => {
+        try {
+          // Call the auth hook's updateUserVerification function
+          const updatedUser = await updateUserVerification();
+          
+          // Clean up the URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          console.log('✅ EMAIL VERIFICATION REDIRECT HANDLED:', updatedUser);
+          
+          // Force a refresh of user meta after verification update
+          setTimeout(() => {
+            hasCheckedUser.current = false;
+          }, 1000);
+        } catch (error) {
+          console.error('❌ Error handling verification redirect:', error);
+        }
+      };
+      
+      handleVerificationRedirect();
+    }
+  }, [loading, user]);
 
   // Fetch user metadata to check welcome screen status
   useEffect(() => {
@@ -325,194 +364,44 @@ export default function EnhancedAuthPage() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.5 }}
-      className="min-h-screen flex flex-col md:flex-row bg-gray-50"
-    >
-      {/* Form Section */}
-      <motion.div
-        initial={{ opacity: 0, x: -50 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-        className="w-full md:w-1/2 p-8 flex flex-col justify-center bg-white"
-      >
-        <div className="max-w-md mx-auto w-full">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="mb-8"
-          >
-            <Logo className="h-12 mb-6" />
-            <motion.h1
-              className="text-3xl font-bold tracking-tight text-gray-900"
-              key={activeTab} // Re-animate on tab change
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-            >
-              {activeTab === "login" ? "Welcome back" : "Create your account"}
-            </motion.h1>
-            <motion.p
-              className="text-gray-600 mt-2 leading-relaxed"
-              key={`${activeTab}-subtitle`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-            >
-              {activeTab === "login"
-                ? "Sign in to access your Local Cooks account and track your application status"
-                : "Join Local Cooks and start your culinary journey with us"}
-            </motion.p>
-          </motion.div>
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 flex flex-col">
+      {/* Show welcome screen if user is verified and hasn't seen welcome */}
+      {!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome && (
+        <WelcomeScreen onContinue={handleWelcomeContinue} />
+      )}
 
-          {/* Animated Tabs */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mb-8"
-          >
-            <AnimatedTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
-            />
-          </motion.div>
+      {/* Show login/register forms if no user or user hasn't completed verification + welcome flow */}
+      {(!user || !userMeta || !userMeta.is_verified || userMeta.has_seen_welcome) && (
+        <>
+          <div className="flex-1 flex items-center justify-center p-4">
+            <div className="w-full max-w-md">
+              <div className="text-center mb-8">
+                <Logo className="mx-auto mb-4" />
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  Welcome to Local Cooks
+                </h1>
+                <p className="text-gray-600">
+                  Connect with local food enthusiasts and share your culinary journey
+                </p>
+              </div>
 
-          {/* Form Content */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-          >
-            <AnimatedTabContent activeTab={activeTab}>
-              {activeTab === "login" ? (
-                <EnhancedLoginForm
-                  onSuccess={handleSuccess}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                />
-              ) : (
-                <EnhancedRegisterForm
-                  onSuccess={handleSuccess}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                />
-              )}
-            </AnimatedTabContent>
-          </motion.div>
+              <div className="bg-white rounded-2xl shadow-xl p-8">
+                <AnimatedTabs value={activeTab} onValueChange={setActiveTab} tabs={tabs}>
+                  <AnimatedTabContent value="login">
+                    <EnhancedLoginForm onSuccess={handleSuccess} />
+                  </AnimatedTabContent>
+                  <AnimatedTabContent value="register">
+                    <EnhancedRegisterForm onSuccess={handleSuccess} />
+                  </AnimatedTabContent>
+                </AnimatedTabs>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
-          {/* Footer Links */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-            className="mt-8 text-center"
-          >
-            <p className="text-sm text-gray-500">
-              {activeTab === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
-              <motion.button
-                className="text-blue-600 hover:text-blue-700 font-semibold hover:underline transition-colors"
-                onClick={() => setActiveTab(activeTab === "login" ? "register" : "login")}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {activeTab === "login" ? "Sign up" : "Sign in"}
-              </motion.button>
-            </p>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, x: 50 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="w-full md:w-1/2 bg-gradient-to-br from-primary to-primary/80 p-8 flex items-center hidden md:flex relative overflow-hidden"
-      >
-        {/* Background Pattern */}
-        <motion.div
-          className="absolute inset-0 opacity-10"
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.1 }}
-          transition={{ duration: 1, delay: 0.5 }}
-        >
-          <div className="absolute top-10 left-10 w-20 h-20 bg-white rounded-full" />
-          <div className="absolute top-32 right-20 w-16 h-16 bg-white rounded-full" />
-          <div className="absolute bottom-20 left-20 w-12 h-12 bg-white rounded-full" />
-          <div className="absolute bottom-40 right-10 w-24 h-24 bg-white rounded-full" />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="max-w-md mx-auto text-white relative z-10"
-        >
-          <motion.h2
-            className="text-4xl font-bold mb-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-          >
-            Join Local Cooks
-          </motion.h2>
-          <motion.p
-            className="text-white/90 mb-8 text-lg leading-relaxed"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-          >
-            Apply to become a verified cook and start your culinary journey with us. Track your application status and get updates on your approval process.
-          </motion.p>
-          <motion.ul
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.7 }}
-            className="space-y-4"
-          >
-            {[
-              "Monitor your application progress",
-              "Receive updates on your status",
-              "Access exclusive cooking resources"
-            ].map((item, index) => (
-              <motion.li
-                key={index}
-                className="flex items-center"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.8 + index * 0.1 }}
-              >
-                <motion.div
-                  className="rounded-full bg-white/20 p-2 mr-4"
-                  whileHover={{ scale: 1.1, backgroundColor: "rgba(255,255,255,0.3)" }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                  </svg>
-                </motion.div>
-                <span className="text-white/90">{item}</span>
-              </motion.li>
-            ))}
-          </motion.ul>
-        </motion.div>
-      </motion.div>
-    </motion.div>
+      {/* Debug component for development */}
+      <VerificationDebug />
+    </div>
   );
 } 
