@@ -36,7 +36,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (isRegistration?: boolean) => Promise<void>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: any) => boolean;
@@ -51,13 +51,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [pendingSync, setPendingSync] = useState(false);
+  const [pendingRegistration, setPendingRegistration] = useState(false);
 
-  const syncUserWithBackend = async (firebaseUser: any, role?: string, forceSync = false) => {
+  const syncUserWithBackend = async (firebaseUser: any, role?: string, isRegistration = false) => {
     try {
-      console.log('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid);
+      console.log('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid, isRegistration ? '(REGISTRATION)' : '(SIGN-IN)');
       
       const token = await firebaseUser.getIdToken();
-      const response = await fetch("/api/firebase-sync-user", {
+      
+      // Use different endpoints based on whether this is registration or sign-in
+      const endpoint = isRegistration ? "/api/firebase-register-user" : "/api/firebase-sync-user";
+      
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -68,7 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
-          role: role || "applicant"
+          role: role || "applicant",
+          isRegistration: isRegistration
         })
       });
 
@@ -129,9 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           if (!isSessionRestoration) {
             console.log('🔥 SYNCING USER - Fresh login or initialization');
-            const syncSuccess = await syncUserWithBackend(firebaseUser, role);
+            const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistration);
             if (syncSuccess) {
               setPendingSync(false);
+              setPendingRegistration(false);
               console.log('✅ USER SYNCED - Backend sync complete');
             }
           } else {
@@ -151,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('🔥 AUTH STATE CHANGE - No user (logged out)');
           setUser(null);
           setPendingSync(false);
+          setPendingRegistration(false);
         }
       } catch (err) {
         console.error("Auth state change error:", err);
@@ -165,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     
     return () => unsubscribe();
-  }, [isInitializing, pendingSync]);
+  }, [isInitializing, pendingSync, pendingRegistration]);
 
   const login = async (email: string, password: string) => {
     setError(null);
@@ -188,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       setPendingSync(true); // Force sync on new signup
+      setPendingRegistration(true); // Mark as registration
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       if (displayName) {
         await updateProfile(cred.user, { displayName });
@@ -195,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       setError(e.message);
       setPendingSync(false);
+      setPendingRegistration(false);
     } finally {
       setLoading(false);
     }
@@ -205,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       setPendingSync(false);
+      setPendingRegistration(false);
       await signOut(auth);
     } catch (e: any) {
       setError(e.message);
@@ -213,11 +224,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (isRegistration = false) => {
     setError(null);
     setLoading(true);
     try {
+      if (!isRegistration) {
+        // For sign-in, first check if user exists
+        const { checkUserExistsForGoogleAuth } = await import('@/utils/user-existence-check');
+        const existenceCheck = await checkUserExistsForGoogleAuth();
+        
+        if (existenceCheck.error) {
+          throw new Error(existenceCheck.error);
+        }
+        
+        if (!existenceCheck.canSignIn) {
+          throw new Error(
+            existenceCheck.canRegister 
+              ? 'This Google account is not registered with Local Cooks. Please create an account first.'
+              : 'Unable to sign in with this Google account.'
+          );
+        }
+        
+        // User exists and can sign in - they're already signed in from the check
+        console.log('✅ GOOGLE SIGN-IN COMPLETE (existing user)');
+        setPendingSync(true);
+        return;
+      }
+      
+      // For registration or if user check passed, proceed with normal flow
       setPendingSync(true); // Force sync on Google sign in
+      setPendingRegistration(isRegistration); // Set registration flag
       const provider = new GoogleAuthProvider();
       // Add prompt to ensure account selection
       provider.setCustomParameters({
@@ -228,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       setError(e.message);
       setPendingSync(false);
+      setPendingRegistration(false);
     } finally {
       setLoading(false);
     }

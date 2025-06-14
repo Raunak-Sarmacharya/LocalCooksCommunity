@@ -67,6 +67,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
  * Middleware to verify Firebase Auth and load corresponding Neon user
  * This is the key translation layer: Firebase UID → Neon User ID
  * NO SESSIONS REQUIRED - Pure stateless architecture
+ * IMPORTANT: This middleware does NOT auto-create users - sign-in only
  */
 export async function requireFirebaseAuthWithUser(req: Request, res: Response, next: NextFunction) {
   try {
@@ -86,7 +87,7 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     if (!neonUser) {
       return res.status(404).json({ 
         error: 'User not found', 
-        message: 'No matching user in database. Please complete registration.' 
+        message: 'This account is not registered with Local Cooks. Please create an account first.' 
       });
     }
 

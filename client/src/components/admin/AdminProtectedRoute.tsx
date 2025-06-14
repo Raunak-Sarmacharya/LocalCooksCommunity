@@ -87,7 +87,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600 mb-4">Authentication Error: {error}</p>
+          <p className="text-red-600 mb-4">Authentication Error: {String(error)}</p>
           <button 
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"

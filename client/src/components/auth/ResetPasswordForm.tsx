@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Eye, EyeOff, Lock } from "lucide-react";
+import { AlertCircle, ArrowLeft, Lock } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -47,8 +47,6 @@ const itemVariants = {
 export default function ResetPasswordForm({ token, onSuccess, onGoBack }: ResetPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm<ResetPasswordFormData>({
     resolver: zodResolver(resetPasswordSchema),
@@ -119,39 +117,23 @@ export default function ResetPasswordForm({ token, onSuccess, onGoBack }: ResetP
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
         <motion.div variants={itemVariants}>
           <AnimatedInput
-            type={showPassword ? "text" : "password"}
+            type="password"
             placeholder="New password"
             icon={<Lock className="w-5 h-5" />}
             error={form.formState.errors.password?.message}
+            showPasswordToggle={true}
             {...form.register('password')}
-            endIcon={
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            }
           />
         </motion.div>
 
         <motion.div variants={itemVariants}>
           <AnimatedInput
-            type={showConfirmPassword ? "text" : "password"}
+            type="password"
             placeholder="Confirm new password"
             icon={<Lock className="w-5 h-5" />}
             error={form.formState.errors.confirmPassword?.message}
+            showPasswordToggle={true}
             {...form.register('confirmPassword')}
-            endIcon={
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            }
           />
         </motion.div>
 

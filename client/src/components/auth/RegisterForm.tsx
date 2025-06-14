@@ -53,7 +53,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
       <Button
         type="button"
         className="w-full h-12 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 rounded-xl"
-        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(); }}
+        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(true); }}
         disabled={loading}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48" className="flex-shrink-0">
