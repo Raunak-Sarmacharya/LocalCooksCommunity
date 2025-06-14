@@ -4180,10 +4180,36 @@ app.post("/api/test-status-email", async (req, res) => {
 
 // Endpoint to sync Firebase user to SQL users table
 app.post('/api/firebase-sync-user', async (req, res) => {
-  const { uid, email, displayName, role, emailVerified } = req.body;
-  if (!uid || !email) {
-    return res.status(400).json({ error: 'Missing uid or email' });
-  }
+  try {
+    // Verify Firebase token for security
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    // Use verified token data instead of request body for security
+    const uid = decodedToken.uid;
+    const email = decodedToken.email;
+    const emailVerified = decodedToken.email_verified;
+    const { displayName, role } = req.body; // These can come from request body
+    
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Missing uid or email in token' });
+    }
   
   console.log(`🔄 Firebase sync request for email: ${email}, uid: ${uid}`);
   console.log(`🔍 ENHANCED SYNC DEBUG:`);
@@ -4364,12 +4390,12 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error syncing Firebase user:', error);
-    res.status(500).json({ 
-      error: 'Failed to sync user', 
-      message: error.message,
-      uid: uid,
-      email: email 
-    });
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to sync user', 
+        message: error.message
+      });
+    }
   }
 });
 
@@ -4406,7 +4432,10 @@ app.post('/api/firebase-register-user', async (req, res) => {
     // Use the same sync logic but mark as registration
     const syncRequest = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authHeader.substring(7)}` // Forward the auth token
+      },
       body: JSON.stringify({ uid, email, displayName, role: role || 'applicant', emailVerified: emailVerified || false })
     };
     
