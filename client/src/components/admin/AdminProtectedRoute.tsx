@@ -11,10 +11,10 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   
   // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
   const { data: sessionUser, isLoading: sessionLoading, error: sessionError } = useQuery({
-    queryKey: ["/api/user"],
+    queryKey: ["/api/user-session"],
     queryFn: async () => {
       try {
-        const response = await fetch("/api/user", {
+        const response = await fetch("/api/user-session", {
           credentials: "include",
           headers: {
             'Cache-Control': 'no-cache',
