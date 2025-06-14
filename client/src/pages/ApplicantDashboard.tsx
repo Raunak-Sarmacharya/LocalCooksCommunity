@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
 
 import {
     formatApplicationStatus,
@@ -46,7 +47,7 @@ import {
     Trophy,
     XCircle
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 
 // Helper to check if an application is active (not cancelled, rejected)
@@ -83,6 +84,7 @@ const itemVariants = {
 
 export default function ApplicantDashboard() {
   const { user, logout } = useFirebaseAuth();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
@@ -95,7 +97,7 @@ export default function ApplicantDashboard() {
   });
 
   // Fetch applicant's applications with user ID in header (skip for admins)
-  const { data: applications, isLoading } = useQuery<Application[]>({
+  const { data: applications = [], isLoading, error } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid) {
@@ -123,8 +125,18 @@ export default function ApplicantDashboard() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || response.statusText);
+        // Handle specific error cases
+        if (response.status === 401) {
+          // User not found - likely needs sync
+          throw new Error("Account sync required. Please click 'Sync Account' below to connect your Firebase account to our database.");
+        }
+        
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
+        } catch (parseError) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
       }
 
       const rawData = await response.json();
@@ -429,10 +441,53 @@ export default function ApplicantDashboard() {
     logout();
   };
 
-  const handleSyncAccount = () => {
-    // Sync is now handled automatically by the auth system
-    // Just refresh the applications data
-    window.location.reload();
+  const handleSyncAccount = async () => {
+    if (!user?.uid) return;
+    
+    setIsSyncing(true);
+    try {
+      // Force sync Firebase user to backend
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("No Firebase user available");
+      }
+      
+      const token = await firebaseUser.getIdToken();
+      const syncResponse = await fetch("/api/firebase-sync-user", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          emailVerified: user.emailVerified,
+          role: user.role || "applicant"
+        })
+      });
+      
+      if (syncResponse.ok) {
+        // Refetch applications after sync
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
+        toast({
+          title: "Account Synced",
+          description: "Your account has been synced successfully."
+        });
+      } else {
+        throw new Error("Sync failed");
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
+      toast({
+        title: "Sync Failed",
+        description: "Failed to sync your account. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
@@ -674,6 +729,35 @@ export default function ApplicantDashboard() {
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+              <XCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-red-800 mb-2">Unable to Load Dashboard</h3>
+              <p className="text-red-600 mb-4 text-sm">
+                {error.message || "There was an issue loading your data."}
+              </p>
+              <Button
+                onClick={handleSyncAccount}
+                disabled={isSyncing}
+                variant="outline"
+                size="sm"
+                className="border-red-300 text-red-700 hover:bg-red-50"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Try Syncing Account
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         ) : applications && applications.length > 0 ? (
           <motion.div

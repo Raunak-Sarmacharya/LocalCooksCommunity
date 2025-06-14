@@ -6,7 +6,7 @@ import {
     formatKitchenPreference,
     getStatusBadgeColor
 } from "@/lib/applicationSchema";
-import { apiRequest } from "@/lib/queryClient";
+import { auth } from "@/lib/firebase";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, ChevronDown, ChevronRight, Clock, ExternalLink, Search, Shield, User as UserIcon, XCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, ChevronDown, ChevronRight, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -43,30 +43,53 @@ function AdminDashboard() {
     isAdmin
   });
 
-  // Fetch all applications - use session auth since admin logged in via session
+  // Fetch all applications - use Firebase auth for admin
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: ["/api/applications"],
+    queryKey: ["/api/firebase/admin/applications"],
     queryFn: async ({ queryKey }) => {
+      if (!user?.uid) {
+        throw new Error("Admin not authenticated");
+      }
+      
       console.log('Admin: Fetching applications data...');
       
+      // Get Firebase auth token
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("No Firebase user available");
+      }
+
+      const token = await firebaseUser.getIdToken();
+      
       const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
       };
 
-      // Don't add X-User-ID header since we're using session auth
-      // The session will automatically provide authentication
-
       const response = await fetch(queryKey[0] as string, {
-        credentials: 'include', // Important: include session cookies
+        credentials: 'include',
         headers
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || response.statusText);
+        // Handle specific error cases
+        if (response.status === 401) {
+          throw new Error("Admin authentication required. Please ensure you're logged in as an admin.");
+        }
+        if (response.status === 403) {
+          throw new Error("Admin access denied. Please contact support if you believe this is an error.");
+        }
+        
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
+        } catch (parseError) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
       }
 
       const rawData = await response.json();
@@ -142,7 +165,29 @@ function AdminDashboard() {
     mutationFn: async ({ id, status }: { id: number, status: string }) => {
       try {
         console.log(`Updating application ${id} status to ${status}`);
-        const response = await apiRequest("PATCH", `/api/applications/${id}/status`, { status });
+        
+        // Get Firebase auth token
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+          throw new Error("No Firebase user available");
+        }
+        const token = await firebaseUser.getIdToken();
+        
+        const response = await fetch(`/api/applications/${id}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ status })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
+        }
+        
         console.log('Status update response:', response.status);
         return response.json();
       } catch (error) {
@@ -156,7 +201,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -179,8 +224,29 @@ function AdminDashboard() {
   // Mutation to update document verification status
   const updateDocumentStatusMutation = useMutation({
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
+      // Get Firebase auth token
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("No Firebase user available");
+      }
+      const token = await firebaseUser.getIdToken();
+      
       const updateData = { [field]: status };
-      const response = await apiRequest("PATCH", `/api/applications/${id}/document-verification`, updateData);
+      const response = await fetch(`/api/applications/${id}/document-verification`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(updateData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+      
       return response.json();
     },
     onSuccess: async (data, variables) => {
@@ -189,7 +255,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -434,7 +500,7 @@ function AdminDashboard() {
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
-        ["/api/applications"],
+        ["/api/firebase/admin/applications"],
         ["/api/applications/my-applications"],
         ["/api/user"]
       ];
@@ -452,7 +518,7 @@ function AdminDashboard() {
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
         queryClient.refetchQueries({ 
-          queryKey: ["/api/applications"],
+          queryKey: ["/api/firebase/admin/applications"],
           type: 'all'
         }),
         queryClient.refetchQueries({ 
@@ -466,7 +532,7 @@ function AdminDashboard() {
       console.error('Admin: Force refresh failed', error);
       // Fallback: try to refresh just the admin query
       try {
-        await queryClient.refetchQueries({ queryKey: ["/api/applications"] });
+        await queryClient.refetchQueries({ queryKey: ["/api/firebase/admin/applications"] });
         console.log('Admin: Fallback refresh completed');
       } catch (fallbackError) {
         console.error('Admin: Fallback refresh also failed', fallbackError);
@@ -621,9 +687,33 @@ function AdminDashboard() {
 
     if (error) {
       return (
-        <div className="text-center py-8 text-red-500">
-          <AlertCircle className="h-12 w-12 mx-auto mb-2" />
-          Error loading applications. Please try refreshing the page.
+        <div className="text-center py-12">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-red-800 mb-2">Unable to Load Admin Dashboard</h3>
+            <p className="text-red-600 mb-4 text-sm">
+              {error.message || "There was an issue loading the applications data."}
+            </p>
+            <Button
+              onClick={forceAdminRefresh}
+              disabled={isLoading}
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-700 hover:bg-red-50"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-red-500 mr-2"></div>
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       );
     }
