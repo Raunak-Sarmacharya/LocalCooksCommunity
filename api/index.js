@@ -3667,7 +3667,7 @@ async function createMicrolearningCompletion(completionData) {
       `, [
         completionData.userId,
         completionData.completedAt,
-        completionData.confirmed,
+        completionData.confirmed !== undefined ? completionData.confirmed : true, // Default to true if not provided
         completionData.certificateGenerated || false,
         JSON.stringify(completionData.videoProgress)
       ]);
@@ -3946,6 +3946,7 @@ app.post("/api/microlearning/complete", async (req, res) => {
     const completion = await createMicrolearningCompletion({
       userId,
       completedAt: completionDate ? new Date(completionDate) : new Date(),
+      confirmed: true, // Default to confirmed when user completes training
       progress: videoProgress
     });
     res.json({
@@ -5191,6 +5192,7 @@ app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, as
     const completion = await createMicrolearningCompletion({
       userId,
       completedAt: completionDate ? new Date(completionDate) : new Date(),
+      confirmed: true, // Default to confirmed when user completes training
       progress: videoProgress
     });
     
