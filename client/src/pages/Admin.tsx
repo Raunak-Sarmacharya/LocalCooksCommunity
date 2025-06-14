@@ -1,12 +1,10 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
-import { useFirebaseAuth } from "@/hooks/use-auth";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
     formatKitchenPreference,
     getStatusBadgeColor
 } from "@/lib/applicationSchema";
-import { auth } from "@/lib/firebase";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -32,10 +30,8 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
-  const firebaseAuth = useFirebaseAuth();
-  
-  // Check for session-based auth (for admin users) - same pattern as Header
-  const { data: sessionUser } = useQuery({
+  // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
+  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
     queryKey: ["/api/user"],
     queryFn: async () => {
       try {
@@ -55,11 +51,13 @@ function AdminDashboard() {
         }
         
         const userData = await response.json();
+        console.log('Admin Dashboard - Session user data:', userData);
         return {
           ...userData,
           authMethod: 'session'
         };
       } catch (error) {
+        console.error('Admin Dashboard - Session auth error:', error);
         return null;
       }
     },
@@ -69,9 +67,9 @@ function AdminDashboard() {
     refetchOnMount: true,
   });
 
-  // Use session auth if available, otherwise fallback to Firebase
-  const user = sessionUser || firebaseAuth.user;
-  const loading = firebaseAuth.loading && !sessionUser;
+  // Admin uses ONLY session authentication
+  const user = sessionUser;
+  const loading = sessionLoading;
   const isAdmin = user?.role === 'admin';
 
   // Debug authentication state
@@ -82,17 +80,17 @@ function AdminDashboard() {
     isAdmin
   });
 
-  // Fetch all applications - use appropriate auth method
+  // Fetch all applications - session-based auth only
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: [sessionUser ? "/api/applications" : "/api/firebase/admin/applications"],
+    queryKey: ["/api/applications"],
     queryFn: async ({ queryKey }) => {
       if (!user) {
         throw new Error("Admin not authenticated");
       }
       
-      console.log('Admin: Fetching applications data...', {
-        authMethod: sessionUser ? 'session' : 'firebase',
-        endpoint: queryKey[0]
+      console.log('Admin: Fetching applications data via session auth...', {
+        endpoint: queryKey[0],
+        hasSessionUser: !!sessionUser
       });
       
       const headers: Record<string, string> = {
@@ -101,17 +99,6 @@ function AdminDashboard() {
         'Pragma': 'no-cache',
         'Expires': '0',
       };
-
-      // If using Firebase auth, add authorization header
-      if (!sessionUser && firebaseAuth.user) {
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) {
-          throw new Error("No Firebase user available");
-        }
-        const token = await firebaseUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-        headers['Content-Type'] = 'application/json';
-      }
 
       const response = await fetch(queryKey[0] as string, {
         credentials: 'include',
@@ -212,16 +199,6 @@ function AdminDashboard() {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
-
-        // Add Firebase auth if not using session
-        if (!sessionUser && firebaseAuth.user) {
-          const firebaseUser = auth.currentUser;
-          if (!firebaseUser) {
-            throw new Error("No Firebase user available");
-          }
-          const token = await firebaseUser.getIdToken();
-          headers['Authorization'] = `Bearer ${token}`;
-        }
         
         const response = await fetch(`/api/applications/${id}/status`, {
           method: 'PATCH',
@@ -248,7 +225,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [sessionUser ? "/api/applications" : "/api/firebase/admin/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -274,16 +251,6 @@ function AdminDashboard() {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
-
-      // Add Firebase auth if not using session
-      if (!sessionUser && firebaseAuth.user) {
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) {
-          throw new Error("No Firebase user available");
-        }
-        const token = await firebaseUser.getIdToken();
-        headers['Authorization'] = `Bearer ${token}`;
-      }
       
       const updateData = { [field]: status };
       const response = await fetch(`/api/applications/${id}/document-verification`, {
@@ -306,7 +273,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [sessionUser ? "/api/applications" : "/api/firebase/admin/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -550,9 +517,8 @@ function AdminDashboard() {
     
     try {
       // 1. Clear all application-related caches more aggressively
-      const adminEndpoint = sessionUser ? "/api/applications" : "/api/firebase/admin/applications";
       const cacheKeys = [
-        [adminEndpoint],
+        ["/api/applications"],
         ["/api/applications/my-applications"],
         ["/api/user"]
       ];
@@ -570,7 +536,7 @@ function AdminDashboard() {
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
         queryClient.refetchQueries({ 
-          queryKey: [adminEndpoint],
+          queryKey: ["/api/applications"],
           type: 'all'
         }),
         queryClient.refetchQueries({ 
@@ -584,8 +550,7 @@ function AdminDashboard() {
       console.error('Admin: Force refresh failed', error);
       // Fallback: try to refresh just the admin query
       try {
-        const adminEndpoint = sessionUser ? "/api/applications" : "/api/firebase/admin/applications";
-        await queryClient.refetchQueries({ queryKey: [adminEndpoint] });
+        await queryClient.refetchQueries({ queryKey: ["/api/applications"] });
         console.log('Admin: Fallback refresh completed');
       } catch (fallbackError) {
         console.error('Admin: Fallback refresh also failed', fallbackError);
