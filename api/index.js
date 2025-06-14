@@ -6119,31 +6119,43 @@ app.get("/api/auth/verify-email", async (req, res) => {
       return res.status(400).json({ message: "Verification token is required" });
     }
 
-    // Verify token and get email
+    console.log(`📧 VERIFICATION ATTEMPT - Token: ${token.substring(0, 8)}...`);
+
+    // Verify token and get email - using direct database query
     const result = await pool.query(
       'SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
       [token]
     );
 
     if (result.rows.length === 0) {
+      console.log(`❌ VERIFICATION FAILED - Invalid or expired token`);
       return res.status(400).json({ message: "Invalid or expired verification token" });
     }
 
     const { email } = result.rows[0];
+    console.log(`✅ VERIFICATION TOKEN VALID - Email: ${email}`);
 
-    // Mark email as verified
-    await pool.query('UPDATE users SET is_verified = true, updated_at = NOW() WHERE email = $1', [email]);
+    // Mark user as verified in the database
+    // Update both possible user records (by email as username and by actual email column if exists)
+    const updateResult = await pool.query(
+      'UPDATE users SET is_verified = true, updated_at = NOW() WHERE username = $1 OR email = $1',
+      [email]
+    );
+
+    console.log(`📝 Updated ${updateResult.rowCount} user record(s) for email: ${email}`);
 
     // Clear verification token
     await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
+    console.log(`🗑️ Cleared verification token for email: ${email}`);
 
-    console.log(`Email verified successfully: ${email}`);
+    console.log(`✅ Email verified successfully: ${email}`);
     
-    // Redirect to success page
+    // Redirect to auth page with verification success
+    // The frontend will detect the user is now verified and redirect to the appropriate dashboard
     return res.redirect(`${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth?verified=true`);
 
   } catch (error) {
-    console.error("Error in email verification:", error);
+    console.error("❌ Error in email verification:", error);
     return res.status(500).json({ 
       message: "Internal server error. Please try again later." 
     });

@@ -6,7 +6,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import WelcomeScreen from "@/pages/welcome-screen";
-import { CheckCircle2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -26,6 +25,9 @@ export default function AuthPage() {
   const [verifyEmailAddress, setVerifyEmailAddress] = useState<string | null>(null);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
+
+  // Email verification success state
+  const [showVerificationSuccess, setShowVerificationSuccess] = useState(false);
 
   const getRedirectPath = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -52,6 +54,24 @@ export default function AuthPage() {
       return () => clearTimeout(timer);
     }
   }, [isInitialLoad]);
+
+  // Check for verification success in URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('verified') === 'true') {
+      console.log('📧 EMAIL VERIFICATION SUCCESS detected in URL');
+      setShowVerificationSuccess(true);
+      
+      // Clear the URL parameter
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+      
+      // Auto-hide success message after 3 seconds
+      setTimeout(() => {
+        setShowVerificationSuccess(false);
+      }, 3000);
+    }
+  }, []);
 
   // Fetch user metadata when user is available
   useEffect(() => {
@@ -244,6 +264,23 @@ export default function AuthPage() {
     );
   }
 
+  // **EMAIL VERIFICATION SUCCESS MESSAGE**
+  const VerificationSuccessMessage = () => (
+    <div className="fixed top-4 right-4 z-50">
+      <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-md">
+        <div className="flex-shrink-0">
+          <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <p className="font-semibold">Email verified successfully!</p>
+          <p className="text-sm text-green-600">Welcome to Local Cooks Community.</p>
+        </div>
+      </div>
+    </div>
+  );
+
   // **PRIORITY 3: ALREADY LOGGED IN**
   // Show friendly message if user is already authenticated and doesn't need welcome/verification
   if (user && !hasAttemptedLogin && !isInitialLoad && userMeta && userMeta.is_verified && userMeta.has_seen_welcome) {
@@ -287,75 +324,46 @@ export default function AuthPage() {
 
   // **DEFAULT: LOGIN/REGISTER FORM**
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
-      {/* Form Section */}
-      <div className="w-full md:w-1/2 p-8 flex flex-col justify-center">
-        <div className="max-w-md mx-auto w-full">
-          <div className="mb-8">
-            <Logo className="h-12 mb-6" />
-            <h1 className="text-2xl font-bold tracking-tight">
-              {activeTab === "login" ? "Welcome back" : "Create your account"}
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              {activeTab === "login"
-                ? "Sign in with Google or email to access your account"
-                : "Sign up to track your application status"}
-            </p>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center px-4">
+      {/* Show verification success message if needed */}
+      {showVerificationSuccess && <VerificationSuccessMessage />}
+      
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Logo className="h-12 mx-auto mb-6" />
+          <h1 className="text-3xl font-bold text-gray-900">Welcome</h1>
+          <p className="text-gray-600 mt-2">Join the Local Cooks community</p>
+        </div>
 
-          <Tabs
-            defaultValue="login"
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as "login" | "register")}
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-2 mb-8">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+          <Tabs defaultValue="login" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-gray-50">
+              <TabsTrigger value="login" className="text-sm font-medium">Sign In</TabsTrigger>
+              <TabsTrigger value="register" className="text-sm font-medium">Sign Up</TabsTrigger>
             </TabsList>
-            <TabsContent value="login">
-              <LoginForm onSuccess={handleSuccess} setHasAttemptedLogin={setHasAttemptedLogin} />
-            </TabsContent>
-            <TabsContent value="register">
-              <RegisterForm onSuccess={handleSuccess} setHasAttemptedLogin={setHasAttemptedLogin} />
-            </TabsContent>
+
+            <div className="p-8">
+              <TabsContent value="login" className="space-y-6 mt-0">
+                <LoginForm 
+                  onSuccess={handleSuccess} 
+                  setHasAttemptedLogin={setHasAttemptedLogin}
+                />
+              </TabsContent>
+
+              <TabsContent value="register" className="space-y-6 mt-0">
+                <RegisterForm 
+                  onSuccess={handleSuccess}
+                  setHasAttemptedLogin={setHasAttemptedLogin}
+                />
+              </TabsContent>
+            </div>
           </Tabs>
         </div>
-      </div>
 
-      {/* Hero Section */}
-      <div className="w-full md:w-1/2 bg-gradient-to-br from-orange-50 to-yellow-50 p-8 flex flex-col justify-center">
-        <div className="max-w-md mx-auto text-center">
-          <div className="mb-8">
-            <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center">
-              <Sparkles className="h-8 w-8 text-orange-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Join Local Cooks Community
-            </h2>
-            <p className="text-gray-600 mb-8">
-              Connect with local home cooks, discover amazing meals, and become part of a trusted food community.
-            </p>
-          </div>
-
-          <div className="space-y-4 text-left">
-            <div className="flex items-center space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-              <span className="text-gray-700">Verified home cooks with food safety certifications</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-              <span className="text-gray-700">Fresh, homemade meals in your neighborhood</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-              <span className="text-gray-700">Secure payment and delivery options</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-              <span className="text-gray-700">Support local entrepreneurs in your community</span>
-            </div>
-          </div>
+        <div className="text-center mt-6">
+          <p className="text-sm text-gray-500">
+            Secure authentication powered by Firebase
+          </p>
         </div>
       </div>
     </div>

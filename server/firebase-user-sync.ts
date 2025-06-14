@@ -3,10 +3,18 @@ import { firebaseStorage } from './storage-firebase';
 
 export interface FirebaseUserData {
   uid: string;
-  email?: string;
+  email: string | null;
   displayName?: string;
-  emailVerified?: boolean;
+  emailVerified: boolean;
   role?: 'admin' | 'applicant';
+}
+
+interface CreateUserData {
+  username: string;
+  password: string;
+  role: 'admin' | 'applicant';
+  firebaseUid: string;
+  isVerified: boolean;
 }
 
 /**
@@ -14,74 +22,119 @@ export interface FirebaseUserData {
  * This is the core translation function: Firebase UID ↔ Neon User ID
  * NO SESSIONS REQUIRED - Pure stateless JWT architecture
  */
-export async function syncFirebaseUserToNeon(userData: FirebaseUserData): Promise<User> {
-  const { uid, email, displayName, emailVerified, role } = userData;
+export async function syncFirebaseUserToNeon(params: {
+  uid: string;
+  email: string | null;
+  emailVerified: boolean;
+  displayName?: string;
+  role?: string;
+}): Promise<User> {
+  const { uid, email, emailVerified, displayName, role = 'applicant' } = params;
+  
+  // Determine if user should be marked as verified
+  // Google users are automatically verified, email/password users need email verification
+  const isGoogleUser = emailVerified === true;
+  const isUserVerified = isGoogleUser; // Only Google users are pre-verified
+
+  console.log(`🔄 SYNC TO NEON: Firebase UID ${uid} → Neon database`);
+  console.log(`   - Email: ${email}`);
+  console.log(`   - Email Verified (Firebase): ${emailVerified}`);
+  console.log(`   - Is Google User: ${isGoogleUser}`);
+  console.log(`   - Setting is_verified: ${isUserVerified}`);
+  console.log(`   - Role: ${role}`);
+
+  if (!email) {
+    throw new Error('Email is required for user sync');
+  }
 
   try {
-    // Step 1: Check if user already exists by Firebase UID
-    let user = await firebaseStorage.getUserByFirebaseUid(uid);
-    
-    if (user) {
-      console.log(`🔍 Firebase user ${uid} already exists in Neon DB with ID ${user.id}`);
-      return user;
+    // Check if user already exists by Firebase UID
+    const existingUser = await firebaseStorage.getUserByFirebaseUid(uid);
+    if (existingUser) {
+      console.log(`✅ EXISTING USER FOUND: ${existingUser.id} (${existingUser.username})`);
+      return existingUser;
     }
 
-    // Step 2: Try to find existing user by username/email and link them
-    if (displayName) {
-      const existingUser = await firebaseStorage.getUserByUsername(displayName);
-      if (existingUser && !existingUser.firebaseUid) {
-        // Link existing user to Firebase UID
-        const updatedUser = await firebaseStorage.updateUserFirebaseUid(existingUser.id, uid);
-        if (updatedUser) {
-          console.log(`🔗 Linked existing user ${existingUser.id} to Firebase UID ${uid}`);
-          return updatedUser;
-        }
-      }
-    }
-
-    if (email) {
-      const existingUser = await firebaseStorage.getUserByUsername(email);
-      if (existingUser && !existingUser.firebaseUid) {
-        // Link existing user to Firebase UID
-        const updatedUser = await firebaseStorage.updateUserFirebaseUid(existingUser.id, uid);
-        if (updatedUser) {
-          console.log(`🔗 Linked existing user ${existingUser.id} to Firebase UID ${uid}`);
-          return updatedUser;
-        }
-      }
-    }
-
-    // Step 3: Create new user in Neon DB
-    const isUserVerified = emailVerified === true;
-    console.log(`🔍 FIREBASE SYNC DEBUG:`);
-    console.log(`   - Firebase UID: ${uid}`);
-    console.log(`   - Email: ${email}`);
-    console.log(`   - Display Name: ${displayName}`);
-    console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
-    console.log(`   - emailVerified type: ${typeof emailVerified}`);
-    console.log(`   - isUserVerified (calculated): ${isUserVerified}`);
-    console.log(`   - Role: ${role}`);
-    
-    const newUser = await firebaseStorage.createUser({
-      username: displayName || email || `firebase_${uid}`,
-      password: '', // Empty password for Firebase users
-      role: role || 'applicant',
+    // Create new user with appropriate verification status
+    const userData: CreateUserData = {
+      username: displayName || email,
+      password: '', // Empty for Firebase users
+      role: role as 'admin' | 'applicant',
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
-      has_seen_welcome: false // All new users should see welcome screen
-    });
+    };
 
-    console.log(`✨ CREATED USER RESULT:`);
-    console.log(`   - Neon User ID: ${newUser.id}`);
-    console.log(`   - Username: ${newUser.username}`);
-    console.log(`   - isVerified in DB: ${(newUser as any).isVerified}`);
-    console.log(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome}`);
-    console.log(`   - Firebase UID: ${(newUser as any).firebaseUid}`);
+    console.log(`➕ CREATING NEW USER with data:`, userData);
+    const newUser = await firebaseStorage.createUser(userData);
+    console.log(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
+    console.log(`   - is_verified in DB: ${(newUser as any).isVerified}`);
+
+    // For email/password users (not Google), send verification email
+    if (!isGoogleUser && email) {
+      console.log(`📧 SENDING VERIFICATION EMAIL to ${email}`);
+      try {
+        const crypto = await import('crypto');
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
+        
+        // Store verification token in database
+        const { pool } = await import('./db.js');
+        await pool.query(`
+          INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
+          VALUES ($1, $2, $3, NOW()) 
+          ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
+        `, [email, verificationToken, verificationTokenExpiry]);
+
+        // Generate verification URL
+        const verificationUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/verify-email?token=${verificationToken}`;
+
+        // Send verification email
+        const { sendEmail, generateEmailVerificationEmail } = await import('./email.js');
+        const emailContent = generateEmailVerificationEmail({
+          fullName: displayName || email.split('@')[0],
+          email,
+          verificationToken,
+          verificationUrl
+        });
+
+        const emailSent = await sendEmail(emailContent, {
+          trackingId: `email_verification_${email}_${Date.now()}`
+        });
+
+        if (emailSent) {
+          console.log(`✅ Verification email sent to ${email}`);
+        } else {
+          console.error(`❌ Failed to send verification email to ${email}`);
+        }
+      } catch (emailError) {
+        console.error('❌ Error sending verification email:', emailError);
+        // Don't fail user creation if email fails
+      }
+    } else if (isGoogleUser) {
+      console.log(`✅ Google user - no verification email needed`);
+      
+      // Send welcome email for Google users
+      try {
+        const { sendEmail, generateWelcomeEmail } = await import('./email.js');
+        const emailContent = generateWelcomeEmail({
+          fullName: displayName || email.split('@')[0],
+          email
+        });
+
+        await sendEmail(emailContent, {
+          trackingId: `welcome_${email}_${Date.now()}`
+        });
+        console.log(`✅ Welcome email sent to ${email}`);
+      } catch (emailError) {
+        console.error('❌ Error sending welcome email:', emailError);
+        // Don't fail user creation if email fails
+      }
+    }
+
     return newUser;
-
   } catch (error) {
-    console.error('❌ Error syncing Firebase user to Neon:', error);
-    throw new Error(`Failed to sync Firebase user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('❌ Error in syncFirebaseUserToNeon:', error);
+    throw error;
   }
 }
 
@@ -106,7 +159,13 @@ export async function getNeonUserIdFromFirebaseUid(firebaseUid: string): Promise
  */
 export async function ensureNeonUserExists(userData: FirebaseUserData): Promise<User | null> {
   try {
-    return await syncFirebaseUserToNeon(userData);
+    return await syncFirebaseUserToNeon({
+      uid: userData.uid,
+      email: userData.email,
+      emailVerified: userData.emailVerified,
+      displayName: userData.displayName,
+      role: userData.role
+    });
   } catch (error) {
     console.error('❌ Error ensuring Neon user exists:', error);
     return null;
