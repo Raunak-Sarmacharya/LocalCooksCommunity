@@ -162,8 +162,15 @@ export default function AuthPage() {
               }
               
               // Check if user needs to see welcome screen
+              console.log('🔍 WELCOME SCREEN CHECK:', {
+                is_verified: userData.is_verified,
+                has_seen_welcome: userData.has_seen_welcome,
+                shouldShow: userData.is_verified && !userData.has_seen_welcome,
+                role: userData.role
+              });
+              
               if (userData.is_verified && !userData.has_seen_welcome) {
-                console.log('🎉 User verified but hasn\'t seen welcome, showing welcome screen');
+                console.log('🎉 SHOWING WELCOME SCREEN - User verified but hasn\'t seen welcome');
                 setShowWelcome(true);
                 return;
               }
@@ -239,13 +246,27 @@ export default function AuthPage() {
     showWelcome,
     showVerifyEmail,
     hasCheckedUser: hasCheckedUser.current,
-    userMeta: userMeta ? { is_verified: userMeta.is_verified, has_seen_welcome: userMeta.has_seen_welcome } : null
+    userMeta: userMeta ? { 
+      is_verified: userMeta.is_verified, 
+      has_seen_welcome: userMeta.has_seen_welcome,
+      role: userMeta.role 
+    } : null
   });
 
-  // Show welcome screen if needed (CHECK THIS FIRST!)
-  if (showWelcome) {
-    console.log('🎉 SHOWING WELCOME SCREEN');
+  // PRIORITY 1: Show welcome screen if conditions are met
+  if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+    console.log('🎉 FORCE SHOWING WELCOME SCREEN - Direct condition check');
     return <WelcomeScreen onContinue={async () => {
+      console.log('🎯 Welcome screen button clicked, calling handleWelcomeContinue');
+      await handleWelcomeContinue();
+    }} />;
+  }
+
+  // PRIORITY 2: Show welcome screen if flag is set
+  if (showWelcome) {
+    console.log('🎉 RENDERING WELCOME SCREEN COMPONENT');
+    return <WelcomeScreen onContinue={async () => {
+      console.log('🎯 Welcome screen button clicked, calling handleWelcomeContinue');
       await handleWelcomeContinue();
     }} />;
   }

@@ -16,6 +16,7 @@ import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/not-found";
 import Success from "@/pages/Success";
+import WelcomeScreen from "@/pages/welcome-screen";
 
 // Lazy load larger components
 const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
@@ -42,6 +43,9 @@ function Router() {
         <Route path="/auth" component={EnhancedAuthPage} />
         <Route path="/auth-test" component={AuthTest} />
         <Route path="/admin-test" component={AdminLoginTest} />
+        <Route path="/welcome-test">
+          <WelcomeScreen onComplete={() => console.log('Welcome test completed')} />
+        </Route>
         <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning" component={Microlearning} />
