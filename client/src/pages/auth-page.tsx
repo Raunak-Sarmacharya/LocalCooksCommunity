@@ -324,16 +324,18 @@ export default function AuthPage() {
 
   const handleWelcomeContinue = async () => {
     try {
-      console.log('Setting has_seen_welcome to true');
+      console.log('🎉 Welcome screen continue - setting has_seen_welcome to true');
       
       // Get Firebase auth token
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
-        console.error('No Firebase user available');
-        setLocation('/dashboard');
+        console.error('❌ No Firebase user available for welcome completion');
+        const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
+        setLocation(targetPath);
         return;
       }
 
+      console.log(`📤 Sending welcome completion request for user: ${firebaseUser.uid}`);
       const token = await firebaseUser.getIdToken();
       
       const response = await fetch('/api/user/seen-welcome', {
@@ -345,20 +347,28 @@ export default function AuthPage() {
       });
       
       if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Welcome screen API response:', result);
+        
         // Get user role for proper redirect
         const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
-        console.log(`Welcome seen status updated, redirecting to ${targetPath}`);
+        console.log(`🚀 Welcome completion successful, redirecting to ${targetPath}`);
         setLocation(targetPath);
       } else {
-        console.error('Failed to update welcome status:', response.status);
+        const errorText = await response.text();
+        console.error('⚠️ Failed to update welcome status:', response.status, errorText);
+        
         // Still redirect even if update fails
         const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
+        console.log(`🔄 Redirecting despite API failure to ${targetPath}`);
         setLocation(targetPath);
       }
     } catch (error) {
-      console.error('Error updating welcome status:', error);
+      console.error('❌ Error updating welcome status:', error);
+      
       // Still redirect even if update fails
       const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
+      console.log(`🔄 Redirecting despite error to ${targetPath}`);
       setLocation(targetPath);
     }
   };

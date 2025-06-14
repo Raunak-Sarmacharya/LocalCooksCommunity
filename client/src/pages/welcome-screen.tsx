@@ -19,22 +19,34 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
       // Get current Firebase user and token
       const currentUser = auth.currentUser;
       if (currentUser) {
+        console.log("🎉 Marking welcome screen as seen for user:", currentUser.uid);
         const token = await currentUser.getIdToken();
         
-        await fetch('/api/user/seen-welcome', {
+        const response = await fetch('/api/user/seen-welcome', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log("✅ Welcome screen completion response:", result);
+        } else {
+          const errorText = await response.text();
+          console.warn("⚠️ Welcome screen API call failed:", response.status, errorText);
+        }
+      } else {
+        console.warn("⚠️ No Firebase user available when completing welcome screen");
       }
       
-      console.log("✅ Welcome screen completed");
+      console.log("✅ Welcome screen completed, proceeding to onComplete");
       onComplete();
     } catch (error) {
-      console.error('❌ Error completing welcome:', error);
+      console.error('❌ Error completing welcome screen:', error);
       // Still allow them to continue even if backend call fails
+      console.log("🔄 Continuing despite error...");
       onComplete();
     } finally {
       setIsCompleting(false);
