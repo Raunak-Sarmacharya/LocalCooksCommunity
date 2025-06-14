@@ -4216,9 +4216,16 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     
     const certificateId = `LC-${userId}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
     
+    // Ensure completion date is valid
+    const completionDate = completion.completedAt ? new Date(completion.completedAt) : new Date();
+    if (isNaN(completionDate.getTime())) {
+      console.warn('Invalid completion date, using current date as fallback');
+      completionDate = new Date();
+    }
+    
     const certificateData = {
       userName: user.full_name || user.username,
-      completionDate: completion.completedAt,
+      completionDate: completionDate,
       certificateId: certificateId,
       userId: userId
     };
@@ -5277,19 +5284,69 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
     
     console.log(`📺 Firebase microlearning certificate: UID ${requestedUserId} → User ID ${targetUser.id}`);
     
-    // Generate certificate URL
-    const certificateUrl = `/api/microlearning/certificate/${targetUser.id}`;
-    
-    res.json({
-      success: true,
-      certificate: {
-        userId: targetUser.id,
-        firebaseUid: requestedUserId,
-        completedAt: completion.completedAt,
-        certificateUrl: certificateUrl,
-        confirmed: completion.confirmed
-      }
+    // Check if certificate was already generated before
+    const isFirstTimeGeneration = !completion.certificateGenerated;
+    console.log('Firebase certificate generation status:', {
+      userId: targetUser.id,
+      alreadyGenerated: completion.certificateGenerated,
+      isFirstTime: isFirstTimeGeneration
     });
+
+    // Generate professional PDF certificate directly (same as session-based endpoint)
+    const { generateCertificatePDF } = await import('./certificateGenerator.js');
+    
+    const certificateId = `LC-${targetUser.id}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+    
+    // Ensure completion date is valid
+    const completionDate = completion.completedAt ? new Date(completion.completedAt) : new Date();
+    if (isNaN(completionDate.getTime())) {
+      console.warn('Invalid completion date, using current date as fallback');
+      completionDate = new Date();
+    }
+    
+    const certificateData = {
+      userName: targetUser.full_name || targetUser.username,
+      completionDate: completionDate,
+      certificateId: certificateId,
+      userId: targetUser.id
+    };
+
+    console.log('Generating Firebase PDF certificate with data:', certificateData);
+    
+    try {
+      const pdfBuffer = await generateCertificatePDF(certificateData);
+      
+      // Update database to mark certificate as generated
+      await updateCertificateGenerated(targetUser.id, true);
+      
+      // Set proper headers for PDF download
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Certificate-${targetUser.username}-${certificateId}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      
+      console.log('Firebase certificate PDF generated successfully, size:', pdfBuffer.length, 'bytes');
+      console.log('Database updated: certificate_generated = true for user', targetUser.id);
+      
+      // Send the PDF buffer directly
+      res.send(pdfBuffer);
+      
+    } catch (pdfError) {
+      console.error('Error generating Firebase PDF certificate:', pdfError);
+      
+      // Fallback to JSON response if PDF generation fails
+      const certificateUrl = `/api/microlearning/certificate/${targetUser.id}`;
+      res.json({
+        success: true,
+        certificate: {
+          userId: targetUser.id,
+          firebaseUid: requestedUserId,
+          completedAt: completion.completedAt,
+          certificateUrl: certificateUrl,
+          confirmed: completion.confirmed
+        },
+        error: 'PDF generation temporarily unavailable'
+      });
+    }
   } catch (error) {
     console.error('Error getting Firebase microlearning certificate:', error);
     res.status(500).json({ message: 'Failed to get certificate' });
