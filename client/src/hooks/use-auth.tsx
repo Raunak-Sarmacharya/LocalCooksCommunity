@@ -4,6 +4,7 @@ import {
     GoogleAuthProvider,
     isSignInWithEmailLink,
     onAuthStateChanged,
+    sendEmailVerification,
     sendSignInLinkToEmail,
     signInWithEmailAndPassword,
     signInWithEmailLink,
@@ -42,6 +43,7 @@ interface AuthContextType {
   isUserVerified: (user: any) => boolean;
   updateUserVerification: () => Promise<AuthUser | null>;
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
+  resendFirebaseVerification: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -207,11 +209,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const userData = await response.json();
         
-        // If user is not verified, sign them out and show error
+        // If user is not verified, check Firebase email verification
         if (!userData.is_verified) {
-          console.log('❌ User not verified - signing out');
-          await signOut(auth);
-          throw new Error('Please verify your email before logging in. Check your inbox for a verification link.');
+          console.log('❌ User not verified in database - checking Firebase verification');
+          
+          // Reload user to get latest verification status
+          await cred.user.reload();
+          
+          if (cred.user.emailVerified) {
+            // User verified in Firebase but not in our database - update our database
+            console.log('✅ Firebase verified but database not updated - syncing...');
+            setPendingSync(true);
+            // Don't sign out, let the sync update the verification status
+          } else {
+            // User not verified in Firebase either
+            console.log('❌ User not verified in Firebase - signing out');
+            await signOut(auth);
+            throw new Error('Please verify your email before logging in. Check your inbox for a verification link from Firebase.');
+          }
         }
         
         // User is verified, allow login
@@ -280,6 +295,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ User synced successfully during registration');
       } else {
         console.error('❌ User sync failed during registration');
+      }
+
+      // CRITICAL: Send Firebase's built-in email verification
+      console.log('📧 Sending Firebase email verification...');
+      try {
+        await sendEmailVerification(updatedUser, {
+          url: `${window.location.origin}/auth?verified=true`,
+          handleCodeInApp: true,
+        });
+        console.log('✅ Firebase email verification sent successfully');
+      } catch (emailError) {
+        console.error('❌ Failed to send Firebase verification email:', emailError);
+        // Still continue with registration, user can request resend later
       }
 
       // CRITICAL: Sign out the user immediately after registration and sync
@@ -471,6 +499,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  // Resend Firebase verification email
+  const resendFirebaseVerification = async () => {
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error('No user is currently signed in');
+      }
+
+      if (firebaseUser.emailVerified) {
+        console.log('User is already verified');
+        return true;
+      }
+
+      console.log('📧 Resending Firebase verification email...');
+      await sendEmailVerification(firebaseUser, {
+        url: `${window.location.origin}/auth?verified=true`,
+        handleCodeInApp: true,
+      });
+      
+      console.log('✅ Firebase verification email resent successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to resend Firebase verification email:', error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -486,6 +541,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isUserVerified,
         updateUserVerification,
         sendVerificationEmail,
+        resendFirebaseVerification,
       }}
     >
       {children}

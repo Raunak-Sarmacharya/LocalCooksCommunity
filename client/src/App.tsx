@@ -25,6 +25,7 @@ const Admin = lazy(() => import("@/pages/Admin"));
 const ApplicantDashboard = lazy(() => import("@/pages/ApplicantDashboard"));
 const DocumentVerification = lazy(() => import("@/pages/DocumentVerification"));
 const Microlearning = lazy(() => import("@/pages/Microlearning"));
+const EmailVerificationTest = lazy(() => import("@/components/EmailVerificationTest"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -47,6 +48,7 @@ function Router() {
         <Route path="/welcome-test">
           <WelcomeScreen onComplete={() => console.log('Welcome test completed')} />
         </Route>
+        <Route path="/email-verification-test" component={EmailVerificationTest} />
         <Route path="/reset-welcome">
           <div style={{ padding: '20px', textAlign: 'center' }}>
             <h2>Reset Welcome Screen (Debug)</h2>
