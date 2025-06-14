@@ -1089,6 +1089,61 @@ app.post('/api/user/reset-welcome', verifyFirebaseAuth, async (req, res) => {
   }
 });
 
+// 🧪 COMPREHENSIVE DEBUG: Welcome screen status endpoint
+app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
+  try {
+    if (!req.firebaseUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    console.log('🧪 DEBUG - Checking welcome status for UID:', req.firebaseUser.uid);
+
+    let user = null;
+    
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
+      user = result.rows[0] || null;
+    } else {
+      // In-memory fallback
+      for (const u of users.values()) {
+        if (u.firebase_uid === req.firebaseUser.uid) {
+          user = u;
+          break;
+        }
+      }
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const debugInfo = {
+      user_found: true,
+      user_id: user.id,
+      username: user.username,
+      firebase_uid: user.firebase_uid,
+      is_verified: user.is_verified,
+      has_seen_welcome: user.has_seen_welcome,
+      is_verified_type: typeof user.is_verified,
+      has_seen_welcome_type: typeof user.has_seen_welcome,
+      should_show_welcome_screen: user.is_verified && !user.has_seen_welcome,
+      role: user.role,
+      created_at: user.created_at || 'N/A',
+      firebase_user: {
+        uid: req.firebaseUser.uid,
+        email: req.firebaseUser.email,
+        email_verified: req.firebaseUser.email_verified
+      }
+    };
+
+    console.log('🧪 DEBUG - Welcome status:', debugInfo);
+    res.json(debugInfo);
+  } catch (error) {
+    console.error('🧪 DEBUG - Error checking welcome status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ===================================
 // 📱 SESSION ROUTES (FALLBACK)
 // ===================================

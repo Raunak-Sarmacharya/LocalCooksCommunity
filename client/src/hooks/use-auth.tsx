@@ -9,14 +9,13 @@ import {
     signInWithEmailLink,
     signInWithPopup,
     signOut,
-    updateProfile,
+    updateProfile
 } from "firebase/auth";
 import {
     doc,
     getDoc,
     serverTimestamp,
     setDoc,
-    updateDoc,
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
@@ -44,29 +43,21 @@ interface AuthContextType {
   updateUserVerification: () => Promise<AuthUser | null>;
 }
 
-export const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
-
-  // Flag to track if we need to sync with backend
   const [pendingSync, setPendingSync] = useState(false);
 
-  // Helper function to sync user with backend
   const syncUserWithBackend = async (firebaseUser: any, role?: string, forceSync = false) => {
     try {
-      console.log("🔥 BACKEND SYNC initiated:");
-      console.log("   - Firebase UID:", firebaseUser.uid);
-      console.log("   - Email:", firebaseUser.email);
-      console.log("   - Display Name:", firebaseUser.displayName);
-      console.log("   - emailVerified:", firebaseUser.emailVerified);
-      console.log("   - Force Sync:", forceSync);
+      console.log('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid);
       
       const token = await firebaseUser.getIdToken();
-      const syncResponse = await fetch("/api/firebase-sync-user", {
+      const response = await fetch("/api/firebase-sync-user", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -80,19 +71,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: role || "applicant"
         })
       });
-      
-      if (syncResponse.ok) {
-        const syncResult = await syncResponse.json();
-        console.log("✅ User synced with backend database:", syncResult);
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ SYNC SUCCESS:', result);
         return true;
       } else {
-        console.error("❌ Sync response not OK:", syncResponse.status);
-        const errorText = await syncResponse.text();
-        console.error("❌ Sync error details:", errorText);
+        const errorText = await response.text();
+        console.error('❌ SYNC FAILED:', response.status, errorText);
         return false;
       }
-    } catch (err) {
-      console.error("❌ Failed to sync Firebase user to backend:", err);
+    } catch (error) {
+      console.error('❌ SYNC ERROR:', error);
       return false;
     }
   };
@@ -101,59 +91,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
-          // Get providers
-          const providers = firebaseUser.providerData.map((p) => p.providerId);
+          console.log('🔥 AUTH STATE CHANGE - User detected:', firebaseUser.uid);
           
-          // Check if this is a session restoration (not a fresh login)
-          const isSessionRestoration = isInitializing;
-          
-          // Sync Firestore user doc
-          const userRef = doc(db, "users", firebaseUser.uid);
-          const userSnap = await getDoc(userRef);
-          let role: string | undefined = undefined;
-          
-          if (!userSnap.exists()) {
-            // Only create new user document if user doesn't exist
-            await setDoc(userRef, {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              emailVerified: firebaseUser.emailVerified,
-              displayName: firebaseUser.displayName,
-              photoURL: firebaseUser.photoURL,
-              authProviders: providers,
-              primaryAuthMethod: providers[0],
-              isActive: true,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-              lastLoginAt: serverTimestamp(),
-              role: "applicant", // default role
-            });
-            role = "applicant";
-            setPendingSync(true); // New user needs backend sync
-          } else {
-            const data = userSnap.data();
-            role = data.role;
+          // Get providers list
+          const providers = firebaseUser.providerData.map(p => p.providerId);
+          console.log('🔥 AUTH PROVIDERS:', providers);
+
+          // Check for user role in Firestore
+          let role = "applicant";
+          try {
+            const userDocRef = doc(db, "users", firebaseUser.uid);
+            const userSnap = await getDoc(userDocRef);
             
-            // Only update lastLoginAt for fresh logins, not session restorations
-            if (!isSessionRestoration) {
-              await updateDoc(userRef, {
+            if (userSnap.exists()) {
+              const userData = userSnap.data();
+              role = userData.role || "applicant";
+              console.log('🔥 FIRESTORE ROLE:', role);
+            } else {
+              console.log('🔥 NEW USER - Creating Firestore document');
+              // Create user document in Firestore for new users
+              await setDoc(userDocRef, {
+                email: firebaseUser.email,
+                displayName: firebaseUser.displayName,
+                role: "applicant",
+                createdAt: serverTimestamp(),
                 lastLoginAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
               });
             }
+          } catch (firestoreError) {
+            console.error('Firestore error:', firestoreError);
           }
           
-          // Only sync with backend if:
-          // 1. It's a new user (pendingSync = true), OR
-          // 2. It's not a session restoration (fresh login), OR
-          // 3. User doesn't exist in Firestore (new user)
-          if (pendingSync || !isSessionRestoration || !userSnap.exists()) {
-            console.log('🔥 SYNC DEBUG - About to sync user with backend');
+          // **SIMPLIFIED SYNC LOGIC**
+          // Always sync on first auth state change or when pendingSync is true
+          const isSessionRestoration = !isInitializing && !pendingSync;
+          
+          if (!isSessionRestoration) {
+            console.log('🔥 SYNCING USER - Fresh login or initialization');
             const syncSuccess = await syncUserWithBackend(firebaseUser, role);
             if (syncSuccess) {
               setPendingSync(false);
-              console.log('🔥 SYNC DEBUG - User synced successfully, should check welcome screen');
+              console.log('✅ USER SYNCED - Backend sync complete');
             }
+          } else {
+            console.log('ℹ️ SKIPPING SYNC - Session restoration detected');
           }
           
           setUser({
@@ -165,15 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             providers,
             role,
           });
-          
-          // CRITICAL: For new users, ensure they go through auth page for welcome screen
-          if (pendingSync || !userSnap.exists()) {
-            console.log('🔥 NEW USER DETECTED - Should redirect to auth page for welcome screen');
-            // Set a flag that can be checked by components to show welcome screen
-            localStorage.setItem('localcooks_new_user', 'true');
-          }
         } else {
-          // No Firebase user, set to null
+          console.log('🔥 AUTH STATE CHANGE - No user (logged out)');
           setUser(null);
           setPendingSync(false);
         }
@@ -196,8 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLoading(true);
     try {
-      // Pure Firebase authentication - modern, secure, stateless
-      setPendingSync(true); // Force sync on fresh login
+      // Force sync on fresh login
+      setPendingSync(true);
       await signInWithEmailAndPassword(auth, email, password);
     } catch (firebaseError: any) {
       console.error('Firebase authentication failed:', firebaseError.message);
@@ -229,7 +204,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLoading(true);
     try {
-      // Simple Firebase logout - clean and stateless
       setPendingSync(false);
       await signOut(auth);
     } catch (e: any) {
@@ -250,14 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         prompt: 'select_account'
       });
       const result = await signInWithPopup(auth, provider);
-      
-      // CRITICAL: For new Google sign-ins, set flag for welcome screen detection
-      console.log('🔥 GOOGLE SIGN-IN COMPLETED - Setting new user flag');
-      if (result.user) {
-        // Set flag to indicate this was a fresh Google sign-in
-        localStorage.setItem('localcooks_fresh_google_signin', 'true');
-        console.log('🔥 FRESH GOOGLE SIGN-IN FLAG SET');
-      }
+      console.log('✅ GOOGLE SIGN-IN COMPLETE:', result.user.uid);
     } catch (e: any) {
       setError(e.message);
       setPendingSync(false);
@@ -267,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const actionCodeSettings = {
-    url: window.location.origin + "/auth", // Fixed to match correct auth route
+    url: window.location.origin + "/auth",
     handleCodeInApp: true,
   };
 
@@ -337,25 +304,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error updating user verification:', error);
     }
+    
     return null;
   };
 
-  const authContextValue = {
-    user,
-    loading,
-    error,
-    login,
-    signup,
-    logout,
-    signInWithGoogle,
-    sendEmailLink,
-    handleEmailLinkSignIn,
-    isUserVerified,
-    updateUserVerification,
-  };
-
   return (
-    <AuthContext.Provider value={authContextValue}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        error,
+        login,
+        signup,
+        logout,
+        signInWithGoogle,
+        sendEmailLink,
+        handleEmailLinkSignIn,
+        isUserVerified,
+        updateUserVerification,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -363,6 +331,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useFirebaseAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useFirebaseAuth must be used within an AuthProvider");
+  if (context === undefined) {
+    throw new Error("useFirebaseAuth must be used within an AuthProvider");
+  }
   return context;
 }
