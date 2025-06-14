@@ -55,7 +55,8 @@ export default function AuthPage() {
   useEffect(() => {
     if (!loading && user) {
       // Always check user meta for authenticated users, but prevent duplicate calls
-      if (!hasCheckedUser.current) {
+      // FORCE CHECK for users who might have been redirected here
+      if (!hasCheckedUser.current || !userMeta) {
         hasCheckedUser.current = true;
         console.log('🔍 AUTH PAGE DEBUG - Fetching user meta for Firebase user:', user.uid);
         console.log('🔍 AUTH PAGE DEBUG - User object:', user);
@@ -248,6 +249,16 @@ export default function AuthPage() {
 
   // Check for new user flag from localStorage
   const isNewUser = localStorage.getItem('localcooks_new_user') === 'true';
+  const isFreshGoogleSignIn = localStorage.getItem('localcooks_fresh_google_signin') === 'true';
+  
+  // If this is a fresh Google sign-in, treat it as an attempted login
+  useEffect(() => {
+    if (isFreshGoogleSignIn && user) {
+      console.log('🔥 FRESH GOOGLE SIGN-IN DETECTED - Setting hasAttemptedLogin to true');
+      setHasAttemptedLogin(true);
+      localStorage.removeItem('localcooks_fresh_google_signin');
+    }
+  }, [isFreshGoogleSignIn, user]);
   
   // HIGHEST PRIORITY: Check for welcome screen FIRST before any other logic
   if ((userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) || (isNewUser && userMeta)) {
@@ -341,7 +352,19 @@ export default function AuthPage() {
   // If user is already logged in and did NOT just log in, show a friendly message and options
   // But only show this if we're sure the session is established (not during initial load)
   // AND they don't need to see the welcome screen
-  if (user && !hasAttemptedLogin && !isInitialLoad && !showWelcome && !(userMeta && userMeta.is_verified && !userMeta.has_seen_welcome)) {
+  const alreadyLoggedInCondition = user && !hasAttemptedLogin && !isInitialLoad && !showWelcome && !(userMeta && userMeta.is_verified && !userMeta.has_seen_welcome);
+  
+  console.log('🚨 ALREADY LOGGED IN CHECK:', {
+    user: !!user,
+    hasAttemptedLogin,
+    isInitialLoad,
+    showWelcome,
+    userMeta: userMeta ? { is_verified: userMeta.is_verified, has_seen_welcome: userMeta.has_seen_welcome } : null,
+    welcomeCondition: userMeta && userMeta.is_verified && !userMeta.has_seen_welcome,
+    finalCondition: alreadyLoggedInCondition
+  });
+  
+  if (alreadyLoggedInCondition) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <Logo className="h-12 mb-6" />
