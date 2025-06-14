@@ -130,20 +130,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Firestore error:', firestoreError);
           }
           
-          // **SIMPLIFIED SYNC LOGIC**
-          // Always sync on first auth state change or when pendingSync is true
-          const isSessionRestoration = !isInitializing && !pendingSync;
+          // **IMPROVED SYNC LOGIC**
+          // Sync if this is the first initialization, pending sync is requested, or pending registration
+          const shouldSync = isInitializing || pendingSync || pendingRegistration;
           
-          if (!isSessionRestoration) {
-            console.log('🔥 SYNCING USER - Fresh login or initialization');
+          if (shouldSync) {
+            console.log('🔥 SYNCING USER - Conditions met:', {
+              isInitializing,
+              pendingSync,
+              pendingRegistration,
+              uid: firebaseUser.uid
+            });
+            
             const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistration);
             if (syncSuccess) {
               setPendingSync(false);
               setPendingRegistration(false);
               console.log('✅ USER SYNCED - Backend sync complete');
+            } else {
+              console.error('❌ USER SYNC FAILED - Will retry on next auth state change');
+              // Keep pendingSync true to retry on next auth state change
             }
           } else {
-            console.log('ℹ️ SKIPPING SYNC - Session restoration detected');
+            console.log('ℹ️ SKIPPING SYNC - Session restoration or no sync needed');
           }
           
           setUser({
@@ -234,7 +243,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await updateProfile(cred.user, { displayName });
       }
 
-      // CRITICAL: Sign out the user immediately after registration
+      // IMPORTANT: Manually sync the user before signing them out
+      console.log('📧 USER REGISTERED - Syncing to database before email verification requirement');
+      const syncSuccess = await syncUserWithBackend(cred.user, "applicant", true);
+      
+      if (syncSuccess) {
+        console.log('✅ User synced successfully during registration');
+      } else {
+        console.error('❌ User sync failed during registration');
+      }
+
+      // CRITICAL: Sign out the user immediately after registration and sync
       // They need to verify their email before they can log in
       console.log('📧 USER REGISTERED - Signing out to require email verification');
       await signOut(auth);
@@ -303,6 +322,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const result = await signInWithPopup(auth, provider);
       console.log('✅ GOOGLE SIGN-IN COMPLETE:', result.user.uid);
+      
+      // For Google registration, manually trigger sync since user is immediately available
+      if (isRegistration) {
+        console.log('🔥 GOOGLE REGISTRATION - Manually triggering sync');
+        const syncSuccess = await syncUserWithBackend(result.user, "applicant", true);
+        if (syncSuccess) {
+          console.log('✅ Google registration sync completed');
+          setPendingSync(false);
+          setPendingRegistration(false);
+        } else {
+          console.error('❌ Google registration sync failed');
+        }
+      }
     } catch (e: any) {
       setError(e.message);
       setPendingSync(false);
