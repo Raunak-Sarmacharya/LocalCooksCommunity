@@ -971,6 +971,57 @@ app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
   }
 });
 
+// 🧪 DEBUG: Reset welcome screen for testing
+app.post('/api/debug/reset-welcome', verifyFirebaseAuth, async (req, res) => {
+  try {
+    if (!req.firebaseUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    console.log('🧪 DEBUG - Resetting has_seen_welcome to FALSE for UID:', req.firebaseUser.uid);
+
+    // Get user from database by Firebase UID
+    let user = null;
+    
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
+      user = result.rows[0] || null;
+      
+      if (user) {
+        await pool.query('UPDATE users SET has_seen_welcome = false WHERE id = $1', [user.id]);
+        console.log(`🧪 Reset has_seen_welcome = false for user ${user.id}`);
+      }
+    } else {
+      // In-memory fallback
+      for (const u of users.values()) {
+        if (u.firebase_uid === req.firebaseUser.uid) {
+          u.has_seen_welcome = false;
+          user = u;
+          console.log(`🧪 Reset has_seen_welcome = false for in-memory user ${u.id}`);
+          break;
+        }
+      }
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Welcome screen reset - user should see welcome screen on next login',
+      user: {
+        id: user.id,
+        username: user.username,
+        has_seen_welcome: user.has_seen_welcome
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error resetting welcome screen:', error);
+    res.status(500).json({ error: 'Failed to reset welcome screen' });
+  }
+});
+
 // ===================================
 // 📱 SESSION ROUTES (FALLBACK)
 // ===================================
