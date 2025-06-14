@@ -1,4 +1,3 @@
-import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Redirect, useLocation } from "wouter";
@@ -8,11 +7,10 @@ interface AdminProtectedRouteProps {
 }
 
 export default function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const firebaseAuth = useFirebaseAuth();
   const [, setLocation] = useLocation();
   
-  // Check for session-based auth (for admin users) - same pattern as Admin dashboard
-  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
+  // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
+  const { data: sessionUser, isLoading: sessionLoading, error: sessionError } = useQuery({
     queryKey: ["/api/user"],
     queryFn: async () => {
       try {
@@ -32,11 +30,13 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
         }
         
         const userData = await response.json();
+        console.log('AdminProtectedRoute - Session user data:', userData);
         return {
           ...userData,
           authMethod: 'session'
         };
       } catch (error) {
+        console.error('AdminProtectedRoute - Session auth error:', error);
         return null;
       }
     },
@@ -46,31 +46,27 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
     refetchOnMount: true,
   });
 
-  // Use session auth if available, otherwise fallback to Firebase
-  const user = sessionUser || firebaseAuth.user;
-  const loading = (firebaseAuth.loading && !sessionUser) || sessionLoading;
-  const error = firebaseAuth.error;
+  // Admin uses ONLY session authentication
+  const user = sessionUser;
+  const loading = sessionLoading;
+  const error = sessionError;
   
   // Check if user is admin
   const isAdmin = user?.role === 'admin';
 
   // Debug logging
-  console.log('AdminProtectedRoute - Hybrid auth state:', {
+  console.log('AdminProtectedRoute - Session-only auth state:', {
     loading,
-    sessionLoading,
     hasSessionUser: !!sessionUser,
-    hasFirebaseUser: !!firebaseAuth.user,
     finalUser: !!user,
     userRole: user?.role,
-    authMethod: sessionUser ? 'session' : firebaseAuth.user ? 'firebase' : 'none',
     isAdmin,
     error
   });
 
-  // Show loading for a bit longer to ensure auth is properly checked
+  // Show loading while checking session authentication
   if (loading) {
-    console.log('AdminProtectedRoute - Still loading user data...', {
-      firebaseLoading: firebaseAuth.loading,
+    console.log('AdminProtectedRoute - Loading session auth...', {
       sessionLoading,
       hasSessionUser: !!sessionUser
     });
@@ -78,8 +74,8 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-          <p className="text-sm text-gray-600">Checking authentication...</p>
-          <p className="text-xs text-gray-400 mt-2">Verifying admin access...</p>
+          <p className="text-sm text-gray-600">Checking admin session...</p>
+          <p className="text-xs text-gray-400 mt-2">Verifying credentials...</p>
         </div>
       </div>
     );
@@ -104,11 +100,9 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   }
 
   if (!user) {
-    console.log('AdminProtectedRoute - No user found, redirecting to admin login', {
+    console.log('AdminProtectedRoute - No session user found, redirecting to admin login', {
       sessionUser,
-      firebaseUser: firebaseAuth.user,
-      sessionLoading,
-      firebaseLoading: firebaseAuth.loading
+      sessionLoading
     });
     return <Redirect to="/admin/login" />;
   }
@@ -123,7 +117,7 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   console.log('AdminProtectedRoute - Admin access granted for user:', {
     username: user.username || user.displayName || user.email,
     role: user.role,
-    authMethod: sessionUser ? 'session' : 'firebase'
+    authMethod: 'session'
   });
   return <>{children}</>;
 }
