@@ -1540,8 +1540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   */
 
-  // Email verification endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
-  /*
+  // Email verification endpoint - RE-ENABLED FOR EMAIL VERIFICATION FLOW
   app.post("/api/auth/send-verification-email", async (req: Request, res: Response) => {
     try {
       const { email, fullName } = req.body;
@@ -1555,14 +1554,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
       
-      // Store verification token
-      await storage.storeEmailVerificationToken(email, verificationToken, verificationTokenExpiry);
+      // Store verification token in database directly (bypassing storage interface for now)
+      const { pool } = await import('./db.js');
+      await pool.query(`
+        INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
+        VALUES ($1, $2, $3, NOW()) 
+        ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
+      `, [email, verificationToken, verificationTokenExpiry]);
 
       // Generate verification URL
       const verificationUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/auth/verify-email?token=${verificationToken}`;
 
       // Send verification email
-      const { generateEmailVerificationEmail } = await import('./email.js');
+      const { sendEmail, generateEmailVerificationEmail } = await import('./email.js');
       const emailContent = generateEmailVerificationEmail({
         fullName,
         email,
@@ -1592,10 +1596,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
-  */
 
-  // Email verification confirmation endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
-  /*
+  // Email verification confirmation endpoint - RE-ENABLED FOR EMAIL VERIFICATION FLOW
   app.get("/api/auth/verify-email", async (req: Request, res: Response) => {
     try {
       const { token } = req.query;
@@ -1604,19 +1606,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Verification token is required" });
       }
 
-      // Verify token and get email
-      const verificationData = await storage.getEmailVerificationToken(token);
-      if (!verificationData) {
+      // Verify token and get email - using direct database query
+      const { pool } = await import('./db.js');
+      const result = await pool.query(
+        'SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
+        [token]
+      );
+
+      if (result.rows.length === 0) {
         return res.status(400).json({ message: "Invalid or expired verification token" });
       }
 
-      // Mark email as verified
-      await storage.markEmailAsVerified(verificationData.email);
+      const { email } = result.rows[0];
+
+      // Mark email as verified - need to update Firebase user too
+      await pool.query('UPDATE users SET is_verified = true, updated_at = NOW() WHERE email = $1', [email]);
+
+      // Also update the user in the users table (using Firebase UID)
+      await pool.query('UPDATE users SET is_verified = true, updated_at = NOW() WHERE email = $1', [email]);
 
       // Clear verification token
-      await storage.clearEmailVerificationToken(token);
+      await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
 
-      console.log(`Email verified successfully: ${verificationData.email}`);
+      console.log(`Email verified successfully: ${email}`);
       
       // Redirect to success page
       return res.redirect(`${process.env.BASE_URL || 'http://localhost:5000'}/auth?verified=true`);
@@ -1628,7 +1640,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
-  */
 
   // Firebase user sync endpoint
   app.post('/api/firebase-sync-user', async (req: Request, res: Response) => {

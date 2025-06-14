@@ -39,7 +39,7 @@ export function registerFirebaseRoutes(app: Express) {
       // Create new user during registration
       const user = await syncFirebaseUserToNeon({
         uid: req.firebaseUser.uid,
-        email: req.firebaseUser.email,
+        email: req.firebaseUser.email || null,
         displayName,
         emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
         role: role || 'applicant'
@@ -94,7 +94,7 @@ export function registerFirebaseRoutes(app: Express) {
         // Create new user during registration
         const user = await syncFirebaseUserToNeon({
           uid: req.firebaseUser.uid,
-          email: req.firebaseUser.email,
+          email: req.firebaseUser.email || null,
           displayName,
           emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
           role: role || 'applicant'
