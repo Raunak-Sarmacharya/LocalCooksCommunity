@@ -113,11 +113,20 @@ export default function AuthPage() {
             }
 
             const token = await firebaseUser.getIdToken();
+            console.log('🔥 Firebase token obtained:', token ? 'Token exists' : 'No token');
             
             // First ensure user is synced to backend (in case it's a new user)
             try {
               console.log('🔄 Ensuring user is synced to backend...');
-              await fetch("/api/firebase-sync-user", {
+              console.log('🔄 Sync data:', {
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+                emailVerified: user.emailVerified,
+                role: user.role || "applicant"
+              });
+              
+              const syncResponse = await fetch("/api/firebase-sync-user", {
                 method: "POST",
                 headers: { 
                   "Content-Type": "application/json",
@@ -131,7 +140,15 @@ export default function AuthPage() {
                   role: user.role || "applicant"
                 })
               });
-              console.log('✅ User sync completed');
+              
+              console.log('🔄 Sync response status:', syncResponse.status);
+              if (syncResponse.ok) {
+                const syncResult = await syncResponse.json();
+                console.log('✅ User sync completed:', syncResult);
+              } else {
+                const syncError = await syncResponse.text();
+                console.error('❌ User sync failed:', syncError);
+              }
             } catch (syncError) {
               console.log('⚠️ User sync failed, continuing:', syncError);
             }
@@ -149,9 +166,21 @@ export default function AuthPage() {
               console.log('🔍 AUTH PAGE DEBUG - Welcome logic check:', {
                 is_verified: userData.is_verified,
                 has_seen_welcome: userData.has_seen_welcome,
-                shouldShowWelcome: userData.is_verified && !userData.has_seen_welcome
+                shouldShowWelcome: userData.is_verified && !userData.has_seen_welcome,
+                is_verified_type: typeof userData.is_verified,
+                has_seen_welcome_type: typeof userData.has_seen_welcome
               });
               setUserMeta(userData);
+              
+              // ENHANCED DEBUG: Log exact values
+              console.log('🔍 DETAILED WELCOME CHECK:', {
+                'userData.is_verified === true': userData.is_verified === true,
+                'userData.has_seen_welcome === false': userData.has_seen_welcome === false,
+                'userData.has_seen_welcome === null': userData.has_seen_welcome === null,
+                'userData.has_seen_welcome === undefined': userData.has_seen_welcome === undefined,
+                'Boolean(userData.is_verified)': Boolean(userData.is_verified),
+                '!userData.has_seen_welcome': !userData.has_seen_welcome
+              });
               
               // Check if user needs to verify email
               if (!userData.is_verified) {
@@ -169,8 +198,12 @@ export default function AuthPage() {
                 role: userData.role
               });
               
-              if (userData.is_verified && !userData.has_seen_welcome) {
-                console.log('🎉 SHOWING WELCOME SCREEN - User verified but hasn\'t seen welcome');
+              // FORCE WELCOME SCREEN FOR FIRST-TIME USERS
+              const shouldShowWelcome = userData.is_verified && !userData.has_seen_welcome;
+              console.log('🎯 WELCOME DECISION:', shouldShowWelcome);
+              
+              if (shouldShowWelcome) {
+                console.log('🎉 FORCING WELCOME SCREEN - User verified but hasn\'t seen welcome');
                 setShowWelcome(true);
                 return;
               }
@@ -238,6 +271,15 @@ export default function AuthPage() {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
+  // HIGHEST PRIORITY: Check for welcome screen FIRST before any other logic
+  if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+    console.log('🎉 TOP PRIORITY WELCOME SCREEN - User needs onboarding');
+    return <WelcomeScreen onContinue={async () => {
+      console.log('🎯 Welcome screen button clicked from top priority check');
+      await handleWelcomeContinue();
+    }} />;
+  }
+
   // DEBUG: Log current state
   console.log('🔍 AUTH PAGE RENDER DEBUG:', {
     hasUser: !!user,
@@ -300,7 +342,8 @@ export default function AuthPage() {
 
   // If user is already logged in and did NOT just log in, show a friendly message and options
   // But only show this if we're sure the session is established (not during initial load)
-  if (user && !hasAttemptedLogin && !isInitialLoad) {
+  // AND they don't need to see the welcome screen
+  if (user && !hasAttemptedLogin && !isInitialLoad && !showWelcome && !(userMeta && userMeta.is_verified && !userMeta.has_seen_welcome)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <Logo className="h-12 mb-6" />
