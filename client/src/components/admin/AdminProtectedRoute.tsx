@@ -1,4 +1,5 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Redirect, useLocation } from "wouter";
 
@@ -7,30 +8,78 @@ interface AdminProtectedRouteProps {
 }
 
 export default function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const { user, loading, error } = useFirebaseAuth();
+  const firebaseAuth = useFirebaseAuth();
   const [, setLocation] = useLocation();
+  
+  // Check for session-based auth (for admin users) - same pattern as Admin dashboard
+  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
+    queryKey: ["/api/user"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user", {
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null; // Not authenticated via session
+          }
+          throw new Error(`Session auth failed: ${response.status}`);
+        }
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'session'
+        };
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Use session auth if available, otherwise fallback to Firebase
+  const user = sessionUser || firebaseAuth.user;
+  const loading = (firebaseAuth.loading && !sessionUser) || sessionLoading;
+  const error = firebaseAuth.error;
   
   // Check if user is admin
   const isAdmin = user?.role === 'admin';
 
   // Debug logging
-  console.log('AdminProtectedRoute - Firebase auth state:', {
+  console.log('AdminProtectedRoute - Hybrid auth state:', {
     loading,
-    hasUser: !!user,
+    sessionLoading,
+    hasSessionUser: !!sessionUser,
+    hasFirebaseUser: !!firebaseAuth.user,
+    finalUser: !!user,
     userRole: user?.role,
+    authMethod: sessionUser ? 'session' : firebaseAuth.user ? 'firebase' : 'none',
     isAdmin,
     error
   });
 
   // Show loading for a bit longer to ensure auth is properly checked
   if (loading) {
-    console.log('AdminProtectedRoute - Still loading user data...');
+    console.log('AdminProtectedRoute - Still loading user data...', {
+      firebaseLoading: firebaseAuth.loading,
+      sessionLoading,
+      hasSessionUser: !!sessionUser
+    });
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
           <p className="text-sm text-gray-600">Checking authentication...</p>
-          <p className="text-xs text-gray-400 mt-2">Please wait...</p>
+          <p className="text-xs text-gray-400 mt-2">Verifying admin access...</p>
         </div>
       </div>
     );
@@ -55,7 +104,12 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   }
 
   if (!user) {
-    console.log('AdminProtectedRoute - No user found, redirecting to admin login');
+    console.log('AdminProtectedRoute - No user found, redirecting to admin login', {
+      sessionUser,
+      firebaseUser: firebaseAuth.user,
+      sessionLoading,
+      firebaseLoading: firebaseAuth.loading
+    });
     return <Redirect to="/admin/login" />;
   }
 
@@ -66,6 +120,10 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
     return <Redirect to="/admin/login" />;
   }
 
-  console.log('AdminProtectedRoute - Admin access granted for user:', user.displayName || user.email);
+  console.log('AdminProtectedRoute - Admin access granted for user:', {
+    username: user.username || user.displayName || user.email,
+    role: user.role,
+    authMethod: sessionUser ? 'session' : 'firebase'
+  });
   return <>{children}</>;
 }
