@@ -4373,6 +4373,70 @@ app.post('/api/firebase-sync-user', async (req, res) => {
   }
 });
 
+// Enhanced Firebase User Registration Endpoint
+app.post('/api/firebase-register-user', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    const { uid, email, displayName, role, emailVerified, isRegistration } = req.body;
+    
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Missing uid or email' });
+    }
+    
+    console.log(`📝 Firebase REGISTRATION request for email: ${email}, uid: ${uid}`);
+    
+    // Use the same sync logic but mark as registration
+    const syncRequest = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid, email, displayName, role: role || 'applicant', emailVerified: emailVerified || false })
+    };
+    
+    // Call the existing sync endpoint internally
+    const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, syncRequest);
+    const syncResult = await syncResponse.json();
+    
+    if (syncResponse.ok) {
+      console.log(`✅ Registration sync completed for ${email}`);
+      res.json({
+        success: true,
+        user: syncResult.user,
+        isNewUser: syncResult.created,
+        message: 'User registered successfully'
+      });
+    } else {
+      console.error(`❌ Registration sync failed for ${email}:`, syncResult);
+      res.status(syncResponse.status).json(syncResult);
+    }
+  } catch (error) {
+    console.error('❌ Error in firebase-register-user:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Registration failed', 
+        message: error.message 
+      });
+    }
+  }
+});
+
 // ===================================
 // ENHANCED FIREBASE AUTHENTICATION
 // ===================================
@@ -4458,14 +4522,31 @@ async function verifyFirebaseAuth(req, res, next) {
 // Enhanced Firebase Auth with User Loading Middleware
 async function requireFirebaseAuthWithUser(req, res, next) {
   try {
-    await verifyFirebaseAuth(req, res, () => {});
+    // Check for auth token
+    const authHeader = req.headers.authorization;
     
-    if (!req.firebaseUser) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ 
         error: 'Unauthorized', 
-        message: 'Firebase authentication required' 
+        message: 'No auth token provided' 
       });
     }
+
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    req.firebaseUser = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      email_verified: decodedToken.email_verified,
+    };
 
     // Load Neon user from Firebase UID
     let neonUser = null;
@@ -4497,16 +4578,20 @@ async function requireFirebaseAuthWithUser(req, res, next) {
       username: neonUser.username,
       role: neonUser.role,
       firebaseUid: neonUser.firebase_uid || undefined,
+      isVerified: neonUser.is_verified !== undefined ? neonUser.is_verified : true,
+      hasSeenWelcome: neonUser.has_seen_welcome !== undefined ? neonUser.has_seen_welcome : false,
     };
 
     console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
     next();
   } catch (error) {
     console.error('Enhanced Firebase auth with user verification error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error', 
-      message: 'Authentication verification failed' 
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        error: 'Internal server error', 
+        message: 'Authentication verification failed' 
+      });
+    }
   }
 }
 
@@ -4534,46 +4619,23 @@ function requireAdmin(req, res, next) {
 // ===================================
 
 // Enhanced Get Current User Profile (Firebase + Hybrid Support)
-app.get('/api/user/profile', async (req, res) => {
+app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
   try {
-    // Try hybrid auth first (supports both Firebase and session)
-    await requireHybridAuth(req, res, () => {});
-    
-    if (req.user) {
-      return res.json({
-        neonUser: {
-          id: req.user.id,
-          username: req.user.username,
-          role: req.user.role,
-          authMethod: req.user.authMethod
-        },
-        firebaseUser: req.firebaseUser ? {
-          uid: req.firebaseUser.uid,
-          email: req.firebaseUser.email,
-          emailVerified: req.firebaseUser.email_verified,
-        } : null
-      });
-    }
-    
-    // Fallback to Firebase-only auth for backward compatibility
-    await requireFirebaseAuthWithUser(req, res, () => {});
-    
     res.json({
-      neonUser: {
-        id: req.neonUser.id,
-        username: req.neonUser.username,
-        role: req.neonUser.role,
-        authMethod: 'firebase'
-      },
-      firebaseUser: {
-        uid: req.firebaseUser.uid,
-        email: req.firebaseUser.email,
-        emailVerified: req.firebaseUser.email_verified,
-      }
+      id: req.neonUser.id,
+      username: req.neonUser.username,
+      role: req.neonUser.role,
+      is_verified: req.neonUser.isVerified !== undefined ? req.neonUser.isVerified : true,
+      has_seen_welcome: req.neonUser.hasSeenWelcome !== undefined ? req.neonUser.hasSeenWelcome : false,
+      firebaseUid: req.firebaseUser.uid,
+      email: req.firebaseUser.email,
+      emailVerified: req.firebaseUser.email_verified
     });
   } catch (error) {
     console.error('Error getting enhanced user profile:', error);
-    res.status(500).json({ error: 'Failed to get user profile' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to get user profile' });
+    }
   }
 });
 
