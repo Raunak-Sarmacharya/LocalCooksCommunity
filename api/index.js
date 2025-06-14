@@ -3437,7 +3437,7 @@ async function getMicrolearningCompletion(userId) {
 async function updateVideoProgress(progressData) {
   if (pool) {
     try {
-      // Create table if it doesn't exist (same as above)
+      // Create table if it doesn't exist
       await pool.query(`
         CREATE TABLE IF NOT EXISTS video_progress (
           id SERIAL PRIMARY KEY,
@@ -3448,9 +3448,20 @@ async function updateVideoProgress(progressData) {
           completed_at TIMESTAMP,
           updated_at TIMESTAMP DEFAULT NOW(),
           watched_percentage INTEGER DEFAULT 0,
-          is_rewatching BOOLEAN DEFAULT FALSE,
-          UNIQUE(user_id, video_id)
+          is_rewatching BOOLEAN DEFAULT FALSE
         );
+      `);
+      
+      // Add unique constraint if it doesn't exist (for existing tables)
+      await pool.query(`
+        DO $$ BEGIN
+          BEGIN
+            ALTER TABLE video_progress ADD CONSTRAINT video_progress_user_video_unique UNIQUE (user_id, video_id);
+          EXCEPTION
+            WHEN duplicate_table THEN null;
+            WHEN duplicate_object THEN null;
+          END;
+        END $$;
       `);
 
       // First, get existing progress to preserve completion status
@@ -4928,12 +4939,39 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
     }
     
     const progress = await getMicrolearningProgress(targetUser.id);
+    const completionStatus = await getMicrolearningCompletion(targetUser.id);
+    const applicationStatus = await getApplicationStatus(targetUser.id);
     
-    console.log(`📺 Firebase microlearning progress: UID ${requestedUserId} → User ID ${targetUser.id}`);
+    // Admins and completed users have unrestricted access regardless of application status
+    const isAdmin = req.neonUser.role === 'admin';
+    const isCompleted = completionStatus?.confirmed || false;
+    const accessLevel = isAdmin || applicationStatus.hasApproved || isCompleted ? 'full' : 'limited';
+    
+    console.log(`📺 Firebase microlearning progress: UID ${requestedUserId} → User ID ${targetUser.id} (Access: ${accessLevel})`);
     
     res.json({
       success: true,
       progress: progress || [],
+      completionConfirmed: completionStatus?.confirmed || false,
+      completedAt: completionStatus?.completedAt,
+      hasApprovedApplication: applicationStatus.hasApproved,
+      accessLevel: accessLevel,
+      isAdmin: isAdmin,
+      applicationInfo: {
+        hasActive: applicationStatus.hasActive,
+        hasPending: applicationStatus.hasPending,
+        hasRejected: applicationStatus.hasRejected,
+        hasCancelled: applicationStatus.hasCancelled,
+        latestStatus: applicationStatus.latestStatus,
+        canApply: !applicationStatus.hasActive, // Can apply if no active applications
+        message: applicationStatus.hasApproved 
+          ? "✅ Application approved - Full access granted!" 
+          : applicationStatus.hasPending 
+          ? "⏳ Application under review - Limited access until approved"
+          : applicationStatus.hasRejected || applicationStatus.hasCancelled
+          ? "❌ Previous application not approved - Please reapply for full access"
+          : "📝 Submit application for full training access"
+      },
       userId: targetUser.id,
       firebaseUid: requestedUserId
     });
