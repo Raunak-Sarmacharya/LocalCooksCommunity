@@ -914,37 +914,60 @@ app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    console.log('🔥 FIREBASE /api/user/seen-welcome route hit for UID:', req.firebaseUser.uid);
+    console.log('🎉 WELCOME SCREEN - Setting has_seen_welcome = true for UID:', req.firebaseUser.uid);
 
     // Get user from database by Firebase UID
     let user = null;
+    let updated = false;
+    
     if (pool) {
+      // First get the user
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
       user = result.rows[0] || null;
       
       if (user) {
-        await pool.query('UPDATE users SET has_seen_welcome = true WHERE id = $1', [user.id]);
-        console.log(`✅ Set has_seen_welcome = true for user ${user.id}`);
+        console.log(`📋 Found user ${user.id} (${user.username}), current has_seen_welcome: ${user.has_seen_welcome}`);
+        
+        // Only update if not already seen
+        if (!user.has_seen_welcome) {
+          await pool.query('UPDATE users SET has_seen_welcome = true WHERE id = $1', [user.id]);
+          console.log(`✅ Updated has_seen_welcome = true for user ${user.id}`);
+          updated = true;
+        } else {
+          console.log(`ℹ️  User ${user.id} has already seen welcome screen`);
+        }
       }
     } else {
       // In-memory fallback
       for (const u of users.values()) {
         if (u.firebase_uid === req.firebaseUser.uid) {
-          u.has_seen_welcome = true;
           user = u;
+          if (!u.has_seen_welcome) {
+            u.has_seen_welcome = true;
+            console.log(`✅ Updated has_seen_welcome = true for in-memory user ${u.id}`);
+            updated = true;
+          }
           break;
         }
       }
     }
     
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      console.error(`❌ User not found for Firebase UID: ${req.firebaseUser.uid}`);
+      return res.status(404).json({ 
+        error: 'User not found',
+        message: 'Please ensure your account is properly synced. Try logging out and back in.'
+      });
     }
 
-    res.json({ success: true });
+    res.json({ 
+      success: true, 
+      updated: updated,
+      message: updated ? 'Welcome screen status updated' : 'Welcome screen already seen'
+    });
   } catch (error) {
-    console.error('Error setting has_seen_welcome:', error);
-    res.status(500).json({ error: 'Failed to update welcome status' });
+    console.error('❌ Error setting has_seen_welcome:', error);
+    res.status(500).json({ error: 'Failed to update welcome status', message: error.message });
   }
 });
 
@@ -3990,98 +4013,121 @@ app.post('/api/firebase-sync-user', async (req, res) => {
   }
   
   console.log(`🔄 Firebase sync request for email: ${email}, uid: ${uid}`);
-  console.log(`🔍 PRODUCTION SYNC DEBUG:`);
+  console.log(`🔍 ENHANCED SYNC DEBUG:`);
   console.log(`   - Firebase UID: ${uid}`);
   console.log(`   - Email: ${email}`);
   console.log(`   - Display Name: ${displayName}`);
   console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
-  console.log(`   - emailVerified type: ${typeof emailVerified}`);
   console.log(`   - Role: ${role}`);
   
   try {
     let user = null;
+    let wasCreated = false;
     
     if (pool) {
-      // STEP 1: Check if user already exists by EMAIL first (primary check)
-      console.log(`🔍 Checking if user exists by email: ${email}`);
-      const emailResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [email]);
+      // STEP 1: Check by Firebase UID FIRST (most reliable)
+      console.log(`🔍 Primary check: Looking for user by Firebase UID: ${uid}`);
+      const firebaseResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
       
-      if (emailResult.rows.length > 0) {
-        user = emailResult.rows[0];
-        console.log(`✅ Found existing user by email: ${user.id} (${user.username})`);
-        
-        // Update Firebase UID if not set
-        if (!user.firebase_uid) {
-          console.log(`🔗 Linking existing user ${user.id} to Firebase UID ${uid}`);
-          const updateResult = await pool.query(
-            'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
-            [uid, user.id]
-          );
-          user = updateResult.rows[0];
-        } else if (user.firebase_uid !== uid) {
-          console.log(`⚠️  User ${user.id} already has different Firebase UID: ${user.firebase_uid} vs ${uid}`);
-          return res.status(409).json({ 
-            error: 'Email already registered with different account',
-            message: 'This email is already associated with another Firebase account'
-          });
-        }
+      if (firebaseResult.rows.length > 0) {
+        user = firebaseResult.rows[0];
+        console.log(`✅ Found existing user by Firebase UID: ${user.id} (${user.username})`);
+        console.log(`   - is_verified in DB: ${user.is_verified}`);
+        console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
       } else {
-        // STEP 2: Check by Firebase UID (secondary check)
-        console.log(`🔍 No user found by email, checking by Firebase UID: ${uid}`);
-        const firebaseResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
+        // STEP 2: Check by email as secondary (for linking existing accounts)
+        console.log(`🔍 Secondary check: Looking for user by email: ${email}`);
+        const emailResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [email]);
         
-        if (firebaseResult.rows.length > 0) {
-          user = firebaseResult.rows[0];
-          console.log(`✅ Found existing user by Firebase UID: ${user.id} (${user.username})`);
-        }
-        
-        // STEP 3: Create new user if none found
-        if (!user) {
-          const isUserVerified = emailVerified === true;
-          console.log(`➕ Creating new user for email: ${email}, Firebase UID: ${uid}`);
-          console.log(`   - emailVerified: ${emailVerified}, setting is_verified: ${isUserVerified}`);
-          console.log(`   - displayName: ${displayName} (NOT used for username to prevent duplicates)`);
+        if (emailResult.rows.length > 0) {
+          user = emailResult.rows[0];
+          console.log(`🔗 Found existing user by email: ${user.id} (${user.username})`);
           
-          const insertResult = await pool.query(
-            'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [email, '', role || 'applicant', uid, isUserVerified, false]
-          );
-          user = insertResult.rows[0];
-          console.log(`✨ Created new user: ${user.id} (${user.username})`);
-          console.log(`   - is_verified in DB: ${user.is_verified}`);
-          console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+          // Check if this user already has a different Firebase UID
+          if (user.firebase_uid && user.firebase_uid !== uid) {
+            console.log(`⚠️  User ${user.id} already linked to different Firebase UID: ${user.firebase_uid} vs ${uid}`);
+            return res.status(409).json({ 
+              error: 'Email already registered with different account',
+              message: 'This email is already associated with another Firebase account'
+            });
+          }
+          
+          // Link this user to the Firebase UID if not already linked
+          if (!user.firebase_uid) {
+            console.log(`🔗 Linking existing user ${user.id} to Firebase UID ${uid}`);
+            const updateResult = await pool.query(
+              'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
+              [uid, user.id]
+            );
+            user = updateResult.rows[0];
+          }
         } else {
-          console.log(`✅ Using existing user: ${user.id} (${user.username})`);
-          console.log(`   - is_verified in DB: ${user.is_verified}`);
-          console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+          // STEP 3: Create new user (no existing user found)
+          const isUserVerified = emailVerified === true;
+          console.log(`➕ Creating NEW user for email: ${email}, Firebase UID: ${uid}`);
+          console.log(`   - emailVerified: ${emailVerified}, setting is_verified: ${isUserVerified}`);
+          console.log(`   - Using EMAIL as username to ensure uniqueness`);
+          
+          try {
+            const insertResult = await pool.query(
+              'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+              [email, '', role || 'applicant', uid, isUserVerified, false]
+            );
+            user = insertResult.rows[0];
+            wasCreated = true;
+            console.log(`✨ Successfully created new user: ${user.id} (${user.username})`);
+            console.log(`   - is_verified in DB: ${user.is_verified}`);
+            console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+          } catch (insertError) {
+            console.error(`❌ Failed to create user:`, insertError);
+            
+            // Check if it's a uniqueness constraint error
+            if (insertError.code === '23505') { // PostgreSQL unique violation
+              console.log(`🔄 Uniqueness conflict detected, re-checking for existing user...`);
+              
+              // Try to find the user again (might have been created by another request)
+              const retryResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
+              if (retryResult.rows.length > 0) {
+                user = retryResult.rows[0];
+                console.log(`✅ Found user on retry: ${user.id} (${user.username})`);
+              } else {
+                throw insertError; // Re-throw if we still can't find the user
+              }
+            } else {
+              throw insertError; // Re-throw other errors
+            }
+          }
         }
       }
     } else {
-      // In-memory fallback with same email-first logic
+      // In-memory fallback with same Firebase UID first logic
       console.log(`📝 Using in-memory storage (no database connection)`);
       
-      // Try to find by email first
+      // Try to find by Firebase UID first
       for (const u of users.values()) {
-        if (u.username && u.username.toLowerCase() === email.toLowerCase()) {
+        if (u.firebase_uid === uid) {
           user = u;
-          if (!u.firebase_uid) {
-            u.firebase_uid = uid;
-          }
+          console.log(`✅ Found existing in-memory user by Firebase UID: ${u.id} (${u.username})`);
           break;
         }
       }
       
-      // If not found by email, try by firebase_uid
+      // If not found by Firebase UID, try by email for linking
       if (!user) {
         for (const u of users.values()) {
-          if (u.firebase_uid === uid) {
+          if (u.username && u.username.toLowerCase() === email.toLowerCase()) {
             user = u;
+            console.log(`🔗 Found existing in-memory user by email: ${u.id} (${u.username})`);
+            
+            // Link to Firebase UID if not already linked
+            if (!u.firebase_uid) {
+              u.firebase_uid = uid;
+              console.log(`🔗 Linked in-memory user ${u.id} to Firebase UID ${uid}`);
+            }
             break;
           }
         }
       }
-      
-      // Skip displayName check to prevent duplicate users
       
       // Create new user if none found
       if (!user) {
@@ -4097,16 +4143,36 @@ app.post('/api/firebase-sync-user', async (req, res) => {
           has_seen_welcome: false
         };
         users.set(id, user);
+        wasCreated = true;
         console.log(`✨ Created new in-memory user: ${id} (${email})`);
         console.log(`   - is_verified: ${isUserVerified}, has_seen_welcome: false`);
       }
     }
     
-    console.log(`✅ Firebase sync completed for email: ${email}, user ID: ${user.id}`);
-    res.json({ success: true, user });
+    console.log(`✅ Firebase sync completed for email: ${email}, user ID: ${user.id} (${wasCreated ? 'CREATED' : 'EXISTING'})`);
+    
+    // Return enhanced response
+    res.json({ 
+      success: true, 
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        firebase_uid: user.firebase_uid,
+        is_verified: user.is_verified,
+        has_seen_welcome: user.has_seen_welcome
+      },
+      created: wasCreated,
+      message: wasCreated ? 'New user created and synced' : 'Existing user found and synced'
+    });
   } catch (error) {
     console.error('❌ Error syncing Firebase user:', error);
-    res.status(500).json({ error: 'Failed to sync user', message: error.message });
+    res.status(500).json({ 
+      error: 'Failed to sync user', 
+      message: error.message,
+      uid: uid,
+      email: email 
+    });
   }
 });
 
