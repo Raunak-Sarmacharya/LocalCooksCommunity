@@ -550,7 +550,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: currentUser.displayName,
           photoURL: currentUser.photoURL,
           emailVerified: currentUser.emailVerified,
-          providers: currentUser.providerData.map(p => p.providerId),
+          providers: currentUser.providerData.map((p: any) => p.providerId),
           role: userData.role,
         };
         

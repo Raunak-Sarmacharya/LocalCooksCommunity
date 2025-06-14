@@ -1,17 +1,45 @@
-import React, { useState } from 'react';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Users, Utensils, Shield, ArrowRight } from 'lucide-react';
+import { useFirebaseAuth } from '@/hooks/use-auth';
+import { auth } from '@/lib/firebase';
+import { ArrowRight, CheckCircle, Shield, Users, Utensils } from 'lucide-react';
+import { useState } from 'react';
 
 interface WelcomeScreenProps {
-  onComplete: () => void;
+  onComplete?: () => void;
+  onContinue?: () => void;
 }
 
-export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenProps) {
   const { user } = useFirebaseAuth();
   const [isCompleting, setIsCompleting] = useState(false);
+
+  // Detect authentication method
+  const getAuthMethod = () => {
+    if (!auth.currentUser) return 'unknown';
+    
+    const providers = auth.currentUser.providerData.map((p: any) => p.providerId);
+    if (providers.includes('google.com')) {
+      return 'google';
+    } else if (providers.includes('password')) {
+      return 'email';
+    }
+    return 'unknown';
+  };
+
+  const authMethod = getAuthMethod();
+
+  // Dynamic message based on authentication method
+  const getVerificationMessage = () => {
+    switch (authMethod) {
+      case 'google':
+        return 'Since you signed in with Google, your account is automatically verified!';
+      case 'email':
+        return 'Your email has been verified and your account is ready to use!';
+      default:
+        return 'Your account is verified and ready to go!';
+    }
+  };
 
   const handleComplete = async () => {
     setIsCompleting(true);
@@ -41,13 +69,15 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
         console.warn("⚠️ No Firebase user available when completing welcome screen");
       }
       
-      console.log("✅ Welcome screen completed, proceeding to onComplete");
-      onComplete();
+      console.log("✅ Welcome screen completed, proceeding to callback");
+      const callback = onComplete || onContinue;
+      if (callback) callback();
     } catch (error) {
       console.error('❌ Error completing welcome screen:', error);
       // Still allow them to continue even if backend call fails
       console.log("🔄 Continuing despite error...");
-      onComplete();
+      const callback = onComplete || onContinue;
+      if (callback) callback();
     } finally {
       setIsCompleting(false);
     }
@@ -118,7 +148,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           </Button>
           
           <p className="text-xs text-gray-500 text-center">
-            Since you signed in with Google, your account is automatically verified!
+            {getVerificationMessage()}
           </p>
         </CardContent>
       </Card>
