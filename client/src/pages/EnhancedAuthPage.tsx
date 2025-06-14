@@ -3,6 +3,8 @@ import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import WelcomeScreen from "@/pages/welcome-screen";
 import { motion } from "framer-motion";
 import { LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +16,10 @@ export default function EnhancedAuthPage() {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [userMeta, setUserMeta] = useState<any>(null);
+  const [userMetaLoading, setUserMetaLoading] = useState(false);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasCheckedUser = useRef(false);
 
   // Tab configuration
   const tabs = [
@@ -41,18 +46,168 @@ export default function EnhancedAuthPage() {
     }
   }, [loading]);
 
-  // Redirect logic
+  // Fetch user metadata to check welcome screen status
+  useEffect(() => {
+    if (!loading && user && !hasCheckedUser.current) {
+      hasCheckedUser.current = true;
+      
+      const fetchUserMeta = async () => {
+        try {
+          setUserMetaLoading(true);
+          const firebaseUser = auth.currentUser;
+          if (!firebaseUser) {
+            console.error('❌ No Firebase user available');
+            return;
+          }
+          
+          const token = await firebaseUser.getIdToken();
+          
+          const response = await fetch('/api/user/profile', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            console.log('✅ USER DATA FETCHED:', {
+              id: userData.id,
+              username: userData.username,
+              is_verified: userData.is_verified,
+              has_seen_welcome: userData.has_seen_welcome,
+              role: userData.role
+            });
+            
+            setUserMeta(userData);
+            
+            // **CRITICAL WELCOME SCREEN LOGIC**
+            // Show welcome screen if user is verified but hasn't seen welcome
+            if (userData.is_verified && !userData.has_seen_welcome) {
+              console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
+              return; // Don't proceed with redirect, let the render logic handle welcome screen
+            }
+            
+            // Check if user needs email verification (for email/password users)
+            if (!userData.is_verified) {
+              console.log('📧 EMAIL VERIFICATION REQUIRED');
+              // For now, we'll redirect to dashboard anyway as verification is handled elsewhere
+              // In a full implementation, you might want to show a verification screen here
+            }
+            
+            // User is verified and has seen welcome - redirect to appropriate page
+            if (hasAttemptedLogin) {
+              const redirectPath = getRedirectPath();
+              const targetPath = redirectPath !== '/' ? redirectPath : (userData.role === 'admin' ? '/admin' : '/dashboard');
+              console.log(`🚀 REDIRECTING TO: ${targetPath}`);
+              
+              // Use setTimeout to ensure state is properly set before redirect
+              setTimeout(() => {
+                setLocation(targetPath);
+              }, 500);
+            }
+            
+          } else {
+            console.error('❌ Failed to fetch user data:', response.status);
+            const errorText = await response.text();
+            console.error('❌ Error response:', errorText);
+          }
+        } catch (error) {
+          console.error('❌ Error fetching user meta:', error);
+        } finally {
+          setUserMetaLoading(false);
+        }
+      };
+      
+      fetchUserMeta();
+    } else if (!user) {
+      // Reset when user logs out
+      hasCheckedUser.current = false;
+      setUserMeta(null);
+    }
+  }, [loading, user, hasAttemptedLogin, setLocation]);
+
+  // Handle welcome screen completion
+  const handleWelcomeContinue = async () => {
+    try {
+      console.log('🎉 WELCOME SCREEN COMPLETION STARTED');
+      
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        console.error('❌ No Firebase user available for welcome completion');
+        return;
+      }
+
+      const token = await firebaseUser.getIdToken();
+      
+      const response = await fetch('/api/user/seen-welcome', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ WELCOME COMPLETION SUCCESS:', result);
+        
+        // Update local user meta
+        if (userMeta) {
+          setUserMeta({
+            ...userMeta,
+            has_seen_welcome: true
+          });
+        }
+        
+        // Redirect to appropriate page
+        const redirectPath = getRedirectPath();
+        const targetPath = redirectPath !== '/' ? redirectPath : (userMeta?.role === 'admin' ? '/admin' : '/dashboard');
+        console.log(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
+        setLocation(targetPath);
+      } else {
+        console.error('⚠️ Welcome completion API failed:', response.status);
+        const errorText = await response.text();
+        console.error('⚠️ Error details:', errorText);
+        
+        // Still redirect on API failure
+        const redirectPath = getRedirectPath();
+        const targetPath = redirectPath !== '/' ? redirectPath : (userMeta?.role === 'admin' ? '/admin' : '/dashboard');
+        console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
+        setLocation(targetPath);
+      }
+    } catch (error) {
+      console.error('❌ Error completing welcome screen:', error);
+      
+      // Still redirect on error
+      const redirectPath = getRedirectPath();
+      const targetPath = redirectPath !== '/' ? redirectPath : (userMeta?.role === 'admin' ? '/admin' : '/dashboard');
+      console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
+      setLocation(targetPath);
+    }
+  };
+
+  // Redirect logic for authenticated users after login attempt
   useEffect(() => {
     if (redirectTimeoutRef.current) {
       clearTimeout(redirectTimeoutRef.current);
       redirectTimeoutRef.current = null;
     }
 
-    if (!loading && !isInitialLoad && user && hasAttemptedLogin) {
+    if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
+      // Check if user needs welcome screen
+      if (userMeta.is_verified && !userMeta.has_seen_welcome) {
+        console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
+        return; // Don't redirect, show welcome screen
+      }
+
+      // User has seen welcome or doesn't need it - proceed with redirect
       const redirectPath = getRedirectPath();
-      if (location !== redirectPath && redirectPath !== '/auth') {
+      const targetPath = redirectPath !== '/' ? redirectPath : (userMeta.role === 'admin' ? '/admin' : '/dashboard');
+      
+      if (location !== targetPath && targetPath !== '/auth') {
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(redirectPath);
+          setLocation(targetPath);
         }, 300);
       }
     }
@@ -62,10 +217,10 @@ export default function EnhancedAuthPage() {
         clearTimeout(redirectTimeoutRef.current);
       }
     };
-  }, [user, loading, hasAttemptedLogin, location, isInitialLoad]);
+  }, [user, loading, hasAttemptedLogin, location, isInitialLoad, userMeta]);
 
   // Loading state
-  if (loading || isInitialLoad) {
+  if (loading || isInitialLoad || userMetaLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <motion.div
@@ -85,8 +240,15 @@ export default function EnhancedAuthPage() {
     );
   }
 
-  // Already logged in state
-  if (user && !hasAttemptedLogin && !isInitialLoad) {
+  // **PRIORITY 1: WELCOME SCREEN**
+  // Show welcome screen if user is verified but hasn't seen welcome
+  if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+    console.log('🎉 RENDERING WELCOME SCREEN');
+    return <WelcomeScreen onComplete={handleWelcomeContinue} />;
+  }
+
+  // Already logged in state - show if user doesn't need welcome screen
+  if (user && !hasAttemptedLogin && !isInitialLoad && userMeta && userMeta.is_verified && userMeta.has_seen_welcome) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -125,11 +287,15 @@ export default function EnhancedAuthPage() {
           >
             <motion.button
               className="bg-primary text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300"
-              onClick={() => setLocation(user.role === 'admin' ? '/admin' : '/dashboard')}
+              onClick={() => {
+                const redirectPath = getRedirectPath();
+                const targetPath = redirectPath !== '/' ? redirectPath : (userMeta.role === 'admin' ? '/admin' : '/dashboard');
+                setLocation(targetPath);
+              }}
               whileHover={{ scale: 1.02, backgroundColor: "hsl(var(--primary) / 0.9)" }}
               whileTap={{ scale: 0.98 }}
             >
-              Go to {user.role === 'admin' ? 'Admin Dashboard' : 'Dashboard'}
+              Go to {userMeta.role === 'admin' ? 'Admin Dashboard' : 'Dashboard'}
             </motion.button>
             <motion.button
               className="bg-gray-100 text-gray-700 px-6 py-3 rounded-lg font-semibold border border-gray-300 transition-all duration-300"
@@ -137,6 +303,8 @@ export default function EnhancedAuthPage() {
                 await logout();
                 setHasAttemptedLogin(false);
                 setIsInitialLoad(true);
+                setUserMeta(null);
+                hasCheckedUser.current = false;
               }}
               whileHover={{ scale: 1.02, backgroundColor: "rgb(243, 244, 246)" }}
               whileTap={{ scale: 0.98 }}
@@ -150,14 +318,10 @@ export default function EnhancedAuthPage() {
   }
 
   // Don't render during redirect
-  if (user && hasAttemptedLogin && !isInitialLoad) return null;
+  if (user && hasAttemptedLogin && !isInitialLoad && userMeta && userMeta.has_seen_welcome) return null;
 
   const handleSuccess = () => {
     setHasAttemptedLogin(true);
-    const redirectPath = getRedirectPath();
-    if (redirectPath !== '/auth') {
-      // Let the useEffect handle the redirect
-    }
   };
 
   return (
