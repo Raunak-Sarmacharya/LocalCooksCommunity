@@ -7,45 +7,12 @@ import Logo from "@/components/ui/logo";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import WelcomeScreen from "@/pages/welcome-screen";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
-function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-orange-50 to-orange-100 p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Logo className="h-16 mx-auto mb-6" />
-          <div className="flex items-center justify-center mb-4">
-            <Sparkles className="h-8 w-8 text-orange-500 mr-2" />
-            <h1 className="text-3xl font-bold text-gray-900">Welcome to Local Cooks!</h1>
-          </div>
-          <p className="text-gray-600 text-lg">
-            We're excited to have you join our community of passionate home cooks and food lovers.
-          </p>
-        </div>
-
-        <Card className="shadow-xl border-0">
-          <CardContent className="p-8 text-center">
-            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">You're All Set!</h2>
-            <p className="text-gray-600 mb-6">
-              Your account is verified and ready to use. Let's start exploring delicious recipes and connecting with fellow cooks.
-            </p>
-            <Button 
-              onClick={onContinue}
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white"
-              size="lg"
-            >
-              Get Started
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
+// WelcomeScreen component is now imported from @/pages/welcome-screen
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
@@ -91,6 +58,7 @@ export default function AuthPage() {
       if (!hasCheckedUser.current) {
         hasCheckedUser.current = true;
         console.log('🔍 AUTH PAGE DEBUG - Fetching user meta for Firebase user:', user.uid);
+        console.log('🔍 AUTH PAGE DEBUG - User object:', user);
         console.log('🔍 AUTH PAGE DEBUG - Current state:', {
           loading,
           hasUser: !!user,
@@ -153,12 +121,19 @@ export default function AuthPage() {
               console.log('⚠️ User sync failed, continuing:', syncError);
             }
             
+            console.log('🔥 PRODUCTION DEBUG - Making Firebase API call to /api/user');
+            console.log('🔥 PRODUCTION DEBUG - Token exists:', !!token);
+            console.log('🔥 PRODUCTION DEBUG - Firebase user UID:', firebaseUser.uid);
+            
             const response = await fetch('/api/user', {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
               }
             });
+            
+            console.log('🔥 PRODUCTION DEBUG - API response status:', response.status);
+            console.log('🔥 PRODUCTION DEBUG - API response headers:', Object.fromEntries(response.headers.entries()));
             
             if (response.ok) {
               const userData = await response.json();
@@ -274,8 +249,23 @@ export default function AuthPage() {
   // HIGHEST PRIORITY: Check for welcome screen FIRST before any other logic
   if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     console.log('🎉 TOP PRIORITY WELCOME SCREEN - User needs onboarding');
-    return <WelcomeScreen onContinue={async () => {
+    console.log('🎉 WELCOME SCREEN DATA:', {
+      is_verified: userMeta.is_verified,
+      has_seen_welcome: userMeta.has_seen_welcome,
+      user_id: userMeta.id,
+      username: userMeta.username
+    });
+    return <WelcomeScreen onComplete={async () => {
       console.log('🎯 Welcome screen button clicked from top priority check');
+      await handleWelcomeContinue();
+    }} />;
+  }
+
+  // FORCE WELCOME SCREEN FOR TESTING - Remove this after testing
+  if (userMeta && userMeta.is_verified && userMeta.has_seen_welcome === false) {
+    console.log('🎉 FORCE WELCOME SCREEN - Explicit false check');
+    return <WelcomeScreen onComplete={async () => {
+      console.log('🎯 Welcome screen button clicked from force check');
       await handleWelcomeContinue();
     }} />;
   }
@@ -298,7 +288,7 @@ export default function AuthPage() {
   // PRIORITY 1: Show welcome screen if conditions are met
   if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     console.log('🎉 FORCE SHOWING WELCOME SCREEN - Direct condition check');
-    return <WelcomeScreen onContinue={async () => {
+    return <WelcomeScreen onComplete={async () => {
       console.log('🎯 Welcome screen button clicked, calling handleWelcomeContinue');
       await handleWelcomeContinue();
     }} />;
@@ -307,7 +297,7 @@ export default function AuthPage() {
   // PRIORITY 2: Show welcome screen if flag is set
   if (showWelcome) {
     console.log('🎉 RENDERING WELCOME SCREEN COMPONENT');
-    return <WelcomeScreen onContinue={async () => {
+    return <WelcomeScreen onComplete={async () => {
       console.log('🎯 Welcome screen button clicked, calling handleWelcomeContinue');
       await handleWelcomeContinue();
     }} />;
