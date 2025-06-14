@@ -4320,6 +4320,37 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
         console.log(`✅ Found existing user by Firebase UID: ${user.id} (${user.username})`);
         console.log(`   - is_verified in DB: ${user.is_verified}`);
         console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+        console.log(`   - emailVerified from Firebase: ${emailVerified}`);
+        
+        // CRITICAL: Update verification status if Firebase shows user as verified but DB shows unverified
+        if (emailVerified === true && !user.is_verified) {
+          console.log(`🔄 UPDATING VERIFICATION STATUS - Firebase verified but DB not updated`);
+          try {
+            const updateResult = await pool.query(
+              'UPDATE users SET is_verified = $1 WHERE id = $2 RETURNING *',
+              [true, user.id]
+            );
+            user = updateResult.rows[0];
+            console.log(`✅ VERIFICATION STATUS UPDATED - User ${user.id} is now verified in database`);
+          } catch (updateError) {
+            console.error(`❌ Failed to update verification status for user ${user.id}:`, updateError);
+          }
+        }
+        
+        // Also update displayName if it's missing and provided
+        if (displayName && !user.display_name) {
+          console.log(`🔄 UPDATING DISPLAY NAME - Adding missing display name: ${displayName}`);
+          try {
+            const updateResult = await pool.query(
+              'UPDATE users SET display_name = $1 WHERE id = $2 RETURNING *',
+              [displayName, user.id]
+            );
+            user = updateResult.rows[0];
+            console.log(`✅ DISPLAY NAME UPDATED - User ${user.id} now has display name: ${displayName}`);
+          } catch (updateError) {
+            console.error(`❌ Failed to update display name for user ${user.id}:`, updateError);
+          }
+        }
       } else {
         // STEP 2: Check by email as secondary (for linking existing accounts)
         console.log(`🔍 Secondary check: Looking for user by email: ${email}`);
@@ -4426,6 +4457,23 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
         if (u.firebase_uid === uid) {
           user = u;
           console.log(`✅ Found existing in-memory user by Firebase UID: ${u.id} (${u.username})`);
+          console.log(`   - is_verified in memory: ${u.is_verified}`);
+          console.log(`   - emailVerified from Firebase: ${emailVerified}`);
+          
+          // Update verification status if Firebase shows verified but memory shows unverified
+          if (emailVerified === true && !u.is_verified) {
+            console.log(`🔄 UPDATING IN-MEMORY VERIFICATION STATUS - Firebase verified but memory not updated`);
+            u.is_verified = true;
+            console.log(`✅ IN-MEMORY VERIFICATION STATUS UPDATED - User ${u.id} is now verified`);
+          }
+          
+          // Also update displayName if missing
+          if (displayName && !u.display_name) {
+            console.log(`🔄 UPDATING IN-MEMORY DISPLAY NAME - Adding: ${displayName}`);
+            u.display_name = displayName;
+            console.log(`✅ IN-MEMORY DISPLAY NAME UPDATED`);
+          }
+          
           break;
         }
       }
@@ -6581,6 +6629,65 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
     console.error('Error deleting Firebase user:', error);
     res.status(500).json({ 
       error: 'Failed to delete user', 
+      message: error.message 
+    });
+  }
+});
+
+// Manual email verification sync endpoint
+app.post('/api/sync-verification-status', async (req, res) => {
+  try {
+    // Verify Firebase token for security
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    const uid = decodedToken.uid;
+    const email = decodedToken.email;
+    const emailVerified = decodedToken.email_verified;
+    
+    console.log(`🔄 MANUAL VERIFICATION SYNC requested for ${email} (${uid})`);
+    console.log(`   - Firebase emailVerified: ${emailVerified}`);
+    
+    // Force sync the user's verification status
+    const syncResult = await syncFirebaseUser(uid, email, emailVerified, null, null, null);
+    
+    if (syncResult.success) {
+      console.log(`✅ MANUAL VERIFICATION SYNC completed for ${email}`);
+      
+      res.json({
+        success: true,
+        message: 'Verification status synced successfully',
+        user: syncResult.user,
+        firebaseVerified: emailVerified,
+        databaseVerified: syncResult.user.is_verified
+      });
+    } else {
+      console.error(`❌ MANUAL VERIFICATION SYNC failed for ${email}:`, syncResult.error);
+      res.status(500).json({
+        error: 'Verification sync failed',
+        message: syncResult.error
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in sync-verification-status:', error);
+    res.status(500).json({ 
+      error: 'Verification sync failed', 
       message: error.message 
     });
   }

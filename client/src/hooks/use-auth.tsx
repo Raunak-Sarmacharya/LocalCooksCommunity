@@ -103,9 +103,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (firebaseUser) {
           console.log('🔥 AUTH STATE CHANGE - User detected:', firebaseUser.uid);
           
+          // Check if this is a verification redirect from email
+          const urlParams = new URLSearchParams(window.location.search);
+          const isVerificationRedirect = urlParams.has('verified') || window.location.href.includes('continueUrl');
+          
+          if (isVerificationRedirect) {
+            console.log('📧 EMAIL VERIFICATION REDIRECT DETECTED - Reloading user data');
+            await firebaseUser.reload(); // Refresh verification status
+          }
+          
           // Get providers list
           const providers = firebaseUser.providerData.map(p => p.providerId);
           console.log('🔥 AUTH PROVIDERS:', providers);
+          console.log('🔥 EMAIL VERIFIED:', firebaseUser.emailVerified);
 
           // Check for user role in Firestore
           let role = "applicant";
@@ -133,16 +143,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Firestore error:', firestoreError);
           }
           
-          // **IMPROVED SYNC LOGIC**
-          // Sync if this is the first initialization, pending sync is requested, or pending registration
-          const shouldSync = isInitializing || pendingSync || pendingRegistration;
+          // **IMPROVED SYNC LOGIC WITH VERIFICATION HANDLING**
+          // Sync if this is the first initialization, pending sync is requested, pending registration, OR verification redirect
+          const shouldSync = isInitializing || pendingSync || pendingRegistration || isVerificationRedirect;
           
           if (shouldSync) {
             console.log('🔥 SYNCING USER - Conditions met:', {
               isInitializing,
               pendingSync,
               pendingRegistration,
-              uid: firebaseUser.uid
+              isVerificationRedirect,
+              uid: firebaseUser.uid,
+              emailVerified: firebaseUser.emailVerified
             });
             
             const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistration);
@@ -150,6 +162,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setPendingSync(false);
               setPendingRegistration(false);
               console.log('✅ USER SYNCED - Backend sync complete');
+              
+              // If this was a verification redirect, clean up the URL
+              if (isVerificationRedirect) {
+                console.log('🧹 CLEANING UP VERIFICATION URL');
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }
             } else {
               console.error('❌ USER SYNC FAILED - Will retry on next auth state change');
               // Keep pendingSync true to retry on next auth state change
@@ -476,8 +494,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      // **CRITICAL: Reload Firebase user to get latest verification status**
+      await currentUser.reload();
+      console.log('🔄 UPDATING VERIFICATION STATUS');
+      console.log(`   - Firebase emailVerified: ${currentUser.emailVerified}`);
+
       const token = await currentUser.getIdToken();
       
+      // **CRITICAL: Call the manual sync endpoint to update database verification status**
+      try {
+        console.log('🔄 CALLING MANUAL VERIFICATION SYNC');
+        const syncResponse = await fetch('/api/sync-verification-status', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (syncResponse.ok) {
+          const syncResult = await syncResponse.json();
+          console.log('✅ VERIFICATION SYNC SUCCESS:', syncResult);
+          console.log(`   - Database is_verified: ${syncResult.databaseVerified}`);
+          console.log(`   - Firebase emailVerified: ${syncResult.firebaseVerified}`);
+        } else {
+          console.error('❌ VERIFICATION SYNC FAILED:', syncResponse.status);
+          const errorText = await syncResponse.text();
+          console.error('❌ Sync error details:', errorText);
+        }
+      } catch (syncError) {
+        console.error('❌ Error calling verification sync:', syncError);
+      }
+      
+      // Now fetch the updated user data from the API
       const response = await fetch('/api/user', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -487,8 +536,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (response.ok) {
         const userData = await response.json();
-        setUser(userData);
-        return userData;
+        console.log('✅ UPDATED USER DATA FETCHED:', {
+          id: userData.id,
+          email: userData.username,
+          is_verified: userData.is_verified,
+          has_seen_welcome: userData.has_seen_welcome
+        });
+        
+        // Update the user state with fresh Firebase info + database data
+        const updatedUser: AuthUser = {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+          emailVerified: currentUser.emailVerified,
+          providers: currentUser.providerData.map(p => p.providerId),
+          role: userData.role,
+        };
+        
+        setUser(updatedUser);
+        return updatedUser;
       } else {
         console.error('Failed to fetch user data:', response.status);
       }
