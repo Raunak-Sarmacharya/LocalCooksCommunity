@@ -6150,9 +6150,9 @@ app.get("/api/auth/verify-email", async (req, res) => {
 
     console.log(`✅ Email verified successfully: ${email}`);
     
-    // Redirect to auth page with verification success
-    // The frontend will detect the user is now verified and redirect to the appropriate dashboard
-    return res.redirect(`${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth?verified=true`);
+    // Redirect to auth page with verification success and login prompt
+    // The frontend will show a success message and prompt the user to log in
+    return res.redirect(`${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth?verified=true&message=verification-success`);
 
   } catch (error) {
     console.error("❌ Error in email verification:", error);

@@ -66,10 +66,10 @@ export default function AuthPage() {
       const newUrl = window.location.pathname;
       window.history.replaceState({}, '', newUrl);
       
-      // Auto-hide success message after 3 seconds
+      // Auto-hide success message after 5 seconds (longer for post-verification)
       setTimeout(() => {
         setShowVerificationSuccess(false);
-      }, 3000);
+      }, 5000);
     }
   }, []);
 
@@ -267,7 +267,7 @@ export default function AuthPage() {
   // **EMAIL VERIFICATION SUCCESS MESSAGE**
   const VerificationSuccessMessage = () => (
     <div className="fixed top-4 right-4 z-50">
-      <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-md">
+      <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 max-w-sm">
         <div className="flex-shrink-0">
           <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -275,7 +275,7 @@ export default function AuthPage() {
         </div>
         <div>
           <p className="font-semibold">Email verified successfully!</p>
-          <p className="text-sm text-green-600">Welcome to Local Cooks Community.</p>
+          <p className="text-sm text-green-600">Please log in to access your dashboard.</p>
         </div>
       </div>
     </div>
