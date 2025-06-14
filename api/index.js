@@ -4205,13 +4205,13 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     const uid = decodedToken.uid;
     const email = decodedToken.email;
     const emailVerified = decodedToken.email_verified;
-    const { displayName, role } = req.body; // These can come from request body
+    const { displayName, role, password } = req.body; // These can come from request body
     
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
     }
 
-    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role);
+    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role, password);
     
     if (syncResult.success) {
       res.json(syncResult);
@@ -4258,7 +4258,7 @@ app.post('/api/firebase-register-user', async (req, res) => {
     const uid = decodedToken.uid;
     const email = decodedToken.email;
     const emailVerified = decodedToken.email_verified;
-    const { displayName, role } = req.body;
+    const { displayName, role, password } = req.body;
     
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
@@ -4267,7 +4267,7 @@ app.post('/api/firebase-register-user', async (req, res) => {
     console.log(`📝 Firebase REGISTRATION request for email: ${email}, uid: ${uid}`);
     
     // Call sync logic directly instead of making internal fetch
-    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role);
+    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role, password);
     
     if (syncResult.success) {
       console.log(`✅ Registration sync completed for ${email}`);
@@ -4296,7 +4296,7 @@ app.post('/api/firebase-register-user', async (req, res) => {
 });
 
 // Extract sync logic into a reusable function
-async function syncFirebaseUser(uid, email, emailVerified, displayName, role) {
+async function syncFirebaseUser(uid, email, emailVerified, displayName, role, password) {
   try {
     console.log(`🔄 Firebase sync for email: ${email}, uid: ${uid}`);
     console.log(`🔍 ENHANCED SYNC DEBUG:`);
@@ -4305,6 +4305,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role) {
     console.log(`   - Display Name: ${displayName}`);
     console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
     console.log(`   - Role: ${role}`);
+    console.log(`   - Password provided: ${password ? 'YES (will be hashed)' : 'NO (OAuth user)'}`);
     
     let user = null;
     let wasCreated = false;
@@ -4352,11 +4353,19 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role) {
           console.log(`➕ Creating NEW user for email: ${email}, Firebase UID: ${uid}`);
           console.log(`   - emailVerified: ${emailVerified}, setting is_verified: ${isUserVerified}`);
           console.log(`   - Using EMAIL as username to ensure uniqueness`);
+          console.log(`   - Password provided: ${password ? 'YES' : 'NO'}`);
+          
+          // Hash the password if provided (for email/password users)
+          let hashedPassword = '';
+          if (password) {
+            console.log(`🔐 Hashing password for email/password user`);
+            hashedPassword = await hashPassword(password);
+          }
           
           try {
             const insertResult = await pool.query(
               'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-              [email, '', role || 'applicant', uid, isUserVerified, false]
+              [email, hashedPassword, role || 'applicant', uid, isUserVerified, false]
             );
             user = insertResult.rows[0];
             wasCreated = true;
@@ -4442,11 +4451,19 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role) {
       if (!user) {
         const id = Date.now();
         const isUserVerified = emailVerified === true;
+        
+        // Hash the password if provided (for email/password users)
+        let hashedPassword = '';
+        if (password) {
+          console.log(`🔐 Hashing password for in-memory email/password user`);
+          hashedPassword = await hashPassword(password);
+        }
+        
         user = { 
           id, 
           username: email, 
           role: role || 'applicant', 
-          password: '', 
+          password: hashedPassword, 
           firebase_uid: uid,
           is_verified: isUserVerified,
           has_seen_welcome: false
@@ -4455,6 +4472,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role) {
         wasCreated = true;
         console.log(`✨ Created new in-memory user: ${id} (${email})`);
         console.log(`   - is_verified: ${isUserVerified}, has_seen_welcome: false`);
+        console.log(`   - Password stored: ${hashedPassword ? 'YES' : 'NO'}`);
       }
     }
     

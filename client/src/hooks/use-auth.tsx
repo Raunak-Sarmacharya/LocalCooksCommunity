@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingSync, setPendingSync] = useState(false);
   const [pendingRegistration, setPendingRegistration] = useState(false);
 
-  const syncUserWithBackend = async (firebaseUser: any, role?: string, isRegistration = false) => {
+  const syncUserWithBackend = async (firebaseUser: any, role?: string, isRegistration = false, password?: string) => {
     try {
       console.log('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid, isRegistration ? '(REGISTRATION)' : '(SIGN-IN)');
       
@@ -75,7 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
           role: role || "applicant",
-          isRegistration: isRegistration
+          isRegistration: isRegistration,
+          password: password // Include password for email/password registrations
         })
       });
 
@@ -239,13 +240,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingSync(true); // Force sync on new signup
       setPendingRegistration(true); // Mark as registration
       const cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Update the Firebase profile with displayName
       if (displayName) {
         await updateProfile(cred.user, { displayName });
+        console.log('📝 Updated Firebase profile with displayName:', displayName);
+        
+        // Also update Firestore document with displayName
+        try {
+          const userDocRef = doc(db, "users", cred.user.uid);
+          await setDoc(userDocRef, {
+            email: cred.user.email,
+            displayName: displayName,
+            role: "applicant",
+            createdAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          console.log('📝 Updated Firestore with displayName:', displayName);
+        } catch (firestoreError) {
+          console.error('❌ Failed to update Firestore:', firestoreError);
+        }
       }
 
       // IMPORTANT: Manually sync the user before signing them out
-      console.log('📧 USER REGISTERED - Syncing to database before email verification requirement');
-      const syncSuccess = await syncUserWithBackend(cred.user, "applicant", true);
+      // Pass the updated user object and password for proper database storage
+      console.log('📧 USER REGISTERED - Syncing to database with password and displayName');
+      
+      // Get the updated user object with displayName
+      await cred.user.reload(); // Refresh the user object
+      const updatedUser = auth.currentUser || cred.user;
+      
+      // Wait a moment for profile update to propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const syncSuccess = await syncUserWithBackend(updatedUser, "applicant", true, password);
       
       if (syncSuccess) {
         console.log('✅ User synced successfully during registration');
