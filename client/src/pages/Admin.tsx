@@ -32,7 +32,46 @@ function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
 
-  const { user, loading } = useFirebaseAuth();
+  const firebaseAuth = useFirebaseAuth();
+  
+  // Check for session-based auth (for admin users) - same pattern as Header
+  const { data: sessionUser } = useQuery({
+    queryKey: ["/api/user"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user", {
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null; // Not authenticated via session
+          }
+          throw new Error(`Session auth failed: ${response.status}`);
+        }
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'session'
+        };
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Use session auth if available, otherwise fallback to Firebase
+  const user = sessionUser || firebaseAuth.user;
+  const loading = firebaseAuth.loading && !sessionUser;
   const isAdmin = user?.role === 'admin';
 
   // Debug authentication state
@@ -43,32 +82,36 @@ function AdminDashboard() {
     isAdmin
   });
 
-  // Fetch all applications - use Firebase auth for admin
+  // Fetch all applications - use appropriate auth method
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: ["/api/firebase/admin/applications"],
+    queryKey: [sessionUser ? "/api/applications" : "/api/firebase/admin/applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.uid) {
+      if (!user) {
         throw new Error("Admin not authenticated");
       }
       
-      console.log('Admin: Fetching applications data...');
-      
-      // Get Firebase auth token
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error("No Firebase user available");
-      }
-
-      const token = await firebaseUser.getIdToken();
+      console.log('Admin: Fetching applications data...', {
+        authMethod: sessionUser ? 'session' : 'firebase',
+        endpoint: queryKey[0]
+      });
       
       const headers: Record<string, string> = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
       };
+
+      // If using Firebase auth, add authorization header
+      if (!sessionUser && firebaseAuth.user) {
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+          throw new Error("No Firebase user available");
+        }
+        const token = await firebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+        headers['Content-Type'] = 'application/json';
+      }
 
       const response = await fetch(queryKey[0] as string, {
         credentials: 'include',
@@ -166,19 +209,23 @@ function AdminDashboard() {
       try {
         console.log(`Updating application ${id} status to ${status}`);
         
-        // Get Firebase auth token
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) {
-          throw new Error("No Firebase user available");
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        // Add Firebase auth if not using session
+        if (!sessionUser && firebaseAuth.user) {
+          const firebaseUser = auth.currentUser;
+          if (!firebaseUser) {
+            throw new Error("No Firebase user available");
+          }
+          const token = await firebaseUser.getIdToken();
+          headers['Authorization'] = `Bearer ${token}`;
         }
-        const token = await firebaseUser.getIdToken();
         
         const response = await fetch(`/api/applications/${id}/status`, {
           method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers,
           credentials: 'include',
           body: JSON.stringify({ status })
         });
@@ -201,7 +248,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
+        queryClient.invalidateQueries({ queryKey: [sessionUser ? "/api/applications" : "/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -224,20 +271,24 @@ function AdminDashboard() {
   // Mutation to update document verification status
   const updateDocumentStatusMutation = useMutation({
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
-      // Get Firebase auth token
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error("No Firebase user available");
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add Firebase auth if not using session
+      if (!sessionUser && firebaseAuth.user) {
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+          throw new Error("No Firebase user available");
+        }
+        const token = await firebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
       }
-      const token = await firebaseUser.getIdToken();
       
       const updateData = { [field]: status };
       const response = await fetch(`/api/applications/${id}/document-verification`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         credentials: 'include',
         body: JSON.stringify(updateData)
       });
@@ -255,7 +306,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
+        queryClient.invalidateQueries({ queryKey: [sessionUser ? "/api/applications" : "/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -499,8 +550,9 @@ function AdminDashboard() {
     
     try {
       // 1. Clear all application-related caches more aggressively
+      const adminEndpoint = sessionUser ? "/api/applications" : "/api/firebase/admin/applications";
       const cacheKeys = [
-        ["/api/firebase/admin/applications"],
+        [adminEndpoint],
         ["/api/applications/my-applications"],
         ["/api/user"]
       ];
@@ -518,7 +570,7 @@ function AdminDashboard() {
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
         queryClient.refetchQueries({ 
-          queryKey: ["/api/firebase/admin/applications"],
+          queryKey: [adminEndpoint],
           type: 'all'
         }),
         queryClient.refetchQueries({ 
@@ -532,7 +584,8 @@ function AdminDashboard() {
       console.error('Admin: Force refresh failed', error);
       // Fallback: try to refresh just the admin query
       try {
-        await queryClient.refetchQueries({ queryKey: ["/api/firebase/admin/applications"] });
+        const adminEndpoint = sessionUser ? "/api/applications" : "/api/firebase/admin/applications";
+        await queryClient.refetchQueries({ queryKey: [adminEndpoint] });
         console.log('Admin: Fallback refresh completed');
       } catch (fallbackError) {
         console.error('Admin: Fallback refresh also failed', fallbackError);

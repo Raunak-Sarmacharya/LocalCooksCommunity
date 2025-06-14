@@ -168,11 +168,12 @@ export default function AuthPage() {
                 return;
               }
               
-              // User is verified and has seen welcome, redirect to dashboard
-              console.log('✅ User verified and has seen welcome, redirecting to dashboard');
+              // User is verified and has seen welcome, redirect to appropriate dashboard
+              const targetPath = userData.role === 'admin' ? '/admin' : '/dashboard';
+              console.log(`✅ User verified and has seen welcome, redirecting to ${targetPath}`);
               // Small delay to ensure proper state management
               setTimeout(() => {
-                setLocation('/dashboard');
+                setLocation(targetPath);
               }, 500);
             } else {
               console.error('❌ Failed to fetch user data:', response.status);
@@ -344,17 +345,21 @@ export default function AuthPage() {
       });
       
       if (response.ok) {
-        console.log('Welcome seen status updated, redirecting to dashboard');
-        setLocation('/dashboard');
+        // Get user role for proper redirect
+        const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
+        console.log(`Welcome seen status updated, redirecting to ${targetPath}`);
+        setLocation(targetPath);
       } else {
         console.error('Failed to update welcome status:', response.status);
         // Still redirect even if update fails
-        setLocation('/dashboard');
+        const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
+        setLocation(targetPath);
       }
     } catch (error) {
       console.error('Error updating welcome status:', error);
       // Still redirect even if update fails
-      setLocation('/dashboard');
+      const targetPath = user?.role === 'admin' ? '/admin' : '/dashboard';
+      setLocation(targetPath);
     }
   };
 
