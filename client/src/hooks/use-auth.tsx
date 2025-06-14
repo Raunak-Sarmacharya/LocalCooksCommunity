@@ -41,6 +41,7 @@ interface AuthContextType {
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: any) => boolean;
   updateUserVerification: () => Promise<AuthUser | null>;
+  sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -179,11 +180,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLoading(true);
     try {
-      // Force sync on fresh login
-      setPendingSync(true);
-      await signInWithEmailAndPassword(auth, email, password);
+      // First, sign in to Firebase to verify credentials
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Get the user's ID token to check verification status
+      const token = await cred.user.getIdToken();
+      
+      // Check if user is verified in our database
+      const response = await fetch('/api/user', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        
+        // If user is not verified, sign them out and show error
+        if (!userData.is_verified) {
+          console.log('❌ User not verified - signing out');
+          await signOut(auth);
+          throw new Error('Please verify your email before logging in. Check your inbox for a verification link.');
+        }
+        
+        // User is verified, allow login
+        console.log('✅ User verified - login successful');
+        setPendingSync(true);
+        
+      } else {
+        // User doesn't exist in our database
+        await signOut(auth);
+        throw new Error('Account not found. Please register first.');
+      }
+      
     } catch (firebaseError: any) {
-      console.error('Firebase authentication failed:', firebaseError.message);
+      console.error('Login failed:', firebaseError.message);
       setError(firebaseError.message);
       setPendingSync(false);
     } finally {
@@ -201,6 +233,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (displayName) {
         await updateProfile(cred.user, { displayName });
       }
+
+      // CRITICAL: Sign out the user immediately after registration
+      // They need to verify their email before they can log in
+      console.log('📧 USER REGISTERED - Signing out to require email verification');
+      await signOut(auth);
+      
+      // Reset states
+      setPendingSync(false);
+      setPendingRegistration(false);
+      
     } catch (e: any) {
       setError(e.message);
       setPendingSync(false);
@@ -312,6 +354,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user && user.is_verified === true;
   };
 
+  // Send verification email to a user
+  const sendVerificationEmail = async (email: string, fullName: string) => {
+    try {
+      const response = await fetch("/api/auth/send-verification-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          email: email, 
+          fullName: fullName 
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to send verification email');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error sending verification email:', error);
+      throw error;
+    }
+  };
+
   // Update user verification status
   const updateUserVerification = async () => {
     try {
@@ -359,6 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         handleEmailLinkSignIn,
         isUserVerified,
         updateUserVerification,
+        sendVerificationEmail,
       }}
     >
       {children}

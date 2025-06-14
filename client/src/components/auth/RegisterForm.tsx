@@ -14,6 +14,7 @@ import { Loader2, Lock, Mail, User } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import EmailVerificationScreen from "./EmailVerificationScreen";
 
 const registerSchema = z.object({
   email: z.string().email("Valid email required"),
@@ -29,8 +30,13 @@ interface RegisterFormProps {
 }
 
 export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: RegisterFormProps) {
-  const { signup, signInWithGoogle, loading, error } = useFirebaseAuth();
+  const { signup, signInWithGoogle, loading, error, sendVerificationEmail } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [registeredName, setRegisteredName] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
+  
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { email: "", password: "", displayName: "" },
@@ -41,11 +47,40 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
     setFormError(null);
     try {
       await signup(data.email, data.password, data.displayName);
-      if (onSuccess) onSuccess(); // Auth page will handle verification and redirect
+      // After successful registration, show email verification screen
+      setRegisteredEmail(data.email);
+      setRegisteredName(data.displayName);
+      setShowEmailVerification(true);
     } catch (e: any) {
       setFormError(e.message);
     }
   };
+
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    try {
+      await sendVerificationEmail(registeredEmail, registeredName);
+    } catch (e: any) {
+      setFormError('Failed to resend verification email. Please try again.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // Show email verification screen after successful registration
+  if (showEmailVerification) {
+    return (
+      <EmailVerificationScreen
+        email={registeredEmail}
+        onResend={handleResendVerification}
+        onGoBack={() => {
+          setShowEmailVerification(false);
+          setHasAttemptedLogin?.(false);
+        }}
+        resendLoading={resendLoading}
+      />
+    );
+  }
 
   return (
     <div className="w-full max-w-md mx-auto space-y-6">
