@@ -5,10 +5,10 @@ export const applicationSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
   phone: z.string().regex(/^\+?[0-9\s\(\)-]{10,15}$/, "Please enter a valid phone number"),
-  foodSafetyLicense: z.enum(["yes", "no", "notSure"], {
+  foodSafetyLicense: z.enum(["yes", "no"], {
     required_error: "Please select an option",
   }),
-  foodEstablishmentCert: z.enum(["yes", "no", "notSure"], {
+  foodEstablishmentCert: z.enum(["yes", "no"], {
     required_error: "Please select an option",
   }),
   feedback: z.string().optional(),

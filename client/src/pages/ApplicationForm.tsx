@@ -31,6 +31,11 @@ function FormStep() {
   const { currentStep, goToPreviousStep } = useApplicationForm();
   const [, navigate] = useLocation();
 
+  // Ensure page always starts at the top
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentStep]);
+
   return (
     <>
       <div className="container mx-auto px-4 mb-8">
@@ -83,6 +88,11 @@ function FormStep() {
 export default function ApplicationForm() {
   const { user, loading: authLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
+
+  // Ensure page always starts at the top when component mounts
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   // Redirect to auth page if user is not logged in, or to admin dashboard if user is admin
   useEffect(() => {

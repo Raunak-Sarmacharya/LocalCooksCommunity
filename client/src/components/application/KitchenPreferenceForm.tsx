@@ -4,7 +4,7 @@ import { ApplicationFormData } from "@/lib/applicationSchema";
 import { apiRequest } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { ArrowRight, Building, ChefHat, HelpCircle, HomeIcon, Info } from "lucide-react";
+import { ArrowRight, Building, ChefHat, HelpCircle, HomeIcon, Info, ArrowLeft } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
@@ -60,207 +60,215 @@ export default function KitchenPreferenceForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="mb-8 bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-blue-400 rounded-lg overflow-hidden">
-          <div className="p-5">
-            <div className="flex items-start">
-              <div className="bg-blue-200 rounded-full p-2 mr-3">
-                <Info className="h-5 w-5 text-blue-700" />
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        {/* Header Section */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center mx-auto mb-4">
+            <ChefHat className="h-8 w-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Choose Your Kitchen Setting</h2>
+          <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            This helps us understand how to best support your cooking journey. We have options for every cooking situation!
+          </p>
+        </div>
+
+        {/* Kitchen Preference Options - Horizontal Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Commercial Kitchen Option */}
+          <div 
+            className={`relative cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${
+              form.watch("kitchenPreference") === "commercial" 
+                ? 'ring-2 ring-primary shadow-lg shadow-primary/20' 
+                : 'ring-1 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
+            }`}
+            onClick={() => form.setValue("kitchenPreference", "commercial")}
+          >
+            <div className="bg-white rounded-xl p-6 h-full">
+              {/* Selection Indicator */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    form.watch("kitchenPreference") === "commercial" 
+                      ? 'bg-primary text-white' 
+                      : 'bg-blue-50 text-blue-600'
+                  }`}>
+                    <Building className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-gray-900">Professional Kitchen</h3>
+                    <p className="text-sm text-gray-600">Commercial-grade facilities</p>
+                  </div>
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  form.watch("kitchenPreference") === "commercial" 
+                    ? 'border-primary bg-primary' 
+                    : 'border-gray-300'
+                }`}>
+                  {form.watch("kitchenPreference") === "commercial" && (
+                    <div className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </div>
               </div>
-              <div>
-                <h3 className="text-blue-800 font-medium text-lg mb-1">Kitchen Options</h3>
-                <p className="text-blue-700 text-sm leading-relaxed">
-                  Your choice helps us understand your needs. Don't worry - you can change this later if needed.
-                </p>
+              
+              {/* Benefits List */}
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-primary/70"></div>
+                  <span className="text-sm text-gray-700">Professional-grade equipment</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-primary/70"></div>
+                  <span className="text-sm text-gray-700">Meets all health regulations</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-primary/70"></div>
+                  <span className="text-sm text-gray-700">Greater capacity for volume</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-primary/70"></div>
+                  <span className="text-sm text-gray-700">Network with other chefs</span>
+                </div>
+              </div>
+
+              {/* Perfect For Tag */}
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                Perfect for scaling up
+              </div>
+            </div>
+          </div>
+
+          {/* Home Kitchen Option */}
+          <div 
+            className={`relative cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${
+              form.watch("kitchenPreference") === "home" 
+                ? 'ring-2 ring-primary shadow-lg shadow-primary/20' 
+                : 'ring-1 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
+            }`}
+            onClick={() => form.setValue("kitchenPreference", "home")}
+          >
+            <div className="bg-white rounded-xl p-6 h-full">
+              {/* Selection Indicator */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    form.watch("kitchenPreference") === "home" 
+                      ? 'bg-primary text-white' 
+                      : 'bg-green-50 text-green-600'
+                  }`}>
+                    <HomeIcon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-gray-900">Home Kitchen</h3>
+                    <p className="text-sm text-gray-600">Cook from your own space</p>
+                  </div>
+                </div>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  form.watch("kitchenPreference") === "home" 
+                    ? 'border-primary bg-primary' 
+                    : 'border-gray-300'
+                }`}>
+                  {form.watch("kitchenPreference") === "home" && (
+                    <div className="w-2 h-2 rounded-full bg-white" />
+                  )}
+                </div>
+              </div>
+              
+              {/* Benefits List */}
+              <div className="space-y-3 mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="text-sm text-gray-700">Comfortable, familiar environment</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="text-sm text-gray-700">No commute required</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="text-sm text-gray-700">Perfect for specialty items</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="text-sm text-gray-700">We'll help with requirements</span>
+                </div>
+              </div>
+
+              {/* Perfect For Tag */}
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium">
+                Perfect for getting started
               </div>
             </div>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center mb-2">
-                <span className="bg-blue-50 p-1.5 rounded-full mr-3">
-                  <ChefHat className="h-5 w-5 text-blue-600" />
-                </span>
-                Choose Your Kitchen Setting
-              </h3>
-              <p className="text-gray-600 leading-relaxed max-w-xl">
-                This helps us understand how to best support your cooking journey. We have options for every cooking situation!
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 md:gap-6">
-            <div 
-              className={`bg-white rounded-xl border-2 ${form.watch("kitchenPreference") === "commercial" ? 'border-primary shadow-lg' : 'border-gray-100'} h-full shadow-sm transition-all duration-200 hover:shadow-md overflow-hidden group`}
-              onClick={() => form.setValue("kitchenPreference", "commercial")}
-            >
-              <div className={`${form.watch("kitchenPreference") === "commercial" ? 'bg-blue-100' : 'bg-blue-50'} py-4 px-5 transition-colors duration-200`}>
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-blue-800">Commercial Kitchen</h4>
-                  <div className={`p-2 rounded-full ${form.watch("kitchenPreference") === "commercial" ? 'bg-blue-200' : 'bg-blue-100 group-hover:bg-blue-200'} transition-colors duration-200`}>
-                    <Building className="h-5 w-5 text-blue-600" />
-                  </div>
+        {/* Not Sure Option - Full Width */}
+        <div 
+          className={`cursor-pointer transition-all duration-300 transform hover:scale-[1.01] ${
+            form.watch("kitchenPreference") === "notSure" 
+              ? 'ring-2 ring-primary shadow-lg shadow-primary/20' 
+              : 'ring-1 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
+          }`}
+          onClick={() => form.setValue("kitchenPreference", "notSure")}
+        >
+          <div className="bg-white rounded-xl p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  form.watch("kitchenPreference") === "notSure" 
+                    ? 'bg-primary text-white' 
+                    : 'bg-orange-50 text-orange-600'
+                }`}>
+                  <HelpCircle className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-gray-900">I'm not sure yet</h3>
+                  <p className="text-sm text-gray-600">Let's discuss what works best for your situation</p>
                 </div>
               </div>
-              <div className="p-5">
-                <div className="flex items-start cursor-pointer mb-4">
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("kitchenPreference") === "commercial" ? 'border-primary' : 'border-gray-300'}`}>
-                      {form.watch("kitchenPreference") === "commercial" && (
-                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-sm font-medium ml-3 text-gray-800">I want to cook in a professional setting</span>
-                </div>
-                <div className="ml-7 p-3 bg-gray-50 rounded-lg">
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      <span>Professional-grade equipment</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      <span>Meets all health regulations</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      <span>Greater capacity for volume</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      <span>Networks with other chefs</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div 
-              className={`bg-white rounded-xl border-2 ${form.watch("kitchenPreference") === "home" ? 'border-primary shadow-lg' : 'border-gray-100'} h-full shadow-sm transition-all duration-200 hover:shadow-md overflow-hidden group`}
-              onClick={() => form.setValue("kitchenPreference", "home")}
-            >
-              <div className={`${form.watch("kitchenPreference") === "home" ? 'bg-green-100' : 'bg-green-50'} py-4 px-5 transition-colors duration-200`}>
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-green-800">Home Kitchen</h4>
-                  <div className={`p-2 rounded-full ${form.watch("kitchenPreference") === "home" ? 'bg-green-200' : 'bg-green-100 group-hover:bg-green-200'} transition-colors duration-200`}>
-                    <HomeIcon className="h-5 w-5 text-green-600" />
-                  </div>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="flex items-start cursor-pointer mb-4">
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("kitchenPreference") === "home" ? 'border-primary' : 'border-gray-300'}`}>
-                      {form.watch("kitchenPreference") === "home" && (
-                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-sm font-medium ml-3 text-gray-800">I want to cook from my home</span>
-                </div>
-                <div className="ml-7 p-3 bg-gray-50 rounded-lg">
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li className="flex items-start">
-                      <span className="text-green-500 mr-2">•</span>
-                      <span>Comfortable, familiar environment</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-green-500 mr-2">•</span>
-                      <span>No commute required</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-green-500 mr-2">•</span>
-                      <span>Perfect for specialty items</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-green-500 mr-2">•</span>
-                      <span>We'll help with any requirements</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div 
-              className={`bg-white rounded-xl border-2 ${form.watch("kitchenPreference") === "notSure" ? 'border-primary shadow-lg' : 'border-gray-100'} h-full shadow-sm transition-all duration-200 hover:shadow-md overflow-hidden group`}
-              onClick={() => form.setValue("kitchenPreference", "notSure")}
-            >
-              <div className={`${form.watch("kitchenPreference") === "notSure" ? 'bg-purple-100' : 'bg-purple-50'} py-4 px-5 transition-colors duration-200`}>
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-purple-800">Not Sure Yet</h4>
-                  <div className={`p-2 rounded-full ${form.watch("kitchenPreference") === "notSure" ? 'bg-purple-200' : 'bg-purple-100 group-hover:bg-purple-200'} transition-colors duration-200`}>
-                    <HelpCircle className="h-5 w-5 text-purple-600" />
-                  </div>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="flex items-start cursor-pointer mb-4">
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("kitchenPreference") === "notSure" ? 'border-primary' : 'border-gray-300'}`}>
-                      {form.watch("kitchenPreference") === "notSure" && (
-                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-sm font-medium ml-3 text-gray-800">I'd like personalized guidance</span>
-                </div>
-                <div className="ml-7 p-3 bg-gray-50 rounded-lg">
-                  <ul className="space-y-2 text-sm text-gray-600">
-                    <li className="flex items-start">
-                      <span className="text-purple-500 mr-2">•</span>
-                      <span>Get personalized advice</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-purple-500 mr-2">•</span>
-                      <span>Learn about both options</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-purple-500 mr-2">•</span>
-                      <span>Weigh pros and cons</span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-purple-500 mr-2">•</span>
-                      <span>Make an informed choice</span>
-                    </li>
-                  </ul>
-                </div>
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                form.watch("kitchenPreference") === "notSure" 
+                  ? 'border-primary bg-primary' 
+                  : 'border-gray-300'
+              }`}>
+                {form.watch("kitchenPreference") === "notSure" && (
+                  <div className="w-2 h-2 rounded-full bg-white" />
+                )}
               </div>
             </div>
           </div>
+        </div>
 
-          {form.formState.errors.kitchenPreference && (
-            <p className="text-primary text-sm mt-2">
+        {/* Error Message */}
+        {form.formState.errors.kitchenPreference && (
+          <div className="text-center">
+            <p className="text-primary text-sm bg-red-50 border border-red-200 rounded-lg p-3 inline-flex items-center gap-2">
+              <span className="w-2 h-2 bg-primary rounded-full"></span>
               Please select a kitchen preference to continue
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="flex justify-between items-center pt-8 md:pt-10 mt-6 border-t border-gray-100">
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 mt-6 border-t border-gray-100">
           <Button
             type="button"
             variant="outline"
             onClick={goToPreviousStep}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 px-5 py-2.5 rounded-lg font-medium text-sm"
+            className="border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 px-6 py-3 rounded-xl font-medium flex items-center gap-2 w-full sm:w-auto"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
+            <ArrowLeft className="h-4 w-4" />
             Previous Step
           </Button>
           <Button
             type="submit"
             disabled={isPending}
-            className="bg-primary text-white font-medium py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center relative overflow-hidden group"
+            className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white font-semibold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-3 relative overflow-hidden group w-full sm:w-auto min-w-64"
           >
-            <span className="relative z-10 flex items-center">
+            <span className="relative z-10 flex items-center gap-3">
               Continue to Certifications
-              <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-200" />
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-200" />
             </span>
-            <span className="absolute inset-0 bg-primary-dark transform scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-200"></span>
+            <span className="absolute inset-0 bg-gradient-to-r from-primary/90 to-primary/70 transform scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-200"></span>
           </Button>
         </div>
       </form>
