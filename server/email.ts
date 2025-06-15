@@ -320,12 +320,14 @@ const getUniformEmailStyles = () => `
     display: inline-block; 
     padding: 14px 28px; 
     background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); 
-    color: white; 
+    color: white !important; 
     text-decoration: none; 
     border-radius: 8px; 
     font-weight: 600;
     margin: 24px 0;
     box-shadow: 0 2px 8px hsla(347, 91%, 51%, 0.3);
+    mso-hide: none;
+    mso-text-raise: 0;
   }
   .info-box {
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -485,7 +487,7 @@ Visit: ${getWebsiteUrl()}
       <div class="status-badge${applicationData.status === 'approved' ? ' approved' : applicationData.status === 'rejected' ? ' rejected' : ''}">
         Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}
       </div>
-      ${applicationData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>` : ''}
+      ${applicationData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : ''}
       <div class="divider"></div>
     </div>
     <div class="footer">
@@ -575,10 +577,10 @@ export const generateFullVerificationEmail = (
       </div>
       
       <div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">
-        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="flex: 1; min-width: 200px; background: #2563eb;">
+        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="flex: 1; min-width: 200px; background: #2563eb; color: white !important;">
           🏪 Access Vendor Account
         </a>
-        <a href="${getVendorDashboardUrl()}" class="cta-button" style="flex: 1; min-width: 200px; background: #16a34a;">
+        <a href="${getVendorDashboardUrl()}" class="cta-button" style="flex: 1; min-width: 200px; background: #16a34a; color: white !important;">
           💳 Set Up Stripe Payments
         </a>
       </div>
@@ -818,7 +820,7 @@ export async function sendApplicationReceivedEmail(applicationData: any) {
         Our team typically reviews applications within 2-3 business days. 
         You'll receive an email notification once we've made a decision.
       </div>
-      <a href="${getDashboardUrl()}" class="cta-button">Track Application Status</a>
+      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Track Application Status</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
@@ -905,7 +907,7 @@ If you have any questions, contact us at ${supportEmail}
         We'd be happy to reconsider your application when you're ready.
       </div>
       
-      <a href="https://local-cooks-community.vercel.app/apply" class="cta-button">Learn About Requirements</a>
+      <a href="https://local-cooks-community.vercel.app/apply" class="cta-button" style="color: white !important; text-decoration: none !important;">Learn About Requirements</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
@@ -982,7 +984,7 @@ export const generatePasswordResetEmail = (
       <p class="message">
         Click the button below to create a new password. This link will expire in 1 hour for security.
       </p>
-      <a href="${userData.resetUrl}" class="cta-button">Reset My Password</a>
+      <a href="${userData.resetUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Reset My Password</a>
       <div class="warning-box">
         <p class="warning-text">
           <strong>Important:</strong> If you didn't request this password reset, please contact our support team immediately.
@@ -1046,7 +1048,7 @@ export const generateEmailVerificationEmail = (
       <p class="message">
         To complete your registration and activate your account, please verify your email address by clicking the button below.
       </p>
-      <a href="${userData.verificationUrl}" class="cta-button">Verify My Email</a>
+      <a href="${userData.verificationUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Verify My Email</a>
       <div class="status-badge">Status: Verification Required</div>
     </div>
     <div class="footer">
@@ -1105,7 +1107,7 @@ export const generateWelcomeEmail = (
         You can now access your dashboard to complete your profile setup and start your food safety training modules.
       </p>
       <div class="status-badge approved">Status: Account Active</div>
-      <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
+      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for joining <strong>Local Cooks</strong> Community!</p>

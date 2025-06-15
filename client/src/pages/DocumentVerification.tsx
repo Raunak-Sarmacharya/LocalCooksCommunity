@@ -140,18 +140,31 @@ export default function DocumentVerification() {
                   <FileText className="h-5 w-5 text-primary" />
                   Your Documents
                 </h2>
-                <div className="mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">Food Safety License:</span>
+                <div className="mb-4 space-y-3">
+                  {/* Food Safety License */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium min-w-0">Food Safety License:</span>
                     {verification.foodSafetyLicenseUrl ? (
-                      <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium">
-                        <FileText className="h-4 w-4" /> View Document
+                      <a 
+                        href={verification.foodSafetyLicenseUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium"
+                      >
+                        <FileText className="h-4 w-4" /> 
+                        View Document
                       </a>
                     ) : (
                       <span className="text-gray-400">Not uploaded</span>
                     )}
                     {verification.foodSafetyLicenseStatus && (
-                      <span className={`ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${verification.foodSafetyLicenseStatus === "approved" ? "bg-green-100 text-green-800" : verification.foodSafetyLicenseStatus === "pending" ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${
+                        verification.foodSafetyLicenseStatus === "approved" 
+                          ? "bg-green-100 text-green-800" 
+                          : verification.foodSafetyLicenseStatus === "pending" 
+                          ? "bg-yellow-100 text-yellow-800" 
+                          : "bg-red-100 text-red-800"
+                      }`}>
                         {verification.foodSafetyLicenseStatus === "approved" && <CheckCircle className="h-3 w-3" />}
                         {verification.foodSafetyLicenseStatus === "pending" && <Clock className="h-3 w-3" />}
                         {verification.foodSafetyLicenseStatus === "rejected" && <XCircle className="h-3 w-3" />}
@@ -159,14 +172,33 @@ export default function DocumentVerification() {
                       </span>
                     )}
                   </div>
+
+                  {/* Food Establishment Certificate */}
                   {verification.foodEstablishmentCertUrl && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="font-medium">Food Establishment Certificate:</span>
-                      <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                        View
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium min-w-0">Food Establishment Certificate:</span>
+                      <a 
+                        href={verification.foodEstablishmentCertUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium"
+                      >
+                        <FileText className="h-4 w-4" /> 
+                        View Document
                       </a>
                       {verification.foodEstablishmentCertStatus && (
-                        <span className="ml-2">{verification.foodEstablishmentCertStatus === "approved" ? "✅ Approved" : verification.foodEstablishmentCertStatus === "pending" ? "🕒 Pending" : "❌ Rejected"}</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${
+                          verification.foodEstablishmentCertStatus === "approved" 
+                            ? "bg-green-100 text-green-800" 
+                            : verification.foodEstablishmentCertStatus === "pending" 
+                            ? "bg-yellow-100 text-yellow-800" 
+                            : "bg-red-100 text-red-800"
+                        }`}>
+                          {verification.foodEstablishmentCertStatus === "approved" && <CheckCircle className="h-3 w-3" />}
+                          {verification.foodEstablishmentCertStatus === "pending" && <Clock className="h-3 w-3" />}
+                          {verification.foodEstablishmentCertStatus === "rejected" && <XCircle className="h-3 w-3" />}
+                          {verification.foodEstablishmentCertStatus.charAt(0).toUpperCase() + verification.foodEstablishmentCertStatus.slice(1)}
+                        </span>
                       )}
                     </div>
                   )}

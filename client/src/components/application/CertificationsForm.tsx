@@ -458,7 +458,7 @@ export default function CertificationsForm() {
               <div className="mt-5 p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <p className="text-sm text-gray-600 flex items-start">
                   <HelpCircle className="h-4 w-4 mr-2 text-primary mt-0.5 flex-shrink-0" />
-                  <span>The Food Safety License is typically obtained through a 1 hour course offered by Scale Plus NL or other accepted food safety certification providers by the provincial government. It teaches proper food handling, storage, and preparation methods to prevent foodborne illness.</span>
+                  <span>The Food Safety License is typically obtained through a 5 hours course offered by SkillPass NL or other accepted food safety certification providers by the provincial government. It teaches proper food handling, storage, and preparation methods to prevent foodborne illness.</span>
                 </p>
               </div>
             </div>
