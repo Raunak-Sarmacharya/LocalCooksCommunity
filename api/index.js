@@ -4552,32 +4552,12 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
             console.log(`   - is_verified in DB: ${user.is_verified}`);
             console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
             
-            // Send welcome email for new users
+            // Send welcome email for new users (with delay for better deliverability)
             if (isUserVerified) {
-              try {
-                console.log(`📧 Sending welcome email to new user: ${email}`);
-                const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
-                const emailContent = generateWelcomeEmail({
-                  fullName: displayName || email.split('@')[0],
-                  email: email
-                });
-                
-                const emailSent = await sendEmail(emailContent, {
-                  trackingId: `welcome_google_${user.id}_${uid}_${Date.now()}`
-                });
-                
-                if (emailSent) {
-                  console.log(`✅ Welcome email sent successfully to ${email}`);
-                } else {
-                  console.log(`⚠️ Welcome email failed to send to ${email}`);
-                }
-              } catch (emailError) {
-                console.error(`❌ Error sending welcome email to ${email}:`, emailError);
-              }
-            } else {
-              // FALLBACK: For Google users, try sending email even if not marked as verified
-              if (displayName && !password) {
-                console.log(`🔄 FALLBACK: Sending welcome email to Google user despite verification status`);
+              console.log(`📧 Scheduling welcome email for new user: ${email}`);
+              
+              // Add 2-second delay to prevent Gmail rate limiting
+              setTimeout(async () => {
                 try {
                   const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
                   const emailContent = generateWelcomeEmail({
@@ -4586,17 +4566,46 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                   });
                   
                   const emailSent = await sendEmail(emailContent, {
-                    trackingId: `welcome_fallback_${user.id}_${uid}_${Date.now()}`
+                    trackingId: `welcome_account_${user.id}_${uid}_${Date.now()}`
                   });
                   
                   if (emailSent) {
-                    console.log(`✅ FALLBACK: Welcome email sent successfully to ${email}`);
+                    console.log(`✅ Welcome email sent successfully to ${email}`);
                   } else {
-                    console.log(`⚠️ FALLBACK: Welcome email failed to send to ${email}`);
+                    console.log(`⚠️ Welcome email failed to send to ${email}`);
                   }
                 } catch (emailError) {
-                  console.error(`❌ FALLBACK: Error sending welcome email to ${email}:`, emailError);
+                  console.error(`❌ Error sending welcome email to ${email}:`, emailError);
                 }
+              }, 2000); // 2-second delay for better deliverability
+              
+            } else {
+              // FALLBACK: For Google users, try sending email even if not marked as verified
+              if (displayName && !password) {
+                console.log(`🔄 FALLBACK: Scheduling welcome email for Google user despite verification status`);
+                
+                setTimeout(async () => {
+                  try {
+                    const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                    const emailContent = generateWelcomeEmail({
+                      fullName: displayName || email.split('@')[0],
+                      email: email
+                    });
+                    
+                    const emailSent = await sendEmail(emailContent, {
+                      trackingId: `welcome_fallback_${user.id}_${uid}_${Date.now()}`
+                    });
+                    
+                    if (emailSent) {
+                      console.log(`✅ FALLBACK: Welcome email sent successfully to ${email}`);
+                    } else {
+                      console.log(`⚠️ FALLBACK: Welcome email failed to send to ${email}`);
+                    }
+                  } catch (emailError) {
+                    console.error(`❌ FALLBACK: Error sending welcome email to ${email}:`, emailError);
+                  }
+                }, 3000); // 3-second delay for fallback
+                
               } else {
                 console.log(`❌ Welcome email NOT sent - user not verified and not Google user`);
                 console.log(`   - isUserVerified: ${isUserVerified}`);
