@@ -4552,7 +4552,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                 });
                 
                 const emailSent = await sendEmail(emailContent, {
-                  trackingId: `welcome_${user.id}_${Date.now()}`
+                  trackingId: `welcome_google_${user.id}_${uid}_${Date.now()}`
                 });
                 
                 if (emailSent) {

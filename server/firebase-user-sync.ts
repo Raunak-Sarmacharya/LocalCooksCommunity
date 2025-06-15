@@ -112,23 +112,7 @@ export async function syncFirebaseUserToNeon(params: {
       }
     } else if (isGoogleUser) {
       console.log(`✅ Google user - no verification email needed`);
-      
-      // Send welcome email for Google users
-      try {
-        const { sendEmail, generateWelcomeEmail } = await import('./email.js');
-        const emailContent = generateWelcomeEmail({
-          fullName: displayName || email.split('@')[0],
-          email
-        });
-
-        await sendEmail(emailContent, {
-          trackingId: `welcome_${email}_${Date.now()}`
-        });
-        console.log(`✅ Welcome email sent to ${email}`);
-      } catch (emailError) {
-        console.error('❌ Error sending welcome email:', emailError);
-        // Don't fail user creation if email fails
-      }
+      console.log(`🎯 Welcome email will be sent by production API - skipping here to avoid duplicates`);
     }
 
     return newUser;
