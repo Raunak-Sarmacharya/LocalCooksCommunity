@@ -4557,65 +4557,66 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
               console.log(`📧 Scheduling welcome email for new user: ${email}`);
               
               // Add 2-second delay to prevent Gmail rate limiting
-              // RADICAL TEST: Use exact same flow as working application emails
-              setTimeout(async () => {
-                try {
-                  console.log(`🧪 RADICAL TEST: Sending welcome email using APPLICATION EMAIL PATTERN`);
-                  
-                  // Use the exact same function pattern as working application emails
-                  const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
-                  
-                  // Generate using the WORKING application email function
-                  const emailContent = generateStatusChangeEmail({
-                    fullName: displayName || email.split('@')[0],
-                    email: email,
-                    status: 'approved' // This generates the working "approved" email
-                  });
-                  
-                  // Only change the subject line to indicate welcome
-                  emailContent.subject = 'Account Active - Local Cooks Community';
-                  
-                  // Use the exact same tracking pattern as application emails
-                  const emailSent = await sendEmail(emailContent, {
-                    trackingId: `account_active_${user.id}_${Date.now()}`
-                  });
-                  
-                  if (emailSent) {
-                    console.log(`✅ RADICAL TEST: Account welcome email sent successfully to ${email} using APPLICATION PATTERN`);
-                  } else {
-                    console.log(`⚠️ RADICAL TEST: Account welcome email failed to send to ${email}`);
-                  }
-                } catch (emailError) {
-                  console.error(`❌ RADICAL TEST: Error sending account welcome email to ${email}:`, emailError);
+              // CRITICAL FIX: Remove setTimeout - Make email sending SYNCHRONOUS
+              try {
+                console.log(`🧪 SYNCHRONOUS TEST: Sending welcome email using APPLICATION EMAIL PATTERN`);
+                
+                // Use the exact same function pattern as working application emails
+                const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+                
+                // Generate using the WORKING application email function
+                const emailContent = generateStatusChangeEmail({
+                  fullName: displayName || email.split('@')[0],
+                  email: email,
+                  status: 'approved' // This generates the working "approved" email
+                });
+                
+                // Only change the subject line to indicate welcome
+                emailContent.subject = 'Account Active - Local Cooks Community';
+                
+                // Use the exact same tracking pattern as application emails - SYNCHRONOUSLY
+                const emailSent = await sendEmail(emailContent, {
+                  trackingId: `account_active_${user.id}_${Date.now()}`
+                });
+                
+                if (emailSent) {
+                  console.log(`✅ SYNCHRONOUS TEST: Account welcome email sent successfully to ${email} using APPLICATION PATTERN`);
+                } else {
+                  console.log(`⚠️ SYNCHRONOUS TEST: Account welcome email failed to send to ${email}`);
                 }
-              }, 2000); // 2-second delay for better deliverability
+              } catch (emailError) {
+                console.error(`❌ SYNCHRONOUS TEST: Error sending account welcome email to ${email}:`, emailError);
+              }
               
             } else {
               // FALLBACK: For Google users, try sending email even if not marked as verified
               if (displayName && !password) {
-                console.log(`🔄 FALLBACK: Scheduling welcome email for Google user despite verification status`);
+                console.log(`🔄 SYNCHRONOUS FALLBACK: Sending welcome email for Google user despite verification status`);
                 
-                setTimeout(async () => {
-                  try {
-                    const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
-                    const emailContent = generateWelcomeEmail({
-                      fullName: displayName || email.split('@')[0],
-                      email: email
-                    });
-                    
-                    const emailSent = await sendEmail(emailContent, {
-                      trackingId: `welcome_fallback_${user.id}_${uid}_${Date.now()}`
-                    });
-                    
-                    if (emailSent) {
-                      console.log(`✅ FALLBACK: Welcome email sent successfully to ${email}`);
-                    } else {
-                      console.log(`⚠️ FALLBACK: Welcome email failed to send to ${email}`);
-                    }
-                  } catch (emailError) {
-                    console.error(`❌ FALLBACK: Error sending welcome email to ${email}:`, emailError);
+                try {
+                  const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+                  
+                  // Use the same working pattern as the main email
+                  const emailContent = generateStatusChangeEmail({
+                    fullName: displayName || email.split('@')[0],
+                    email: email,
+                    status: 'approved'
+                  });
+                  
+                  emailContent.subject = 'Account Active - Local Cooks Community';
+                  
+                  const emailSent = await sendEmail(emailContent, {
+                    trackingId: `account_fallback_${user.id}_${uid}_${Date.now()}`
+                  });
+                  
+                  if (emailSent) {
+                    console.log(`✅ SYNCHRONOUS FALLBACK: Welcome email sent successfully to ${email}`);
+                  } else {
+                    console.log(`⚠️ SYNCHRONOUS FALLBACK: Welcome email failed to send to ${email}`);
                   }
-                }, 3000); // 3-second delay for fallback
+                } catch (emailError) {
+                  console.error(`❌ SYNCHRONOUS FALLBACK: Error sending welcome email to ${email}:`, emailError);
+                }
                 
               } else {
                 console.log(`❌ Welcome email NOT sent - user not verified and not Google user`);
