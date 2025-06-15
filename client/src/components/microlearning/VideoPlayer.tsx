@@ -471,7 +471,7 @@ export default function VideoPlayer({
                     variant="outline"
                     size="sm"
                     onClick={() => setShouldShowCompletePrompt(false)}
-                    className="border-white/30 text-white hover:bg-white/10"
+                    className="border-gray-300 bg-gray-100 text-gray-900 hover:bg-gray-200 hover:border-gray-400 font-medium"
                   >
                     Keep Watching
                   </Button>
