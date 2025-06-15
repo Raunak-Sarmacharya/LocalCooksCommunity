@@ -426,16 +426,48 @@ export default function ApplicantDashboard() {
   // Mutation to cancel an application
   const cancelMutation = useMutation({
     mutationFn: async (applicationId: number) => {
+      console.log('🚫 Cancel Application - Starting request:', {
+        applicationId,
+        userUid: user?.uid,
+        userEmail: user?.email
+      });
+
       // Include user ID in header
       const headers: Record<string, string> = {};
       if (user?.uid) {
         headers['X-User-ID'] = user.uid.toString();
+        console.log('🚫 Including Firebase UID in headers:', user.uid);
+      } else {
+        console.error('🚫 No user UID available for cancel request');
+        throw new Error('User authentication required');
       }
 
-      const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
-      return await res.json();
+      try {
+        const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
+        
+        console.log('🚫 Cancel response received:', {
+          status: res.status,
+          statusText: res.statusText,
+          headers: Object.fromEntries(res.headers.entries())
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.error('🚫 Cancel failed:', errorData);
+          throw new Error(errorData.message || errorData.error || `HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        const result = await res.json();
+        console.log('🚫 Cancel successful:', result);
+        return result;
+      } catch (error) {
+        console.error('🚫 Cancel request error:', error);
+        throw error;
+      }
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      console.log('🚫 Cancel mutation success:', data);
+      
       // Force comprehensive refresh after cancellation
       await forceApplicantRefresh();
       
@@ -446,6 +478,8 @@ export default function ApplicantDashboard() {
       });
     },
     onError: (error: Error) => {
+      console.error('🚫 Cancel mutation error:', error);
+      
       toast({
         title: "Error",
         description: `Failed to cancel application: ${error.message}`,

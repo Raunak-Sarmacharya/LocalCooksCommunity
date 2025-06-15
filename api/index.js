@@ -2119,29 +2119,39 @@ app.get('/api/applications/:id', async (req, res) => {
 
 // Cancel application endpoint (applicants can cancel their own applications)
 app.patch('/api/applications/:id/cancel', async (req, res) => {
-  console.log('PATCH /api/applications/:id/cancel - Session data:', {
+  console.log('🚫 CANCEL APPLICATION - Request received:', {
+    applicationId: req.params.id,
     sessionId: req.session.id,
-    userId: req.session.userId || null,
-    headers: {
-      'x-user-id': req.headers['x-user-id'] || null
-    }
+    sessionUserId: req.session.userId || null,
+    headerUserId: req.headers['x-user-id'] || null,
+    method: req.method,
+    url: req.url
   });
 
   // Get user ID from session or header
   const rawUserId = req.session.userId || req.headers['x-user-id'];
 
   if (!rawUserId) {
-    console.log('No userId in session or header');
+    console.log('🚫 CANCEL ERROR: No userId in session or header');
     return res.status(401).json({ error: 'Authentication required' });
   }
+
+  console.log('🚫 Looking up user for rawUserId:', rawUserId);
 
   // Convert Firebase UID to integer user ID
   const user = await getUser(rawUserId);
   if (!user) {
-    console.log('User not found for ID:', rawUserId);
+    console.log('🚫 CANCEL ERROR: User not found for ID:', rawUserId);
     return res.status(401).json({ error: 'User not found' });
   }
   const userId = user.id;
+
+  console.log('🚫 User lookup successful:', {
+    firebaseUid: rawUserId,
+    integerUserId: userId,
+    userRole: user.role,
+    userEmail: user.email
+  });
 
   // Store user ID in session if it's not there
   if (!req.session.userId && rawUserId) {
@@ -2164,11 +2174,8 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
         return res.status(404).json({ error: 'Application not found' });
       }
 
-      // Get user for id check
-      const user = await getUser(req.session.userId);
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
+      // Note: user is already available from the lookup above
+      // No need to look up again
 
       // Update the application
       let result;
@@ -2182,21 +2189,36 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
         `, [id]);
       } else {
         // Applicants can only cancel their own applications
+        // Use the integer userId from the user lookup, not the Firebase UID
         result = await pool.query(`
           UPDATE applications
           SET status = 'cancelled'
           WHERE id = $1 AND user_id = $2
           RETURNING *;
-        `, [id, req.session.userId]);
+        `, [id, userId]);  // ✅ FIX: Use integer userId instead of Firebase UID
       }
 
+      console.log('🚫 Database update result:', {
+        rowCount: result.rowCount,
+        applicationId: id,
+        userId: userId,
+        success: result.rowCount > 0
+      });
+
       if (result.rowCount === 0) {
+        console.log('🚫 CANCEL ERROR: Application not found or not owned by user');
         return res.status(404).json({ error: 'Application not found or not owned by you' });
       }
 
       // Get the user_id for the cancelled application
       const cancelledApp = result.rows[0];
       const cancelledUserId = cancelledApp.user_id;
+
+      console.log('🚫 Application cancelled successfully:', {
+        applicationId: cancelledApp.id,
+        status: cancelledApp.status,
+        userId: cancelledUserId
+      });
 
       // Get document URLs before deletion for blob cleanup
               // Get document URLs from the application record
