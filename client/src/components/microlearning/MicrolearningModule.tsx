@@ -1070,18 +1070,7 @@ export default function MicrolearningModule({
                           <span className="whitespace-nowrap">{currentModule === 'basics' ? 'Food Safety Basics' : 'Safety & Hygiene How-To\'s'}</span>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
-                            disabled={currentVideoIndex === 0}
-                            className="flex items-center justify-center gap-2 w-full"
-                          >
-                            <ChevronLeft className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">Previous</span>
-                          </Button>
-
+                        <div className="flex justify-center">
                           {(() => {
                             const nextIndex = currentVideoIndex + 1;
                             const isLastModule = nextIndex >= currentModuleVideos.length;
