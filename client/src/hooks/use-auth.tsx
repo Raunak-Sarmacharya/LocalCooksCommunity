@@ -12,6 +12,7 @@ import {
     signOut,
     updateProfile
 } from "firebase/auth";
+import { queryClient } from "@/lib/queryClient";
 import {
     doc,
     getDoc,
@@ -352,6 +353,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setPendingSync(false);
       setPendingRegistration(false);
+      
+      // SECURITY FIX: Clear all localStorage data to prevent cross-user data leakage
+      localStorage.clear();
+      console.log('🧹 LOGOUT: Cleared all localStorage data');
+      
+      // SECURITY FIX: Clear all React Query cache to prevent cross-user data leakage
+      queryClient.clear();
+      console.log('🧹 LOGOUT: Cleared all React Query cache');
+      
       await signOut(auth);
     } catch (e: any) {
       setError(e.message);

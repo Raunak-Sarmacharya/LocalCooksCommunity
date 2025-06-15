@@ -74,6 +74,11 @@ export default function Header() {
       // Session logout
       try {
         console.log('Performing session logout...');
+        
+        // SECURITY FIX: Clear localStorage and cache for session logout too
+        localStorage.clear();
+        console.log('🧹 SESSION LOGOUT: Cleared all localStorage data');
+        
         await fetch('/api/logout', {
           method: 'POST',
           credentials: 'include'
@@ -85,7 +90,7 @@ export default function Header() {
         firebaseAuth.logout();
       }
     } else {
-      // Firebase logout
+      // Firebase logout (firebase logout function already handles clearing)
       console.log('Performing Firebase logout...');
       firebaseAuth.logout();
     }
