@@ -17,6 +17,7 @@ interface EmailContent {
   subject: string;
   text?: string;
   html?: string;
+  headers?: Record<string, string>;
 }
 
 // Add email tracking to prevent duplicates
@@ -140,7 +141,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       subject: content.subject,
       text: content.text,
       html: content.html,
-      // Anti-spam headers
+      // Anti-spam headers (merge with content headers)
       headers: {
         'X-Mailer': `${organizationName} Platform`,
         'X-Priority': '3', // Normal priority
@@ -160,7 +161,9 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         'Return-Path': config.auth.user,
         // Prevent auto-replies
         'X-Auto-Response-Suppress': 'All',
-        'Auto-Submitted': 'auto-generated'
+        'Auto-Submitted': 'auto-generated',
+        // Merge any additional headers from content
+        ...(content.headers || {})
       },
       // Enhanced delivery options
       envelope: {
@@ -528,6 +531,11 @@ Visit: ${getWebsiteUrl()}
     subject,
     text: generatePlainText(applicationData.status, applicationData.fullName),
     html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal'
+    }
   };
 };
 
@@ -624,8 +632,14 @@ export const generateFullVerificationEmail = (
 
   return {
     to: userData.email,
-    subject: '🎉 You\'re Fully Verified! Here are your Vendor Login Credentials',
+    subject: 'Vendor Account Approved - Login Credentials Included',
     html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
@@ -679,6 +693,12 @@ export const generateApplicationWithDocumentsEmail = (
     to: applicationData.email,
     subject: 'Application and Documents Received - Under Review',
     html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
@@ -732,6 +752,12 @@ export const generateApplicationWithoutDocumentsEmail = (
     to: applicationData.email,
     subject: 'Local Cooks Application Confirmation - Next Steps',
     html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
@@ -1082,8 +1108,14 @@ export const generatePasswordResetEmail = (
 
   return {
     to: userData.email,
-    subject: '🔒 Password Reset Request - Local Cooks',
+    subject: 'Password Reset Request - Local Cooks',
     html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
@@ -1160,8 +1192,14 @@ export const generateEmailVerificationEmail = (
 
   return {
     to: userData.email,
-    subject: '✨ Verify Your Email - Welcome to Local Cooks!',
+    subject: 'Email Verification Required - Local Cooks',
     html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
@@ -1172,13 +1210,33 @@ export const generateWelcomeEmail = (
     email: string;
   }
 ): EmailContent => {
+  const plainText = `Hello ${userData.fullName},
+
+Your Local Cooks Community account has been successfully created and verified.
+
+Account Status: Active
+
+Next Steps:
+- Complete your profile setup
+- Start your food safety training modules  
+- Apply to become a verified cook
+- Access your dashboard: ${getDashboardUrl()}
+
+If you have any questions, please contact us at ${getSupportEmail()}.
+
+Best regards,
+Local Cooks Community Team
+
+© ${new Date().getFullYear()} Local Cooks Community
+Visit: ${getWebsiteUrl()}`;
+
   const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Local Cooks Community!</title>
+  <title>Account Created - Local Cooks Community</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -1190,27 +1248,30 @@ export const generateWelcomeEmail = (
       </div>
     </div>
     <div class="content">
-      <h2 class="greeting">Welcome ${userData.fullName}! 🎉</h2>
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
       <p class="message">
-        Your Local Cooks Community account has been successfully created and verified. 
-        We're excited to have you join our community of passionate food enthusiasts!
+        Your Local Cooks Community account has been successfully created and verified.
       </p>
-      <div class="status-badge approved">Status: Account Active ✓</div>
+      <div class="status-badge approved">Account Status: Active</div>
       
       <div class="info-box">
-        <strong>🚀 What's Next?</strong>
+        <strong>Next Steps:</strong>
         <ul style="margin: 12px 0 0 0; padding-left: 20px;">
           <li>Complete your profile setup</li>
           <li>Start your food safety training modules</li>
           <li>Apply to become a verified cook</li>
-          <li>Join our growing community!</li>
         </ul>
       </div>
       
       <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
+      
+      <p class="message">
+        If you have any questions, please contact us at 
+        <a href="mailto:${getSupportEmail()}">${getSupportEmail()}</a>
+      </p>
     </div>
     <div class="footer">
-      <p class="footer-text">Welcome to the <strong>Local Cooks</strong> community!</p>
+      <p class="footer-text">Thank you for joining <strong>Local Cooks Community</strong></p>
       <div class="footer-links">
         <a href="mailto:${getSupportEmail()}">Support</a> • 
         <a href="${getWebsiteUrl()}">Visit Website</a>
@@ -1222,35 +1283,19 @@ export const generateWelcomeEmail = (
 </body>
 </html>`;
 
-  const textContent = `
-Welcome to Local Cooks Community!
 
-Hello ${userData.fullName},
-
-Your Local Cooks Community account has been successfully created and verified. We're excited to have you join our community of passionate food enthusiasts!
-
-Status: Account Active ✓
-
-What's Next?
-- Complete your profile setup
-- Start your food safety training modules  
-- Apply to become a verified cook
-- Join our growing community!
-
-Access your dashboard: ${getDashboardUrl()}
-
-Welcome to the Local Cooks community!
-
-If you have any questions, contact us at ${getSupportEmail()}
-
-© ${new Date().getFullYear()} Local Cooks Community
-`;
 
   return {
     to: userData.email,
-    subject: 'Welcome to Local Cooks Community!',
+    subject: 'Account Created - Local Cooks Community',
+    text: plainText,
     html,
-    text: textContent
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
