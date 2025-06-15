@@ -4557,25 +4557,36 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
               console.log(`📧 Scheduling welcome email for new user: ${email}`);
               
               // Add 2-second delay to prevent Gmail rate limiting
+              // RADICAL TEST: Use exact same flow as working application emails
               setTimeout(async () => {
                 try {
-                  const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
-                  const emailContent = generateWelcomeEmail({
+                  console.log(`🧪 RADICAL TEST: Sending welcome email using APPLICATION EMAIL PATTERN`);
+                  
+                  // Use the exact same function pattern as working application emails
+                  const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+                  
+                  // Generate using the WORKING application email function
+                  const emailContent = generateStatusChangeEmail({
                     fullName: displayName || email.split('@')[0],
-                    email: email
+                    email: email,
+                    status: 'approved' // This generates the working "approved" email
                   });
                   
+                  // Only change the subject line to indicate welcome
+                  emailContent.subject = 'Account Active - Local Cooks Community';
+                  
+                  // Use the exact same tracking pattern as application emails
                   const emailSent = await sendEmail(emailContent, {
-                    trackingId: `welcome_account_${user.id}_${uid}_${Date.now()}`
+                    trackingId: `account_active_${user.id}_${Date.now()}`
                   });
                   
                   if (emailSent) {
-                    console.log(`✅ Welcome email sent successfully to ${email}`);
+                    console.log(`✅ RADICAL TEST: Account welcome email sent successfully to ${email} using APPLICATION PATTERN`);
                   } else {
-                    console.log(`⚠️ Welcome email failed to send to ${email}`);
+                    console.log(`⚠️ RADICAL TEST: Account welcome email failed to send to ${email}`);
                   }
                 } catch (emailError) {
-                  console.error(`❌ Error sending welcome email to ${email}:`, emailError);
+                  console.error(`❌ RADICAL TEST: Error sending account welcome email to ${email}:`, emailError);
                 }
               }, 2000); // 2-second delay for better deliverability
               
@@ -7291,6 +7302,147 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
     console.error("Error sending test welcome email:", error);
     return res.status(500).json({ 
       message: "Error sending test email",
+      error: error.message 
+    });
+  }
+});
+
+// DIAGNOSTIC: Test Google OAuth registration flow step by step
+app.post("/api/debug-google-registration", async (req, res) => {
+  try {
+    const { email, displayName } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    const testResults = {
+      step1_userCheck: null,
+      step2_emailGeneration: null,
+      step3_emailSending: null,
+      step4_comparison: null
+    };
+
+    console.log('🔍 DIAGNOSTIC: Testing Google OAuth registration flow for:', email);
+
+    // Step 1: Check if user exists in database
+    try {
+      if (pool) {
+        const userResult = await pool.query('SELECT * FROM users WHERE username = $1', [email]);
+        testResults.step1_userCheck = {
+          userExists: userResult.rows.length > 0,
+          userData: userResult.rows[0] || null
+        };
+      } else {
+        testResults.step1_userCheck = {
+          userExists: false,
+          userData: null,
+          note: "Using in-memory storage"
+        };
+      }
+    } catch (error) {
+      testResults.step1_userCheck = { error: error.message };
+    }
+
+    // Step 2: Test welcome email generation
+    try {
+      const { generateWelcomeEmail } = await import('../server/email.js');
+      const emailContent = generateWelcomeEmail({
+        fullName: displayName || email.split('@')[0],
+        email: email
+      });
+      
+      testResults.step2_emailGeneration = {
+        success: true,
+        subject: emailContent.subject,
+        hasHtml: !!emailContent.html,
+        hasText: !!emailContent.text,
+        to: emailContent.to
+      };
+    } catch (error) {
+      testResults.step2_emailGeneration = { error: error.message };
+    }
+
+    // Step 3: Test email sending (but don't actually send)
+    try {
+      const { generateWelcomeEmail } = await import('../server/email.js');
+      const emailContent = generateWelcomeEmail({
+        fullName: displayName || email.split('@')[0],
+        email: email
+      });
+      
+      // Just test the email configuration without sending
+      const nodemailer = await import('nodemailer');
+      
+      const config = {
+        host: process.env.EMAIL_HOST,
+        port: parseInt(process.env.EMAIL_PORT) || 587,
+        secure: process.env.EMAIL_SECURE === 'true',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      };
+      
+      const transporter = nodemailer.createTransporter(config);
+      
+      testResults.step3_emailSending = {
+        configValid: !!(config.host && config.auth.user && config.auth.pass),
+        config: {
+          host: config.host,
+          port: config.port,
+          user: config.auth.user ? `${config.auth.user.substring(0, 5)}...` : null
+        }
+      };
+    } catch (error) {
+      testResults.step3_emailSending = { error: error.message };
+    }
+
+    // Step 4: Compare with working status email
+    try {
+      const { generateStatusChangeEmail } = await import('../server/email.js');
+      const statusEmail = generateStatusChangeEmail({
+        fullName: displayName || email.split('@')[0],
+        email: email,
+        status: 'approved'
+      });
+      
+      const { generateWelcomeEmail } = await import('../server/email.js');
+      const welcomeEmail = generateWelcomeEmail({
+        fullName: displayName || email.split('@')[0],
+        email: email
+      });
+      
+      testResults.step4_comparison = {
+        statusEmail: {
+          subject: statusEmail.subject,
+          hasHtml: !!statusEmail.html,
+          hasText: !!statusEmail.text
+        },
+        welcomeEmail: {
+          subject: welcomeEmail.subject,
+          hasHtml: !!welcomeEmail.html,
+          hasText: !!welcomeEmail.text
+        },
+        identical: statusEmail.subject === welcomeEmail.subject
+      };
+    } catch (error) {
+      testResults.step4_comparison = { error: error.message };
+    }
+
+    return res.status(200).json({ 
+      message: "Google OAuth registration diagnostic complete",
+      email: email,
+      displayName: displayName,
+      results: testResults
+    });
+
+  } catch (error) {
+    console.error("Error in Google OAuth diagnostic:", error);
+    return res.status(500).json({ 
+      message: "Diagnostic failed",
       error: error.message 
     });
   }
