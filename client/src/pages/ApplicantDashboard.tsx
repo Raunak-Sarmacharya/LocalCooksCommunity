@@ -450,33 +450,59 @@ export default function ApplicantDashboard() {
   };
 
   const handleSyncAccount = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid) {
+      console.error('❌ SYNC: No user UID available');
+      return;
+    }
     
     setIsSyncing(true);
     try {
       // Force sync Firebase user to backend
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
+        console.error('❌ SYNC: No Firebase user available');
         throw new Error("No Firebase user available");
       }
       
-      const token = await firebaseUser.getIdToken();
+      console.log('🔄 SYNC: Firebase user found:', {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        emailVerified: firebaseUser.emailVerified,
+        displayName: firebaseUser.displayName
+      });
+      
+      console.log('🔄 SYNC: Getting Firebase token for user:', firebaseUser.uid);
+      const token = await firebaseUser.getIdToken(true); // Force refresh token
+      console.log('🔄 SYNC: Token obtained, length:', token ? token.length : 'null');
+      console.log('🔄 SYNC: Token preview:', token ? token.substring(0, 50) + '...' : 'null');
+      
+      const requestBody = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        emailVerified: user.emailVerified,
+        role: user.role || "applicant"
+      };
+      
+      console.log('🔄 SYNC: Request body:', requestBody);
+      console.log('🔄 SYNC: Making request to /api/firebase-sync-user');
+      
       const syncResponse = await fetch("/api/firebase-sync-user", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          emailVerified: user.emailVerified,
-          role: user.role || "applicant"
-        })
+        body: JSON.stringify(requestBody)
       });
       
+      console.log('🔄 SYNC: Response status:', syncResponse.status);
+      console.log('🔄 SYNC: Response headers:', Object.fromEntries(syncResponse.headers.entries()));
+      
       if (syncResponse.ok) {
+        const responseData = await syncResponse.json();
+        console.log('✅ SYNC: Success response:', responseData);
+        
         // Refetch applications after sync
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
         toast({
@@ -484,7 +510,9 @@ export default function ApplicantDashboard() {
           description: "Your account has been synced successfully."
         });
       } else {
-        throw new Error("Sync failed");
+        const errorText = await syncResponse.text();
+        console.error('❌ SYNC: Error response:', errorText);
+        throw new Error(`Sync failed: ${syncResponse.status} - ${errorText}`);
       }
     } catch (error) {
       console.error("Sync error:", error);
