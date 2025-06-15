@@ -142,6 +142,17 @@ export function useDocumentVerification() {
         if (currentUser?.uid) {
           headers['X-User-ID'] = currentUser.uid;
           console.log('Including current Firebase UID in applications query headers:', currentUser.uid);
+          
+          // CRITICAL FIX: Also include Authorization header for backend auto-sync
+          try {
+            const token = await currentUser.getIdToken();
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+              console.log('Including Firebase token in applications query headers for auto-sync');
+            }
+          } catch (tokenError) {
+            console.error('Failed to get Firebase token for applications query:', tokenError);
+          }
         } else {
           // Fallback to localStorage only if Firebase auth is not ready yet
           const storedUserId = localStorage.getItem('userId');
