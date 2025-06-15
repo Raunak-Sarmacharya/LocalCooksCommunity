@@ -4345,7 +4345,7 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     const { displayName, role, password } = req.body; // These can come from request body
     
     // CRITICAL FIX: For Google OAuth (no password), always treat as verified
-    const isGoogleAuth = !password && displayName;
+    const isGoogleAuth = (!password || password === null || password === undefined) && displayName;
     const effectiveEmailVerified = isGoogleAuth ? true : emailVerified;
     
     if (!uid || !email) {
@@ -4402,7 +4402,7 @@ app.post('/api/firebase-register-user', async (req, res) => {
     const { displayName, role, password } = req.body;
     
     // CRITICAL FIX: For Google OAuth registration (no password), always treat as verified
-    const isGoogleRegistration = !password && displayName;
+    const isGoogleRegistration = (!password || password === null || password === undefined) && displayName;
     const effectiveEmailVerified = isGoogleRegistration ? true : emailVerified;
     
     if (!uid || !email) {
@@ -4573,6 +4573,35 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                 }
               } catch (emailError) {
                 console.error(`❌ Error sending welcome email to ${email}:`, emailError);
+              }
+            } else {
+              // FALLBACK: For Google users, try sending email even if not marked as verified
+              if (displayName && !password) {
+                console.log(`🔄 FALLBACK: Sending welcome email to Google user despite verification status`);
+                try {
+                  const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                  const emailContent = generateWelcomeEmail({
+                    fullName: displayName || email.split('@')[0],
+                    email: email
+                  });
+                  
+                  const emailSent = await sendEmail(emailContent, {
+                    trackingId: `welcome_fallback_${user.id}_${uid}_${Date.now()}`
+                  });
+                  
+                  if (emailSent) {
+                    console.log(`✅ FALLBACK: Welcome email sent successfully to ${email}`);
+                  } else {
+                    console.log(`⚠️ FALLBACK: Welcome email failed to send to ${email}`);
+                  }
+                } catch (emailError) {
+                  console.error(`❌ FALLBACK: Error sending welcome email to ${email}:`, emailError);
+                }
+              } else {
+                console.log(`❌ Welcome email NOT sent - user not verified and not Google user`);
+                console.log(`   - isUserVerified: ${isUserVerified}`);
+                console.log(`   - displayName: ${displayName ? 'YES' : 'NO'}`);
+                console.log(`   - password: ${password ? 'YES' : 'NO'}`);
               }
             }
           } catch (insertError) {
