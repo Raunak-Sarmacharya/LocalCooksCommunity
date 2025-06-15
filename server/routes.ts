@@ -1089,29 +1089,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateUserVerificationStatus(updatedApplication.userId!, true);
         console.log(`User ${updatedApplication.userId} has been fully verified`);
         
-        // Send full verification email with vendor credentials
-        try {
-          const user = await storage.getUser(updatedApplication.userId!);
-          if (user && updatedApplication.email) {
-            const { generateFullVerificationEmail } = await import('./email.js');
-            const emailContent = generateFullVerificationEmail({
-              fullName: updatedApplication.fullName || user.username,
-              email: updatedApplication.email,
-              phone: updatedApplication.phone || user.username
-            });
-
-            await sendEmail(emailContent, {
-              trackingId: `full_verification_${updatedApplication.userId}_${Date.now()}`
-            });
-            console.log(`Full verification email sent to ${updatedApplication.email} for user ${updatedApplication.userId}`);
-            console.log(`Vendor credentials generated: username=${updatedApplication.phone || user.username}`); // Don't log password
-          } else {
-            console.warn(`Cannot send full verification email: Missing user data or email for user ${updatedApplication.userId}`);
-          }
-        } catch (emailError) {
-          // Log the error but don't fail the request
-          console.error("Error sending full verification email:", emailError);
-        }
+        // NOTE: Full verification email is handled by api/index.js in production
+        // Removed duplicate email logic to prevent double emails
       }
 
       return res.status(200).json(updatedApplication);
