@@ -7452,6 +7452,240 @@ app.post("/api/test-identical-subject", async (req, res) => {
   }
 });
 
+// TIMING TEST: Send registration email with 5-minute delay
+app.post("/api/test-delayed-email", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    console.log('⏰ TIMING TEST: Scheduling delayed email for:', email);
+
+    // Import email functions
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+    // Generate the email content
+    const emailContent = generateStatusChangeEmail({
+      fullName: email.split('@')[0],
+      email: email,
+      status: 'approved'
+    });
+
+    // Schedule email to be sent in 5 minutes
+    setTimeout(async () => {
+      try {
+        console.log('📧 DELAYED SEND: Now sending email after 5-minute delay...');
+        const emailSent = await sendEmail(emailContent, {
+          trackingId: `delayed_test_${Date.now()}`
+        });
+
+        if (emailSent) {
+          console.log('✅ DELAYED EMAIL SENT SUCCESSFULLY');
+        } else {
+          console.log('❌ DELAYED EMAIL FAILED');
+        }
+      } catch (error) {
+        console.error('❌ Error sending delayed email:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return res.status(200).json({ 
+      message: "Email scheduled for delivery in 5 minutes",
+      email: email,
+      subject: emailContent.subject,
+      scheduledFor: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      note: "Check your email in 5 minutes to see if timing affects delivery"
+    });
+
+  } catch (error) {
+    console.error("Error in delayed email test:", error);
+    return res.status(500).json({ 
+      message: "Delayed email test failed",
+      error: error.message 
+    });
+  }
+});
+
+// COMPREHENSIVE DIAGNOSTIC: Test all theories about email delivery failure
+app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    console.log('🔬 COMPREHENSIVE DIAGNOSTIC for:', email);
+
+    const results = {
+      emailAnalysis: {},
+      tests: []
+    };
+
+    // Analyze the email address for potential issues
+    results.emailAnalysis = {
+      email: email,
+      domain: email.split('@')[1],
+      localPart: email.split('@')[0],
+      hasMultipleDots: email.split('@')[0].includes('.'),
+      dotCount: (email.split('@')[0].match(/\./g) || []).length,
+      hasSubdomainLike: email.includes('loco') || email.includes('test') || email.includes('temp'),
+      isGmail: email.includes('@gmail.com'),
+      potentialSpamTriggers: []
+    };
+
+    // Check for potential spam triggers
+    if (results.emailAnalysis.hasMultipleDots) {
+      results.emailAnalysis.potentialSpamTriggers.push('Multiple dots in local part');
+    }
+    if (results.emailAnalysis.hasSubdomainLike) {
+      results.emailAnalysis.potentialSpamTriggers.push('Contains subdomain-like patterns');
+    }
+    if (results.emailAnalysis.localPart.length > 20) {
+      results.emailAnalysis.potentialSpamTriggers.push('Long local part');
+    }
+
+    // Import email functions
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+    // Test 1: Standard application email (should work)
+    try {
+      console.log('🧪 TEST 1: Standard application email...');
+      const appEmailContent = generateStatusChangeEmail({
+        fullName: email.split('@')[0].replace(/\./g, ' '),
+        email: email,
+        status: 'approved'
+      });
+
+      const appEmailSent = await sendEmail(appEmailContent, {
+        trackingId: `diagnostic_app_${Date.now()}`
+      });
+
+      results.tests.push({
+        test: 'Standard Application Email',
+        success: appEmailSent,
+        subject: appEmailContent.subject,
+        note: 'This should work - same as working application emails'
+      });
+    } catch (error) {
+      results.tests.push({
+        test: 'Standard Application Email',
+        success: false,
+        error: error.message
+      });
+    }
+
+    // Small delay between tests
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Test 2: Registration-style email with different subject
+    try {
+      console.log('🧪 TEST 2: Registration email with custom subject...');
+      const regEmailContent = generateStatusChangeEmail({
+        fullName: email.split('@')[0].replace(/\./g, ' '),
+        email: email,
+        status: 'approved'
+      });
+
+      // Change to registration-style subject
+      regEmailContent.subject = 'Welcome to Local Cooks Community';
+
+      const regEmailSent = await sendEmail(regEmailContent, {
+        trackingId: `diagnostic_reg_${Date.now()}`
+      });
+
+      results.tests.push({
+        test: 'Registration Style Subject',
+        success: regEmailSent,
+        subject: regEmailContent.subject,
+        note: 'Testing if registration-style subjects are filtered'
+      });
+    } catch (error) {
+      results.tests.push({
+        test: 'Registration Style Subject',
+        success: false,
+        error: error.message
+      });
+    }
+
+    // Test 3: Simple test email to a clean address (if provided)
+    const cleanEmail = email.replace(/\./g, '').replace(/loco/g, 'test') + '@gmail.com';
+    if (cleanEmail !== email && cleanEmail.includes('@gmail.com')) {
+      try {
+        console.log('🧪 TEST 3: Clean email address test...');
+        const cleanEmailContent = generateStatusChangeEmail({
+          fullName: 'Test User',
+          email: cleanEmail,
+          status: 'approved'
+        });
+
+        const cleanEmailSent = await sendEmail(cleanEmailContent, {
+          trackingId: `diagnostic_clean_${Date.now()}`
+        });
+
+        results.tests.push({
+          test: 'Clean Email Address',
+          success: cleanEmailSent,
+          subject: cleanEmailContent.subject,
+          email: cleanEmail,
+          note: 'Testing if email address pattern affects delivery'
+        });
+      } catch (error) {
+        results.tests.push({
+          test: 'Clean Email Address',
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    return res.status(200).json({ 
+      message: "Comprehensive diagnostic complete",
+      originalEmail: email,
+      analysis: results.emailAnalysis,
+      tests: results.tests,
+      recommendations: generateRecommendations(results.emailAnalysis),
+      instructions: "Check your email(s) to see which tests delivered successfully"
+    });
+
+  } catch (error) {
+    console.error("Error in comprehensive diagnostic:", error);
+    return res.status(500).json({ 
+      message: "Diagnostic failed",
+      error: error.message 
+    });
+  }
+});
+
+// Generate recommendations based on email analysis
+function generateRecommendations(analysis) {
+  const recommendations = [];
+  
+  if (analysis.potentialSpamTriggers.length > 0) {
+    recommendations.push('Consider testing with a simpler email address (fewer dots, no subdomain-like patterns)');
+  }
+  
+  if (analysis.hasMultipleDots) {
+    recommendations.push('Email has multiple dots - Gmail might treat this as an alias or suspicious pattern');
+  }
+  
+  if (analysis.hasSubdomainLike) {
+    recommendations.push('Email contains subdomain-like patterns that might trigger spam filters');
+  }
+  
+  if (recommendations.length === 0) {
+    recommendations.push('Email address appears clean - issue likely related to timing or context');
+  }
+  
+  return recommendations;
+}
+
 // DIAGNOSTIC: Test Google OAuth registration flow step by step
 app.post("/api/debug-google-registration", async (req, res) => {
   try {
