@@ -131,14 +131,14 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-pink-50 to-rose-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-pink-50 to-rose-50 flex items-center justify-center">
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-20 w-32 h-32 bg-primary rounded-full blur-3xl"></div>
         <div className="absolute bottom-20 right-20 w-48 h-48 bg-orange-400 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="relative px-4 py-4">
+      <div className="relative px-4 py-4 w-full">
         <div className="max-w-4xl mx-auto">
           {/* Welcome Header - Ultra Compact */}
           <motion.div 
