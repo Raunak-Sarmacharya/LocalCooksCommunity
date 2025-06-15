@@ -147,14 +147,14 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Award className="h-5 w-5 text-primary flex-shrink-0" />
-            <span>Unlock Full Training Access</span>
+            <span>Accessible Training Progress</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Progress Bar */}
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-              <span className="font-medium text-sm text-gray-900">Progress to Full Access</span>
+              <span className="font-medium text-sm text-gray-900">Application Progress</span>
               <Badge variant="secondary" className="text-xs font-medium w-fit">
                 {progressPercentage}% Complete
               </Badge>
@@ -171,7 +171,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
               </div>
               <div className="text-center">
                 <span className="block">Approved</span>
-                <span className="block">Access</span>
+                <span className="block">Ready</span>
               </div>
             </div>
           </div>
@@ -184,7 +184,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
               </div>
               <div className="flex-1 min-w-0 space-y-2">
                 <h3 className="font-semibold text-blue-900 text-sm">
-                  {isApplicationApproved ? "🎉 Full Access Unlocked!" :
+                  {isApplicationApproved ? "🎉 Training Now Available!" :
                    isApplicationPending ? "⏳ Application Under Review" :
                    hasSubmittedApplication ? "✅ Application Submitted" :
                    hasRejectedApplications ? "🔄 Ready to Reapply" :
@@ -197,7 +197,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                    hasSubmittedApplication ? "Great! Your application is in our system." :
                    hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime." :
                    hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!" :
-                   "Complete your chef application to unlock all training videos."}
+                   "Complete your chef application to access all training videos."}
                 </p>
               </div>
             </div>
@@ -322,7 +322,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
           {/* Benefits Preview */}
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
-            <h4 className="font-semibold text-gray-900 mb-3 text-sm">🎓 What You'll Unlock:</h4>
+            <h4 className="font-semibold text-gray-900 mb-3 text-sm">🎓 What You'll Access:</h4>
             <div className="grid grid-cols-1 gap-2.5 text-sm text-gray-700">
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />

@@ -465,7 +465,7 @@ export default function MicrolearningModule({
         if (!isLastModule && accessLevel === 'full') {
           setCurrentVideoIndex(nextIndex);
         } else if (isLastModule && currentModule === 'basics') {
-          // Check if all basics videos are completed to unlock hygiene module
+          // Check if all basics videos are completed to access hygiene module
           const allBasicsCompleted = foodSafetyBasicsVideos.every(basicVideo => 
             userProgress.find(p => p.videoId === basicVideo.id)?.completed || basicVideo.id === videoId
           );
@@ -844,10 +844,10 @@ export default function MicrolearningModule({
                   <div className="flex-1 space-y-3 min-w-0">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                        Free Preview Available
+                        Sample Video Available
                       </h3>
                       <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                        Experience 1 video from Module 1 for free. Complete your application to unlock all remaining 21 training videos for your food safety certification preparation. Re-watch any completed video anytime as a refresher.
+                        Experience 1 video from Module 1 at no cost. Complete your application to access all remaining 21 training videos for your food safety certification preparation. Re-watch any completed video anytime as a refresher.
                       </p>
                     </div>
                     
@@ -868,7 +868,7 @@ export default function MicrolearningModule({
                       className="bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 w-full sm:w-auto"
                     >
                       <Link href="/apply">
-                        Unlock Full Training
+                                                  Access All Training
                         <ArrowRight className="h-4 w-4 ml-2 flex-shrink-0" />
                       </Link>
                     </Button>
@@ -932,7 +932,7 @@ export default function MicrolearningModule({
                     }`}
                     title={
                       completionConfirmed
-                        ? 'Access granted - Rewatch any module freely'
+                        ? 'Access granted - Rewatch any module anytime'
                         : user?.role === 'admin'
                         ? 'Admin access - Full access to all modules'
                         : accessLevel === 'limited' 
@@ -1002,7 +1002,7 @@ export default function MicrolearningModule({
                       <div className="flex flex-wrap items-center gap-2">
                         {accessLevel === 'limited' && currentVideoIndex === 0 && (
                           <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
-                            Free Preview
+                            Sample Video
                           </div>
                         )}
                         <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap">
@@ -1118,7 +1118,7 @@ export default function MicrolearningModule({
                                   }`}
                                   title={
                                     isLimitedAccess
-                                      ? 'Upgrade to full access to continue'
+                                      ? 'Complete application to continue'
                                       : !currentCompleted && !completionConfirmed && user?.role !== 'admin'
                                       ? 'Complete the current video to proceed'
                                       : isLastModule
@@ -1133,7 +1133,7 @@ export default function MicrolearningModule({
                                     </>
                                   ) : isNextLocked ? (
                                     <>
-                                      <span>Locked</span>
+                                      <span>Apply to Access</span>
                                       <Lock className="h-4 w-4" />
                                     </>
                                   ) : (
@@ -1343,7 +1343,7 @@ export default function MicrolearningModule({
                                 Application Approval Required
                               </p>
                               <p className="text-yellow-700 text-xs">
-                                Complete your chef application to unlock this module
+                                Complete your chef application to access this module
                               </p>
                             </div>
                           </div>
@@ -1368,7 +1368,7 @@ export default function MicrolearningModule({
                   transition={{ delay: 0.5 }}
                   className="space-y-4 lg:space-y-6 xl:sticky xl:top-6"
                 >
-                  {/* Unlock Progress for Limited Users */}
+                  {/* Application Progress for Limited Users */}
                   {accessLevel === 'limited' && (
                     <UnlockProgress 
                       hasApprovedApplication={hasApprovedApplication}
