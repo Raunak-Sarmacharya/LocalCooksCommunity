@@ -21,7 +21,7 @@ type DocumentVerificationContextType = {
 
 // Helper function for file uploads
 const apiRequestFormData = async (method: string, url: string, data?: FormData) => {
-  // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
+  // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
   const headers: Record<string, string> = {};
   
   try {
@@ -31,11 +31,23 @@ const apiRequestFormData = async (method: string, url: string, data?: FormData) 
       headers['X-User-ID'] = currentUser.uid;
       console.log('Including current Firebase UID in FormData request headers:', currentUser.uid);
     } else {
-      console.log('No current Firebase user - not including X-User-ID header');
+      // Fallback to localStorage only if Firebase auth is not ready yet
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
+        headers['X-User-ID'] = storedUserId;
+      } else {
+        console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+      }
     }
   } catch (error) {
     console.error('Error getting current Firebase user:', error);
-    // Don't include any user ID if we can't get the current user
+    // Fallback to localStorage if Firebase import fails
+    const storedUserId = localStorage.getItem('userId');
+    if (storedUserId) {
+      console.log('Firebase error, using stored userId as fallback:', storedUserId);
+      headers['X-User-ID'] = storedUserId;
+    }
   }
 
   const response = await fetch(url, {
@@ -55,7 +67,7 @@ const apiRequestFormData = async (method: string, url: string, data?: FormData) 
 
 // Helper function for JSON requests
 const apiRequestJSON = async (method: string, url: string, data?: any) => {
-  // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
+  // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -67,11 +79,23 @@ const apiRequestJSON = async (method: string, url: string, data?: any) => {
       headers['X-User-ID'] = currentUser.uid;
       console.log('Including current Firebase UID in JSON request headers:', currentUser.uid);
     } else {
-      console.log('No current Firebase user - not including X-User-ID header');
+      // Fallback to localStorage only if Firebase auth is not ready yet
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
+        headers['X-User-ID'] = storedUserId;
+      } else {
+        console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+      }
     }
   } catch (error) {
     console.error('Error getting current Firebase user:', error);
-    // Don't include any user ID if we can't get the current user
+    // Fallback to localStorage if Firebase import fails
+    const storedUserId = localStorage.getItem('userId');
+    if (storedUserId) {
+      console.log('Firebase error, using stored userId as fallback:', storedUserId);
+      headers['X-User-ID'] = storedUserId;
+    }
   }
 
   const response = await fetch(url, {
@@ -104,7 +128,7 @@ export function useDocumentVerification() {
     queryFn: async ({ queryKey }) => {
       console.log('Document verification: Fetching applications data...');
       
-      // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
+      // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
       const headers: Record<string, string> = {
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -119,11 +143,23 @@ export function useDocumentVerification() {
           headers['X-User-ID'] = currentUser.uid;
           console.log('Including current Firebase UID in applications query headers:', currentUser.uid);
         } else {
-          console.log('No current Firebase user - not including X-User-ID header');
+          // Fallback to localStorage only if Firebase auth is not ready yet
+          const storedUserId = localStorage.getItem('userId');
+          if (storedUserId) {
+            console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
+            headers['X-User-ID'] = storedUserId;
+          } else {
+            console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+          }
         }
       } catch (error) {
         console.error('Error getting current Firebase user:', error);
-        // Don't include any user ID if we can't get the current user
+        // Fallback to localStorage if Firebase import fails
+        const storedUserId = localStorage.getItem('userId');
+        if (storedUserId) {
+          console.log('Firebase error, using stored userId as fallback:', storedUserId);
+          headers['X-User-ID'] = storedUserId;
+        }
       }
 
       const response = await fetch(queryKey[0] as string, {
