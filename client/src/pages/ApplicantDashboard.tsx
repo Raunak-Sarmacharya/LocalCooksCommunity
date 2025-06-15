@@ -98,7 +98,7 @@ export default function ApplicantDashboard() {
 
   // Fetch applicant's applications with user ID in header (skip for admins)
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid) {
         throw new Error("User not authenticated");
@@ -109,10 +109,18 @@ export default function ApplicantDashboard() {
         return [];
       }
 
-      console.log('ApplicantDashboard: Fetching applications data...');
+      console.log('ApplicantDashboard: Fetching applications data from Firebase endpoint...');
 
+      // Get Firebase token for authentication
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await firebaseUser.getIdToken();
       const headers: Record<string, string> = {
-        'X-User-ID': user.uid.toString(),
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
@@ -504,7 +512,7 @@ export default function ApplicantDashboard() {
         console.log('✅ SYNC: Success response:', responseData);
         
         // Refetch applications after sync
-        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
         toast({
           title: "Account Synced",
           description: "Your account has been synced successfully."

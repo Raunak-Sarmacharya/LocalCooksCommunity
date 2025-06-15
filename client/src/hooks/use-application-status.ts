@@ -11,14 +11,24 @@ export function useApplicationStatus() {
 
   // Fetch user's applications to determine CTA logic
   const { data: applications = [], isLoading: applicationsLoading } = useQuery<Application[]>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid || user.role === "admin") {
         return [];
       }
 
+      // Use Firebase authentication for the Firebase endpoint
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Firebase user not authenticated');
+      }
+
+      const token = await currentUser.getIdToken();
       const headers: Record<string, string> = {
-        'X-User-ID': user.uid.toString()
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       };
 
       const response = await fetch(queryKey[0] as string, {
