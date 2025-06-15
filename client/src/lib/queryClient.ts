@@ -43,6 +43,17 @@ export async function apiRequest(
     if (currentUser?.uid) {
       defaultHeaders['X-User-ID'] = currentUser.uid;
       console.log('Including current Firebase UID in request headers:', currentUser.uid);
+      
+      // CRITICAL FIX: Also include Authorization header for backend auto-sync
+      try {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          defaultHeaders['Authorization'] = `Bearer ${token}`;
+          console.log('Including Firebase token in request headers for auto-sync');
+        }
+      } catch (tokenError) {
+        console.error('Failed to get Firebase token for request:', tokenError);
+      }
     } else {
       // Fallback to localStorage only if Firebase auth is not ready yet
       const storedUserId = localStorage.getItem('userId');
@@ -111,6 +122,17 @@ export const getQueryFn: <T>(options: {
         if (currentUser?.uid) {
           defaultHeaders['X-User-ID'] = currentUser.uid;
           console.log('Including current Firebase UID in query headers:', currentUser.uid);
+          
+          // CRITICAL FIX: Also include Authorization header for backend auto-sync
+          try {
+            const token = await currentUser.getIdToken();
+            if (token) {
+              defaultHeaders['Authorization'] = `Bearer ${token}`;
+              console.log('Including Firebase token in query headers for auto-sync');
+            }
+          } catch (tokenError) {
+            console.error('Failed to get Firebase token for query:', tokenError);
+          }
         } else {
           // Fallback to localStorage only if Firebase auth is not ready yet
           const storedUserId = localStorage.getItem('userId');
