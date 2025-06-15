@@ -181,12 +181,12 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                    "🚀 Ready to Apply"}
                 </h3>
                 <p className="text-blue-700 text-sm leading-relaxed break-words">
-                  {isApplicationApproved ? "You now have access to all 10 training modules!" :
+                  {isApplicationApproved ? "You now have access to all training videos!" :
                    isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved." :
                    hasSubmittedApplication ? "Great! Your application is in our system." :
                    hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime." :
                    hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!" :
-                   "Complete your chef application to unlock all training modules."}
+                   "Complete your chef application to unlock all training videos."}
                 </p>
               </div>
             </div>
@@ -320,19 +320,19 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>9 Additional Training Modules</span>
+                <span>1 Additional Training Module</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>Skillpass.nl Food Safety Certification</span>
+                <span>Food Safety Certification Preparation</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>Skillpass.nl Preparation Content</span>
+                <span>Food Safety Certification Content</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-3 w-3 text-green-600" />
-                <span>Official Completion Certificate</span>
+                <span>Completion Certificate</span>
               </div>
             </div>
           </div>

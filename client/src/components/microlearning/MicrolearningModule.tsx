@@ -847,18 +847,18 @@ export default function MicrolearningModule({
                         Free Preview Available
                       </h3>
                       <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                        Experience Module 1 for free. Complete your application to unlock all 10 comprehensive modules for skillpass.nl preparation. Re-watch any completed module anytime as a refresher.
+                        Experience Module 1 for free. Complete your application to unlock all 22 training videos for your food safety certification preparation. Re-watch any completed video anytime as a refresher.
                       </p>
                     </div>
                     
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                       <div className="flex items-center gap-2 text-sm text-green-700">
                         <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
-                        <span className="whitespace-nowrap">Module 1 Available</span>
+                        <span className="whitespace-nowrap">Module 1 Videos Available</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-500">
                         <div className="w-2 h-2 bg-gray-300 rounded-full flex-shrink-0"></div>
-                        <span className="whitespace-nowrap">9 More Modules</span>
+                        <span className="whitespace-nowrap">1 More Module</span>
                       </div>
                     </div>
 
@@ -1186,20 +1186,14 @@ export default function MicrolearningModule({
                         style={{ width: `${(userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length / currentModuleVideos.length) * 100}%` }}
                       ></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 text-xs text-blue-700">
+                    <div className="grid grid-cols-2 gap-6 text-center text-sm">
                       <div className="text-center">
                         <div className="font-semibold">{userProgress.filter(p => p.completed && currentModuleVideos.some(v => v.id === p.videoId)).length}</div>
                         <div>Videos Completed</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-semibold">
-                          {currentModuleVideos.length > 0 && userProgress.filter(p => currentModuleVideos.some(v => v.id === p.videoId)).length > 0
-                            ? Math.round(userProgress
-                                .filter(p => currentModuleVideos.some(v => v.id === p.videoId))
-                                .reduce((acc, p) => acc + (p.watchedPercentage || 0), 0) / currentModuleVideos.length)
-                            : 0}%
-                        </div>
-                        <div>Average Watch Time</div>
+                        <div className="font-semibold">{currentModuleVideos.length}</div>
+                        <div>Total Videos</div>
                       </div>
                     </div>
                   </div>
@@ -1308,7 +1302,7 @@ export default function MicrolearningModule({
                               {index + 1}
                             </div>
                             <div className="text-xs text-gray-600 hidden sm:block">
-                              Module {index + 1}
+                              Video {index + 1}
                             </div>
                           </div>
                         </button>
