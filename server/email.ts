@@ -134,37 +134,21 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const unsubscribeEmail = getUnsubscribeEmail();
     const organizationName = getOrganizationName();
 
-    // Enhanced email options with spam prevention headers
+    // Simplified email options to prevent encoding issues
     const mailOptions = {
       from: fromEmail,
       to: content.to,
       subject: content.subject,
       text: content.text,
       html: content.html,
-      // Anti-spam headers (merge with content headers)
+      // Minimal headers to avoid spam filters
       headers: {
-        'X-Mailer': `${organizationName} Platform`,
-        'X-Priority': '3', // Normal priority
-        'X-MSMail-Priority': 'Normal',
-        'Importance': 'Normal',
-        'List-Unsubscribe': `<mailto:${unsubscribeEmail}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        // Authentication headers
-        'Message-ID': `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
-        'Date': new Date().toUTCString(),
-        // Content classification
-        'Content-Type': 'text/html; charset=UTF-8',
-        'MIME-Version': '1.0',
-        // Sender reputation
         'Organization': organizationName,
-        'X-Sender': fromEmail,
-        'Return-Path': config.auth.user,
-        // Prevent auto-replies
-        'X-Auto-Response-Suppress': 'All',
-        'Auto-Submitted': 'auto-generated',
         // Merge any additional headers from content
         ...(content.headers || {})
       },
+      // Proper encoding settings
+      encoding: 'utf8' as const,
       // Enhanced delivery options
       envelope: {
         from: config.auth.user,
@@ -179,10 +163,10 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const info = await transporter.sendMail(mailOptions);
 
     console.log('Email sent successfully:', {
-      messageId: info.messageId,
-      accepted: info.accepted,
-      rejected: info.rejected,
-      response: info.response,
+      messageId: (info as any).messageId,
+      accepted: (info as any).accepted,
+      rejected: (info as any).rejected,
+      response: (info as any).response,
       domain: domain,
       organization: organizationName,
       fromEmail: fromEmail
@@ -449,15 +433,13 @@ ${statusMessages[status as keyof typeof statusMessages] || 'Your application sta
 
 Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
 
-Thank you for your interest in Local Cooks Community.
+${status === 'approved' ? `Access your dashboard: ${getDashboardUrl()}` : ''}
 
- If you have any questions, please contact us at ${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}.
+If you have any questions, please contact us at ${getSupportEmail()}.
 
 Best regards,
 Local Cooks Community Team
 
----
-This is an automated message from Local Cooks Community.
 Visit: ${getWebsiteUrl()}
 `;
   };
@@ -479,63 +461,47 @@ Visit: ${getWebsiteUrl()}
 
   const message = getMessage(applicationData.status);
 
-  // Simplified, professional HTML template
-  const html = `
-<!DOCTYPE html>
-<html lang="en">
+  // Simplified HTML template
+  const html = `<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-  ${getUniformEmailStyles()}
+<meta charset="utf-8">
+<title>${subject}</title>
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
+.container { max-width: 600px; margin: 0 auto; background: #fff; }
+.header { background: #2563eb; color: white; padding: 20px; text-align: center; }
+.content { padding: 30px; }
+.status { background: #dcfce7; color: #166534; padding: 10px; border-radius: 5px; margin: 20px 0; }
+.button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+.footer { background: #f8fafc; padding: 20px; text-align: center; color: #64748b; }
+</style>
 </head>
 <body>
-  <div class="email-container">
-    <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        ${message}
-      </p>
-      <div class="status-badge">Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}</div>
-      
-      ${applicationData.status === 'approved' ? `
-      <a href="https://local-cooks-community.vercel.app/auth?redirect=/dashboard" class="cta-button">Access Your Dashboard</a>
-      ` : ''}
-      
-      <p class="message">
-        If you have any questions, please contact us at 
-        <a href="mailto:${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}">${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}</a>
-      </p>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for your interest in Local Cooks Community!</p>
-      <div class="footer-links">
-        <a href="https://local-cooks-community.vercel.app">Visit our website</a> • 
-        <a href="mailto:${getUnsubscribeEmail().replace('unsubscribe@', 'support@')}">Contact Support</a>
-      </div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
-    </div>
+<div class="container">
+  <div class="header">
+    <h1>Local Cooks</h1>
   </div>
+  <div class="content">
+    <h2>Hello ${applicationData.fullName},</h2>
+    <p>${message}</p>
+    <div class="status">Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}</div>
+    ${applicationData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="button">Access Your Dashboard</a>` : ''}
+    <p>If you have any questions, please contact us at <a href="mailto:${getSupportEmail()}">${getSupportEmail()}</a></p>
+  </div>
+  <div class="footer">
+    <p>Thank you for your interest in Local Cooks Community</p>
+    <p><a href="${getWebsiteUrl()}">Visit Website</a> | <a href="mailto:${getSupportEmail()}">Support</a></p>
+  </div>
+</div>
 </body>
-</html>
-  `;
+</html>`;
 
   return {
     to: applicationData.email,
     subject,
     text: generatePlainText(applicationData.status, applicationData.fullName),
-    html,
-    headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal'
-    }
+    html
   };
 };
 
@@ -692,13 +658,7 @@ export const generateApplicationWithDocumentsEmail = (
   return {
     to: applicationData.email,
     subject: 'Application and Documents Received - Under Review',
-    html,
-    headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
-    }
+    html
   };
 };
 
@@ -751,13 +711,7 @@ export const generateApplicationWithoutDocumentsEmail = (
   return {
     to: applicationData.email,
     subject: 'Local Cooks Application Confirmation - Next Steps',
-    html,
-    headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
-    }
+    html
   };
 };
 
@@ -1217,69 +1171,57 @@ Your Local Cooks Community account has been successfully created and verified.
 Account Status: Active
 
 Next Steps:
-- Complete your profile setup
-- Start your food safety training modules  
-- Apply to become a verified cook
-- Access your dashboard: ${getDashboardUrl()}
+* Complete your profile setup
+* Start your food safety training modules  
+* Apply to become a verified cook
+
+Access your dashboard: ${getDashboardUrl()}
 
 If you have any questions, please contact us at ${getSupportEmail()}.
 
 Best regards,
 Local Cooks Community Team
 
-© ${new Date().getFullYear()} Local Cooks Community
 Visit: ${getWebsiteUrl()}`;
 
-  const html = `
-<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Created - Local Cooks Community</title>
-  ${getUniformEmailStyles()}
+<meta charset="utf-8">
+<title>Account Created - Local Cooks Community</title>
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
+.container { max-width: 600px; margin: 0 auto; background: #fff; }
+.header { background: #2563eb; color: white; padding: 20px; text-align: center; }
+.content { padding: 30px; }
+.status { background: #dcfce7; color: #166534; padding: 10px; border-radius: 5px; margin: 20px 0; }
+.button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+.footer { background: #f8fafc; padding: 20px; text-align: center; color: #64748b; }
+</style>
 </head>
 <body>
-  <div class="email-container">
-    <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        Your Local Cooks Community account has been successfully created and verified.
-      </p>
-      <div class="status-badge approved">Account Status: Active</div>
-      
-      <div class="info-box">
-        <strong>Next Steps:</strong>
-        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
-          <li>Complete your profile setup</li>
-          <li>Start your food safety training modules</li>
-          <li>Apply to become a verified cook</li>
-        </ul>
-      </div>
-      
-      <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
-      
-      <p class="message">
-        If you have any questions, please contact us at 
-        <a href="mailto:${getSupportEmail()}">${getSupportEmail()}</a>
-      </p>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for joining <strong>Local Cooks Community</strong></p>
-      <div class="footer-links">
-        <a href="mailto:${getSupportEmail()}">Support</a> • 
-        <a href="${getWebsiteUrl()}">Visit Website</a>
-      </div>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
-    </div>
+<div class="container">
+  <div class="header">
+    <h1>Local Cooks</h1>
   </div>
+  <div class="content">
+    <h2>Hello ${userData.fullName},</h2>
+    <p>Your Local Cooks Community account has been successfully created and verified.</p>
+    <div class="status">Account Status: Active</div>
+    <p><strong>Next Steps:</strong></p>
+    <ul>
+      <li>Complete your profile setup</li>
+      <li>Start your food safety training modules</li>
+      <li>Apply to become a verified cook</li>
+    </ul>
+    <a href="${getDashboardUrl()}" class="button">Access Your Dashboard</a>
+    <p>If you have any questions, please contact us at <a href="mailto:${getSupportEmail()}">${getSupportEmail()}</a></p>
+  </div>
+  <div class="footer">
+    <p>Thank you for joining Local Cooks Community</p>
+    <p><a href="${getWebsiteUrl()}">Visit Website</a> | <a href="mailto:${getSupportEmail()}">Support</a></p>
+  </div>
+</div>
 </body>
 </html>`;
 
@@ -1289,13 +1231,7 @@ Visit: ${getWebsiteUrl()}`;
     to: userData.email,
     subject: 'Account Created - Local Cooks Community',
     text: plainText,
-    html,
-    headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
-    }
+    html
   };
 };
 
