@@ -7123,4 +7123,78 @@ app.post('/api/sync-verification-status', async (req, res) => {
   }
 });
 
+// Test email deliverability endpoint
+app.post("/api/test-email-delivery", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    console.log('🧪 Testing email delivery to:', email);
+
+    // Import the email functions
+    const { sendEmail } = await import('../server/email.js');
+
+    const testEmailContent = {
+      to: email,
+      subject: 'Email Delivery Test - Local Cooks',
+      html: `
+        <h2>Email Delivery Test</h2>
+        <p>This is a simple test email to verify email delivery is working.</p>
+        <p>If you received this email, your email system is functioning correctly.</p>
+        <p>Time: ${new Date().toISOString()}</p>
+        <p>From: Local Cooks Community</p>
+      `,
+      text: `
+Email Delivery Test
+
+This is a simple test email to verify email delivery is working.
+If you received this email, your email system is functioning correctly.
+
+Time: ${new Date().toISOString()}
+From: Local Cooks Community
+      `
+    };
+
+    console.log('📧 Email configuration check:', {
+      hasEmailUser: !!process.env.EMAIL_USER,
+      hasEmailPass: !!process.env.EMAIL_PASS,
+      hasEmailFrom: !!process.env.EMAIL_FROM,
+      emailHost: process.env.EMAIL_HOST,
+      emailPort: process.env.EMAIL_PORT,
+      emailUser: process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 5) + '***' : 'NOT SET'
+    });
+
+    const emailSent = await sendEmail(testEmailContent, {
+      trackingId: `test_delivery_${Date.now()}`
+    });
+
+    if (emailSent) {
+      console.log('✅ Test email sent successfully to:', email);
+      return res.status(200).json({ 
+        message: "Test email sent successfully",
+        email: email,
+        timestamp: new Date().toISOString(),
+        note: "Check your inbox, promotions, and spam folders"
+      });
+    } else {
+      console.error('❌ Test email failed to send to:', email);
+      return res.status(500).json({ 
+        message: "Failed to send test email - check email configuration" 
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error sending test email:", error);
+    return res.status(500).json({ 
+      message: "Error sending test email",
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 export default app;
