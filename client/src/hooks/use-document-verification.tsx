@@ -124,54 +124,29 @@ export function useDocumentVerification() {
     isLoading,
     refetch,
   } = useQuery<Application[]>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
-      console.log('Document verification: Fetching applications data...');
+      console.log('Document verification: Fetching applications data from Firebase endpoint...');
       
-      // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
+      // Use Firebase authentication for the Firebase endpoint
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      
+      if (!currentUser) {
+        throw new Error('Firebase user not authenticated');
+      }
+
+      const token = await currentUser.getIdToken();
       const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',
       };
 
-      try {
-        const { auth } = await import('@/lib/firebase');
-        const currentUser = auth.currentUser;
-        if (currentUser?.uid) {
-          headers['X-User-ID'] = currentUser.uid;
-          console.log('Including current Firebase UID in applications query headers:', currentUser.uid);
-          
-          // CRITICAL FIX: Also include Authorization header for backend auto-sync
-          try {
-            const token = await currentUser.getIdToken();
-            if (token) {
-              headers['Authorization'] = `Bearer ${token}`;
-              console.log('Including Firebase token in applications query headers for auto-sync');
-            }
-          } catch (tokenError) {
-            console.error('Failed to get Firebase token for applications query:', tokenError);
-          }
-        } else {
-          // Fallback to localStorage only if Firebase auth is not ready yet
-          const storedUserId = localStorage.getItem('userId');
-          if (storedUserId) {
-            console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
-            headers['X-User-ID'] = storedUserId;
-          } else {
-            console.log('No current Firebase user and no stored userId - not including X-User-ID header');
-          }
-        }
-      } catch (error) {
-        console.error('Error getting current Firebase user:', error);
-        // Fallback to localStorage if Firebase import fails
-        const storedUserId = localStorage.getItem('userId');
-        if (storedUserId) {
-          console.log('Firebase error, using stored userId as fallback:', storedUserId);
-          headers['X-User-ID'] = storedUserId;
-        }
-      }
+      console.log('Using Firebase authentication for applications query:', currentUser.uid);
 
       const response = await fetch(queryKey[0] as string, {
         credentials: 'include',
