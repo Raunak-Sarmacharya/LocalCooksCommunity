@@ -421,6 +421,28 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         </CardHeader>
         
         <CardContent className="space-y-6">
+          {/* Special alert for documents under review */}
+          {verification && (() => {
+            const hasDocumentsPending = (verification.foodSafetyLicenseStatus === "pending") || 
+                                      (verification.foodEstablishmentCertUrl && verification.foodEstablishmentCertStatus === "pending");
+            
+            if (hasDocumentsPending) {
+              return (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <Clock className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    <strong className="text-amber-900">Documents Under Review!</strong> 
+                    <br />We're currently reviewing your submitted documents. This typically takes 1-3 business days. 
+                    You'll receive an email notification once the review is complete. Until then, you have full access to your dashboard.
+                    <br /><br />
+                    <span className="text-amber-700">You can still update or replace your documents below if needed.</span>
+                  </AlertDescription>
+                </Alert>
+              );
+            }
+            return null;
+          })()}
+
           {verification && (
             <Alert>
               <Info className="h-4 w-4" />

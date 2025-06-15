@@ -75,12 +75,12 @@ export default function VideoPlayer({
   useEffect(() => {
     if (!hasReachedNearEnd || videoCompleted || shouldShowCompletePrompt) return;
 
-    // Show completion prompt after 3 seconds of being at near end without natural completion
+    // Show completion prompt after 1.5 seconds of being at near end without natural completion
     const timer = setTimeout(() => {
       if (!videoCompleted && hasReachedNearEnd) {
         setShouldShowCompletePrompt(true);
       }
-    }, 3000);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [hasReachedNearEnd, videoCompleted, shouldShowCompletePrompt]);
@@ -444,37 +444,50 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Completion Badge - Bottom right corner */}
+        {/* Completion Badge - Top right corner to avoid control conflicts */}
         {videoCompleted && !loading && !hasError && (
-          <div className="absolute bottom-4 right-4 z-10">
+          <div className="absolute top-4 right-4 z-10">
             <div className="bg-green-600 text-white px-3 py-2 rounded-full shadow-lg border border-green-500 flex items-center gap-2">
               <CheckCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">Complete</span>
+              <span className="text-sm font-medium">✓ Complete</span>
             </div>
           </div>
         )}
 
-        {/* Subtle Completion Prompt - appears when video should have ended but didn't */}
+        {/* Improved Completion Prompt - centered and more prominent */}
         {shouldShowCompletePrompt && !videoCompleted && !loading && !hasError && (
-          <div className="absolute bottom-4 right-4">
-            <div className="bg-black/80 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-white/20">
-              <div className="flex items-center gap-3">
-                <div className="text-white text-sm">
-                  <p className="font-medium">Video finished?</p>
-                  <p className="text-xs opacity-75">Mark as complete to continue</p>
+          <div className="absolute inset-x-4 top-1/2 transform -translate-y-1/2 z-20">
+            <div className="bg-black/90 backdrop-blur-sm rounded-xl p-4 shadow-2xl border border-white/30 max-w-md mx-auto">
+              <div className="text-center text-white">
+                <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle className="h-6 w-6 text-white" />
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setVideoCompleted(true);
-                    setShouldShowCompletePrompt(false);
-                    onComplete?.();
-                  }}
-                  className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
-                >
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                  Complete
-                </Button>
+                <h3 className="font-semibold text-lg mb-2">Ready to complete?</h3>
+                <p className="text-sm text-gray-300 mb-4">
+                  You've watched most of this video. Click below to mark it as complete and continue your training.
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShouldShowCompletePrompt(false)}
+                    className="border-white/30 text-white hover:bg-white/10"
+                  >
+                    Keep Watching
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setVideoCompleted(true);
+                      setShouldShowCompletePrompt(false);
+                      onComplete?.();
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark Complete
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -523,31 +536,42 @@ export default function VideoPlayer({
         )}
 
         {isStreamableUrl ? (
-          /* Streamable Video - Minimal Interface */
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
-            <div className="flex-1">
-              <h3 className="font-medium text-sm leading-tight break-words">{title}</h3>
-              <p className="text-xs text-gray-400 mt-1">Interactive training video with embedded controls</p>
+          /* Streamable Video - Enhanced Interface */
+          <>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between mb-3">
+              <div className="flex-1">
+                <h3 className="font-medium text-sm leading-tight break-words">{title}</h3>
+                <p className="text-xs text-gray-400 mt-1">Interactive training video with embedded controls</p>
+              </div>
             </div>
             
-            {/* Manual Complete Button for Streamable videos */}
+            {/* Completion Section for Streamable videos */}
             {hasStarted && !videoCompleted && !shouldShowCompletePrompt && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setVideoCompleted(true);
-                  setShouldShowCompletePrompt(false);
-                  onComplete?.();
-                }}
-                className="text-white/70 hover:text-white hover:bg-white/10 flex-shrink-0 text-xs"
-                title="Mark video as complete"
-              >
-                <CheckCircle className="h-3 w-3 mr-1" />
-                Complete
-              </Button>
+              <div className="p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-blue-400" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-400">Finished watching?</p>
+                      <p className="text-xs text-blue-300/80">Mark as complete when you're done to continue</p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setVideoCompleted(true);
+                      setShouldShowCompletePrompt(false);
+                      onComplete?.();
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark Complete
+                  </Button>
+                </div>
+              </div>
             )}
-          </div>
+          </>
         ) : (
           /* Standard Video - Full Controls */
           <>
@@ -573,6 +597,33 @@ export default function VideoPlayer({
                 <span className="whitespace-nowrap">{formatTime(videoDuration)}</span>
               </div>
             </div>
+
+            {/* Completion Status Bar - Shows when video can be completed */}
+            {hasStarted && !videoCompleted && !shouldShowCompletePrompt && progress > 15 && (
+              <div className="mb-3 p-3 bg-green-900/30 border border-green-700/50 rounded-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-400" />
+                    <div>
+                      <p className="text-sm font-medium text-green-400">Ready to complete</p>
+                      <p className="text-xs text-green-300/80">You can mark this video as complete to continue</p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setVideoCompleted(true);
+                      setShouldShowCompletePrompt(false);
+                      onComplete?.();
+                    }}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark Complete
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Control Buttons */}
             <div className="flex flex-col sm:flex-row items-center gap-3 sm:justify-between">
@@ -604,24 +655,6 @@ export default function VideoPlayer({
                 >
                   {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                 </Button>
-
-                {/* Manual Complete Button - Only show if no subtle prompt is active */}
-                {hasStarted && !videoCompleted && !shouldShowCompletePrompt && progress > 50 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setVideoCompleted(true);
-                      setShouldShowCompletePrompt(false);
-                      onComplete?.();
-                    }}
-                    className="text-white/70 hover:text-white hover:bg-white/10 flex-shrink-0 text-xs"
-                    title="Mark video as complete"
-                  >
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Complete
-                  </Button>
-                )}
               </div>
 
               <div className="text-xs text-gray-400 text-center sm:text-right whitespace-nowrap">
