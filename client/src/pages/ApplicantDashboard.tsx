@@ -727,7 +727,7 @@ export default function ApplicantDashboard() {
                         </span>
                       </div>
                       <div className="text-xs text-emerald-600">
-                        <span className="font-medium">🏆 Achievement Unlocked:</span> You can now rewatch any training module at any time
+                        <span className="font-medium">🏆 Training Complete:</span> You can now rewatch any training module at any time
                       </div>
                     </div>
                   </div>
@@ -743,7 +743,7 @@ export default function ApplicantDashboard() {
                   </h2>
                   <p className="text-sm md:text-base text-gray-600 mb-4">
                     Prepare for your food safety certification with our comprehensive 22-video training program designed specifically for Newfoundland chefs. 
-                    Start with the first module immediately - unlock all modules once your application is approved!
+                    Start with the first module immediately - access all modules once your application is approved!
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Button
@@ -759,7 +759,7 @@ export default function ApplicantDashboard() {
                       <div className="flex items-center gap-4 text-xs text-gray-600">
                         <span className="flex items-center gap-1">
                           <CheckCircle className="h-3 w-3 text-green-600" />
-                          1st Module Free
+                          1st Module Available
                         </span>
                         <span className="flex items-center gap-1">
                           <CheckCircle className="h-3 w-3 text-blue-600" />
@@ -767,7 +767,7 @@ export default function ApplicantDashboard() {
                         </span>
                       </div>
                       <div className="text-xs text-gray-500">
-                        <span className="font-medium">Interactive Progress System:</span> See exactly what steps you need to unlock full training access
+                        <span className="font-medium">Interactive Progress System:</span> See exactly what steps you need to access all training modules
                       </div>
                     </div>
                   </div>

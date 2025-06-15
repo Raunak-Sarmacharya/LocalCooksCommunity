@@ -829,49 +829,76 @@ export default function MicrolearningModule({
               </motion.div>
             )}
 
-            {/* Access Level Notification - Clean & Modern */}
+            {/* Welcome Learning Journey Banner */}
             {accessLevel === 'limited' && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7 }}
-                className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100"
+                className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 sm:p-6 shadow-sm border border-blue-200"
               >
                 <div className="flex flex-col sm:flex-row items-start gap-4">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <span className="text-yellow-600 text-lg">🔒</span>
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xl">🎓</span>
                   </div>
-                  <div className="flex-1 space-y-3 min-w-0">
+                  <div className="flex-1 space-y-4 min-w-0">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                        Sample Video Available
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">
+                        Welcome to Your Food Safety Journey!
                       </h3>
-                      <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                        Experience 1 video from Module 1 at no cost. Complete your application to access all remaining 21 training videos for your food safety certification preparation. Re-watch any completed video anytime as a refresher.
+                      <p className="text-base text-gray-700 leading-relaxed">
+                        Start your professional food safety training today! Watch our introduction video below to get a taste of the comprehensive curriculum designed specifically for Newfoundland chefs. Once you complete your application, you'll gain access to all 22 training videos and earn your food safety certification.
                       </p>
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-                      <div className="flex items-center gap-2 text-sm text-green-700">
-                        <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
-                        <span className="whitespace-nowrap">Module 1 Videos Available</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <div className="w-2 h-2 bg-gray-300 rounded-full flex-shrink-0"></div>
-                        <span className="whitespace-nowrap">1 More Module</span>
+                    <div className="bg-white/60 rounded-lg p-4 space-y-3">
+                      <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <span className="text-green-600">📚</span>
+                        What's Included in Your Training:
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-gray-700">
+                          <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <span>22 Professional Training Videos</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-700">
+                          <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <span>2 Comprehensive Modules</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-700">
+                          <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <span>Food Safety Certification</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-700">
+                          <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <span>Lifetime Access to Materials</span>
+                        </div>
                       </div>
                     </div>
 
-                    <Button
-                      asChild
-                      size="sm"
-                      className="bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 w-full sm:w-auto"
-                    >
-                      <Link href="/apply">
-                                                  Access All Training
-                        <ArrowRight className="h-4 w-4 ml-2 flex-shrink-0" />
-                      </Link>
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        asChild
+                        className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 h-auto"
+                      >
+                        <Link href="/apply">
+                          <FileText className="h-5 w-5 mr-2 flex-shrink-0" />
+                          Complete Application to Access All Videos
+                          <ArrowRight className="h-5 w-5 ml-2 flex-shrink-0" />
+                        </Link>
+                      </Button>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 px-2">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                          <span className="font-medium">Start learning now</span>
+                        </span>
+                        <span className="text-gray-400">•</span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                          <span className="font-medium">No cost to begin</span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </motion.div>
