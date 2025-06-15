@@ -876,29 +876,16 @@ export default function MicrolearningModule({
                       </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Button
-                        asChild
-                        className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 h-auto"
-                      >
-                        <Link href="/apply">
-                          <FileText className="h-5 w-5 mr-2 flex-shrink-0" />
-                          Complete Application to Access All Videos
-                          <ArrowRight className="h-5 w-5 ml-2 flex-shrink-0" />
-                        </Link>
-                      </Button>
-                      <div className="flex items-center gap-2 text-sm text-gray-600 px-2">
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                          <span className="font-medium">Start learning now</span>
-                        </span>
-                        <span className="text-gray-400">•</span>
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                          <span className="font-medium">No cost to begin</span>
-                        </span>
-                      </div>
-                    </div>
+                    <Button
+                      asChild
+                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 h-auto"
+                    >
+                      <Link href="/apply">
+                        <FileText className="h-5 w-5 mr-2 flex-shrink-0" />
+                        Complete Application to Access All Videos
+                        <ArrowRight className="h-5 w-5 ml-2 flex-shrink-0" />
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               </motion.div>
