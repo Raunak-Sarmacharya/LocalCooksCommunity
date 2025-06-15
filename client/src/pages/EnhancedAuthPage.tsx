@@ -24,8 +24,8 @@ export default function EnhancedAuthPage() {
 
   // Tab configuration
   const tabs = [
-    { value: "login", label: "Sign In", icon: <LogIn className="w-4 h-4" /> },
-    { value: "register", label: "Sign Up", icon: <UserPlus className="w-4 h-4" /> }
+    { value: "login", label: "Login", icon: <LogIn className="w-4 h-4" /> },
+    { value: "register", label: "Register", icon: <UserPlus className="w-4 h-4" /> }
   ];
 
   // Get redirect path from URL
@@ -369,7 +369,7 @@ export default function EnhancedAuthPage() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  {activeTab === "login" ? "Sign up" : "Sign in"}
+                  {activeTab === "login" ? "Register" : "Login"}
                 </motion.button>
               </p>
             </motion.div>
@@ -452,11 +452,10 @@ export default function EnhancedAuthPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     >
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                      <polyline points="20,6 9,17 4,12" />
                     </svg>
                   </motion.div>
-                  <span className="text-white/90">{item}</span>
+                  <span>{item}</span>
                 </motion.li>
               ))}
             </motion.ul>

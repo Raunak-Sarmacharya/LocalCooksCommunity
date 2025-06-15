@@ -47,13 +47,13 @@ const labelVariants = {
     transition: { duration: 0.2 }
   },
   focus: {
-    y: -10,
+    y: -22,
     scale: 0.85,
     color: "rgb(59, 130, 246)", // blue-500
     transition: { duration: 0.2 }
   },
   filled: {
-    y: -10,
+    y: -22,
     scale: 0.85,
     color: "rgb(107, 114, 128)", // gray-500
     transition: { duration: 0.2 }
@@ -77,8 +77,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
     };
 
     const getLabelState = () => {
-      if (isFocused) return 'focus';
-      if (hasValue) return 'filled';
+      if (isFocused || hasValue) return 'focus';
       return 'idle';
     };
 
@@ -89,6 +88,24 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           variants={inputVariants}
           animate={getInputState()}
         >
+          {/* Floating Label */}
+          {label && (
+            <motion.label
+              className={cn(
+                "absolute pointer-events-none origin-left z-10 transition-all duration-200 text-sm font-medium bg-white px-1",
+                icon ? "left-10" : "left-3",
+                "top-1/2 -translate-y-1/2"
+              )}
+              variants={labelVariants}
+              animate={getLabelState()}
+              style={{
+                color: 'inherit'
+              }}
+            >
+              {label}
+            </motion.label>
+          )}
+
           {/* Icon */}
           {icon && (
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors z-10 pointer-events-none">
@@ -102,12 +119,14 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
             type={inputType}
             value={value}
             className={cn(
-              "w-full px-4 py-3 border rounded-xl outline-none transition-all duration-200 h-12 text-sm",
-              "placeholder-transparent peer placeholder:text-gray-400",
+              "w-full px-4 py-4 border rounded-xl outline-none transition-all duration-200 h-14 text-sm bg-transparent",
+              "placeholder-transparent peer",
               icon ? "pl-11" : "",
               showPasswordToggle ? "pr-12" : "",
+              hasValue || isFocused ? "pt-6 pb-2" : "",
               className
             )}
+            placeholder=""
             onFocus={(e) => {
               setIsFocused(true);
               props.onFocus?.(e);
@@ -122,24 +141,6 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
             }}
             {...props}
           />
-
-          {/* Floating Label */}
-          {label && (
-            <motion.label
-              className={cn(
-                "absolute pointer-events-none origin-left z-10 transition-all duration-200 text-sm font-medium",
-                icon ? "left-11" : "left-4",
-                "top-1/2 -translate-y-1/2"
-              )}
-              variants={labelVariants}
-              animate={getLabelState()}
-              style={{
-                color: 'inherit'
-              }}
-            >
-              {label}
-            </motion.label>
-          )}
 
           {/* Password Toggle */}
           {showPasswordToggle && (
@@ -199,26 +200,24 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
       className="mt-2"
     >
       <div className="flex gap-1 mb-1">
-        {[...Array(5)].map((_, i) => (
-          <motion.div
-            key={i}
+        {[0, 1, 2, 3, 4].map((index) => (
+          <div
+            key={index}
             className={cn(
-              "h-1 flex-1 rounded-full bg-gray-200",
-              strength > i ? strengthColors[Math.min(strength - 1, 4)] : ""
+              "h-1 flex-1 rounded-full transition-colors duration-300",
+              index < strength ? strengthColors[strength - 1] : "bg-gray-200"
             )}
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            transition={{ delay: i * 0.1 }}
           />
         ))}
       </div>
       <div className="text-xs text-gray-500">
         Password strength: <span className={cn(
           "font-medium",
-          strength <= 1 ? "text-red-500" : strength <= 2 ? "text-orange-500" : strength <= 3 ? "text-yellow-500" : strength <= 4 ? "text-blue-500" : "text-green-500"
-        )}>
-          {strengthLabels[Math.max(0, strength - 1)]}
-        </span>
+          strength <= 1 ? "text-red-500" :
+          strength <= 2 ? "text-orange-500" :
+          strength <= 3 ? "text-yellow-500" :
+          strength <= 4 ? "text-blue-500" : "text-green-500"
+        )}>{strengthLabels[strength] || strengthLabels[0]}</span>
       </div>
     </motion.div>
   );
