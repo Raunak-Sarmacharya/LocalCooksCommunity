@@ -847,7 +847,7 @@ export default function MicrolearningModule({
                         Free Preview Available
                       </h3>
                       <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                        Experience Module 1 for free. Complete your application to unlock all 22 training videos for your food safety certification preparation. Re-watch any completed video anytime as a refresher.
+                        Experience 1 video from Module 1 for free. Complete your application to unlock all remaining 21 training videos for your food safety certification preparation. Re-watch any completed video anytime as a refresher.
                       </p>
                     </div>
                     
