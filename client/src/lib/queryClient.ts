@@ -33,8 +33,8 @@ export async function apiRequest(
 ): Promise<Response> {
   console.log(`Making ${method} request to ${url}`, data);
 
-  // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
-  // This prevents using stale user IDs from previous sessions
+  // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
+  // This prevents using stale user IDs while maintaining functionality
   const defaultHeaders: Record<string, string> = {};
   
   try {
@@ -44,11 +44,23 @@ export async function apiRequest(
       defaultHeaders['X-User-ID'] = currentUser.uid;
       console.log('Including current Firebase UID in request headers:', currentUser.uid);
     } else {
-      console.log('No current Firebase user - not including X-User-ID header');
+      // Fallback to localStorage only if Firebase auth is not ready yet
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
+        defaultHeaders['X-User-ID'] = storedUserId;
+      } else {
+        console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+      }
     }
   } catch (error) {
     console.error('Error getting current Firebase user:', error);
-    // Don't include any user ID if we can't get the current user
+    // Fallback to localStorage if Firebase import fails
+    const storedUserId = localStorage.getItem('userId');
+    if (storedUserId) {
+      console.log('Firebase error, using stored userId as fallback:', storedUserId);
+      defaultHeaders['X-User-ID'] = storedUserId;
+    }
   }
 
   const headers: Record<string, string> = {
@@ -89,8 +101,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior, headers }) =>
     async ({ queryKey }) => {
-      // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
-      // This prevents using stale user IDs from previous sessions
+      // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
+      // This prevents using stale user IDs while maintaining functionality
       const defaultHeaders: Record<string, string> = {};
       
       try {
@@ -100,11 +112,23 @@ export const getQueryFn: <T>(options: {
           defaultHeaders['X-User-ID'] = currentUser.uid;
           console.log('Including current Firebase UID in query headers:', currentUser.uid);
         } else {
-          console.log('No current Firebase user - not including X-User-ID header');
+          // Fallback to localStorage only if Firebase auth is not ready yet
+          const storedUserId = localStorage.getItem('userId');
+          if (storedUserId) {
+            console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
+            defaultHeaders['X-User-ID'] = storedUserId;
+          } else {
+            console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+          }
         }
       } catch (error) {
         console.error('Error getting current Firebase user:', error);
-        // Don't include any user ID if we can't get the current user
+        // Fallback to localStorage if Firebase import fails
+        const storedUserId = localStorage.getItem('userId');
+        if (storedUserId) {
+          console.log('Firebase error, using stored userId as fallback:', storedUserId);
+          defaultHeaders['X-User-ID'] = storedUserId;
+        }
       }
 
       const res = await fetch(queryKey[0] as string, {
