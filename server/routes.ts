@@ -1392,49 +1392,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Test email configuration endpoint (development only)
-  app.post("/api/test-status-email", async (req: Request, res: Response) => {
-    try {
-      const { status, email, fullName } = req.body;
-
-      if (!status || !email || !fullName) {
-        return res.status(400).json({ 
-          message: "Missing required fields: status, email, fullName" 
-        });
-      }
-
-      console.log('Testing status change email with:', { status, email, fullName });
-
-      const emailContent = generateStatusChangeEmail({
-        fullName,
-        email,
-        status
-      });
-
-      const emailSent = await sendEmail(emailContent, {
-        trackingId: `test_${status}_${Date.now()}`
-      });
-
-      if (emailSent) {
-        return res.status(200).json({ 
-          message: "Test email sent successfully",
-          status,
-          email,
-          fullName
-        });
-      } else {
-        return res.status(500).json({ 
-          message: "Failed to send test email - check email configuration" 
-        });
-      }
-    } catch (error) {
-      console.error("Error sending test email:", error);
-      return res.status(500).json({ 
-        message: "Error sending test email",
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
+  // REMOVED: Duplicate test endpoint - keeping only the first one at line 542
 
   // Password reset request endpoint - TEMPORARILY DISABLED DUE TO INCOMPLETE IMPLEMENTATION
   /*
