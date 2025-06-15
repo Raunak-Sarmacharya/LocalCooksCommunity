@@ -21,13 +21,21 @@ type DocumentVerificationContextType = {
 
 // Helper function for file uploads
 const apiRequestFormData = async (method: string, url: string, data?: FormData) => {
-  // Always include user ID from localStorage if available (for production compatibility)
-  const userId = localStorage.getItem('userId');
+  // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
   const headers: Record<string, string> = {};
-
-  if (userId) {
-    headers['X-User-ID'] = userId;
-    console.log('Including userId in FormData request headers:', userId);
+  
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const currentUser = auth.currentUser;
+    if (currentUser?.uid) {
+      headers['X-User-ID'] = currentUser.uid;
+      console.log('Including current Firebase UID in FormData request headers:', currentUser.uid);
+    } else {
+      console.log('No current Firebase user - not including X-User-ID header');
+    }
+  } catch (error) {
+    console.error('Error getting current Firebase user:', error);
+    // Don't include any user ID if we can't get the current user
   }
 
   const response = await fetch(url, {
@@ -47,15 +55,23 @@ const apiRequestFormData = async (method: string, url: string, data?: FormData) 
 
 // Helper function for JSON requests
 const apiRequestJSON = async (method: string, url: string, data?: any) => {
-  // Always include user ID from localStorage if available (for production compatibility)
-  const userId = localStorage.getItem('userId');
+  // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-
-  if (userId) {
-    headers['X-User-ID'] = userId;
-    console.log('Including userId in JSON request headers:', userId);
+  
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const currentUser = auth.currentUser;
+    if (currentUser?.uid) {
+      headers['X-User-ID'] = currentUser.uid;
+      console.log('Including current Firebase UID in JSON request headers:', currentUser.uid);
+    } else {
+      console.log('No current Firebase user - not including X-User-ID header');
+    }
+  } catch (error) {
+    console.error('Error getting current Firebase user:', error);
+    // Don't include any user ID if we can't get the current user
   }
 
   const response = await fetch(url, {
@@ -88,8 +104,7 @@ export function useDocumentVerification() {
     queryFn: async ({ queryKey }) => {
       console.log('Document verification: Fetching applications data...');
       
-      // Always include user ID from localStorage if available (for production compatibility)
-      const userId = localStorage.getItem('userId');
+      // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
       const headers: Record<string, string> = {
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -97,9 +112,18 @@ export function useDocumentVerification() {
         'Expires': '0',
       };
 
-      if (userId) {
-        headers['X-User-ID'] = userId;
-        console.log('Including userId in applications query headers:', userId);
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth.currentUser;
+        if (currentUser?.uid) {
+          headers['X-User-ID'] = currentUser.uid;
+          console.log('Including current Firebase UID in applications query headers:', currentUser.uid);
+        } else {
+          console.log('No current Firebase user - not including X-User-ID header');
+        }
+      } catch (error) {
+        console.error('Error getting current Firebase user:', error);
+        // Don't include any user ID if we can't get the current user
       }
 
       const response = await fetch(queryKey[0] as string, {

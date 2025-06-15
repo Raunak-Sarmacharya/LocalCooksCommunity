@@ -362,6 +362,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       console.log('🧹 LOGOUT: Cleared all React Query cache');
       
+      // SECURITY FIX: Destroy server session to prevent cross-user data leakage
+      try {
+        await fetch('/api/logout', {
+          method: 'POST',
+          credentials: 'include'
+        });
+        console.log('🧹 LOGOUT: Destroyed server session');
+      } catch (sessionError) {
+        console.error('Failed to destroy server session:', sessionError);
+        // Continue with Firebase logout even if session destruction fails
+      }
+      
       await signOut(auth);
     } catch (e: any) {
       setError(e.message);

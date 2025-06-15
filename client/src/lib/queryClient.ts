@@ -33,13 +33,22 @@ export async function apiRequest(
 ): Promise<Response> {
   console.log(`Making ${method} request to ${url}`, data);
 
-  // Always include user ID from localStorage if available
-  const userId = localStorage.getItem('userId');
+  // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
+  // This prevents using stale user IDs from previous sessions
   const defaultHeaders: Record<string, string> = {};
-
-  if (userId) {
-    defaultHeaders['X-User-ID'] = userId;
-    console.log('Including userId in request headers:', userId);
+  
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const currentUser = auth.currentUser;
+    if (currentUser?.uid) {
+      defaultHeaders['X-User-ID'] = currentUser.uid;
+      console.log('Including current Firebase UID in request headers:', currentUser.uid);
+    } else {
+      console.log('No current Firebase user - not including X-User-ID header');
+    }
+  } catch (error) {
+    console.error('Error getting current Firebase user:', error);
+    // Don't include any user ID if we can't get the current user
   }
 
   const headers: Record<string, string> = {
@@ -80,13 +89,22 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior, headers }) =>
     async ({ queryKey }) => {
-      // Add X-User-ID from localStorage if available
-      const userId = localStorage.getItem('userId');
+      // SECURITY FIX: Get user ID from current Firebase auth instead of localStorage
+      // This prevents using stale user IDs from previous sessions
       const defaultHeaders: Record<string, string> = {};
-
-      if (userId) {
-        defaultHeaders['X-User-ID'] = userId;
-        console.log('Including userId in query headers:', userId);
+      
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth.currentUser;
+        if (currentUser?.uid) {
+          defaultHeaders['X-User-ID'] = currentUser.uid;
+          console.log('Including current Firebase UID in query headers:', currentUser.uid);
+        } else {
+          console.log('No current Firebase user - not including X-User-ID header');
+        }
+      } catch (error) {
+        console.error('Error getting current Firebase user:', error);
+        // Don't include any user ID if we can't get the current user
       }
 
       const res = await fetch(queryKey[0] as string, {
