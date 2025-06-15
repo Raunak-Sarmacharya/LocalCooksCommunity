@@ -4607,18 +4607,14 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
               try {
                 console.log(`🧪 SYNCHRONOUS TEST: Sending welcome email using APPLICATION EMAIL PATTERN`);
                 
-                // Use the exact same function pattern as working application emails
-                const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+                // Use the proper welcome email function
+                const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
                 
-                // Generate using the WORKING application email function
-                const emailContent = generateStatusChangeEmail({
+                // Generate proper welcome email
+                const emailContent = generateWelcomeEmail({
                   fullName: displayName || email.split('@')[0],
-                  email: email,
-                  status: 'approved' // This generates the working "approved" email
+                  email: email
                 });
-                
-                // Only change the subject line to indicate welcome
-                emailContent.subject = 'Account Active - Local Cooks Community';
                 
                 // Use the exact same tracking pattern as application emails - SYNCHRONOUSLY
                 const emailSent = await sendEmail(emailContent, {
@@ -4640,16 +4636,13 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                 console.log(`🔄 SYNCHRONOUS FALLBACK: Sending welcome email for Google user despite verification status`);
                 
                 try {
-                  const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+                  const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
                   
-                  // Use the same working pattern as the main email
-                  const emailContent = generateStatusChangeEmail({
+                  // Use proper welcome email function
+                  const emailContent = generateWelcomeEmail({
                     fullName: displayName || email.split('@')[0],
-                    email: email,
-                    status: 'approved'
+                    email: email
                   });
-                  
-                  emailContent.subject = 'Account Active - Local Cooks Community';
                   
                   const emailSent = await sendEmail(emailContent, {
                     trackingId: `account_fallback_${user.id}_${uid}_${Date.now()}`
