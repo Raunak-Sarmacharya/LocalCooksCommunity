@@ -1165,7 +1165,7 @@ export const generateEmailVerificationEmail = (
   };
 };
 
-// Generate welcome email for new Google sign-up users
+// Generate welcome email for new Google sign-up users (SPAM-OPTIMIZED VERSION)
 export const generateWelcomeEmail = (
   userData: {
     fullName: string;
@@ -1174,13 +1174,38 @@ export const generateWelcomeEmail = (
 ): EmailContent => {
   const supportEmail = getSupportEmail();
   
+  // Generate plain text version for better deliverability (CRITICAL FOR GMAIL)
+  const textContent = `
+Account Status Update - Local Cooks Community
+
+Hello ${userData.fullName},
+
+Your Local Cooks Community account has been successfully created and verified.
+
+Status: Account Active
+
+You can now access your dashboard to complete your profile and begin your application process.
+
+Access your dashboard: https://local-cooks-community.vercel.app/dashboard
+
+If you have any questions about your account or need assistance, please contact our support team at ${supportEmail}.
+
+Best regards,
+Local Cooks Community Team
+
+---
+This is an automated message from Local Cooks Community.
+Visit: https://local-cooks-community.vercel.app
+`;
+
+  // Simplified HTML template matching working application emails
   const html = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Created Successfully - Local Cooks Community</title>
+  <title>Account Status Update - Local Cooks Community</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -1194,60 +1219,34 @@ export const generateWelcomeEmail = (
     <div class="content">
       <h2 class="greeting">Hello ${userData.fullName},</h2>
       <p class="message">
-        Your Local Cooks Community account has been successfully created. Since you signed up with Google, your account is automatically verified and ready to use.
+        Your Local Cooks Community account has been successfully created and verified. You can now access your dashboard to begin your application process.
       </p>
-      
       <div class="status-badge">Status: Account Active</div>
       
-      <p class="message">
-        You can now access your dashboard to complete your profile and begin your application process.
-      </p>
-      
-      <a href="https://local-cooks-community.vercel.app/dashboard" class="cta-button">Access Dashboard</a>
-      
-      <div class="divider"></div>
+      <a href="https://local-cooks-community.vercel.app/dashboard" class="cta-button">Access Your Dashboard</a>
       
       <p class="message">
-        If you have any questions about your account or need assistance, please contact our support team.
+        If you have any questions, please contact us at 
+        <a href="mailto:${supportEmail}">${supportEmail}</a>
       </p>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for joining Local Cooks Community!</p>
+      <p class="footer-text">Thank you for your interest in Local Cooks Community!</p>
       <div class="footer-links">
-        <a href="mailto:${supportEmail}">Support</a> • 
-        <a href="https://local-cooks-community.vercel.app/dashboard">Dashboard</a>
+        <a href="https://local-cooks-community.vercel.app">Visit our website</a> • 
+        <a href="mailto:${supportEmail}">Contact Support</a>
       </div>
-      <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
   </div>
 </body>
-</html>`;
-
-  const textContent = `
-Account Created Successfully - Local Cooks Community
-
-Hello ${userData.fullName},
-
-Your Local Cooks Community account has been successfully created. Since you signed up with Google, your account is automatically verified and ready to use.
-
-Status: Account Active
-
-You can now access your dashboard to complete your profile and begin your application process.
-
-Access your dashboard: https://local-cooks-community.vercel.app/dashboard
-
-If you have any questions about your account or need assistance, please contact our support team at ${supportEmail}.
-
-Thank you for joining Local Cooks Community!
-
-© ${new Date().getFullYear()} Local Cooks Community
-`;
+</html>
+  `;
 
   return {
     to: userData.email,
-    subject: 'Account Created Successfully - Local Cooks Community',
+    subject: 'Account Status Update - Local Cooks Community', // Changed from promotional subject
+    text: textContent, // CRITICAL: Added plain text version
     html,
-    text: textContent
   };
 };
