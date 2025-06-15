@@ -21,8 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 // Create a schema for just the certifications fields
 const certificationsSchema = z.object({
-  foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
-  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
+  foodSafetyLicense: z.enum(["yes", "no"]),
+  foodEstablishmentCert: z.enum(["yes", "no"]),
   feedback: z.string().optional(),
 });
 
@@ -446,24 +446,6 @@ export default function CertificationsForm() {
                   <div className="flex-1">
                     <span className="font-medium cursor-pointer">Not yet, but I'd like to learn</span>
                     <p className="text-sm text-gray-500 mt-1">We'll guide you through the simple process</p>
-                    
-
-                  </div>
-                </div>
-                <div 
-                  className="flex items-start space-x-3 py-2 cursor-pointer" 
-                  onClick={() => form.setValue("foodSafetyLicense", "notSure")}
-                >
-                  <div className="relative flex-shrink-0 mt-1">
-                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodSafetyLicense") === "notSure" ? 'border-primary' : 'border-gray-300'}`}>
-                      {form.watch("foodSafetyLicense") === "notSure" && (
-                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="font-medium cursor-pointer">I'd like to learn more</span>
-                    <p className="text-sm text-gray-500 mt-1">I'm exploring my options and need more information</p>
                   </div>
                 </div>
               </div>
@@ -476,7 +458,7 @@ export default function CertificationsForm() {
               <div className="mt-5 p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <p className="text-sm text-gray-600 flex items-start">
                   <HelpCircle className="h-4 w-4 mr-2 text-primary mt-0.5 flex-shrink-0" />
-                  <span>The Food Safety License is typically obtained through a 1-day course offered by SkillsPassNL. It teaches proper food handling, storage, and preparation methods to prevent foodborne illness.</span>
+                  <span>The Food Safety License is typically obtained through a 1 hour course offered by Scale Plus NL or other accepted food safety certification providers by the provincial government. It teaches proper food handling, storage, and preparation methods to prevent foodborne illness.</span>
                 </p>
               </div>
             </div>
@@ -600,22 +582,6 @@ export default function CertificationsForm() {
                   <div>
                     <span className="font-medium cursor-pointer">Not yet, I'm interested</span>
                     <p className="text-sm text-gray-500 mt-1">We'll connect you with resources to get started</p>
-                  </div>
-                </div>
-                <div 
-                  className="flex items-start space-x-3 py-2 cursor-pointer" 
-                  onClick={() => form.setValue("foodEstablishmentCert", "notSure")}
-                >
-                  <div className="relative flex-shrink-0 mt-1">
-                    <div className={`h-4 w-4 rounded-full border-2 ${form.watch("foodEstablishmentCert") === "notSure" ? 'border-primary' : 'border-gray-300'}`}>
-                      {form.watch("foodEstablishmentCert") === "notSure" && (
-                        <div className="absolute inset-0 m-auto h-2 w-2 rounded-full bg-primary" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="font-medium cursor-pointer">Tell me more</span>
-                    <p className="text-sm text-gray-500 mt-1">I'd like to discuss my specific situation</p>
                   </div>
                 </div>
               </div>
