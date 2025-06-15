@@ -4315,6 +4315,52 @@ app.post("/api/test-status-email", async (req, res) => {
   }
 });
 
+// Test endpoint for sending full verification emails
+app.post("/api/test-verification-email", async (req, res) => {
+  try {
+    const { fullName, email, phone } = req.body;
+
+    if (!fullName || !email || !phone) {
+      return res.status(400).json({ 
+        message: "Missing required fields: fullName, email, phone" 
+      });
+    }
+
+    console.log('Testing full verification email with:', { fullName, email, phone });
+
+    // Import the email functions
+    const { sendEmail, generateFullVerificationEmail } = await import('../server/email.js');
+
+    const emailContent = generateFullVerificationEmail({
+      fullName,
+      email,
+      phone
+    });
+
+    const emailSent = await sendEmail(emailContent, {
+      trackingId: `test_verification_${email}_${Date.now()}`
+    });
+
+    if (emailSent) {
+      return res.status(200).json({ 
+        message: "Test verification email sent successfully",
+        subject: emailContent.subject,
+        to: emailContent.to
+      });
+    } else {
+      return res.status(500).json({ 
+        message: "Failed to send test verification email - check email configuration" 
+      });
+    }
+  } catch (error) {
+    console.error("Error sending test verification email:", error);
+    return res.status(500).json({ 
+      message: "Error sending test verification email",
+      error: error.message 
+    });
+  }
+});
+
 // Endpoint to sync Firebase user to SQL users table
 app.post('/api/firebase-sync-user', async (req, res) => {
   try {
@@ -6635,7 +6681,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     `, [user.id, resetToken, resetTokenExpiry]);
 
     // Generate reset URL
-    const resetUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/reset-password?token=${resetToken}`;
+    const resetUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/reset-password?token=${resetToken}`;
 
     // Send password reset email
     const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
@@ -6737,7 +6783,7 @@ app.post("/api/auth/send-verification-email", async (req, res) => {
     `, [email, verificationToken, verificationTokenExpiry]);
 
     // Generate verification URL
-    const verificationUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/verify-email?token=${verificationToken}`;
+    const verificationUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/verify-email?token=${verificationToken}`;
 
     // Send verification email
     const { sendEmail, generateEmailVerificationEmail } = await import('../server/email.js');
@@ -6813,7 +6859,7 @@ app.get("/api/auth/verify-email", async (req, res) => {
     
     // Redirect to auth page with verification success and login prompt
     // The frontend will show a success message and prompt the user to log in
-    return res.redirect(`${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth?verified=true&message=verification-success`);
+    return res.redirect(`${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth?verified=true&message=verification-success`);
 
   } catch (error) {
     console.error("❌ Error in email verification:", error);
@@ -7271,18 +7317,14 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
 
     console.log('🧪 Testing welcome email using STATUS CHANGE function (that works):', email);
 
-    // Import the working email function
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+    // Import the proper welcome email function
+    const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
 
-    // Use the WORKING status change email function with "account created" status
-    const emailContent = generateStatusChangeEmail({
+    // Use the proper welcome email function
+    const emailContent = generateWelcomeEmail({
       fullName: email.split('@')[0],
-      email: email,
-      status: 'approved' // This will generate "Application Approved" email that WORKS
+      email: email
     });
-
-    // Modify the subject to be about account creation instead
-    emailContent.subject = 'Account Created - Local Cooks Community';
     
     const emailSent = await sendEmail(emailContent, {
       trackingId: `test_welcome_as_status_${Date.now()}`
@@ -7290,9 +7332,9 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
 
     if (emailSent) {
       return res.status(200).json({ 
-        message: "Test welcome email sent using WORKING status function",
+        message: "Test welcome email sent using proper welcome function",
         email: email,
-        note: "This uses the exact same email function that works for application status changes"
+        subject: emailContent.subject
       });
     } else {
       return res.status(500).json({ 
@@ -7357,17 +7399,13 @@ app.post("/api/test-email-comparison", async (req, res) => {
     // Small delay to avoid rate limiting
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Test 2: Send registration welcome email (same function, different subject)
+    // Test 2: Send registration welcome email (proper function)
     try {
-      console.log('📧 TEST 2: Sending registration welcome email (same function)...');
-      const welcomeEmailContent = generateStatusChangeEmail({
+      console.log('📧 TEST 2: Sending registration welcome email (proper function)...');
+      const welcomeEmailContent = generateWelcomeEmail({
         fullName: email.split('@')[0],
-        email: email,
-        status: 'approved'
+        email: email
       });
-
-      // Change subject to match registration email
-      welcomeEmailContent.subject = 'Account Active - Local Cooks Community';
 
       const welcomeEmailSent = await sendEmail(welcomeEmailContent, {
         trackingId: `test_welcome_${Date.now()}`
@@ -7377,7 +7415,7 @@ app.post("/api/test-email-comparison", async (req, res) => {
         success: welcomeEmailSent,
         subject: welcomeEmailContent.subject,
         messageId: `test_welcome_${Date.now()}`,
-        note: "This is the SAME function with registration subject"
+        note: "This is the proper welcome email function"
       };
 
       console.log('✅ TEST 2 COMPLETE: Registration welcome email sent');
@@ -8012,36 +8050,18 @@ app.post("/api/debug-google-registration", async (req, res) => {
       testResults.step2_emailGeneration = { error: error.message };
     }
 
-    // Step 3: Test email sending (but don't actually send)
+    // Step 3: Test email configuration (using main email system)
     try {
-      const { generateWelcomeEmail } = await import('../server/email.js');
-      const emailContent = generateWelcomeEmail({
-        fullName: displayName || email.split('@')[0],
-        email: email
-      });
-      
-      // Just test the email configuration without sending
-      const nodemailer = await import('nodemailer');
-      
-      const config = {
-        host: process.env.EMAIL_HOST,
-        port: parseInt(process.env.EMAIL_PORT) || 587,
-        secure: process.env.EMAIL_SECURE === 'true',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
-        }
-      };
-      
-      const transporter = nodemailer.createTransporter(config);
+      const { sendEmail } = await import('../server/email.js');
       
       testResults.step3_emailSending = {
-        configValid: !!(config.host && config.auth.user && config.auth.pass),
+        configValid: !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS),
         config: {
-          host: config.host,
-          port: config.port,
-          user: config.auth.user ? `${config.auth.user.substring(0, 5)}...` : null
-        }
+          host: process.env.EMAIL_HOST,
+          port: process.env.EMAIL_PORT,
+          user: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 5)}...` : null
+        },
+        note: "Using main email system from server/email.js"
       };
     } catch (error) {
       testResults.step3_emailSending = { error: error.message };

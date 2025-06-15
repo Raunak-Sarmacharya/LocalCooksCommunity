@@ -455,7 +455,7 @@ Local Cooks Community Team
 
 ---
 This is an automated message from Local Cooks Community.
-Visit: https://local-cooks-community.vercel.app
+Visit: ${getWebsiteUrl()}
 `;
   };
 
@@ -594,7 +594,7 @@ export const generateFullVerificationEmail = (
         </p>
       </div>
       
-      <a href="${process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php'}" class="cta-button">Access Vendor Login →</a>
+      <a href="${getVendorDashboardUrl()}" class="cta-button">Access Vendor Login →</a>
       
       <div class="divider"></div>
       
@@ -613,7 +613,7 @@ export const generateFullVerificationEmail = (
     <div class="footer">
       <p class="footer-text">Welcome to the <strong>Local Cooks</strong> verified vendor community!</p>
       <div class="footer-links">
-        <a href="mailto:${process.env.VENDOR_SUPPORT_EMAIL || 'support@localcooks.shop'}">vendor support</a>
+        <a href="mailto:${process.env.VENDOR_SUPPORT_EMAIL || getSupportEmail()}">vendor support</a>
       </div>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
@@ -666,7 +666,7 @@ export const generateApplicationWithDocumentsEmail = (
       <div class="status-badge">Status: Under Review</div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="https://localcooks.ca" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
       <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
@@ -719,7 +719,7 @@ export const generateApplicationWithoutDocumentsEmail = (
       <div class="status-badge">Status: Under Review</div>
     </div>
     <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="https://localcooks.ca" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
       <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
@@ -770,14 +770,14 @@ export async function sendApplicationReceivedEmail(applicationData: any) {
         Our team typically reviews applications within 2-3 business days. 
         You'll receive an email notification once we've made a decision.
       </div>
-      <a href="https://local-cooks-community.vercel.app/auth?redirect=/dashboard" class="cta-button">Track Application Status</a>
+      <a href="${getDashboardUrl()}" class="cta-button">Track Application Status</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in ${organizationName}!</p>
       <div class="footer-links">
         <a href="mailto:${supportEmail}">Support</a> • 
         <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> • 
-        <a href="https://local-cooks-community.vercel.app/privacy">Privacy Policy</a>
+        <a href="${getPrivacyUrl()}">Privacy Policy</a>
       </div>
     </div>
   </div>
@@ -796,7 +796,7 @@ Status: Under Review
 What happens next?
 Our team typically reviews applications within 2-3 business days. You'll receive an email notification once we've made a decision.
 
-Track your application status: https://local-cooks-community.vercel.app/auth?redirect=/dashboard
+Track your application status: ${getDashboardUrl()}
 
 Thank you for your interest in ${organizationName}!
 
@@ -864,7 +864,7 @@ If you have any questions, contact us at ${supportEmail}
         </p>
       </div>
       
-      <a href="https://local-cooks-community.vercel.app/auth?redirect=/dashboard" class="cta-button">Access Your Dashboard</a>
+      <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
       
       <div class="divider"></div>
       
@@ -1165,53 +1165,127 @@ export const generateEmailVerificationEmail = (
   };
 };
 
-// TEMPORARY FIX: Use the WORKING status change email function for welcome emails
+// Proper welcome email function (no more hack!)
 export const generateWelcomeEmail = (
   userData: {
     fullName: string;
     email: string;
   }
 ): EmailContent => {
-  console.log('🔄 TEMPORARY FIX: Using working status change email function for welcome email');
-  
-  // Use the exact same function that WORKS for application status changes
-  const statusEmail = generateStatusChangeEmail({
-    fullName: userData.fullName,
-    email: userData.email,
-    status: 'approved' // This generates working "Application Approved" template
-  });
-  
-  // Modify only the subject to indicate account creation
-  statusEmail.subject = 'Account Verification Complete - Local Cooks Community';
-  
-  // Modify the HTML content to be about account creation instead of application approval
-  if (statusEmail.html) {
-    statusEmail.html = statusEmail.html.replace(
-      'Congratulations! Your application has been approved.',
-      'Your Local Cooks Community account has been successfully created and verified.'
-    ).replace(
-      'You can now proceed to the next steps in your Local Cooks journey.',
-      'You can now access your dashboard to complete your profile and begin your application process.'
-    ).replace(
-      'Status: Approved',
-      'Status: Account Active'
-    );
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Local Cooks Community!</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Welcome ${userData.fullName}! 🎉</h2>
+      <p class="message">
+        Your Local Cooks Community account has been successfully created and verified. 
+        We're excited to have you join our community of passionate food enthusiasts!
+      </p>
+      <div class="status-badge approved">Status: Account Active ✓</div>
+      
+      <div class="info-box">
+        <strong>🚀 What's Next?</strong>
+        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
+          <li>Complete your profile setup</li>
+          <li>Start your food safety training modules</li>
+          <li>Apply to become a verified cook</li>
+          <li>Join our growing community!</li>
+        </ul>
+      </div>
+      
+      <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Welcome to the <strong>Local Cooks</strong> community!</p>
+      <div class="footer-links">
+        <a href="mailto:${getSupportEmail()}">Support</a> • 
+        <a href="${getWebsiteUrl()}">Visit Website</a>
+      </div>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const textContent = `
+Welcome to Local Cooks Community!
+
+Hello ${userData.fullName},
+
+Your Local Cooks Community account has been successfully created and verified. We're excited to have you join our community of passionate food enthusiasts!
+
+Status: Account Active ✓
+
+What's Next?
+- Complete your profile setup
+- Start your food safety training modules  
+- Apply to become a verified cook
+- Join our growing community!
+
+Access your dashboard: ${getDashboardUrl()}
+
+Welcome to the Local Cooks community!
+
+If you have any questions, contact us at ${getSupportEmail()}
+
+© ${new Date().getFullYear()} Local Cooks Community
+`;
+
+  return {
+    to: userData.email,
+    subject: 'Welcome to Local Cooks Community!',
+    html,
+    text: textContent
+  };
+};
+
+// Helper function to get the correct website URL based on environment
+const getWebsiteUrl = (): string => {
+  // Use environment variable if set, otherwise use the configured domain
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
   }
   
-  // Modify the plain text content similarly
-  if (statusEmail.text) {
-    statusEmail.text = statusEmail.text.replace(
-      'Congratulations! Your application has been approved.',
-      'Your Local Cooks Community account has been successfully created and verified.'
-    ).replace(
-      'You can now proceed to the next steps in your Local Cooks journey.',
-      'You can now access your dashboard to complete your profile and begin your application process.'
-    ).replace(
-      'Status: Approved',
-      'Status: Account Active'
-    );
+  // For production, use the actual domain
+  const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
+  if (domain && domain !== 'auto-sync.local') {
+    return `https://${domain}`;
   }
   
-  console.log('✅ Welcome email generated using WORKING status change template');
-  return statusEmail;
+  // Fallback for development
+  return process.env.NODE_ENV === 'production' 
+    ? 'https://local-cooks-community.vercel.app' 
+    : 'http://localhost:5000';
+};
+
+// Helper function to get the correct dashboard URL
+const getDashboardUrl = (): string => {
+  const baseUrl = getWebsiteUrl();
+  return `${baseUrl}/auth?redirect=/dashboard`;
+};
+
+// Helper function to get privacy policy URL
+const getPrivacyUrl = (): string => {
+  const baseUrl = getWebsiteUrl();
+  return `${baseUrl}/privacy`;
+};
+
+// Helper function to get vendor dashboard URL
+const getVendorDashboardUrl = (): string => {
+  return process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
 };
