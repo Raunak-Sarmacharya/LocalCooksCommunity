@@ -4344,11 +4344,15 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     const emailVerified = decodedToken.email_verified;
     const { displayName, role, password } = req.body; // These can come from request body
     
+    // CRITICAL FIX: For Google OAuth (no password), always treat as verified
+    const isGoogleAuth = !password && displayName;
+    const effectiveEmailVerified = isGoogleAuth ? true : emailVerified;
+    
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
     }
 
-    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role, password);
+    const syncResult = await syncFirebaseUser(uid, email, effectiveEmailVerified, displayName, role, password);
     
     if (syncResult.success) {
       res.json(syncResult);
@@ -4397,14 +4401,21 @@ app.post('/api/firebase-register-user', async (req, res) => {
     const emailVerified = decodedToken.email_verified;
     const { displayName, role, password } = req.body;
     
+    // CRITICAL FIX: For Google OAuth registration (no password), always treat as verified
+    const isGoogleRegistration = !password && displayName;
+    const effectiveEmailVerified = isGoogleRegistration ? true : emailVerified;
+    
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
     }
     
     console.log(`📝 Firebase REGISTRATION request for email: ${email}, uid: ${uid}`);
+    console.log(`   - Original emailVerified: ${emailVerified}`);
+    console.log(`   - Is Google Registration: ${isGoogleRegistration}`);
+    console.log(`   - Effective emailVerified: ${effectiveEmailVerified}`);
     
     // Call sync logic directly instead of making internal fetch
-    const syncResult = await syncFirebaseUser(uid, email, emailVerified, displayName, role, password);
+    const syncResult = await syncFirebaseUser(uid, email, effectiveEmailVerified, displayName, role, password);
     
     if (syncResult.success) {
       console.log(`✅ Registration sync completed for ${email}`);
