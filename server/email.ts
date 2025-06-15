@@ -1165,88 +1165,53 @@ export const generateEmailVerificationEmail = (
   };
 };
 
-// Generate welcome email for new Google sign-up users (SPAM-OPTIMIZED VERSION)
+// TEMPORARY FIX: Use the WORKING status change email function for welcome emails
 export const generateWelcomeEmail = (
   userData: {
     fullName: string;
     email: string;
   }
 ): EmailContent => {
-  const supportEmail = getSupportEmail();
+  console.log('🔄 TEMPORARY FIX: Using working status change email function for welcome email');
   
-  // Generate plain text version for better deliverability (CRITICAL FOR GMAIL)
-  const textContent = `
-Account Status Update - Local Cooks Community
-
-Hello ${userData.fullName},
-
-Your Local Cooks Community account has been successfully created and verified.
-
-Status: Account Active
-
-You can now access your dashboard to complete your profile and begin your application process.
-
-Access your dashboard: https://local-cooks-community.vercel.app/dashboard
-
-If you have any questions about your account or need assistance, please contact our support team at ${supportEmail}.
-
-Best regards,
-Local Cooks Community Team
-
----
-This is an automated message from Local Cooks Community.
-Visit: https://local-cooks-community.vercel.app
-`;
-
-  // Simplified HTML template matching working application emails
-  const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Status Update - Local Cooks Community</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        Your Local Cooks Community account has been successfully created and verified. You can now access your dashboard to begin your application process.
-      </p>
-      <div class="status-badge">Status: Account Active</div>
-      
-      <a href="https://local-cooks-community.vercel.app/dashboard" class="cta-button">Access Your Dashboard</a>
-      
-      <p class="message">
-        If you have any questions, please contact us at 
-        <a href="mailto:${supportEmail}">${supportEmail}</a>
-      </p>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for your interest in Local Cooks Community!</p>
-      <div class="footer-links">
-        <a href="https://local-cooks-community.vercel.app">Visit our website</a> • 
-        <a href="mailto:${supportEmail}">Contact Support</a>
-      </div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
-
-  return {
-    to: userData.email,
-    subject: 'Account Status Update - Local Cooks Community', // Changed from promotional subject
-    text: textContent, // CRITICAL: Added plain text version
-    html,
-  };
+  // Use the exact same function that WORKS for application status changes
+  const statusEmail = generateStatusChangeEmail({
+    fullName: userData.fullName,
+    email: userData.email,
+    status: 'approved' // This generates working "Application Approved" template
+  });
+  
+  // Modify only the subject to indicate account creation
+  statusEmail.subject = 'Account Verification Complete - Local Cooks Community';
+  
+  // Modify the HTML content to be about account creation instead of application approval
+  if (statusEmail.html) {
+    statusEmail.html = statusEmail.html.replace(
+      'Congratulations! Your application has been approved.',
+      'Your Local Cooks Community account has been successfully created and verified.'
+    ).replace(
+      'You can now proceed to the next steps in your Local Cooks journey.',
+      'You can now access your dashboard to complete your profile and begin your application process.'
+    ).replace(
+      'Status: Approved',
+      'Status: Account Active'
+    );
+  }
+  
+  // Modify the plain text content similarly
+  if (statusEmail.text) {
+    statusEmail.text = statusEmail.text.replace(
+      'Congratulations! Your application has been approved.',
+      'Your Local Cooks Community account has been successfully created and verified.'
+    ).replace(
+      'You can now proceed to the next steps in your Local Cooks journey.',
+      'You can now access your dashboard to complete your profile and begin your application process.'
+    ).replace(
+      'Status: Approved',
+      'Status: Account Active'
+    );
+  }
+  
+  console.log('✅ Welcome email generated using WORKING status change template');
+  return statusEmail;
 };

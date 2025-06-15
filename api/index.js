@@ -7246,4 +7246,54 @@ From: Local Cooks Community
   }
 });
 
+// Test welcome email using working status change function
+app.post("/api/test-welcome-as-status", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    console.log('🧪 Testing welcome email using STATUS CHANGE function (that works):', email);
+
+    // Import the working email function
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+    // Use the WORKING status change email function with "account created" status
+    const emailContent = generateStatusChangeEmail({
+      fullName: email.split('@')[0],
+      email: email,
+      status: 'approved' // This will generate "Application Approved" email that WORKS
+    });
+
+    // Modify the subject to be about account creation instead
+    emailContent.subject = 'Account Created - Local Cooks Community';
+    
+    const emailSent = await sendEmail(emailContent, {
+      trackingId: `test_welcome_as_status_${Date.now()}`
+    });
+
+    if (emailSent) {
+      return res.status(200).json({ 
+        message: "Test welcome email sent using WORKING status function",
+        email: email,
+        note: "This uses the exact same email function that works for application status changes"
+      });
+    } else {
+      return res.status(500).json({ 
+        message: "Failed to send test email - check email configuration" 
+      });
+    }
+  } catch (error) {
+    console.error("Error sending test welcome email:", error);
+    return res.status(500).json({ 
+      message: "Error sending test email",
+      error: error.message 
+    });
+  }
+});
+
 export default app;
