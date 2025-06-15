@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Subject Line Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+        button { padding: 10px 20px; margin: 10px 0; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+    </style>
+</head>
+<body>
+    <h1>🎯 Subject Line Test</h1>
+    <p>This will test if the subject line is what's causing Gmail to filter registration emails.</p>
+    
+    <div class="test-section">
+        <h3>Test: Send with IDENTICAL subject as working emails</h3>
+        <p>This should use the exact same subject line as the working application status emails.</p>
+        <input type="email" id="email" placeholder="Your email address" value="satyajit.debnath.loco@gmail.com" style="width: 300px; padding: 8px; margin: 10px 0;">
+        <br>
+        <button onclick="testIdenticalSubject()">Send Test Email</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function testIdenticalSubject() {
+            const email = document.getElementById('email').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!email) {
+                resultDiv.innerHTML = '<div class="result">Please enter an email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="result">🔄 Sending test email...</div>';
+
+            try {
+                const response = await fetch('/api/test-identical-subject', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            ✅ <strong>Test sent successfully!</strong><br>
+                            Email: ${email}<br>
+                            Subject: ${data.subject}<br>
+                            <em>${data.note}</em><br><br>
+                            <strong>Now check your email inbox!</strong>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result">
+                            ❌ <strong>Test failed:</strong><br>
+                            ${data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result">
+                        ❌ <strong>Error:</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html> 

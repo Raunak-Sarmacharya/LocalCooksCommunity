@@ -7308,6 +7308,150 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
   }
 });
 
+// COMPARISON TEST: Send both working status email and registration email simultaneously
+app.post("/api/test-email-comparison", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    console.log('🆚 COMPARISON TEST: Sending both email types to:', email);
+
+    const results = {
+      applicationEmail: null,
+      registrationEmail: null
+    };
+
+    // Import email functions
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+    // Test 1: Send WORKING application status email (this should work)
+    try {
+      console.log('📧 TEST 1: Sending WORKING application status email...');
+      const statusEmailContent = generateStatusChangeEmail({
+        fullName: email.split('@')[0],
+        email: email,
+        status: 'approved'
+      });
+
+      const statusEmailSent = await sendEmail(statusEmailContent, {
+        trackingId: `test_status_${Date.now()}`
+      });
+
+      results.applicationEmail = {
+        success: statusEmailSent,
+        subject: statusEmailContent.subject,
+        messageId: `test_status_${Date.now()}`,
+        note: "This is the WORKING application email type"
+      };
+
+      console.log('✅ TEST 1 COMPLETE: Application status email sent');
+    } catch (error) {
+      results.applicationEmail = { error: error.message };
+    }
+
+    // Small delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Test 2: Send registration welcome email (same function, different subject)
+    try {
+      console.log('📧 TEST 2: Sending registration welcome email (same function)...');
+      const welcomeEmailContent = generateStatusChangeEmail({
+        fullName: email.split('@')[0],
+        email: email,
+        status: 'approved'
+      });
+
+      // Change subject to match registration email
+      welcomeEmailContent.subject = 'Account Active - Local Cooks Community';
+
+      const welcomeEmailSent = await sendEmail(welcomeEmailContent, {
+        trackingId: `test_welcome_${Date.now()}`
+      });
+
+      results.registrationEmail = {
+        success: welcomeEmailSent,
+        subject: welcomeEmailContent.subject,
+        messageId: `test_welcome_${Date.now()}`,
+        note: "This is the SAME function with registration subject"
+      };
+
+      console.log('✅ TEST 2 COMPLETE: Registration welcome email sent');
+    } catch (error) {
+      results.registrationEmail = { error: error.message };
+    }
+
+    return res.status(200).json({ 
+      message: "Email comparison test complete - Check which emails you receive",
+      email: email,
+      results: results,
+      instructions: "The application email should arrive, but the registration email might not. This will help us identify the exact difference."
+    });
+
+  } catch (error) {
+    console.error("Error in email comparison test:", error);
+    return res.status(500).json({ 
+      message: "Comparison test failed",
+      error: error.message 
+    });
+  }
+});
+
+// FINAL TEST: Send registration email with EXACT same subject as working emails
+app.post("/api/test-identical-subject", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ 
+        message: "Email address is required" 
+      });
+    }
+
+    console.log('🎯 IDENTICAL SUBJECT TEST: Using exact working subject line');
+
+    // Import email functions
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+    // Generate using the exact same pattern as working emails
+    const emailContent = generateStatusChangeEmail({
+      fullName: email.split('@')[0],
+      email: email,
+      status: 'approved'
+    });
+
+    // DON'T change the subject at all - use the exact working subject
+    console.log(`📧 Using EXACT working subject: "${emailContent.subject}"`);
+
+    const emailSent = await sendEmail(emailContent, {
+      trackingId: `identical_test_${Date.now()}`
+    });
+
+    if (emailSent) {
+      return res.status(200).json({ 
+        message: "Test email sent with IDENTICAL subject as working emails",
+        email: email,
+        subject: emailContent.subject,
+        note: "This should definitely arrive since it's identical to working application emails"
+      });
+    } else {
+      return res.status(500).json({ 
+        message: "Failed to send test email" 
+      });
+    }
+  } catch (error) {
+    console.error("Error in identical subject test:", error);
+    return res.status(500).json({ 
+      message: "Test failed",
+      error: error.message 
+    });
+  }
+});
+
 // DIAGNOSTIC: Test Google OAuth registration flow step by step
 app.post("/api/debug-google-registration", async (req, res) => {
   try {
