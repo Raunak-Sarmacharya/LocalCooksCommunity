@@ -7686,6 +7686,274 @@ function generateRecommendations(analysis) {
   return recommendations;
 }
 
+// Serve the email testing page
+app.get("/test-subject", (req, res) => {
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Gmail OAuth Email Filtering Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+        button { padding: 10px 20px; margin: 10px 0; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+        .warning { background: #fff3cd; border-left-color: #ffc107; }
+        .success { background: #d4edda; border-left-color: #28a745; }
+    </style>
+</head>
+<body>
+    <h1>🎯 Gmail OAuth Email Filtering Test</h1>
+    <p>Testing different theories about why registration emails aren't being delivered.</p>
+    
+    <div class="test-section">
+        <h3>Theory 1: Subject Line Filtering</h3>
+        <p>Send with IDENTICAL subject as working application emails.</p>
+        <input type="email" id="email1" placeholder="Your email address" value="satyajit.debnath.loco@gmail.com" style="width: 300px; padding: 8px; margin: 10px 0;">
+        <br>
+        <button onclick="testIdenticalSubject()">Test Identical Subject</button>
+        <div id="result1"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Theory 2: OAuth Context Filtering</h3>
+        <p>Send the same email but from a standalone context (not during OAuth registration).</p>
+        <input type="email" id="email2" placeholder="Your email address" value="satyajit.debnath.loco@gmail.com" style="width: 300px; padding: 8px; margin: 10px 0;">
+        <br>
+        <button onclick="testStandaloneContext()">Test Standalone Context</button>
+        <div id="result2"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Theory 3: Rate Limiting</h3>
+        <p>Test if multiple emails to the same address are being rate limited.</p>
+        <input type="email" id="email3" placeholder="Your email address" value="satyajit.debnath.loco@gmail.com" style="width: 300px; padding: 8px; margin: 10px 0;">
+        <br>
+        <button onclick="testRateLimiting()">Test Rate Limiting</button>
+        <div id="result3"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>Theory 4: Different Email Address</h3>
+        <p>Test with a completely different email address to rule out address-specific filtering.</p>
+        <input type="email" id="email4" placeholder="Different email address" style="width: 300px; padding: 8px; margin: 10px 0;">
+        <br>
+        <button onclick="testDifferentAddress()">Test Different Address</button>
+        <div id="result4"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔬 Comprehensive Diagnostic</h3>
+        <p>Run all tests and analyze the email address for potential spam triggers.</p>
+        <input type="email" id="email5" placeholder="Email to analyze" value="satyajit.debnath.loco@gmail.com" style="width: 300px; padding: 8px; margin: 10px 0;">
+        <br>
+        <button onclick="runComprehensiveDiagnostic()">Run Full Diagnostic</button>
+        <div id="result5"></div>
+    </div>
+
+    <script>
+        async function testIdenticalSubject() {
+            await runTest('email1', 'result1', '/api/test-identical-subject', 'Testing identical subject line...');
+        }
+
+        async function testStandaloneContext() {
+            const email = document.getElementById('email2').value;
+            const resultDiv = document.getElementById('result2');
+            
+            if (!email) {
+                resultDiv.innerHTML = '<div class="result warning">Please enter an email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="result">🔄 Testing standalone context...</div>';
+
+            try {
+                // This simulates sending the registration email but NOT during OAuth
+                const response = await fetch('/api/test-identical-subject', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        email: email,
+                        context: 'standalone_test' 
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = \`
+                        <div class="result success">
+                            ✅ <strong>Standalone test sent!</strong><br>
+                            Email: \${email}<br>
+                            Subject: \${data.subject}<br>
+                            Context: Standalone (not during OAuth)<br><br>
+                            <strong>Check your email!</strong>
+                        </div>
+                    \`;
+                } else {
+                    resultDiv.innerHTML = \`
+                        <div class="result warning">
+                            ❌ <strong>Test failed:</strong><br>
+                            \${data.message}
+                        </div>
+                    \`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = \`
+                    <div class="result warning">
+                        ❌ <strong>Error:</strong><br>
+                        \${error.message}
+                    </div>
+                \`;
+            }
+        }
+
+        async function testRateLimiting() {
+            await runTest('email3', 'result3', '/api/test-identical-subject', 'Testing rate limiting...');
+        }
+
+        async function testDifferentAddress() {
+            await runTest('email4', 'result4', '/api/test-identical-subject', 'Testing different email address...');
+        }
+
+        async function runComprehensiveDiagnostic() {
+            const email = document.getElementById('email5').value;
+            const resultDiv = document.getElementById('result5');
+            
+            if (!email) {
+                resultDiv.innerHTML = '<div class="result warning">Please enter an email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="result">🔬 Running comprehensive diagnostic...</div>';
+
+            try {
+                const response = await fetch('/api/comprehensive-email-diagnostic', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let analysisHtml = \`
+                        <div class="result success">
+                            <h4>📊 Email Analysis for: \${data.originalEmail}</h4>
+                            <p><strong>Domain:</strong> \${data.analysis.domain}</p>
+                            <p><strong>Local Part:</strong> \${data.analysis.localPart}</p>
+                            <p><strong>Dots in Local Part:</strong> \${data.analysis.dotCount}</p>
+                            <p><strong>Potential Spam Triggers:</strong> \${data.analysis.potentialSpamTriggers.length > 0 ? data.analysis.potentialSpamTriggers.join(', ') : 'None detected'}</p>
+                            
+                            <h4>🧪 Test Results:</h4>
+                    \`;
+
+                    data.tests.forEach(test => {
+                        analysisHtml += \`
+                            <div style="margin: 10px 0; padding: 10px; background: \${test.success ? '#d4edda' : '#f8d7da'}; border-radius: 4px;">
+                                <strong>\${test.test}:</strong> \${test.success ? '✅ Success' : '❌ Failed'}<br>
+                                \${test.subject ? \`<em>Subject: \${test.subject}</em><br>\` : ''}
+                                \${test.email ? \`<em>Email: \${test.email}</em><br>\` : ''}
+                                <small>\${test.note || test.error || ''}</small>
+                            </div>
+                        \`;
+                    });
+
+                    analysisHtml += \`
+                            <h4>💡 Recommendations:</h4>
+                            <ul>
+                    \`;
+
+                    data.recommendations.forEach(rec => {
+                        analysisHtml += \`<li>\${rec}</li>\`;
+                    });
+
+                    analysisHtml += \`
+                            </ul>
+                            <p><strong>Now check your email(s) to see which tests delivered!</strong></p>
+                        </div>
+                    \`;
+
+                    resultDiv.innerHTML = analysisHtml;
+                } else {
+                    resultDiv.innerHTML = \`
+                        <div class="result warning">
+                            ❌ <strong>Diagnostic failed:</strong><br>
+                            \${data.message}
+                        </div>
+                    \`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = \`
+                    <div class="result warning">
+                        ❌ <strong>Error:</strong><br>
+                        \${error.message}
+                    </div>
+                \`;
+            }
+        }
+
+        async function runTest(emailId, resultId, endpoint, loadingMessage) {
+            const email = document.getElementById(emailId).value;
+            const resultDiv = document.getElementById(resultId);
+            
+            if (!email) {
+                resultDiv.innerHTML = '<div class="result warning">Please enter an email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = \`<div class="result">🔄 \${loadingMessage}</div>\`;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = \`
+                        <div class="result success">
+                            ✅ <strong>Test sent successfully!</strong><br>
+                            Email: \${email}<br>
+                            Subject: \${data.subject}<br>
+                            <em>\${data.note || 'Test completed'}</em><br><br>
+                            <strong>Now check your email inbox!</strong>
+                        </div>
+                    \`;
+                } else {
+                    resultDiv.innerHTML = \`
+                        <div class="result warning">
+                            ❌ <strong>Test failed:</strong><br>
+                            \${data.message}
+                        </div>
+                    \`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = \`
+                    <div class="result warning">
+                        ❌ <strong>Error:</strong><br>
+                        \${error.message}
+                    </div>
+                \`;
+            }
+        }
+    </script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // DIAGNOSTIC: Test Google OAuth registration flow step by step
 app.post("/api/debug-google-registration", async (req, res) => {
   try {
