@@ -530,7 +530,7 @@ export const generateFullVerificationEmail = (
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🎉 You're Fully Verified! Here are your Vendor Login Credentials</title>
+  <title>Vendor Account Approved - Login Credentials Included</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -544,9 +544,9 @@ export const generateFullVerificationEmail = (
     <div class="content">
       <h2 class="greeting">Congratulations ${userData.fullName}!</h2>
       <p class="message">
-        🎊 Your documents have been approved and you are now <strong>fully verified</strong>! You can now start accepting orders and serving customers through our Local Cooks platform.
+        Your documents have been approved and you are now <strong>fully verified</strong>! You can now start accepting orders and serving customers through our Local Cooks platform.
       </p>
-      <div class="status-badge approved">Status: Approved ✓</div>
+      <div class="status-badge approved">Status: Approved</div>
       
       <div class="info-box">
         <strong>Your Login Credentials:</strong>
@@ -572,23 +572,10 @@ export const generateFullVerificationEmail = (
       
       <div class="divider"></div>
       
-      <div class="info-box">
-        <strong>🚀 What's Next?</strong>
-        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
-          <li>Click the "Access Vendor Login" button above or visit the link provided - you'll be automatically redirected to setup after login</li>
-          <li><strong>Set up your Stripe payment profile</strong> for secure payment processing (you'll be guided through this automatically)</li>
-          <li>Complete your vendor profile and add your menu items</li>
-          <li>Set up your shop preferences and availability</li>
-          <li>Start accepting orders from hungry customers!</li>
-          <li><strong>Remember to change your password after first login</strong></li>
-        </ul>
-      </div>
     </div>
     <div class="footer">
       <p class="footer-text">Welcome to the <strong>Local Cooks</strong> verified vendor community!</p>
-      <div class="footer-links">
-        <a href="mailto:${process.env.VENDOR_SUPPORT_EMAIL || getSupportEmail()}">vendor support</a>
-      </div>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -792,121 +779,8 @@ If you have any questions, contact us at ${supportEmail}
      text: textContent
    });
  }
- 
- export async function sendApplicationApprovedEmail(userData: any, username: string, password: string) {
-  const supportEmail = getSupportEmail();
-  const organizationName = getOrganizationName();
-  
-  const subject = `Application Approved - ${organizationName}`;
-  
-  const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
-    </div>
-    <div class="content">
-      <h2 class="greeting">Congratulations ${userData.fullName}!</h2>
-      <p class="message">
-        We're excited to inform you that your application has been approved! 
-        Welcome to the ${organizationName}.
-      </p>
-      <div class="status-badge approved">Status: Approved ✓</div>
-      
-      <div class="info-box">
-        <strong>Your Login Credentials:</strong>
-        <table class="credentials-table">
-          <tr>
-            <td>Username:</td>
-            <td><code>${username}</code></td>
-          </tr>
-          <tr>
-            <td>Password:</td>
-            <td><code>${password}</code></td>
-          </tr>
-        </table>
-      </div>
-      
-      <div class="warning-box">
-        <p class="warning-text">
-          <strong>Important:</strong> Please change your password after your first login for security.
-        </p>
-      </div>
-      
-      <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
-      
-      <div class="divider"></div>
-      
-      <div class="info-box">
-        <strong>🚀 What's Next?</strong>
-        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
-          <li>Log in to your dashboard using the credentials above</li>
-          <li>Complete your profile setup</li>
-          <li>Start managing your cook profile</li>
-          <li>Connect with the community</li>
-        </ul>
-      </div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Welcome to ${organizationName}!</p>
-      <div class="footer-links">
-        <a href="mailto:${supportEmail}">Support</a> • 
-        <a href="mailto:${supportEmail}?subject=Unsubscribe">Unsubscribe</a> • 
-        <a href="https://local-cooks-community.vercel.app/privacy">Privacy Policy</a>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-  const textContent = `
-Application Approved - ${organizationName}
-
-Congratulations ${userData.fullName}!
-
-We're excited to inform you that your application has been approved! Welcome to the ${organizationName}.
-
-Status: Approved ✓
-
-Your Login Credentials:
-Username: ${username}
-Password: ${password}
-
-IMPORTANT: Please change your password after your first login for security.
-
-Access your dashboard: https://local-cooks-community.vercel.app/auth?redirect=/dashboard
-
-What's Next?
-- Log in to your dashboard using the credentials above
-- Complete your profile setup
-- Start managing your cook profile
-- Connect with the community
-
-Welcome to ${organizationName}!
-
-If you have any questions, contact us at ${supportEmail}
-
-© ${new Date().getFullYear()} ${organizationName}
-`;
-
-     return sendEmail({
-     to: userData.email,
-     subject,
-     html: htmlContent,
-     text: textContent
-   });
- }
+// Removed unused sendApplicationApprovedEmail function - was causing duplicate emails
+// Full verification emails are now handled by generateFullVerificationEmail only
  
  export async function sendApplicationRejectedEmail(applicationData: any, reason?: string) {
   const supportEmail = getSupportEmail();
@@ -993,7 +867,7 @@ If you have any questions, contact us at ${supportEmail}
    });
  }
 
-// Generate password reset email
+// Generate password reset email with unified design
 export const generatePasswordResetEmail = (
   userData: {
     fullName: string;
@@ -1008,7 +882,7 @@ export const generatePasswordResetEmail = (
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🔒 Password Reset Request - Local Cooks</title>
+  <title>Password Reset Request - Local Cooks</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -1024,35 +898,19 @@ export const generatePasswordResetEmail = (
       <p class="message">
         We received a request to reset your password for your Local Cooks account. If you didn't make this request, you can safely ignore this email.
       </p>
-      
-      <div class="info-box">
-        <strong>🔐 Reset Your Password</strong><br>
+      <p class="message">
         Click the button below to create a new password. This link will expire in 1 hour for security.
-      </div>
-      
-      <a href="${userData.resetUrl}" class="cta-button" style="display: inline-block; margin: 20px 0;">
-        Reset My Password
-      </a>
-      
+      </p>
+      <a href="${userData.resetUrl}" class="cta-button">Reset My Password</a>
       <div class="warning-box">
         <p class="warning-text">
-          <strong>Security Notice:</strong> If you didn't request this password reset, please contact our support team immediately.
+          <strong>Important:</strong> If you didn't request this password reset, please contact our support team immediately.
         </p>
-      </div>
-      
-      <div class="divider"></div>
-      
-      <div class="info-box">
-        <strong>Need Help?</strong><br>
-        If you're having trouble with the button above, copy and paste this link into your browser:<br>
-        <a href="${userData.resetUrl}" style="word-break: break-all; color: #3b82f6;">${userData.resetUrl}</a>
       </div>
     </div>
     <div class="footer">
       <p class="footer-text">Keep your account secure with <strong>Local Cooks</strong></p>
-      <div class="footer-links">
-        <a href="mailto:${process.env.EMAIL_USER?.replace('noreply@', 'support@') || 'support@localcooks.shop'}">contact support</a>
-      </div>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -1073,7 +931,7 @@ export const generatePasswordResetEmail = (
   };
 };
 
-// Generate email verification email
+// Generate email verification email with unified design
 export const generateEmailVerificationEmail = (
   userData: {
     fullName: string;
@@ -1088,7 +946,7 @@ export const generateEmailVerificationEmail = (
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>✨ Verify Your Email - Welcome to Local Cooks!</title>
+  <title>Email Verification Required - Local Cooks</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -1100,43 +958,19 @@ export const generateEmailVerificationEmail = (
       </div>
     </div>
     <div class="content">
-      <h2 class="greeting">Welcome ${userData.fullName}! 🎉</h2>
+      <h2 class="greeting">Welcome ${userData.fullName}!</h2>
       <p class="message">
-        Thank you for joining Local Cooks Community! We're excited to have you on board. To complete your registration and unlock your learning journey, please verify your email address.
+        Thank you for joining Local Cooks Community! We're excited to have you on board.
       </p>
-      
-      <div class="info-box">
-        <strong>✅ Verify Your Email</strong><br>
-        Click the button below to verify your email address and activate your account.
-      </div>
-      
-      <a href="${userData.verificationUrl}" class="cta-button" style="display: inline-block; margin: 20px 0;">
-        Verify My Email
-      </a>
-      
-      <div class="info-box">
-        <strong>🚀 What's Next?</strong>
-        <ul style="margin: 12px 0 0 0; padding-left: 20px;">
-          <li>Complete your profile setup</li>
-          <li>Start your food safety training modules</li>
-          <li>Apply to become a verified cook</li>
-          <li>Join our growing community!</li>
-        </ul>
-      </div>
-      
-      <div class="divider"></div>
-      
-      <div class="info-box">
-        <strong>Need Help?</strong><br>
-        If you're having trouble with the button above, copy and paste this link into your browser:<br>
-        <a href="${userData.verificationUrl}" style="word-break: break-all; color: #3b82f6;">${userData.verificationUrl}</a>
-      </div>
+      <p class="message">
+        To complete your registration and activate your account, please verify your email address by clicking the button below.
+      </p>
+      <a href="${userData.verificationUrl}" class="cta-button">Verify My Email</a>
+      <div class="status-badge">Status: Verification Required</div>
     </div>
     <div class="footer">
       <p class="footer-text">Welcome to the <strong>Local Cooks</strong> community!</p>
-      <div class="footer-links">
-        <a href="mailto:${process.env.EMAIL_USER?.replace('noreply@', 'support@') || 'support@localcooks.shop'}">contact support</a>
-      </div>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -1157,80 +991,54 @@ export const generateEmailVerificationEmail = (
   };
 };
 
-// Proper welcome email function (no more hack!)
+// Generate welcome email with unified design
 export const generateWelcomeEmail = (
   userData: {
     fullName: string;
     email: string;
   }
 ): EmailContent => {
-  const plainText = `Hello ${userData.fullName},
-
-Your Local Cooks Community account has been successfully created and verified.
-
-Account Status: Active
-
-Next Steps:
-* Complete your profile setup
-* Start your food safety training modules  
-* Apply to become a verified cook
-
-Access your dashboard: ${getDashboardUrl()}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}`;
-
-  const html = `<!DOCTYPE html>
+  const html = `
+<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Account Created - Local Cooks Community</title>
-<style>
-body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
-.container { max-width: 600px; margin: 0 auto; background: #fff; }
-.header { background: #2563eb; color: white; padding: 20px; text-align: center; }
-.content { padding: 30px; }
-.status { background: #dcfce7; color: #166534; padding: 10px; border-radius: 5px; margin: 20px 0; }
-.button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-.footer { background: #f8fafc; padding: 20px; text-align: center; color: #64748b; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Created - Local Cooks Community</title>
+  ${getUniformEmailStyles()}
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <h1>Local Cooks</h1>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
+      <p class="message">
+        Welcome to Local Cooks Community! Your account has been successfully created and verified.
+      </p>
+      <p class="message">
+        You can now access your dashboard to complete your profile setup and start your food safety training modules.
+      </p>
+      <div class="status-badge approved">Status: Account Active</div>
+      <a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for joining <strong>Local Cooks</strong> Community!</p>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
   </div>
-  <div class="content">
-    <h2>Hello ${userData.fullName},</h2>
-    <p>Your Local Cooks Community account has been successfully created and verified.</p>
-    <div class="status">Account Status: Active</div>
-    <p><strong>Next Steps:</strong></p>
-    <ul>
-      <li>Complete your profile setup</li>
-      <li>Start your food safety training modules</li>
-      <li>Apply to become a verified cook</li>
-    </ul>
-    <a href="${getDashboardUrl()}" class="button">Access Your Dashboard</a>
-    <p>If you have any questions, please contact us at <a href="mailto:${getSupportEmail()}">${getSupportEmail()}</a></p>
-  </div>
-  <div class="footer">
-    <p>Thank you for joining Local Cooks Community</p>
-    <p><a href="${getWebsiteUrl()}">Visit Website</a> | <a href="mailto:${getSupportEmail()}">Support</a></p>
-  </div>
-</div>
 </body>
 </html>`;
-
-
 
   return {
     to: userData.email,
     subject: 'Account Created - Local Cooks Community',
-    text: plainText,
     html
   };
 };
