@@ -461,39 +461,40 @@ Visit: ${getWebsiteUrl()}
 
   const message = getMessage(applicationData.status);
 
-  // Simplified HTML template
-  const html = `<!DOCTYPE html>
+  // Use uniform email template with proper styling
+  const html = `
+<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>${subject}</title>
-<style>
-body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; }
-.container { max-width: 600px; margin: 0 auto; background: #fff; }
-.header { background: #2563eb; color: white; padding: 20px; text-align: center; }
-.content { padding: 30px; }
-.status { background: #dcfce7; color: #166534; padding: 10px; border-radius: 5px; margin: 20px 0; }
-.button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-.footer { background: #f8fafc; padding: 20px; text-align: center; color: #64748b; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <h1>Local Cooks</h1>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">${message}</p>
+      <div class="status-badge${applicationData.status === 'approved' ? ' approved' : applicationData.status === 'rejected' ? ' rejected' : ''}">
+        Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}
+      </div>
+      ${applicationData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="cta-button">Access Your Dashboard</a>` : ''}
+      <div class="divider"></div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
   </div>
-  <div class="content">
-    <h2>Hello ${applicationData.fullName},</h2>
-    <p>${message}</p>
-    <div class="status">Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}</div>
-    ${applicationData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="button">Access Your Dashboard</a>` : ''}
-    <p>If you have any questions, please contact us at <a href="mailto:${getSupportEmail()}">${getSupportEmail()}</a></p>
-  </div>
-  <div class="footer">
-    <p>Thank you for your interest in Local Cooks Community</p>
-    <p><a href="${getWebsiteUrl()}">Visit Website</a> | <a href="mailto:${getSupportEmail()}">Support</a></p>
-  </div>
-</div>
 </body>
 </html>`;
 
@@ -568,7 +569,27 @@ export const generateFullVerificationEmail = (
         </p>
       </div>
       
-      <a href="${getVendorDashboardUrl()}" class="cta-button">Access Vendor Login →</a>
+      <div class="info-box">
+        <strong>🚀 Next Steps - Choose Your Path:</strong>
+        <p>You now have two important accounts to set up:</p>
+      </div>
+      
+      <div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">
+        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="flex: 1; min-width: 200px; background: #2563eb;">
+          🏪 Access Vendor Account
+        </a>
+        <a href="${getVendorDashboardUrl()}" class="cta-button" style="flex: 1; min-width: 200px; background: #16a34a;">
+          💳 Set Up Stripe Payments
+        </a>
+      </div>
+      
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <p style="margin: 0; font-size: 14px; color: #64748b;">
+          <strong>🏪 Vendor Account:</strong> Use your credentials above to log into your vendor dashboard where you can manage your profile, products, and orders.
+          <br><br>
+          <strong>💳 Stripe Payments:</strong> Set up your payment processing to start receiving payments from customers. This is required to get paid for orders.
+        </p>
+      </div>
       
       <div class="divider"></div>
       
@@ -699,6 +720,66 @@ export const generateApplicationWithoutDocumentsEmail = (
     to: applicationData.email,
     subject: 'Local Cooks Application Confirmation - Next Steps',
     html
+  };
+};
+
+// Generate document update email with unified design
+export const generateDocumentUpdateEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+  }
+): EmailContent => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Update Received - Local Cooks</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
+        <h1 class="logo-text">Local Cooks</h1>
+      </div>
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
+      <p class="message">
+        Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.
+      </p>
+      <p class="message">
+        You'll receive another email once your documents have been reviewed.
+      </p>
+      <div class="status-badge">
+        📄 Document Update Received
+      </div>
+      <div class="divider"></div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: userData.email,
+    subject: "Document Update Received - Local Cooks",
+    html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 

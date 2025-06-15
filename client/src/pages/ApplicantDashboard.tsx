@@ -987,10 +987,44 @@ export default function ApplicantDashboard() {
                                   <h3 className={`font-semibold mb-1 ${isApproved ? 'text-green-800' : 'text-blue-800'}`}>Document Verification Center</h3>
                                   <p className={`text-sm mb-3 ${isApproved ? 'text-green-700' : 'text-blue-700'}`}>
                                     {isApproved 
-                                      ? "Congratulations! Your application has been approved. Update your verified documents anytime."
+                                      ? (() => {
+                                          // Check if documents are pending review
+                                          const hasDocumentsPending = (application.foodSafetyLicenseUrl && application.foodSafetyLicenseStatus === "pending") ||
+                                                                    (application.foodEstablishmentCertUrl && application.foodEstablishmentCertStatus === "pending");
+                                          
+                                          if (hasDocumentsPending) {
+                                            return "🎉 Congratulations! Your application has been approved and we're currently reviewing your documents. We'll notify you once they're verified. Until then, you have access to the full dashboard!";
+                                          }
+                                          return "Congratulations! Your application has been approved. Upload your documents for verification to get started.";
+                                        })()
                                       : "Upload your verification documents to speed up your application review. You can update or replace documents anytime before approval."
                                     }
                                   </p>
+                                  
+                                  {/* Special status message for documents under review */}
+                                  {isApproved && (() => {
+                                    const hasDocumentsPending = (application.foodSafetyLicenseUrl && application.foodSafetyLicenseStatus === "pending") ||
+                                                              (application.foodEstablishmentCertUrl && application.foodEstablishmentCertStatus === "pending");
+                                    
+                                    if (hasDocumentsPending) {
+                                      return (
+                                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                          <div className="flex items-center gap-2">
+                                            <Clock className="h-4 w-4 text-amber-600" />
+                                            <span className="text-sm font-medium text-amber-800">
+                                              Documents Under Review
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-amber-700 mt-1">
+                                            Our team is currently reviewing your submitted documents. This typically takes 1-3 business days. 
+                                            You'll receive an email notification once the review is complete.
+                                          </p>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+
                                   <div className="flex flex-col sm:flex-row gap-2">
                                     <Button
                                       asChild
