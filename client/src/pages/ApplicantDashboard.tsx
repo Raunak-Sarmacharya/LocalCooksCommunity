@@ -27,6 +27,7 @@ import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
+    ArrowRight,
     Award,
     BadgeCheck,
     CalendarDays,
