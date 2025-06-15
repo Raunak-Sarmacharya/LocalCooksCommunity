@@ -296,6 +296,7 @@ export default function MicrolearningModule({
   const [accessLevel, setAccessLevel] = useState<'full' | 'limited'>('limited');
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
   const [applicationInfo, setApplicationInfo] = useState<any>(null);
+  const [showApplicationPrompt, setShowApplicationPrompt] = useState(false);
 
   // Filter videos by current module
   const currentModuleVideos = videos.filter(video => video.module === currentModule);
@@ -454,10 +455,13 @@ export default function MicrolearningModule({
       console.log(`Module completed: ${video.title}`);
     }
     
-    // Auto-advance to next video after a short delay - but only if user is not in rewatch mode
+    // Auto-advance logic - but prevent looping for limited access users
     const isInRewatchMode = completionConfirmed || user?.role === 'admin';
+    const isLimitedAccessUser = accessLevel === 'limited';
+    const isCompletingFirstVideo = currentVideoIndex === 0;
     
-    if (!isInRewatchMode) {
+    if (!isInRewatchMode && !isLimitedAccessUser) {
+      // Only auto-advance for users with full access
       setTimeout(() => {
         const nextIndex = currentVideoIndex + 1;
         const isLastModule = nextIndex >= currentModuleVideos.length;
@@ -476,6 +480,12 @@ export default function MicrolearningModule({
           }
         }
       }, 2000); // 2 second delay to show completion message
+    } else if (isLimitedAccessUser && isCompletingFirstVideo) {
+      // For limited access users completing the sample video, show application prompt
+      setTimeout(() => {
+        setShowApplicationPrompt(true);
+        console.log('Limited access user completed sample video - showing application prompt');
+      }, 2000); // Show prompt after 2 seconds to let completion message display
     }
   };
 
@@ -1083,7 +1093,7 @@ export default function MicrolearningModule({
                             
                             // Navigation logic:
                             // 1. If certification completed - unrestricted navigation
-                            // 2. If full access but not completed - can proceed only if current video is completed
+                            // 2. If full access - free navigation between all accessible videos
                             // 3. If limited access - no navigation beyond first video
                             let nextCanAccess = false;
                             
@@ -1091,10 +1101,10 @@ export default function MicrolearningModule({
                               // Full certification completed OR admin - unrestricted access to all videos
                               nextCanAccess = true;
                             } else if (accessLevel === 'full') {
-                              // Sequential learning - current video must be completed
-                              nextCanAccess = currentCompleted;
+                              // Full access users can navigate freely between videos (no sequential requirement)
+                              nextCanAccess = true;
                             } else {
-                              // Limited access - no navigation
+                              // Limited access - no navigation beyond first video
                               nextCanAccess = false;
                             }
                             
@@ -1122,41 +1132,51 @@ export default function MicrolearningModule({
                                 </div>
                                 
                                 {/* Next Button */}
-                                <button
-                                  onClick={() => !isNextLocked && setCurrentVideoIndex(nextIndex)}
-                                  disabled={isNextLocked}
-                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                    isNextLocked
-                                      ? 'text-gray-400 cursor-not-allowed bg-gray-50'
-                                      : 'text-white bg-primary hover:bg-primary/90'
-                                  }`}
-                                  title={
-                                    isLimitedAccess
-                                      ? 'Complete application to continue'
-                                      : !currentCompleted && !completionConfirmed && user?.role !== 'admin'
-                                      ? 'Complete the current video to proceed'
-                                      : isLastModule
-                                      ? 'End of module'
-                                      : ''
-                                  }
-                                >
-                                  {isLastModule ? (
-                                    <>
-                                      <span>End of Module</span>
-                                      <CheckCircle className="h-4 w-4" />
-                                    </>
-                                  ) : isNextLocked ? (
-                                    <>
-                                      <span>Apply to Access</span>
-                                      <Lock className="h-4 w-4" />
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span>Next</span>
-                                      <ChevronRight className="h-4 w-4" />
-                                    </>
-                                  )}
-                                </button>
+                                {isLimitedAccess ? (
+                                  <Button
+                                    asChild
+                                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white"
+                                  >
+                                    <Link href="/apply">
+                                      <span>Submit Application</span>
+                                      <ArrowRight className="h-4 w-4" />
+                                    </Link>
+                                  </Button>
+                                ) : (
+                                  <button
+                                    onClick={() => !isNextLocked && setCurrentVideoIndex(nextIndex)}
+                                    disabled={isNextLocked}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                      isNextLocked
+                                        ? 'text-gray-400 cursor-not-allowed bg-gray-50'
+                                        : 'text-white bg-primary hover:bg-primary/90'
+                                    }`}
+                                    title={
+                                      isNextLocked
+                                        ? 'This video is locked - complete previous videos or apply for access'
+                                        : isLastModule
+                                        ? 'End of module'
+                                        : ''
+                                    }
+                                  >
+                                    {isLastModule ? (
+                                      <>
+                                        <span>End of Module</span>
+                                        <CheckCircle className="h-4 w-4" />
+                                      </>
+                                    ) : isNextLocked ? (
+                                      <>
+                                        <span>Apply to Access</span>
+                                        <Lock className="h-4 w-4" />
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span>Next</span>
+                                        <ChevronRight className="h-4 w-4" />
+                                      </>
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             );
                           })()}
@@ -1164,6 +1184,58 @@ export default function MicrolearningModule({
                       </div>
                     </div>
                   </div>
+
+                  {/* Application Prompt for Limited Access Users */}
+                  {showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 p-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white shadow-lg"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <span className="text-2xl">🎓</span>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-xl font-bold mb-2">
+                            Great job completing your first video! 🎉
+                          </h3>
+                          <p className="text-blue-100 mb-4 leading-relaxed">
+                            You've just finished our sample food safety training video. Ready to unlock access to all 22 professional training videos and earn your official food safety certification?
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <Button 
+                              asChild
+                              className="bg-white text-blue-600 hover:bg-blue-50 font-semibold"
+                            >
+                              <Link href="/apply">
+                                <span className="mr-2">📝</span>
+                                Submit Application Now
+                              </Link>
+                            </Button>
+                            <Button 
+                              variant="outline"
+                              onClick={() => setShowApplicationPrompt(false)}
+                              className="border-white/30 bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm"
+                            >
+                              Continue Exploring
+                            </Button>
+                          </div>
+                          <p className="text-xs text-blue-200 mt-3">
+                            💡 Application approval unlocks: Full video library • Interactive exercises • Official certification • Chef network access
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowApplicationPrompt(false)}
+                          className="text-white hover:bg-white/20 p-2"
+                        >
+                          ✕
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
                 </motion.div>
 
                 {/* Modern Module Grid */}
@@ -1249,15 +1321,30 @@ export default function MicrolearningModule({
                       return (
                         <button
                           key={video.id}
-                          onClick={() => canAccess && setCurrentVideoIndex(index)}
-                          disabled={isAccessLocked}
+                          onClick={() => {
+                            if (canAccess) {
+                              setCurrentVideoIndex(index);
+                            } else if (accessLevel === 'limited') {
+                              // Show application prompt instead of doing nothing
+                              setShowApplicationPrompt(true);
+                            }
+                          }}
                           className={`relative p-2 sm:p-3 rounded-xl border transition-all duration-200 ${
                             isCurrent
                               ? 'border-primary bg-primary/5 shadow-sm'
+                              : isAccessLocked && accessLevel === 'limited'
+                              ? 'border-gray-200 bg-gray-50 opacity-60 hover:opacity-80 cursor-pointer'
                               : isAccessLocked
                               ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
                               : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                           }`}
+                          title={
+                            isAccessLocked && accessLevel === 'limited'
+                              ? 'Click to submit application for access'
+                              : isAccessLocked
+                              ? 'Complete previous videos first'
+                              : ''
+                          }
                         >
                           {/* Progress Ring */}
                           <div className="absolute -top-1 -right-1 w-6 h-6 sm:w-7 sm:h-7">
