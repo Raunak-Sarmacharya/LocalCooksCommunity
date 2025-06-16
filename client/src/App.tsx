@@ -25,6 +25,8 @@ const Admin = lazy(() => import("@/pages/Admin"));
 const ApplicantDashboard = lazy(() => import("@/pages/ApplicantDashboard"));
 const DocumentVerification = lazy(() => import("@/pages/DocumentVerification"));
 const Microlearning = lazy(() => import("@/pages/Microlearning"));
+const MicrolearningOverview = lazy(() => import("@/pages/MicrolearningOverview"));
+const MicrolearningPlayer = lazy(() => import("@/pages/MicrolearningPlayer"));
 const EmailVerificationTest = lazy(() => import("@/components/EmailVerificationTest"));
 
 // Loading component
@@ -229,6 +231,8 @@ function Router() {
         </Route>
         <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
+        <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
+        <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />
         <ProtectedRoute path="/microlearning" component={Microlearning} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin">
