@@ -413,7 +413,7 @@ export default function ApplicantDashboard() {
       if (hasApplicationsUnderReview) {
         // More frequent updates when applications are being reviewed
         return 10000; // 10 seconds
-      } else if (data?.accessLevel === 'limited') {
+      } else if ((data as any)?.accessLevel === 'limited') {
         // Check more frequently if user still has limited access
         return 15000; // 15 seconds
       } else {

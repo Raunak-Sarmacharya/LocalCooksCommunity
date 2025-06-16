@@ -270,28 +270,17 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
             })}
           </div>
 
-          {/* Action Section */}
-          {!isApplicationApproved && (
+          {/* Action Section - Simplified without Start Application button */}
+          {!isApplicationApproved && hasSubmittedApplication && (
             <div className="border-t border-gray-200 pt-4">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
-                  {!hasSubmittedApplication ? (
-                    <Button asChild className="h-10 text-sm font-medium">
-                      <Link href="/apply">
-                        <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
-                        {hasRejectedApplications || hasCancelledApplications ? 
-                          "Submit New Application" : 
-                          "Start Application Now"}
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button asChild variant="outline" className="h-10 text-sm">
-                      <Link href="/dashboard">
-                        <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
-                        Check Application Status
-                      </Link>
-                    </Button>
-                  )}
+                  <Button asChild variant="outline" className="h-10 text-sm">
+                    <Link href="/dashboard">
+                      <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
+                      Check Application Status
+                    </Link>
+                  </Button>
                   
                   <Button asChild variant="ghost" size="sm" className="h-8 text-xs text-gray-600">
                     <Link href="/">
