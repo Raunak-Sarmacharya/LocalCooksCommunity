@@ -796,20 +796,45 @@ export default function ApplicantDashboard() {
                           <span className="text-lg">📋</span>
                           Training Modules
                         </h4>
-                        <div className="space-y-2 text-sm">
+                        <div className="space-y-3 text-sm">
                           <div className="flex items-center justify-between">
                             <span className="text-gray-700">Module 1: Food Safety Basics</span>
-                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
-                              14 Videos
-                            </Badge>
+                            <div className="flex gap-1">
+                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                                1 Available
+                              </Badge>
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
+                                13 Locked
+                              </Badge>
+                            </div>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-gray-700">Module 2: Safety & Hygiene How-To's</span>
                             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
-                              8 Videos
+                              8 Locked
                             </Badge>
                           </div>
                         </div>
+                      </div>
+                      
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="h-4 w-4 text-blue-600" />
+                          <span className="font-semibold text-blue-900 text-sm">Access Status</span>
+                        </div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span className="text-xs font-medium text-blue-800">Available Now: 1 Video</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="text-xs font-medium text-blue-800">Application Required: 21 Videos</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-blue-800 leading-relaxed">
+                          Complete your application to unlock the full curriculum and earn your completion certificate.
+                        </p>
                       </div>
                     </div>
 
@@ -839,23 +864,23 @@ export default function ApplicantDashboard() {
                         </div>
                       </div>
                       
-                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
                         <div className="flex items-center gap-2 mb-2">
-                          <Shield className="h-4 w-4 text-blue-600" />
+                          <span className="text-lg">🚀</span>
                           <span className="font-semibold text-blue-900 text-sm">Get Started Today</span>
                         </div>
                         <p className="text-xs text-blue-800 leading-relaxed">
-                          Begin with the introduction video immediately. Complete your application to access the full curriculum and earn your completion certificate.
+                          Begin with the introduction video immediately. Track your progress as you advance through your food safety education journey.
                         </p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="flex justify-center">
                     <Button
                       asChild
                       size="lg"
-                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-8 py-3 h-auto"
+                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-8 py-3 h-auto w-full sm:w-auto"
                     >
                       <Link href="/microlearning">
                         <GraduationCap className="mr-3 h-5 w-5" />
@@ -863,22 +888,6 @@ export default function ApplicantDashboard() {
                         <ArrowRight className="ml-3 h-5 w-5" />
                       </Link>
                     </Button>
-                    
-                    <div className="bg-white/60 rounded-lg p-3 border border-gray-200 flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span className="text-sm font-medium text-gray-700">Available Now: 1 Video</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <span className="text-sm font-medium text-gray-700">Application Required: 21 Videos</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-600 leading-relaxed">
-                        <span className="font-medium">Smart Progress System:</span> Track your journey and see exactly what steps unlock additional content as you advance through your food safety education.
-                      </p>
-                    </div>
                   </div>
                 </>
               )}

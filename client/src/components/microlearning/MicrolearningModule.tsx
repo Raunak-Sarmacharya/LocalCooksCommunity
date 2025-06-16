@@ -22,6 +22,7 @@ import { Link } from 'wouter';
 import CompletionTracker from './CompletionTracker';
 import UnlockProgress from './UnlockProgress';
 import VideoPlayer from './VideoPlayer';
+import { Badge } from '@/components/ui/badge';
 
 interface VideoData {
   id: string;
@@ -603,13 +604,32 @@ export default function MicrolearningModule({
                     </div>
                     <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
                       <div className="flex flex-col items-center">
-                        <span className="text-lg font-semibold text-primary">{accessLevel === 'limited' ? '1' : '14'}</span>
-                        <span>Food Safety Basics Videos {accessLevel === 'limited' ? 'Available' : ''}</span>
+                        <div className="flex gap-1 mb-1">
+                          {accessLevel === 'limited' ? (
+                            <>
+                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                                1 Available
+                              </Badge>
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
+                                13 Locked
+                              </Badge>
+                            </>
+                          ) : (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                              14 Available
+                            </Badge>
+                          )}
+                        </div>
+                        <span>Food Safety Basics</span>
                       </div>
                       <div className="w-px h-8 bg-gray-300"></div>
                       <div className="flex flex-col items-center">
-                        <span className="text-lg font-semibold text-primary">{accessLevel === 'limited' ? '0' : '8'}</span>
-                        <span>Safety & Hygiene Videos {accessLevel === 'limited' ? 'Locked' : ''}</span>
+                        <div className="flex gap-1 mb-1">
+                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
+                            {accessLevel === 'limited' ? '8 Locked' : '8 Available'}
+                          </Badge>
+                        </div>
+                        <span>Safety & Hygiene</span>
                       </div>
                     </div>
                     
