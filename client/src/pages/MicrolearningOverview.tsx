@@ -386,25 +386,30 @@ export default function MicrolearningOverview() {
                       <Shield className="h-8 w-8 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-bold text-blue-900 mb-2">🎓 Get Official License</h3>
-                      <p className="text-blue-700">Take the next step with SkillsPass NL to enhance your food safety credentials with additional training.</p>
+                      <h3 className="text-2xl font-bold text-blue-900 mb-2">🎓 Get Food Safety Certificate</h3>
+                      <p className="text-blue-700">Continue your food safety journey with SkillsPass NL's free Food Safety Basics certification.</p>
                     </div>
                     <div className="bg-blue-100 rounded-2xl p-4 space-y-4">
                       <div className="text-left">
-                        <p className="font-semibold text-blue-800 mb-2">Why SkillsPass NL?</p>
+                        <p className="font-semibold text-blue-800 mb-2">How to Get Certified:</p>
                         <div className="space-y-2 text-sm text-blue-700">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                            <span>Free online training courses</span>
+                          <div className="flex items-start gap-2">
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
+                            <span>Browse courses and find "Food Safety Basics"</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                            <span>Government-sponsored certification</span>
+                          <div className="flex items-start gap-2">
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
+                            <span>Register for free SkillsPass NL account</span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                            <span>Lifelong e-Certificates</span>
+                          <div className="flex items-start gap-2">
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
+                            <span>Complete training & earn lifelong e-Certificate</span>
                           </div>
+                        </div>
+                        <div className="mt-3 p-2 bg-blue-50 rounded-lg">
+                          <p className="text-xs text-blue-600">
+                            <span className="font-semibold">✨ Bonus:</span> Access 35+ additional training programs
+                          </p>
                         </div>
                       </div>
                       <Button 
@@ -414,7 +419,7 @@ export default function MicrolearningOverview() {
                         }}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        Visit SkillsPass NL
+                        Start Free Certification
                       </Button>
                     </div>
                   </div>
