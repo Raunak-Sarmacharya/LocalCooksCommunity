@@ -11,6 +11,7 @@ import {
     Award,
     CheckCircle,
     Download,
+    ExternalLink,
     FileText,
     GraduationCap,
     Play,
@@ -369,6 +370,54 @@ export default function MicrolearningOverview() {
                           Download
                         </Button>
                       </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* SkillPass.nl Official License Card - For completed users */}
+              {isCompleted && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl p-8 border-2 border-blue-200 shadow-lg"
+                >
+                  <div className="text-center space-y-6">
+                    <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto">
+                      <Shield className="h-8 w-8 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-blue-900 mb-2">🎓 Get Official License</h3>
+                      <p className="text-blue-700">Take the next step with SkillPass.nl to obtain your official food safety license.</p>
+                    </div>
+                    <div className="bg-blue-100 rounded-2xl p-4 space-y-4">
+                      <div className="text-left">
+                        <p className="font-semibold text-blue-800 mb-2">Why SkillPass.nl?</p>
+                        <div className="space-y-2 text-sm text-blue-700">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <span>Officially recognized certification</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <span>Industry standard qualification</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <span>Enhanced career opportunities</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        onClick={() => {
+                          window.open('https://skillpass.nl', '_blank', 'noopener,noreferrer');
+                        }}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Visit SkillPass.nl
+                      </Button>
                     </div>
                   </div>
                 </motion.div>
