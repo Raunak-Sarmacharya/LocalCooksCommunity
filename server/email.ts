@@ -261,13 +261,14 @@ const getUniformEmailStyles = () => `
   .header { 
     background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); 
     color: white; 
-    padding: 0; 
+    padding: 24px 32px; 
     text-align: center; 
   }
   .header-image {
-    width: 100%;
+    max-width: 280px;
     height: auto;
     display: block;
+    margin: 0 auto;
   }
   .content { 
     padding: 40px 32px; 
