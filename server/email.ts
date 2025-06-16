@@ -559,11 +559,12 @@ export const generateFullVerificationEmail = (
         <p>You now have two important accounts to set up:</p>
       </div>
       
-      <div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">
-        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="flex: 1; min-width: 200px; background: #2563eb; color: white !important;">
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="display: inline-block; width: 280px; max-width: 90%; background: #2563eb; color: white !important; margin-bottom: 16px;">
           🏪 Access Vendor Account
         </a>
-        <a href="${getVendorDashboardUrl()}" class="cta-button" style="flex: 1; min-width: 200px; background: #16a34a; color: white !important;">
+        <br>
+        <a href="${getVendorDashboardUrl()}" class="cta-button" style="display: inline-block; width: 280px; max-width: 90%; background: #16a34a; color: white !important;">
           💳 Set Up Stripe Payments
         </a>
       </div>
