@@ -145,15 +145,13 @@ export default function MicrolearningOverview() {
   const hasFullAccess = trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication;
   const isCompleted = microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed;
 
-  // Add debug logging to understand what data we're getting
+  // Add debug logging to understand what data we're getting (fixed dependencies)
   React.useEffect(() => {
-    if (microlearningCompletion) {
+    if (microlearningCompletion || trainingAccess) {
       console.log('🎯 Microlearning completion data:', microlearningCompletion);
-      console.log('🎯 Is completed?', isCompleted);
-      console.log('🎯 Has full access?', hasFullAccess);
       console.log('🎯 Training access data:', trainingAccess);
     }
-  }, [microlearningCompletion, isCompleted, hasFullAccess, trainingAccess]);
+  }, [microlearningCompletion, trainingAccess]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
