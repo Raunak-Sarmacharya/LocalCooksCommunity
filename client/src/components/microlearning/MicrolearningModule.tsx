@@ -586,12 +586,12 @@ export default function MicrolearningModule({
               
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight px-4">
                 Food Safety Training
-                <span className="block text-primary">Professional Video Modules</span>
+                <span className="block text-primary">Video Learning Modules</span>
               </h1>
               
               <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed px-4">
-                Access industry-leading food safety education through our curated collection of Unilever Food Solutions training videos. These HACCP-based modules provide practical guidance on food safety fundamentals and hygiene best practices—ideal for familiarizing yourself with standards, refreshing existing knowledge, or supporting your certification preparation. <br /> <br />
-                <strong className="font-semibold text-primary">Note:</strong> This training is designed to support your learning and certification preparation, but does not itself confer certification.
+                Enhance your food safety knowledge through our curated collection of Unilever Food Solutions training videos. These HACCP-based modules provide practical guidance on food safety fundamentals and hygiene best practices—ideal for learning industry standards, building foundational knowledge, or supporting your ongoing professional development. <br /> <br />
+                <strong className="font-semibold text-primary">Note:</strong> This training provides valuable learning content and upon completion, you'll receive a training completion certificate.
               </p>
 
               <div className="max-w-2xl mx-auto px-4">
@@ -603,13 +603,13 @@ export default function MicrolearningModule({
                     </div>
                     <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
                       <div className="flex flex-col items-center">
-                        <span className="text-lg font-semibold text-primary">14</span>
-                        <span>Food Safety Basics Videos</span>
+                        <span className="text-lg font-semibold text-primary">{accessLevel === 'limited' ? '1' : '14'}</span>
+                        <span>Food Safety Basics Videos {accessLevel === 'limited' ? 'Available' : ''}</span>
                       </div>
                       <div className="w-px h-8 bg-gray-300"></div>
                       <div className="flex flex-col items-center">
-                        <span className="text-lg font-semibold text-primary">8</span>
-                        <span>Safety & Hygiene Demonstrations</span>
+                        <span className="text-lg font-semibold text-primary">{accessLevel === 'limited' ? '0' : '8'}</span>
+                        <span>Safety & Hygiene Videos {accessLevel === 'limited' ? 'Locked' : ''}</span>
                       </div>
                     </div>
                     
@@ -682,8 +682,8 @@ export default function MicrolearningModule({
                   <Award className="h-8 w-8 text-green-600" />
                 </div>
                 <div className="flex-1 min-w-0 text-center sm:text-left">
-                  <h3 className="font-semibold text-green-900 mb-1">Completion Certificate Available</h3>
-                  <p className="text-sm text-green-700 mb-2">Congratulations! You have completed all food safety training videos. You can now download your completion certificate.</p>
+                  <h3 className="font-semibold text-green-900 mb-1">Training Completion Certificate Available</h3>
+                  <p className="text-sm text-green-700 mb-2">Congratulations! You have completed all food safety training videos. You can now download your training completion certificate.</p>
                 </div>
                 <Button 
                   variant="outline" 
@@ -857,7 +857,7 @@ export default function MicrolearningModule({
                         Welcome to Your Food Safety Journey!
                       </h3>
                       <p className="text-base text-gray-700 leading-relaxed">
-                        Start your professional food safety training today! Watch our introduction video below to get a taste of the comprehensive curriculum designed specifically for Newfoundland chefs. Once you complete your application, you'll gain access to all 22 training videos and earn your food safety certification.
+                        Start your food safety training today! Watch our introduction video below to get a taste of the comprehensive curriculum featuring Unilever Food Solutions content. Once you complete your application, you'll gain access to all 22 training videos and earn your training completion certificate.
                       </p>
                     </div>
                     
@@ -869,7 +869,7 @@ export default function MicrolearningModule({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                         <div className="flex items-center gap-2 text-gray-700">
                           <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                          <span>22 Professional Training Videos</span>
+                          <span>22 Training Videos</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-700">
                           <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
@@ -877,7 +877,7 @@ export default function MicrolearningModule({
                         </div>
                         <div className="flex items-center gap-2 text-gray-700">
                           <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                          <span>Food Safety Certification</span>
+                          <span>Training Completion Certificate</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-700">
                           <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
@@ -925,7 +925,7 @@ export default function MicrolearningModule({
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                   >
-                    Food Safety Basics (14)
+                    Food Safety Basics ({accessLevel === 'limited' ? '1' : '14'})
                   </button>
                   <button
                     onClick={() => { 
@@ -1190,7 +1190,7 @@ export default function MicrolearningModule({
                             Great job completing your first video! 🎉
                           </h3>
                           <p className="text-blue-100 mb-4 leading-relaxed">
-                            You've just finished our sample food safety training video. Ready to unlock access to all 22 professional training videos and earn your official food safety certification?
+                            You've just finished our sample food safety training video. Ready to unlock access to all 22 training videos and earn your training completion certificate?
                           </p>
                           <div className="flex flex-col sm:flex-row gap-3">
                             <Button 

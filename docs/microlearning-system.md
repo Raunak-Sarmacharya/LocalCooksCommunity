@@ -1,19 +1,19 @@
-# Microlearning System - Newfoundland Food Safety Training Preparation for Skillpass.nl
+# Microlearning System - Food Safety Training Program
 
 ## Overview
 
-The Local Cooks microlearning system provides comprehensive food safety training preparation designed specifically for new chefs in Newfoundland and Labrador. The system features training content based on Health Canada, the Canadian Food Inspection Agency (CFIA), and the NL Department of Health & Community Services standards to prepare users for Food Handler Certification at skillpass.nl and licensing requirements.
+The Local Cooks microlearning system provides comprehensive food safety training featuring content from Unilever Food Solutions. The system features HACCP-based training content designed to help users build foundational knowledge in food safety principles and best practices.
 
 ### Key Features
 
-- **Skillpass.nl Preparation Content**: Training materials based on official federal and provincial sources
-- **Newfoundland-Specific Training**: Tailored to NL Food Premises Regulations and skillpass.nl certification requirements
-- **Comprehensive Curriculum**: 10 training modules covering all essential food safety topics
+- **Comprehensive Training Content**: Training materials featuring Unilever Food Solutions content
+- **HACCP-Based Curriculum**: Content covering HACCP principles and food safety fundamentals
+- **Comprehensive Curriculum**: 22 training videos covering essential food safety topics
 - **Authenticated Access**: Requires LocalCooks registration and login
 - **Self-Paced Learning**: Complete training at your own pace with automatic progress saving
 - **Mobile Responsive**: Works on desktop, tablet, and mobile devices
-- **Completion Certificates**: Training completion certificates for skillpass.nl preparation
-- **Progress Tracking**: Real-time progress monitoring across all 10 modules
+- **Training Completion Certificates**: Training completion certificates available upon finishing all modules
+- **Progress Tracking**: Real-time progress monitoring across both modules
 
 ## Training Modules
 

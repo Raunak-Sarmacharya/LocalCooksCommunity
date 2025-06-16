@@ -589,8 +589,7 @@ export default function ApplicantDashboard() {
                     isFullyVerified =
                       app.status === "approved" &&
                       app.foodSafetyLicenseStatus === "approved" &&
-                      (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved") &&
-                      microlearningCompletion?.confirmed;
+                      (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved");
                   }
                   return (
                     <>
@@ -772,23 +771,23 @@ export default function ApplicantDashboard() {
                 <>
                   <div className="flex items-center gap-3 mb-4">
                     <h2 className="text-xl md:text-2xl font-bold text-gray-900">
-                      🎓 Professional Food Safety Training
+                      🎓 Food Safety Training
                     </h2>
                     {isLoadingCompletion && (
                       <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                     )}
-                    <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
-                      Industry Certified
+                    <Badge className="bg-green-100 text-green-800 border-green-300 text-xs">
+                      HACCP-Based
                     </Badge>
                   </div>
                   
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                     <div className="space-y-4">
                       <div>
-                        <h3 className="font-semibold text-gray-900 mb-2">🇨🇦 Newfoundland-Specific Curriculum</h3>
+                        <h3 className="font-semibold text-gray-900 mb-2">🍽️ Comprehensive Food Safety Curriculum</h3>
                         <p className="text-sm text-gray-700 leading-relaxed">
-                          Master food safety standards with our comprehensive 22-video program designed specifically for Newfoundland & Labrador chefs. 
-                          Covers HACCP principles, local regulations, and industry best practices.
+                          Master food safety fundamentals with our 22-video program featuring content from Unilever Food Solutions. 
+                          Covers HACCP principles, hygiene best practices, and industry-standard procedures.
                         </p>
                       </div>
                       
@@ -823,15 +822,15 @@ export default function ApplicantDashboard() {
                         <div className="space-y-2 text-sm">
                           <div className="flex items-center gap-2 text-green-800">
                             <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>Food Safety Certification</span>
+                            <span>Food Safety Knowledge</span>
                           </div>
                           <div className="flex items-center gap-2 text-green-800">
                             <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>HACCP Knowledge</span>
+                            <span>HACCP Understanding</span>
                           </div>
                           <div className="flex items-center gap-2 text-green-800">
                             <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>Professional Credentials</span>
+                            <span>Training Completion Certificate</span>
                           </div>
                           <div className="flex items-center gap-2 text-green-800">
                             <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
@@ -846,7 +845,7 @@ export default function ApplicantDashboard() {
                           <span className="font-semibold text-blue-900 text-sm">Get Started Today</span>
                         </div>
                         <p className="text-xs text-blue-800 leading-relaxed">
-                          Begin with the introduction video immediately. Complete your application to access the full curriculum and earn your certification.
+                          Begin with the introduction video immediately. Complete your application to access the full curriculum and earn your completion certificate.
                         </p>
                       </div>
                     </div>
@@ -869,11 +868,11 @@ export default function ApplicantDashboard() {
                       <div className="flex items-center gap-3 mb-2">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span className="text-sm font-medium text-gray-700">Available Now</span>
+                          <span className="text-sm font-medium text-gray-700">Available Now: 1 Video</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <span className="text-sm font-medium text-gray-700">Application Required</span>
+                          <span className="text-sm font-medium text-gray-700">Application Required: 21 Videos</span>
                         </div>
                       </div>
                       <p className="text-xs text-gray-600 leading-relaxed">
