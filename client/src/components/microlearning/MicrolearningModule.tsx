@@ -1193,8 +1193,9 @@ export default function MicrolearningModule({
                     </div>
                   </div>
 
-                  {/* Application Prompt for Limited Access Users */}
-                  {showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0 && (
+                  {/* Application Prompt for Limited Access Users - Only show after first video completion */}
+                  {showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0 && 
+                   userProgress.find(p => p.videoId === currentModuleVideos[0]?.id)?.completed && (
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1315,6 +1316,11 @@ export default function MicrolearningModule({
                     overallProgress={overallProgress}
                     completedCount={userProgress.filter(p => p.completed).length}
                     totalCount={videos.length}
+                    accessLevel={accessLevel}
+                    completionConfirmed={completionConfirmed}
+                    userRole={user?.role}
+                    currentModuleVideos={currentModuleVideos}
+                    userProgress={userProgress}
                     onVideoClick={(videoId, videoIndex) => {
                       // Find the video in the current module
                       const moduleVideoIndex = currentModuleVideos.findIndex(v => v.id === videoId);
