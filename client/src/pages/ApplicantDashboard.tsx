@@ -770,7 +770,6 @@ export default function ApplicantDashboard() {
                 // Training Not Completed Display
                 <>
                   <div className="flex items-center gap-3 mb-4">
-                    <GraduationCap className="h-6 w-6 text-primary" />
                     <h2 className="text-xl md:text-2xl font-bold text-gray-900">
                       Food Safety Training
                     </h2>
@@ -783,34 +782,36 @@ export default function ApplicantDashboard() {
                   </div>
                   
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-2">🍽️ Comprehensive Food Safety Curriculum</h3>
-                        <p className="text-sm text-gray-700 leading-relaxed">
-                          Master food safety fundamentals with our 22-video program featuring content from Unilever Food Solutions. 
-                          Covers HACCP principles, hygiene best practices, and industry-standard procedures.
-                        </p>
-                      </div>
-                      
-                      <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
-                        <h4 className="font-semibold text-gray-900 mb-3">Training Modules</h4>
-                        <div className="space-y-3 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-700">Module 1: Food Safety Basics</span>
-                            <div className="flex gap-1">
-                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
-                                1 Available
-                              </Badge>
-                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
-                                13 Locked
+                    <div className="flex flex-col h-full">
+                      <div className="flex-grow space-y-4">
+                        <div>
+                          <h3 className="font-semibold text-gray-900 mb-2">🍽️ Comprehensive Food Safety Curriculum</h3>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            Master food safety fundamentals with our 22-video program featuring content from Unilever Food Solutions. 
+                            Covers HACCP principles, hygiene best practices, and industry-standard procedures.
+                          </p>
+                        </div>
+                        
+                        <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
+                          <h4 className="font-semibold text-gray-900 mb-3">Training Modules</h4>
+                          <div className="space-y-3 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-700">Module 1: Food Safety Basics</span>
+                              <div className="flex gap-1">
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                                  1 Available
+                                </Badge>
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
+                                  13 Locked
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-700">Module 2: Safety & Hygiene How-To's</span>
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
+                                8 Locked
                               </Badge>
                             </div>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-700">Module 2: Safety & Hygiene How-To's</span>
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
-                              8 Locked
-                            </Badge>
                           </div>
                         </div>
                       </div>
@@ -836,28 +837,30 @@ export default function ApplicantDashboard() {
                       </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-                        <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
-                          <span className="text-lg">🏆</span>
-                          What You'll Achieve
-                        </h4>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center gap-2 text-green-800">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>Food Safety Knowledge</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-green-800">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>HACCP Understanding</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-green-800">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>Training Completion Certificate</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-green-800">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            <span>Lifetime Access to Materials</span>
+                    <div className="flex flex-col h-full">
+                      <div className="flex-grow">
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                          <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
+                            <span className="text-lg">🏆</span>
+                            What You'll Achieve
+                          </h4>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center gap-2 text-green-800">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>Food Safety Knowledge</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-green-800">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>HACCP Understanding</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-green-800">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>Training Completion Certificate</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-green-800">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>Lifetime Access to Materials</span>
+                            </div>
                           </div>
                         </div>
                       </div>
