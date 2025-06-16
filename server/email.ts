@@ -261,25 +261,13 @@ const getUniformEmailStyles = () => `
   .header { 
     background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); 
     color: white; 
-    padding: 32px 24px; 
+    padding: 0; 
     text-align: center; 
   }
-  .logo-container {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  .logo-image {
-    height: 40px;
-    width: auto;
-  }
-  .logo-text {
-    font-family: 'Lobster', cursive;
-    font-size: 32px;
-    font-weight: normal;
-    margin: 0;
-    letter-spacing: -0.5px;
-    color: white;
+  .header-image {
+    width: 100%;
+    height: auto;
+    display: block;
   }
   .content { 
     padding: 40px 32px; 
@@ -476,10 +464,7 @@ Visit: ${getWebsiteUrl()}
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${applicationData.fullName},</h2>
@@ -539,10 +524,7 @@ export const generateFullVerificationEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Congratulations ${userData.fullName}!</h2>
@@ -640,10 +622,7 @@ export const generateApplicationWithDocumentsEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${applicationData.fullName},</h2>
@@ -693,10 +672,7 @@ export const generateApplicationWithoutDocumentsEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${applicationData.fullName},</h2>
@@ -744,10 +720,7 @@ export const generateDocumentUpdateEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${userData.fullName},</h2>
@@ -803,10 +776,7 @@ export async function sendApplicationReceivedEmail(applicationData: any) {
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${applicationData.fullName},</h2>
@@ -883,10 +853,7 @@ If you have any questions, contact us at ${supportEmail}
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${applicationData.fullName},</h2>
@@ -971,10 +938,7 @@ export const generatePasswordResetEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${userData.fullName},</h2>
@@ -1035,10 +999,7 @@ export const generateEmailVerificationEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Welcome ${userData.fullName}!</h2>
@@ -1093,10 +1054,7 @@ export const generateWelcomeEmail = (
 <body>
   <div class="email-container">
     <div class="header">
-      <div class="logo-container">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/logo-white.png" alt="Local Cooks Logo" class="logo-image" />
-        <h1 class="logo-text">Local Cooks</h1>
-      </div>
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${userData.fullName},</h2>
