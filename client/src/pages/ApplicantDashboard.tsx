@@ -628,17 +628,6 @@ export default function ApplicantDashboard() {
           animate="visible"
         >
           <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-            <div className={`${
-              microlearningCompletion?.confirmed
-                ? "bg-emerald-100"
-                : "bg-green-100"
-            } p-3 rounded-full`}>
-              {microlearningCompletion?.confirmed ? (
-                <Trophy className="h-6 w-6 text-emerald-600" />
-              ) : (
-                <GraduationCap className="h-6 w-6 text-green-600" />
-              )}
-            </div>
             <div className="flex-1">
               {microlearningCompletion?.confirmed ? (
                 // Completed Training Display
@@ -770,7 +759,9 @@ export default function ApplicantDashboard() {
                 // Training Not Completed Display
                 <>
                   <div className="flex items-center gap-3 mb-4">
-                    <GraduationCap className="h-6 w-6 text-green-600" />
+                    <div className="bg-green-100 p-3 rounded-full">
+                      <GraduationCap className="h-6 w-6 text-green-600" />
+                    </div>
                     <h2 className="text-xl md:text-2xl font-bold text-gray-900">
                       Food Safety Training
                     </h2>
@@ -793,7 +784,7 @@ export default function ApplicantDashboard() {
                           </p>
                         </div>
                         
-                        <div className="bg-white/60 rounded-lg p-4 border border-gray-200 mb-4">
+                        <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
                           <h4 className="font-semibold text-gray-900 mb-3">Training Modules</h4>
                           <div className="space-y-3 text-sm">
                             <div className="flex items-center justify-between">
@@ -839,7 +830,7 @@ export default function ApplicantDashboard() {
                     </div>
 
                     <div className="flex flex-col h-full">
-                      <div className="flex-grow mb-4">
+                      <div className="flex-grow">
                         <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
                           <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
                             <span className="text-lg">🏆</span>
@@ -866,7 +857,7 @@ export default function ApplicantDashboard() {
                         </div>
                       </div>
                       
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 mt-4">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg">🚀</span>
                           <span className="font-semibold text-blue-900 text-sm">Get Started Today</span>
