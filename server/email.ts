@@ -519,7 +519,7 @@ export const generateFullVerificationEmail = (
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vendor Account Approved - Login Credentials Included</title>
+  <title>Chef Account Approved - Login Credentials Included</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -559,19 +559,20 @@ export const generateFullVerificationEmail = (
         <p>You now have two important accounts to set up:</p>
       </div>
       
-      <div style="text-align: center; margin: 24px 0;">
-        <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="display: inline-block; width: 280px; max-width: 90%; background: #2563eb; color: white !important; margin-bottom: 16px;">
-          🏪 Access Vendor Account
-        </a>
-        <br>
-        <a href="${getVendorDashboardUrl()}" class="cta-button" style="display: inline-block; width: 280px; max-width: 90%; background: #16a34a; color: white !important;">
-          💳 Set Up Stripe Payments
-        </a>
+      <div style="text-align: center; margin: 24px 0; width: 100%;">
+        <div style="display: block; margin: 0 auto; max-width: 320px;">
+          <a href="https://localcook.shop/app/shop/index.php" class="cta-button" style="display: block; width: 100%; background: #2563eb; color: white !important; margin-bottom: 16px; box-sizing: border-box;">
+            👨‍🍳 Access Chef Dashboard
+          </a>
+          <a href="${getVendorDashboardUrl()}" class="cta-button" style="display: block; width: 100%; background: #16a34a; color: white !important; box-sizing: border-box;">
+            💳 Set Up Stripe Payments
+          </a>
+        </div>
       </div>
       
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
         <p style="margin: 0; font-size: 14px; color: #64748b;">
-          <strong>🏪 Vendor Account:</strong> Use your credentials above to log into your vendor dashboard where you can manage your profile, products, and orders.
+          <strong>👨‍🍳 Chef Dashboard:</strong> Use your credentials above to log into your chef dashboard where you can manage your profile, products, and orders.
           <br><br>
           <strong>💳 Stripe Payments:</strong> Set up your payment processing to start receiving payments from customers. This is required to get paid for orders.
         </p>
@@ -581,7 +582,7 @@ export const generateFullVerificationEmail = (
       
     </div>
     <div class="footer">
-      <p class="footer-text">Welcome to the <strong>Local Cooks</strong> verified vendor community!</p>
+      <p class="footer-text">Welcome to the <strong>Local Cooks Community</strong>!</p>
       <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
@@ -592,7 +593,7 @@ export const generateFullVerificationEmail = (
 
   return {
     to: userData.email,
-    subject: 'Vendor Account Approved - Login Credentials Included',
+    subject: 'Chef Account Approved - Login Credentials Included',
     html,
     headers: {
       'X-Priority': '3',
