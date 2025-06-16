@@ -7,17 +7,17 @@ import { auth } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-    ArrowRight,
-    Award,
-    CheckCircle,
-    Download,
-    ExternalLink,
-    FileText,
-    GraduationCap,
-    Play,
-    Shield,
-    Star,
-    Users
+  ArrowRight,
+  Award,
+  CheckCircle,
+  Download,
+  ExternalLink,
+  FileText,
+  GraduationCap,
+  Play,
+  Shield,
+  Star,
+  Users
 } from 'lucide-react';
 import React from 'react';
 import { Link, useLocation } from 'wouter';
@@ -387,34 +387,34 @@ export default function MicrolearningOverview() {
                     </div>
                     <div>
                       <h3 className="text-2xl font-bold text-blue-900 mb-2">🎓 Get Official License</h3>
-                      <p className="text-blue-700">Take the next step with SkillPass.nl to obtain your official food safety license.</p>
+                      <p className="text-blue-700">Take the next step with SkillsPass NL to enhance your food safety credentials with additional training.</p>
                     </div>
                     <div className="bg-blue-100 rounded-2xl p-4 space-y-4">
                       <div className="text-left">
-                        <p className="font-semibold text-blue-800 mb-2">Why SkillPass.nl?</p>
+                        <p className="font-semibold text-blue-800 mb-2">Why SkillsPass NL?</p>
                         <div className="space-y-2 text-sm text-blue-700">
                           <div className="flex items-center gap-2">
                             <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                            <span>Officially recognized certification</span>
+                            <span>Free online training courses</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                            <span>Industry standard qualification</span>
+                            <span>Government-sponsored certification</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                            <span>Enhanced career opportunities</span>
+                            <span>Lifelong e-Certificates</span>
                           </div>
                         </div>
                       </div>
                       <Button 
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                         onClick={() => {
-                          window.open('https://skillpass.nl', '_blank', 'noopener,noreferrer');
+                          window.open('https://skillspassnl.com', '_blank', 'noopener,noreferrer');
                         }}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        Visit SkillPass.nl
+                        Visit SkillsPass NL
                       </Button>
                     </div>
                   </div>
