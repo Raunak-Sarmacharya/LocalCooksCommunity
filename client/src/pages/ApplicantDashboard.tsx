@@ -770,8 +770,9 @@ export default function ApplicantDashboard() {
                 // Training Not Completed Display
                 <>
                   <div className="flex items-center gap-3 mb-4">
+                    <GraduationCap className="h-6 w-6 text-primary" />
                     <h2 className="text-xl md:text-2xl font-bold text-gray-900">
-                      🎓 Food Safety Training
+                      Food Safety Training
                     </h2>
                     {isLoadingCompletion && (
                       <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
@@ -835,8 +836,8 @@ export default function ApplicantDashboard() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col">
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200 mb-4">
+                    <div className="space-y-4">
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
                         <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
                           <span className="text-lg">🏆</span>
                           What You'll Achieve
@@ -861,7 +862,7 @@ export default function ApplicantDashboard() {
                         </div>
                       </div>
                       
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 mt-auto">
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg">🚀</span>
                           <span className="font-semibold text-blue-900 text-sm">Get Started Today</span>
