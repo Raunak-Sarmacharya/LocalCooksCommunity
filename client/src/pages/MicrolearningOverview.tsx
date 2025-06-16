@@ -15,7 +15,9 @@ import {
     GraduationCap,
     Play,
     Shield,
-    Star
+    Star,
+    TrendingUp,
+    Users
 } from 'lucide-react';
 import React from 'react';
 import { Link, useLocation } from 'wouter';
@@ -146,9 +148,9 @@ export default function MicrolearningOverview() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
       <Header />
-      <main className="flex-grow pt-20 md:pt-24 pb-12">
+      <main className="flex-grow pt-16 md:pt-20 pb-12">
         <div className="w-full">
-          {/* Hero Section - Brand Colors */}
+          {/* Hero Section - Brand Colors - Fixed positioning */}
           <div className="relative bg-gradient-to-r from-emerald-600 via-blue-600 to-purple-600 overflow-hidden">
             <div className="absolute inset-0 bg-black/20"></div>
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/10"></div>
@@ -210,75 +212,75 @@ export default function MicrolearningOverview() {
           {/* Content Section */}
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
             
-            {/* Training Modules Overview - Dynamic */}
+            {/* Training Modules Overview - Dynamic with responsive design */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-white rounded-3xl p-8 shadow-xl border border-slate-200"
+              className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-slate-200"
             >
               <div className="text-center space-y-6">
-                <h2 className="text-2xl font-bold text-slate-900">Training Modules Overview</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-slate-900">Training Modules Overview</h2>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-4xl mx-auto">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-800">Food Safety Basics</h3>
-                      <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <h3 className="text-sm md:text-base font-semibold text-slate-800">Food Safety Basics</h3>
+                      <div className="flex gap-2 flex-wrap">
                         {hasFullAccess ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-3 py-1">
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
                             14 Available
                           </Badge>
                         ) : (
                           <>
-                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-3 py-1">
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
                               1 Available
                             </Badge>
-                            <Badge className="bg-slate-100 text-slate-600 border-slate-300 px-3 py-1">
+                            <Badge className="bg-slate-100 text-slate-600 border-slate-300 px-2 md:px-3 py-1 text-xs">
                               13 Locked
                             </Badge>
                           </>
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-slate-600 text-left">Essential HACCP principles, contamination prevention, and food handling fundamentals.</p>
+                    <p className="text-xs md:text-sm text-slate-600 text-left">Essential HACCP principles, contamination prevention, and food handling fundamentals.</p>
                   </div>
                   
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-800">Safety & Hygiene How-To's</h3>
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <h3 className="text-sm md:text-base font-semibold text-slate-800">Safety & Hygiene How-To's</h3>
+                      <div className="flex-shrink-0">
                         {hasFullAccess ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-3 py-1">
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
                             8 Available
                           </Badge>
                         ) : (
-                          <Badge className="bg-slate-100 text-slate-600 border-slate-300 px-3 py-1">
+                          <Badge className="bg-slate-100 text-slate-600 border-slate-300 px-2 md:px-3 py-1 text-xs">
                             8 Locked
                           </Badge>
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-slate-600 text-left">Step-by-step practical demonstrations and industry best practices.</p>
+                    <p className="text-xs md:text-sm text-slate-600 text-left">Step-by-step practical demonstrations and industry best practices.</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-slate-200">
                   <div className="text-center">
                     <div className="w-3 h-3 bg-emerald-500 rounded-full mx-auto mb-2"></div>
-                    <span className="text-sm text-slate-600">HACCP-Based</span>
+                    <span className="text-xs md:text-sm text-slate-600">HACCP-Based</span>
                   </div>
                   <div className="text-center">
                     <div className="w-3 h-3 bg-blue-500 rounded-full mx-auto mb-2"></div>
-                    <span className="text-sm text-slate-600">Self-Paced</span>
+                    <span className="text-xs md:text-sm text-slate-600">Self-Paced</span>
                   </div>
                   <div className="text-center">
                     <div className="w-3 h-3 bg-purple-500 rounded-full mx-auto mb-2"></div>
-                    <span className="text-sm text-slate-600">Industry Standard</span>
+                    <span className="text-xs md:text-sm text-slate-600">Industry Standard</span>
                   </div>
                   <div className="text-center">
                     <div className="w-3 h-3 bg-yellow-500 rounded-full mx-auto mb-2"></div>
-                    <span className="text-sm text-slate-600">Certified</span>
+                    <span className="text-xs md:text-sm text-slate-600">Certified</span>
                   </div>
                 </div>
               </div>
@@ -401,6 +403,52 @@ export default function MicrolearningOverview() {
                 </motion.div>
               )}
 
+              {/* Companion Card for Full Access Users - Training Benefits */}
+              {hasFullAccess && !isCompleted && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-3xl p-8 border-2 border-purple-200 shadow-lg"
+                >
+                  <div className="space-y-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <TrendingUp className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-purple-900 mb-2">Advance Your Career</h3>
+                        <p className="text-purple-800">Complete your training to unlock professional opportunities and industry recognition.</p>
+                      </div>
+                    </div>
+                    <div className="bg-white/60 rounded-2xl p-4 space-y-3">
+                      <h4 className="font-semibold text-purple-900 flex items-center gap-2">
+                        <span className="text-purple-600">🚀</span>
+                        Training Benefits:
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-purple-700">
+                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                          <span>Industry Recognition</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-purple-700">
+                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                          <span>Career Advancement</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-purple-700">
+                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                          <span>Professional Network</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-purple-700">
+                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                          <span>Skill Validation</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Sample Access - For limited users */}
               {!hasFullAccess && (
                 <motion.div
@@ -416,7 +464,7 @@ export default function MicrolearningOverview() {
                       </div>
                       <div className="flex-1">
                         <h3 className="text-xl font-bold text-blue-900 mb-2">Welcome to Your Food Safety Journey!</h3>
-                        <p className="text-blue-800">Start with our introduction video, then apply for full access to unlock all 22 training videos.</p>
+                        <p className="text-blue-800">Experience our comprehensive training with a sample video, then unlock the complete curriculum.</p>
                       </div>
                     </div>
                     <div className="bg-white/60 rounded-2xl p-4 space-y-3">
@@ -440,6 +488,52 @@ export default function MicrolearningOverview() {
                         <div className="flex items-center gap-2 text-blue-700">
                           <Star className="h-4 w-4 text-blue-600 flex-shrink-0" />
                           <span>Lifetime Access</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Community Benefits Card - For limited users (companion card) */}
+              {!hasFullAccess && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-3xl p-8 border-2 border-rose-200 shadow-lg"
+                >
+                  <div className="space-y-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-rose-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Users className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-rose-900 mb-2">Join Our Community</h3>
+                        <p className="text-rose-800">Connect with fellow culinary professionals and grow your network in the food industry.</p>
+                      </div>
+                    </div>
+                    <div className="bg-white/60 rounded-2xl p-4 space-y-3">
+                      <h4 className="font-semibold text-rose-900 flex items-center gap-2">
+                        <span className="text-rose-600">🤝</span>
+                        Community Benefits:
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Professional Network</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Industry Insights</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Career Opportunities</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Peer Support</span>
                         </div>
                       </div>
                     </div>
