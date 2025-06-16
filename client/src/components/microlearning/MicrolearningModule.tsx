@@ -286,6 +286,7 @@ export default function MicrolearningModule({
   onComplete,
   className = ""
 }: MicrolearningModuleProps) {
+  const isPlayerFocused = className.includes('player-focused');
   const { user } = useFirebaseAuth();
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
@@ -561,8 +562,9 @@ export default function MicrolearningModule({
   return (
     <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-white overflow-x-hidden ${className}`}>
       <div className="w-full">
-        {/* Modern Header - Fixed container */}
-        <div className="w-full bg-white/80 backdrop-blur-sm border-b border-gray-100">
+        {/* Modern Header - Only show when not in player-focused mode */}
+        {!isPlayerFocused && (
+          <div className="w-full bg-white/80 backdrop-blur-sm border-b border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -655,14 +657,15 @@ export default function MicrolearningModule({
               </div>
             </motion.div>
           </div>
-        </div>
+          </div>
+        )}
 
-        {/* Clean notification system */}
+        {/* Clean notification system - Simplified for player mode */}
         <div className="w-full">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
             
-            {/* Rewatch Mode Notification */}
-            {(completionConfirmed || user?.role === 'admin') && (
+            {/* Rewatch Mode Notification - Only show in player mode for important context */}
+            {!isPlayerFocused && (completionConfirmed || user?.role === 'admin') && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -689,8 +692,8 @@ export default function MicrolearningModule({
               </motion.div>
             )}
 
-            {/* Completion Certificate Download Notification */}
-            {completionConfirmed && (
+            {/* Completion Certificate Download Notification - Hide in player mode */}
+            {!isPlayerFocused && completionConfirmed && (
               <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -795,8 +798,8 @@ export default function MicrolearningModule({
               </motion.div>
             )}
 
-            {/* Application Status Notification */}
-            {applicationInfo && !completionConfirmed && (
+            {/* Application Status Notification - Hide in player mode */}
+            {!isPlayerFocused && applicationInfo && !completionConfirmed && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -858,8 +861,8 @@ export default function MicrolearningModule({
               </motion.div>
             )}
 
-            {/* Welcome Learning Journey Banner */}
-            {accessLevel === 'limited' && (
+            {/* Welcome Learning Journey Banner - Hide in player mode */}
+            {!isPlayerFocused && accessLevel === 'limited' && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1069,6 +1072,10 @@ export default function MicrolearningModule({
                           isCompleted={(getVideoProgress(currentVideo.id) as any)?.completed || false}
                           isRewatching={completionConfirmed || user?.role === 'admin' || ((getVideoProgress(currentVideo.id) as any)?.completed || false) && ((getVideoProgress(currentVideo.id) as any)?.progress || 0) < 100}
                           requireFullWatch={false}
+                          accessLevel={accessLevel}
+                          showApplicationPrompt={showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0 && 
+                            userProgress.find(p => p.videoId === currentModuleVideos[0]?.id)?.completed}
+                          onApplicationPromptClose={() => setShowApplicationPrompt(false)}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gray-100">
@@ -1193,58 +1200,7 @@ export default function MicrolearningModule({
                     </div>
                   </div>
 
-                  {/* Application Prompt for Limited Access Users - Only show after first video completion */}
-                  {showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0 && 
-                   userProgress.find(p => p.videoId === currentModuleVideos[0]?.id)?.completed && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-4 p-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white shadow-lg"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <span className="text-2xl">🎓</span>
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="text-xl font-bold mb-2">
-                            Great job completing your first video! 🎉
-                          </h3>
-                          <p className="text-blue-100 mb-4 leading-relaxed">
-                            You've just finished our sample food safety training video. Ready to unlock access to all 22 training videos and earn your training completion certificate?
-                          </p>
-                          <div className="flex flex-col sm:flex-row gap-3">
-                            <Button 
-                              asChild
-                              className="bg-white text-blue-600 hover:bg-blue-50 font-semibold"
-                            >
-                              <Link href="/apply">
-                                <span className="mr-2">📝</span>
-                                Submit Application Now
-                              </Link>
-                            </Button>
-                            <Button 
-                              variant="outline"
-                              onClick={() => setShowApplicationPrompt(false)}
-                              className="border-white/30 bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm"
-                            >
-                              Continue Exploring
-                            </Button>
-                          </div>
-                          <p className="text-xs text-blue-200 mt-3">
-                            💡 Application approval unlocks: Full video library • Interactive exercises • Official certification • Chef network access
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowApplicationPrompt(false)}
-                          className="text-white hover:bg-white/20 p-2"
-                        >
-                          ✕
-                        </Button>
-                      </div>
-                    </motion.div>
-                  )}
+                  {/* Application Prompt now shows within the VideoPlayer component */}
                 </motion.div>
 
                 {/* Modern Module Grid */}

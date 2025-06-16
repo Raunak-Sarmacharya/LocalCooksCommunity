@@ -16,6 +16,9 @@ interface VideoPlayerProps {
   className?: string;
   autoPlay?: boolean;
   requireFullWatch?: boolean; // Now less strict - allows early completion
+  accessLevel?: 'limited' | 'full';
+  showApplicationPrompt?: boolean;
+  onApplicationPromptClose?: () => void;
 }
 
 export default function VideoPlayer({
@@ -29,7 +32,10 @@ export default function VideoPlayer({
   isRewatching = false,
   className = "",
   autoPlay = false,
-  requireFullWatch = true
+  requireFullWatch = true,
+  accessLevel = 'full',
+  showApplicationPrompt = false,
+  onApplicationPromptClose
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -454,8 +460,52 @@ export default function VideoPlayer({
           </div>
         )}
 
+        {/* Application Prompt for Limited Access Users - Shows within video player after first video completion */}
+        {showApplicationPrompt && accessLevel === 'limited' && videoCompleted && (
+          <div className="absolute inset-x-4 top-1/2 transform -translate-y-1/2 z-30">
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-4 shadow-2xl border border-blue-400/50 max-w-lg mx-auto">
+              <div className="text-center text-white">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+                  <span className="text-2xl">🎉</span>
+                </div>
+                <h3 className="font-semibold text-xl mb-2">Great job completing your first video!</h3>
+                <p className="text-sm text-blue-100 mb-4 leading-relaxed">
+                  You've just finished our sample food safety training video. Ready to unlock access to all 22 training videos and earn your training completion certificate?
+                </p>
+                <div className="flex flex-col gap-3 mb-4">
+                  <Button
+                    onClick={() => window.location.href = '/apply'}
+                    className="bg-white text-blue-600 hover:bg-blue-50 font-semibold"
+                  >
+                    <span className="mr-2">📝</span>
+                    Submit Application Now
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={onApplicationPromptClose}
+                    className="border-white/30 bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm"
+                  >
+                    Continue Exploring
+                  </Button>
+                </div>
+                <p className="text-xs text-blue-200">
+                  💡 Application approval unlocks: Full video library • Interactive exercises • Official certification • Chef network access
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onApplicationPromptClose}
+                  className="absolute top-2 right-2 text-white hover:bg-white/20 p-2"
+                >
+                  ✕
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Improved Completion Prompt - centered and more prominent */}
-        {shouldShowCompletePrompt && !videoCompleted && !loading && !hasError && (
+        {shouldShowCompletePrompt && !videoCompleted && !loading && !hasError && !showApplicationPrompt && (
           <div className="absolute inset-x-4 top-1/2 transform -translate-y-1/2 z-20">
             <div className="bg-black/90 backdrop-blur-sm rounded-xl p-4 shadow-2xl border border-white/30 max-w-md mx-auto">
               <div className="text-center text-white">
