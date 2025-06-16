@@ -808,7 +808,7 @@ export default function ApplicantDashboard() {
                         </div>
                       </div>
                       
-                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mt-4">
                         <div className="flex items-center gap-2 mb-2">
                           <Shield className="h-4 w-4 text-blue-600" />
                           <span className="font-semibold text-blue-900 text-sm">Access Status</span>
