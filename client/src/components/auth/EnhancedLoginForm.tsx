@@ -43,11 +43,12 @@ const itemVariants = {
 
 export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: EnhancedLoginFormProps) {
   const { login, signInWithGoogle, loading, error } = useFirebaseAuth();
-  const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
+  const [authState, setAuthState] = useState<AuthState>('idle');
+  const [googleAuthState, setGoogleAuthState] = useState<AuthState>('idle');
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
-  const [emailForVerification, setEmailForVerification] = useState("");
   const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [emailForVerification, setEmailForVerification] = useState<string>('');
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -58,29 +59,17 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     setHasAttemptedLogin?.(true);
     setFormError(null);
     setAuthState('loading');
-    setShowLoadingOverlay(true);
 
     try {
-      // Minimum loading time for smooth UX
-      const [authResult] = await Promise.all([
-        login(data.email, data.password),
-        new Promise(resolve => setTimeout(resolve, 800))
-      ]);
-
+      await login(data.email, data.password);
       setAuthState('success');
-      setShowLoadingOverlay(false);
       
-      // Show success message briefly
       setTimeout(() => {
         if (onSuccess) onSuccess();
       }, 1000);
 
     } catch (e: any) {
-      setShowLoadingOverlay(false);
-      setAuthState('error');
-      
-      // Check if it's an email verification error
-      if (e.message.includes('email-not-verified') || e.message.includes('verify your email')) {
+      if (e.message.includes('EMAIL_NOT_VERIFIED')) {
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
       } else {
@@ -92,7 +81,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   const handleGoogleSignIn = async () => {
     setHasAttemptedLogin?.(true);
     setFormError(null);
-    setAuthState('loading');
+    setGoogleAuthState('loading');
     setShowLoadingOverlay(true);
 
     try {
@@ -101,7 +90,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         new Promise(resolve => setTimeout(resolve, 800))
       ]);
 
-      setAuthState('success');
+      setGoogleAuthState('success');
       setShowLoadingOverlay(false);
       
       setTimeout(() => {
@@ -110,14 +99,12 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
-      setAuthState('error');
+      setGoogleAuthState('error');
       setFormError(e.message);
     }
   };
 
   const handleResendVerification = async () => {
-    // This would typically call a resend verification email function
-    // For now, we'll simulate it
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         resolve();
@@ -149,9 +136,9 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     <>
       <LoadingOverlay 
         isVisible={showLoadingOverlay}
-        message={authState === 'loading' ? "Signing you in..." : "Welcome back!"}
-        submessage={authState === 'loading' ? "Please wait while we verify your credentials securely." : "Redirecting to your dashboard..."}
-        type={authState === 'success' ? 'success' : 'loading'}
+        message={googleAuthState === 'loading' ? "Signing you in..." : "Welcome back!"}
+        submessage={googleAuthState === 'loading' ? "Please wait while we verify your credentials securely." : "Redirecting to your dashboard..."}
+        type={googleAuthState === 'success' ? 'success' : 'loading'}
       />
 
       <motion.div
@@ -160,14 +147,13 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         initial="hidden"
         animate="visible"
       >
-        {/* Google Sign In Button */}
         <motion.div variants={itemVariants} className="mb-6">
           <AnimatedButton
-            state={authState === 'loading' ? 'loading' : 'idle'}
+            state={googleAuthState === 'loading' ? 'loading' : 'idle'}
             loadingText="Signing in with Google..."
             onClick={handleGoogleSignIn}
             variant="google"
-            disabled={authState === 'loading'}
+            disabled={googleAuthState === 'loading'}
           >
             <div className="flex items-center gap-3">
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -181,16 +167,13 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
           </AnimatedButton>
         </motion.div>
 
-        {/* Divider */}
         <motion.div variants={itemVariants} className="flex items-center my-6">
           <div className="flex-1 h-px bg-gray-200" />
           <span className="mx-3 text-gray-400 text-xs uppercase tracking-wider">or</span>
           <div className="flex-1 h-px bg-gray-200" />
         </motion.div>
 
-        {/* Form */}
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
-          {/* Error Message */}
           <AnimatePresence>
             {(formError || error) && (
               <motion.div
@@ -205,7 +188,6 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             )}
           </AnimatePresence>
 
-          {/* Email Field */}
           <motion.div variants={itemVariants}>
             <AnimatedInput
               label="Email Address"
@@ -220,7 +202,6 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             />
           </motion.div>
 
-          {/* Password Field */}
           <motion.div variants={itemVariants}>
             <AnimatedInput
               label="Password"
@@ -236,7 +217,6 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             />
           </motion.div>
 
-          {/* Submit Button */}
           <motion.div variants={itemVariants}>
             <AnimatedButton
               type="submit"
@@ -250,7 +230,6 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             </AnimatedButton>
           </motion.div>
 
-          {/* Forgot Password Link */}
           <motion.div variants={itemVariants} className="text-center">
             <motion.button
               type="button"
@@ -274,7 +253,6 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                   
                   if (response.ok) {
                     setFormError(null);
-                    // Show success message
                     alert('Password reset link sent! Check your email.');
                   } else {
                     setFormError(data.message || 'Failed to send password reset email');
