@@ -265,8 +265,8 @@ export default function MicrolearningOverview() {
                   </motion.div>
                 )}
 
-                {/* Application Status Notification */}
-                {!completionStatus.completionConfirmed && (
+                {/* Application Status Notification - Only show for users who need to submit or reapply */}
+                {!completionStatus.completionConfirmed && !hasApprovedApplication && applicationInfo.message && (
                   <motion.div 
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -276,9 +276,7 @@ export default function MicrolearningOverview() {
                         ? 'bg-orange-50 border-orange-200'
                         : hasPending
                         ? 'bg-blue-50 border-blue-200'
-                        : !hasApprovedApplication
-                        ? 'bg-yellow-50 border-yellow-200'
-                        : 'bg-green-50 border-green-200'
+                        : 'bg-yellow-50 border-yellow-200'
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -287,18 +285,14 @@ export default function MicrolearningOverview() {
                           ? 'bg-orange-100'
                           : hasPending
                           ? 'bg-blue-100'
-                          : !hasApprovedApplication
-                          ? 'bg-yellow-100'
-                          : 'bg-green-100'
+                          : 'bg-yellow-100'
                       }`}>
                         {hasRejected || hasCancelled ? (
                           <AlertCircle className="h-4 w-4 text-orange-600" />
                         ) : hasPending ? (
                           <Clock className="h-4 w-4 text-blue-600" />
-                        ) : !hasApprovedApplication ? (
-                          <FileText className="h-4 w-4 text-yellow-600" />
                         ) : (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <FileText className="h-4 w-4 text-yellow-600" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -307,9 +301,7 @@ export default function MicrolearningOverview() {
                             ? 'text-orange-800'
                             : hasPending
                             ? 'text-blue-800'
-                            : !hasApprovedApplication
-                            ? 'text-yellow-800'
-                            : 'text-green-800'
+                            : 'text-yellow-800'
                         }`}>
                           {applicationInfo.message}
                         </p>
@@ -328,8 +320,8 @@ export default function MicrolearningOverview() {
                   </motion.div>
                 )}
 
-                {/* Welcome Learning Journey Banner */}
-                {accessLevel === 'limited' && (
+                {/* Welcome Learning Journey Banner - Only for users without approved applications */}
+                {accessLevel === 'limited' && !hasApprovedApplication && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -371,6 +363,57 @@ export default function MicrolearningOverview() {
                             <div className="flex items-center gap-2 text-gray-700">
                               <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                               <span>Lifetime Access to Materials</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Full Access Welcome Banner - For approved users */}
+                {accessLevel === 'full' && hasApprovedApplication && !completionStatus.completionConfirmed && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.7 }}
+                    className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 sm:p-6 shadow-sm border border-green-200"
+                  >
+                    <div className="flex flex-col sm:flex-row items-start gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xl">✅</span>
+                      </div>
+                      <div className="flex-1 space-y-4 min-w-0">
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900 mb-2">
+                            Full Access Granted - Welcome Back!
+                          </h3>
+                          <p className="text-base text-gray-700 leading-relaxed">
+                            Your application has been approved! You now have full access to all 22 training videos in our comprehensive food safety curriculum. Continue your learning journey and work towards completing your certification.
+                          </p>
+                        </div>
+                        
+                        <div className="bg-white/60 rounded-lg p-4 space-y-3">
+                          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <span className="text-green-600">🔓</span>
+                            Your Full Access Includes:
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                            <div className="flex items-center gap-2 text-gray-700">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>All 22 Training Videos</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-700">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>Both Training Modules</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-700">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>Progress Tracking</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-700">
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              <span>Completion Certificate</span>
                             </div>
                           </div>
                         </div>
@@ -461,7 +504,7 @@ export default function MicrolearningOverview() {
                     </div>
                   )}
 
-                  {applicationInfo.canApply && (
+                  {applicationInfo.canApply && !hasApprovedApplication && (
                     <div className="border-t border-gray-200 pt-6 mt-8">
                       <Button
                         asChild
