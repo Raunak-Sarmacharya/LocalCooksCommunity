@@ -16,7 +16,6 @@ import {
     Play,
     Shield,
     Star,
-    TrendingUp,
     Users
 } from 'lucide-react';
 import React from 'react';
@@ -226,7 +225,7 @@ export default function MicrolearningOverview() {
                   <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <h3 className="text-sm md:text-base font-semibold text-slate-800">Food Safety Basics</h3>
-                      <div className="flex gap-2 flex-wrap">
+                      <div className="flex gap-2 flex-wrap justify-center sm:justify-start">
                         {hasFullAccess ? (
                           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
                             14 Available
@@ -249,7 +248,7 @@ export default function MicrolearningOverview() {
                   <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <h3 className="text-sm md:text-base font-semibold text-slate-800">Safety & Hygiene How-To's</h3>
-                      <div className="flex-shrink-0">
+                      <div className="flex justify-center sm:justify-start">
                         {hasFullAccess ? (
                           <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 px-2 md:px-3 py-1 text-xs">
                             8 Available
@@ -403,45 +402,45 @@ export default function MicrolearningOverview() {
                 </motion.div>
               )}
 
-              {/* Companion Card for Full Access Users - Training Benefits */}
+              {/* Join Community Card - For approved users (companion card) */}
               {hasFullAccess && !isCompleted && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5 }}
-                  className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-3xl p-8 border-2 border-purple-200 shadow-lg"
+                  className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-3xl p-8 border-2 border-rose-200 shadow-lg"
                 >
                   <div className="space-y-6">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <TrendingUp className="h-6 w-6 text-white" />
+                      <div className="w-12 h-12 bg-rose-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Users className="h-6 w-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-xl font-bold text-purple-900 mb-2">Advance Your Career</h3>
-                        <p className="text-purple-800">Complete your training to unlock professional opportunities and industry recognition.</p>
+                        <h3 className="text-xl font-bold text-rose-900 mb-2">Join Our Community</h3>
+                        <p className="text-rose-800">Connect with fellow culinary professionals and grow your network in the food industry.</p>
                       </div>
                     </div>
                     <div className="bg-white/60 rounded-2xl p-4 space-y-3">
-                      <h4 className="font-semibold text-purple-900 flex items-center gap-2">
-                        <span className="text-purple-600">🚀</span>
-                        Training Benefits:
+                      <h4 className="font-semibold text-rose-900 flex items-center gap-2">
+                        <span className="text-rose-600">🤝</span>
+                        Community Benefits:
                       </h4>
                       <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center gap-2 text-purple-700">
-                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
-                          <span>Industry Recognition</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-purple-700">
-                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
-                          <span>Career Advancement</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-purple-700">
-                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
                           <span>Professional Network</span>
                         </div>
-                        <div className="flex items-center gap-2 text-purple-700">
-                          <Star className="h-4 w-4 text-purple-600 flex-shrink-0" />
-                          <span>Skill Validation</span>
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Industry Insights</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Career Opportunities</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-rose-700">
+                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
+                          <span>Peer Support</span>
                         </div>
                       </div>
                     </div>
@@ -449,7 +448,7 @@ export default function MicrolearningOverview() {
                 </motion.div>
               )}
 
-              {/* Sample Access - For limited users */}
+              {/* Sample Access - For limited users (single card only) */}
               {!hasFullAccess && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -495,91 +494,49 @@ export default function MicrolearningOverview() {
                 </motion.div>
               )}
 
-              {/* Community Benefits Card - For limited users (companion card) */}
-              {!hasFullAccess && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="bg-gradient-to-br from-rose-50 to-pink-50 rounded-3xl p-8 border-2 border-rose-200 shadow-lg"
-                >
-                  <div className="space-y-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-rose-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Users className="h-6 w-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-xl font-bold text-rose-900 mb-2">Join Our Community</h3>
-                        <p className="text-rose-800">Connect with fellow culinary professionals and grow your network in the food industry.</p>
-                      </div>
-                    </div>
-                    <div className="bg-white/60 rounded-2xl p-4 space-y-3">
-                      <h4 className="font-semibold text-rose-900 flex items-center gap-2">
-                        <span className="text-rose-600">🤝</span>
-                        Community Benefits:
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center gap-2 text-rose-700">
-                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
-                          <span>Professional Network</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-rose-700">
-                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
-                          <span>Industry Insights</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-rose-700">
-                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
-                          <span>Career Opportunities</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-rose-700">
-                          <Star className="h-4 w-4 text-rose-600 flex-shrink-0" />
-                          <span>Peer Support</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
             </div>
 
-            {/* Action Buttons - Dynamic */}
+            {/* Action Buttons - Dynamic with proper centering */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 }}
-              className="text-center space-y-6"
+              className="text-center space-y-6 px-4 sm:px-0"
             >
               {!hasFullAccess ? (
                 <div className="space-y-4">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-bold px-12 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300"
-                  >
-                    <Link href="/microlearning/player">
-                      <Play className="h-6 w-6 mr-3" />
-                      Start with Sample Video
-                      <ArrowRight className="h-6 w-6 ml-3" />
-                    </Link>
-                  </Button>
+                  <div className="flex justify-center">
+                    <Button
+                      asChild
+                      size="lg"
+                      className="bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-bold px-12 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 w-full max-w-sm sm:w-auto"
+                    >
+                      <Link href="/microlearning/player">
+                        <Play className="h-6 w-6 mr-3" />
+                        Start with Sample Video
+                        <ArrowRight className="h-6 w-6 ml-3" />
+                      </Link>
+                    </Button>
+                  </div>
                   <p className="text-slate-600">
                     Try our introduction video, then submit your application for full access
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold px-12 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300"
-                  >
-                    <Link href="/microlearning/player">
-                      <Play className="h-6 w-6 mr-3" />
-                      {isCompleted ? 'Review Training Materials' : 'Continue Your Training'}
-                      <ArrowRight className="h-6 w-6 ml-3" />
-                    </Link>
-                  </Button>
+                  <div className="flex justify-center">
+                    <Button
+                      asChild
+                      size="lg"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold px-12 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 w-full max-w-sm sm:w-auto"
+                    >
+                      <Link href="/microlearning/player">
+                        <Play className="h-6 w-6 mr-3" />
+                        {isCompleted ? 'Review Training Materials' : 'Continue Your Training'}
+                        <ArrowRight className="h-6 w-6 ml-3" />
+                      </Link>
+                    </Button>
+                  </div>
                   <p className="text-slate-600">
                     {isCompleted 
                       ? 'Access all videos and materials anytime'
