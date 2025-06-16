@@ -830,7 +830,7 @@ export default function ApplicantDashboard() {
                     </div>
 
                     <div className="flex flex-col h-full">
-                      <div className="flex-grow">
+                      <div className="mt-auto">
                         <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
                           <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
                             <span className="text-lg">🏆</span>
