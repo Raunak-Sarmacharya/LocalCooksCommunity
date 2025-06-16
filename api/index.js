@@ -9,11 +9,7 @@ import createMemoryStore from 'memorystore';
 import multer from 'multer';
 import path from 'path';
 import { promisify } from 'util';
-import {
-  sendEmail, generateWelcomeEmail,
-  getSupportEmail,
-  getUniformEmailStyles
-} from '../server/email';
+
 // Setup
 const app = express();
 const scryptAsync = promisify(scrypt);
@@ -26,18 +22,18 @@ let upload;
 try {
   // Check if we're in production
   const uploadIsProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-
+  
   // File filter to only allow certain file types
   const fileFilter = (req, file, cb) => {
     // Allow PDF, JPG, JPEG, PNG files
     const allowedMimes = [
       'application/pdf',
       'image/jpeg',
-      'image/jpg',
+      'image/jpg', 
       'image/png',
       'image/webp'
     ];
-
+    
     if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -58,7 +54,7 @@ try {
   } else {
     // Development: Use disk storage
     const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
-
+    
     // Only create directory in development
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
@@ -75,7 +71,7 @@ try {
         const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
         const ext = path.extname(file.originalname);
         const baseName = path.basename(file.originalname, ext);
-
+        
         const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
         cb(null, filename);
       }
@@ -97,7 +93,7 @@ try {
   const dummyMiddleware = (req, res, next) => {
     res.status(500).json({ message: "File upload not available in this environment" });
   };
-
+  
   upload = {
     single: () => dummyMiddleware,
     fields: () => dummyMiddleware,
@@ -154,7 +150,7 @@ try {
         console.log('Running startup session cleanup...');
         const cleanupResult = await cleanupExpiredSessions();
         console.log(`Startup cleanup: Removed ${cleanupResult.cleaned} expired sessions`);
-
+        
         const stats = await getSessionStats();
         console.log('Session stats after startup cleanup:', {
           total: stats.total_sessions,
@@ -311,9 +307,9 @@ async function getUser(id) {
 // Helper function to clean up Vercel blob files
 async function cleanupBlobFiles(urls) {
   if (!urls || !Array.isArray(urls)) return;
-
+  
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-
+  
   if (!isProduction) {
     console.log('Development mode: Skipping blob cleanup for URLs:', urls);
     return;
@@ -322,7 +318,7 @@ async function cleanupBlobFiles(urls) {
   try {
     // Import Vercel Blob delete function
     const { del } = await import('@vercel/blob');
-
+    
     for (const url of urls) {
       if (url && typeof url === 'string' && url.includes('blob.vercel-storage.com')) {
         try {
@@ -455,7 +451,7 @@ async function initializeDatabase() {
           created_at TIMESTAMP DEFAULT NOW()
         );
       `);
-
+      
       // Add unique constraint for password reset tokens if it doesn't exist
       await pool.query(`
         DO $$ BEGIN
@@ -467,7 +463,7 @@ async function initializeDatabase() {
           END;
         END $$;
       `);
-
+      
       await pool.query(`
         CREATE TABLE IF NOT EXISTS email_verification_tokens (
           id SERIAL PRIMARY KEY,
@@ -477,7 +473,7 @@ async function initializeDatabase() {
           created_at TIMESTAMP DEFAULT NOW()
         );
       `);
-
+      
       // Add unique constraint for email verification tokens if it doesn't exist
       await pool.query(`
         DO $$ BEGIN
@@ -499,7 +495,7 @@ async function initializeDatabase() {
 
       if (!appTableCheck.rows[0].table_exists) {
         console.log('Applications table does not exist, creating...');
-
+        
         // Ensure enums exist
         await pool.query(`
           DO $$
@@ -568,7 +564,7 @@ async function initializeDatabase() {
             created_at TIMESTAMP DEFAULT NOW()
           );
         `);
-
+        
         // Add unique constraint
         await pool.query(`
           DO $$ BEGIN
@@ -598,7 +594,7 @@ async function initializeDatabase() {
             created_at TIMESTAMP DEFAULT NOW()
           );
         `);
-
+        
         // Add unique constraint
         await pool.query(`
           DO $$ BEGIN
@@ -627,9 +623,9 @@ async function initializeDatabase() {
             'documents_reviewed_at'
           )
         `);
-
+        
         const existingAppColumns = appColumnCheck.rows.map(row => row.column_name);
-
+        
         // Document verification is now handled directly in the applications table
         console.log('Document verification data is stored in applications table - no separate table needed');
       } catch (appColumnError) {
@@ -642,16 +638,16 @@ async function initializeDatabase() {
           SELECT column_name FROM information_schema.columns 
           WHERE table_name = 'users' AND column_name IN ('is_verified', 'created_at')
         `);
-
+        
         const existingColumns = columnCheck.rows.map(row => row.column_name);
-
+        
         if (!existingColumns.includes('is_verified')) {
           console.log('Adding is_verified column to users table...');
           await pool.query(`
             ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT false NOT NULL;
           `);
         }
-
+        
         if (!existingColumns.includes('created_at')) {
           console.log('Adding created_at column to users table...');
           await pool.query(`
@@ -733,7 +729,7 @@ app.post('/api/admin-login', async (req, res) => {
 
     // Check password - first try exact match for 'localcooks'
     let passwordMatches = false;
-
+    
     console.log('Admin user found:', {
       id: admin.id,
       username: admin.username,
@@ -780,11 +776,11 @@ app.post('/api/admin-login', async (req, res) => {
         console.error('Session regeneration error:', err);
         return res.status(500).json({ error: 'Session creation failed' });
       }
-
+      
       // Set session data again after regeneration
       req.session.userId = admin.id;
       req.session.user = adminWithoutPassword;
-
+      
       // Save session explicitly
       req.session.save((saveErr) => {
         if (saveErr) {
@@ -795,7 +791,7 @@ app.post('/api/admin-login', async (req, res) => {
           console.log('Final session ID:', req.session.id);
           console.log('Session user data cached:', { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role });
         }
-
+        
         // Return user data with session info
         return res.status(200).json({
           ...adminWithoutPassword,
@@ -815,12 +811,12 @@ app.post('/api/admin-login', async (req, res) => {
 app.get('/api/debug/user-sync/:uid', async (req, res) => {
   try {
     const { uid } = req.params;
-
+    
     console.log('Debug: Checking sync status for Firebase UID:', uid);
-
+    
     // Check if user exists in database
     const user = await getUser(uid);
-
+    
     if (user) {
       console.log('Debug: User found in database:', { id: user.id, username: user.username, role: user.role, firebase_uid: user.firebase_uid });
       return res.json({
@@ -895,7 +891,7 @@ app.post('/api/login', async (req, res) => {
 
     // First try to find user by username
     let user = await getUserByUsername(username);
-
+    
     // If not found by username, try to find by email in applications table
     if (!user && username.includes('@')) {
       console.log('Username looks like email, searching applications table...');
@@ -907,7 +903,7 @@ app.post('/api/login', async (req, res) => {
           ORDER BY a.created_at DESC 
           LIMIT 1
         `, [username]);
-
+        
         if (emailResult.rows.length > 0) {
           user = emailResult.rows[0];
           console.log('Found user by email in applications table:', user.username);
@@ -916,7 +912,7 @@ app.post('/api/login', async (req, res) => {
         console.error('Error searching by email:', emailError);
       }
     }
-
+    
     if (!user) {
       console.log('Login failed: User not found by username or email');
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -990,7 +986,7 @@ app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
         }
       }
     }
-
+    
     if (!user) {
       console.log('❌ Firebase user not found in database for UID:', req.firebaseUser.uid);
       return res.status(404).json({ error: 'User not found' });
@@ -1029,15 +1025,15 @@ app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
     // Get user from database by Firebase UID
     let user = null;
     let updated = false;
-
+    
     if (pool) {
       // First get the user
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
       user = result.rows[0] || null;
-
+      
       if (user) {
         console.log(`📋 Found user ${user.id} (${user.username}), current has_seen_welcome: ${user.has_seen_welcome}`);
-
+        
         // Only update if not already true
         if (!user.has_seen_welcome) {
           await pool.query(
@@ -1049,15 +1045,15 @@ app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
         } else {
           console.log(`ℹ️ User ${user.id} has_seen_welcome was already true`);
         }
-
-        res.json({
-          success: true,
-          user: {
-            id: user.id,
-            username: user.username,
-            has_seen_welcome: true
-          },
-          updated
+        
+        res.json({ 
+          success: true, 
+          user: { 
+            id: user.id, 
+            username: user.username, 
+            has_seen_welcome: true 
+          }, 
+          updated 
         });
       } else {
         console.log(`❌ User not found for UID: ${req.firebaseUser.uid}`);
@@ -1073,17 +1069,17 @@ app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
           break;
         }
       }
-
+      
       if (user) {
         console.log(`✅ In-memory: Set has_seen_welcome to true for user ${user.id}`);
-        res.json({
-          success: true,
-          user: {
-            id: user.id,
-            username: user.username,
-            has_seen_welcome: true
-          },
-          updated
+        res.json({ 
+          success: true, 
+          user: { 
+            id: user.id, 
+            username: user.username, 
+            has_seen_welcome: true 
+          }, 
+          updated 
         });
       } else {
         console.log(`❌ In-memory: User not found for UID: ${req.firebaseUser.uid}`);
@@ -1107,11 +1103,11 @@ app.post('/api/debug/reset-welcome', verifyFirebaseAuth, async (req, res) => {
 
     // Get user from database by Firebase UID
     let user = null;
-
+    
     if (pool) {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
       user = result.rows[0] || null;
-
+      
       if (user) {
         await pool.query('UPDATE users SET has_seen_welcome = false WHERE id = $1', [user.id]);
         console.log(`🧪 Reset has_seen_welcome = false for user ${user.id}`);
@@ -1127,13 +1123,13 @@ app.post('/api/debug/reset-welcome', verifyFirebaseAuth, async (req, res) => {
         }
       }
     }
-
+    
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({
-      success: true,
+    res.json({ 
+      success: true, 
       message: 'Welcome screen reset - user should see welcome screen on next login',
       user: {
         id: user.id,
@@ -1158,19 +1154,19 @@ app.post('/api/user/reset-welcome', verifyFirebaseAuth, async (req, res) => {
 
     // Get user from database by Firebase UID
     let user = null;
-
+    
     if (pool) {
       // First get the user
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
       user = result.rows[0] || null;
-
+      
       if (user) {
         // Update has_seen_welcome to false
         await pool.query(
           'UPDATE users SET has_seen_welcome = $1 WHERE firebase_uid = $2',
           [false, req.firebaseUser.uid]
         );
-
+        
         console.log(`🧪 DEBUG - Successfully reset has_seen_welcome to false for user ${user.id}`);
         res.json({ success: true, message: 'has_seen_welcome reset to false' });
       } else {
@@ -1185,7 +1181,7 @@ app.post('/api/user/reset-welcome', verifyFirebaseAuth, async (req, res) => {
           break;
         }
       }
-
+      
       if (user) {
         console.log(`🧪 DEBUG - In-memory: reset has_seen_welcome to false for user ${user.id}`);
         res.json({ success: true, message: 'has_seen_welcome reset to false (in-memory)' });
@@ -1209,7 +1205,7 @@ app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
     console.log('🧪 DEBUG - Checking welcome status for UID:', req.firebaseUser.uid);
 
     let user = null;
-
+    
     if (pool) {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
       user = result.rows[0] || null;
@@ -1222,7 +1218,7 @@ app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
         }
       }
     }
-
+    
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -1381,12 +1377,12 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
     console.log('=== DEBUG AUTH ENDPOINT ===');
     console.log('Session:', JSON.stringify(req.session, null, 2));
     console.log('Headers:', JSON.stringify(req.headers, null, 2));
-
+    
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
-
+    
     console.log('Session User ID:', sessionUserId);
     console.log('Requested User ID:', req.params.userId);
-
+    
     if (!sessionUserId) {
       return res.json({
         authenticated: false,
@@ -1395,7 +1391,7 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
         headers: req.headers
       });
     }
-
+    
     // Convert Firebase UIDs to integer user IDs
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
@@ -1406,7 +1402,7 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
       });
     }
     const sessionUserIntId = sessionUser.id;
-
+    
     let requestedUser = await getUser(req.params.userId);
     if (!requestedUser) {
       return res.json({
@@ -1417,9 +1413,9 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
       });
     }
     const requestedUserIntId = requestedUser.id;
-
+    
     const completion = await getMicrolearningCompletion(requestedUserIntId);
-
+    
     res.json({
       authenticated: true,
       sessionUserId: sessionUserId,
@@ -1500,7 +1496,7 @@ app.post('/api/applications', upload.fields([
 
     console.log('Extracted fields:', {
       fullName: fullName || 'MISSING',
-      email: email || 'MISSING',
+      email: email || 'MISSING', 
       phone: phone || 'MISSING',
       foodSafetyLicense: foodSafetyLicense || 'MISSING',
       foodEstablishmentCert: foodEstablishmentCert || 'MISSING',
@@ -1512,7 +1508,7 @@ app.post('/api/applications', upload.fields([
       console.log('Missing fields analysis:', {
         fullName: !fullName ? 'MISSING' : 'OK',
         email: !email ? 'MISSING' : 'OK',
-        phone: !phone ? 'MISSING' : 'OK',
+        phone: !phone ? 'MISSING' : 'OK', 
         foodSafetyLicense: !foodSafetyLicense ? 'MISSING' : 'OK',
         foodEstablishmentCert: !foodEstablishmentCert ? 'MISSING' : 'OK',
         kitchenPreference: !kitchenPreference ? 'MISSING' : 'OK'
@@ -1534,21 +1530,21 @@ app.post('/api/applications', upload.fields([
     // Process uploaded files if any
     if (req.files) {
       console.log('📁 Processing uploaded files...');
-
+      
       // Import put function for Vercel Blob
       try {
         const { put } = await import('@vercel/blob');
-
+        
         // Upload food safety license file
         if (req.files.foodSafetyLicense && req.files.foodSafetyLicense[0]) {
           const file = req.files.foodSafetyLicense[0];
           console.log('⬆️ Uploading food safety license:', file.originalname);
-
+          
           const blob = await put(`food-safety-license-${userId}-${Date.now()}-${file.originalname}`, file.buffer, {
             access: 'public',
             contentType: file.mimetype
           });
-
+          
           uploadedFileUrls.foodSafetyLicenseUrl = blob.url;
           console.log('✅ Food safety license uploaded:', blob.url);
         }
@@ -1557,18 +1553,18 @@ app.post('/api/applications', upload.fields([
         if (req.files.foodEstablishmentCert && req.files.foodEstablishmentCert[0]) {
           const file = req.files.foodEstablishmentCert[0];
           console.log('⬆️ Uploading food establishment cert:', file.originalname);
-
+          
           const blob = await put(`food-establishment-cert-${userId}-${Date.now()}-${file.originalname}`, file.buffer, {
             access: 'public',
             contentType: file.mimetype
           });
-
+          
           uploadedFileUrls.foodEstablishmentCertUrl = blob.url;
           console.log('✅ Food establishment cert uploaded:', blob.url);
         }
-
+        
         console.log('📄 Final document URLs:', uploadedFileUrls);
-
+        
       } catch (uploadError) {
         console.error('❌ File upload error:', uploadError);
         return res.status(500).json({
@@ -1639,15 +1635,15 @@ app.post('/api/applications', upload.fields([
           hasDocuments: !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url),
           environment: process.env.NODE_ENV
         });
-
+        
         try {
           if (createdApplication.email) {
             const hasDocuments = !!(createdApplication.food_safety_license_url || createdApplication.food_establishment_cert_url);
-
+            
             if (hasDocuments) {
               // Application submitted WITH documents - send combined email
               console.log("📧 Sending WITH documents email...");
-              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email');
+              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
               const emailContent = generateApplicationWithDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
@@ -1661,7 +1657,7 @@ app.post('/api/applications', upload.fields([
             } else {
               // Application submitted WITHOUT documents - prompt to upload
               console.log("📧 Sending WITHOUT documents email...");
-              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email');
+              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
               const emailContent = generateApplicationWithoutDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
@@ -1740,15 +1736,15 @@ app.post('/api/applications', upload.fields([
       hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
       environment: process.env.NODE_ENV
     });
-
+    
     try {
       if (application.email) {
         const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
-
+        
         if (hasDocuments) {
           // Application submitted WITH documents - send combined email
           console.log("📧 Sending WITH documents email (MEMORY)...");
-          const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email');
+          const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
           const emailContent = generateApplicationWithDocumentsEmail({
             fullName: application.fullName || "Applicant",
             email: application.email
@@ -1762,7 +1758,7 @@ app.post('/api/applications', upload.fields([
         } else {
           // Application submitted WITHOUT documents - prompt to upload
           console.log("📧 Sending WITHOUT documents email (MEMORY)...");
-          const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email');
+          const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
           const emailContent = generateApplicationWithoutDocumentsEmail({
             fullName: application.fullName || "Applicant",
             email: application.email
@@ -1825,11 +1821,11 @@ app.get('/api/applications', async (req, res) => {
   try {
     // First check if the user is an admin - convert Firebase UID to integer ID
     let user = await getUser(rawUserId);
-
+    
     // If user not found and rawUserId looks like a Firebase UID, try to auto-sync
     if (!user && typeof rawUserId === 'string' && rawUserId.length > 10 && !rawUserId.match(/^\d+$/)) {
       console.log('Admin user not found for Firebase UID, attempting auto-sync:', rawUserId);
-
+      
       try {
         // Auto-sync Firebase user to database
         const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
@@ -1842,11 +1838,11 @@ app.get('/api/applications', async (req, res) => {
             role: 'admin' // Try admin role
           })
         });
-
+        
         if (syncResponse.ok) {
           const syncData = await syncResponse.json();
           console.log('Admin auto-sync successful:', syncData);
-
+          
           // Try to get user again after sync
           user = await getUser(rawUserId);
         }
@@ -1854,7 +1850,7 @@ app.get('/api/applications', async (req, res) => {
         console.error('Admin auto-sync error:', syncError);
       }
     }
-
+    
     console.log('User from DB:', user ? { id: user.id, username: user.username, role: user.role } : null);
 
     if (!user || user.role !== 'admin') {
@@ -1956,28 +1952,28 @@ app.get('/api/applications/my-applications', async (req, res) => {
 
   // Convert Firebase UID to integer user ID
   let user = await getUser(rawUserId);
-
+  
   console.log('User lookup result:', {
     rawUserId: rawUserId,
     userFound: !!user,
     userDetails: user ? { id: user.id, username: user.username, role: user.role, firebase_uid: user.firebase_uid } : null
   });
-
+  
   // If user not found and rawUserId looks like a Firebase UID, try to auto-sync
   if (!user && typeof rawUserId === 'string' && rawUserId.length > 10 && !rawUserId.match(/^\d+$/)) {
     console.log('User not found for Firebase UID, attempting auto-sync:', rawUserId);
-
+    
     try {
       // Check if we can get Firebase user info first
       const firebaseUser = await verifyFirebaseToken(req.headers.authorization?.substring(7));
-
+      
       if (firebaseUser) {
-        console.log('Firebase user info available for sync:', {
-          uid: firebaseUser.uid,
+        console.log('Firebase user info available for sync:', { 
+          uid: firebaseUser.uid, 
           email: firebaseUser.email,
-          emailVerified: firebaseUser.email_verified
+          emailVerified: firebaseUser.email_verified 
         });
-
+        
         // Auto-sync Firebase user to database with real email
         const syncResponse = await fetch(`${process.env.BASE_URL || 'http://localhost:5000'}/api/firebase-sync-user`, {
           method: 'POST',
@@ -1990,11 +1986,11 @@ app.get('/api/applications/my-applications', async (req, res) => {
             role: 'applicant'
           })
         });
-
+        
         if (syncResponse.ok) {
           const syncData = await syncResponse.json();
           console.log('Auto-sync successful:', syncData);
-
+          
           // Try to get user again after sync
           user = await getUser(rawUserId);
           console.log('User after auto-sync:', user ? { id: user.id, username: user.username, role: user.role } : 'Still not found');
@@ -2014,7 +2010,7 @@ app.get('/api/applications/my-applications', async (req, res) => {
             role: 'applicant'
           })
         });
-
+        
         if (syncResponse.ok) {
           user = await getUser(rawUserId);
         }
@@ -2023,12 +2019,12 @@ app.get('/api/applications/my-applications', async (req, res) => {
       console.error('Auto-sync error:', syncError);
     }
   }
-
+  
   if (!user) {
     console.log('User not found for ID even after sync attempt:', rawUserId);
     return res.status(401).json({ error: 'User not found' });
   }
-
+  
   const userId = user.id;
   console.log('Using database user ID for applications query:', userId);
 
@@ -2225,8 +2221,8 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
       });
 
       // Get document URLs before deletion for blob cleanup
-      // Get document URLs from the application record
-      const docResult = await pool.query(`
+              // Get document URLs from the application record
+        const docResult = await pool.query(`
           SELECT food_safety_license_url, food_establishment_cert_url 
           FROM applications
           WHERE id = $1
@@ -2333,7 +2329,7 @@ app.patch('/api/applications/:id/status', async (req, res) => {
       // Send email notification about status change
       try {
         // Import the email functions
-        const { sendEmail, generateStatusChangeEmail } = await import('../server/email');
+        const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
         if (updatedApplication.email) {
           const emailContent = generateStatusChangeEmail({
@@ -2415,8 +2411,8 @@ app.get("/api/files/documents/:filename", async (req, res) => {
     }
 
     // File serving not supported in serverless environment
-    return res.status(501).json({
-      message: "File serving not available in production environment. Please use external URLs for document storage."
+    return res.status(501).json({ 
+      message: "File serving not available in production environment. Please use external URLs for document storage." 
     });
   } catch (error) {
     console.error("Error serving file:", error);
@@ -2507,7 +2503,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       role: authenticatedUser?.role,
       isAdmin: authenticatedUser?.role === "admin"
     });
-
+    
     // Check if user owns the application or is admin
     if (application.user_id !== userId && authenticatedUser?.role !== "admin") {
       console.log("❌ Access denied - user doesn't own application and is not admin");
@@ -2541,8 +2537,8 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     // Check if any document data was provided
     if (Object.keys(updateData).length === 0) {
       console.log("❌ No document URLs provided in request body");
-      return res.status(400).json({
-        message: "No document URLs provided. Please provide document URLs for upload."
+      return res.status(400).json({ 
+        message: "No document URLs provided. Please provide document URLs for upload." 
       });
     }
 
@@ -2553,13 +2549,13 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       console.log("💾 Starting database update...");
       const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
       const values = [applicationId, ...Object.values(updateData)];
-
+      
       console.log("💾 SQL Update query:", {
         setClause,
         values,
         query: `UPDATE applications SET ${setClause} WHERE id = $1 RETURNING *;`
       });
-
+      
       const result = await pool.query(`
         UPDATE applications 
         SET ${setClause}
@@ -2578,7 +2574,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       }
 
       const updatedApplication = result.rows[0];
-
+      
       console.log("✅ Application document URLs updated successfully:", {
         applicationId: updatedApplication.id,
         urls: {
@@ -2590,7 +2586,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
           foodEstablishmentCert: updatedApplication.food_establishment_cert_status
         }
       });
-
+      
       console.log("📤 Returning response data with URLs:", {
         responseHasUrls: !!(updatedApplication.food_safety_license_url || updatedApplication.food_establishment_cert_url),
         urls: {
@@ -2598,23 +2594,23 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
           foodEstablishmentCert: updatedApplication.food_establishment_cert_url
         }
       });
-
+      
       // Verify the data was actually saved by querying again
       const verifyResult = await pool.query(`
         SELECT food_safety_license_url, food_establishment_cert_url, 
                food_safety_license_status, food_establishment_cert_status 
         FROM applications WHERE id = $1
       `, [applicationId]);
-
+      
       console.log("🔍 Verification query result:", {
         found: verifyResult.rows.length > 0,
         data: verifyResult.rows[0] || "No data"
       });
-
+      
       // Send document update confirmation email (only for dashboard updates, not initial submissions)
       try {
         if (updatedApplication.email) {
-          const { sendEmail, generateDocumentUpdateEmail } = await import('../server/email');
+          const { sendEmail, generateDocumentUpdateEmail } = await import('../server/email.js');
           const emailContent = generateDocumentUpdateEmail({
             fullName: updatedApplication.full_name || "User",
             email: updatedApplication.email
@@ -2630,7 +2626,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       } catch (emailError) {
         console.error('Error sending document update confirmation email:', emailError);
       }
-
+      
       console.log("=== DOCUMENT UPLOAD DEBUG END (SUCCESS) ===");
       return res.status(200).json(updatedApplication);
     } else {
@@ -2704,7 +2700,7 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
     // Update the application record directly with document verification status
     const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
     const values = [applicationId, ...Object.values(updateData)];
-
+    
     const result = await pool.query(`
       UPDATE applications 
       SET ${setClause}
@@ -2726,25 +2722,25 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
     });
 
     // Check if both documents are approved, then update user verification status
-    if (updatedApplication.food_safety_license_status === "approved" &&
-      (!updatedApplication.food_establishment_cert_url || updatedApplication.food_establishment_cert_status === "approved")) {
-
+    if (updatedApplication.food_safety_license_status === "approved" && 
+        (!updatedApplication.food_establishment_cert_url || updatedApplication.food_establishment_cert_status === "approved")) {
+      
       await pool.query(`
         UPDATE users SET is_verified = true WHERE id = $1
       `, [targetUserId]);
-
+      
       console.log(`User ${targetUserId} has been fully verified`);
-
+      
       // Send full verification email with vendor credentials
       try {
         // Import the email functions
-        const { sendEmail, generateFullVerificationEmail } = await import('../server/email');
-
+        const { sendEmail, generateFullVerificationEmail } = await import('../server/email.js');
+        
         // Get user details for email
         const userResult = await pool.query(`
           SELECT username FROM users WHERE id = $1
         `, [targetUserId]);
-
+        
         if (userResult.rows.length > 0 && updatedApplication.email) {
           const user = userResult.rows[0];
           const emailContent = generateFullVerificationEmail({
@@ -2803,7 +2799,7 @@ app.get("/api/debug/applications/:id/documents", async (req, res) => {
     }
 
     const app = result.rows[0];
-
+    
     return res.status(200).json({
       debug: true,
       application: {
@@ -2827,9 +2823,9 @@ app.get("/api/debug/applications/:id/documents", async (req, res) => {
     });
   } catch (error) {
     console.error("Error in debug endpoint:", error);
-    return res.status(500).json({
-      message: "Internal server error",
-      error: error.message
+    return res.status(500).json({ 
+      message: "Internal server error", 
+      error: error.message 
     });
   }
 });
@@ -2879,16 +2875,16 @@ app.get("/api/debug/applications", async (req, res) => {
     });
   } catch (error) {
     console.error("Error in debug applications endpoint:", error);
-    return res.status(500).json({
-      message: "Internal server error",
-      error: error.message
+    return res.status(500).json({ 
+      message: "Internal server error", 
+      error: error.message 
     });
   }
 });
 
 // Generic file upload endpoint (for use with new upload components)
-app.post("/api/upload-file",
-  upload.single('file'),
+app.post("/api/upload-file", 
+  upload.single('file'), 
   async (req, res) => {
     try {
       console.log('🔄 === FILE UPLOAD DEBUG START ===');
@@ -2903,7 +2899,7 @@ app.post("/api/upload-file",
           mimetype: req.file.mimetype
         } : null
       });
-
+      
       // Check if user is authenticated
       const rawUserId = req.session.userId || req.headers['x-user-id'];
       if (!rawUserId) {
@@ -2953,7 +2949,7 @@ app.post("/api/upload-file",
 
       const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
       console.log('🌍 Environment:', isProduction ? 'Production (Vercel)' : 'Development');
-
+      
       let fileUrl;
       let fileName;
 
@@ -2963,31 +2959,31 @@ app.post("/api/upload-file",
           console.log('☁️ Starting Vercel Blob upload...');
           // Import Vercel Blob
           const { put } = await import('@vercel/blob');
-
+          
           const timestamp = Date.now();
           const documentType = req.file.fieldname || 'file';
           const ext = path.extname(req.file.originalname);
           const baseName = path.basename(req.file.originalname, ext);
-
+          
           const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
-
+          
           console.log('☁️ Uploading to Vercel Blob:', {
             filename,
             size: req.file.size,
             mimetype: req.file.mimetype
           });
-
+          
           const blob = await put(filename, req.file.buffer, {
             access: 'public',
             contentType: req.file.mimetype,
           });
-
+          
           console.log(`✅ File uploaded to Vercel Blob successfully: ${filename} -> ${blob.url}`);
           fileUrl = blob.url;
           fileName = filename;
         } catch (error) {
           console.error('❌ Error uploading to Vercel Blob:', error);
-          return res.status(500).json({
+          return res.status(500).json({ 
             error: "File upload failed",
             details: "Failed to upload file to cloud storage"
           });
@@ -3010,15 +3006,15 @@ app.post("/api/upload-file",
         size: req.file.size,
         type: req.file.mimetype
       };
-
+      
       console.log('📤 Upload successful, returning response:', response);
       console.log('🔄 === FILE UPLOAD DEBUG END (SUCCESS) ===');
-
+      
       return res.status(200).json(response);
     } catch (error) {
       console.error("❌ File upload error:", error);
       console.error("Error stack:", error.stack);
-
+      
       // Clean up uploaded file on error
       if (req.file && req.file.path) {
         try {
@@ -3027,9 +3023,9 @@ app.post("/api/upload-file",
           console.error('Error cleaning up file:', e);
         }
       }
-
+      
       console.log('🔄 === FILE UPLOAD DEBUG END (ERROR) ===');
-      return res.status(500).json({
+      return res.status(500).json({ 
         error: "File upload failed",
         details: error instanceof Error ? error.message : "Unknown error"
       });
@@ -3048,13 +3044,13 @@ app.post('/api/force-create-admin', async (req, res) => {
 
   try {
     console.log('Force creating admin user...');
-
+    
     // First, ensure database tables exist
     await initializeDatabase();
-
+    
     // Check if admin already exists
     const existingAdmin = await getUserByUsername('admin');
-
+    
     if (existingAdmin) {
       console.log('Admin user already exists:', { id: existingAdmin.id, role: existingAdmin.role });
       return res.status(200).json({
@@ -3062,24 +3058,24 @@ app.post('/api/force-create-admin', async (req, res) => {
         admin: { id: existingAdmin.id, username: existingAdmin.username, role: existingAdmin.role }
       });
     }
-
+    
     // Create admin user with hardcoded password hash for 'localcooks'
     const hashedPassword = 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668';
-
+    
     const result = await pool.query(`
       INSERT INTO users (username, password, role)
       VALUES ('admin', $1, 'admin')
       RETURNING id, username, role;
     `, [hashedPassword]);
-
+    
     const newAdmin = result.rows[0];
     console.log('Admin user created successfully:', newAdmin);
-
+    
     res.status(201).json({
       message: 'Admin user created successfully',
       admin: newAdmin
     });
-
+    
   } catch (error) {
     console.error('Error forcing admin user creation:', error);
     res.status(500).json({
@@ -3126,7 +3122,7 @@ app.get('/api/debug-admin', async (req, res) => {
       } : null,
       expectedPasswordHash: 'fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668'
     });
-
+    
   } catch (error) {
     console.error('Error debugging admin user:', error);
     res.status(500).json({
@@ -3166,7 +3162,7 @@ app.get("/api/document-verification", async (req, res) => {
     }
 
     const application = result.rows[0];
-
+    
     // Convert to frontend-expected format
     const responseData = {
       id: application.id,
@@ -3211,7 +3207,7 @@ async function cleanupExpiredSessions() {
       WHERE expire < NOW()
       RETURNING sid;
     `);
-
+    
     console.log(`Cleaned up ${result.rowCount} expired sessions`);
     return { cleaned: result.rowCount };
   } catch (error) {
@@ -3262,7 +3258,7 @@ app.get("/api/admin/sessions/stats", async (req, res) => {
     }
 
     const stats = await getSessionStats();
-
+    
     return res.status(200).json({
       message: "Session statistics",
       stats: stats,
@@ -3324,13 +3320,13 @@ app.post("/api/admin/sessions/cleanup-old", async (req, res) => {
     }
 
     const { days = 30 } = req.body; // Default to 30 days
-
+    
     if (!pool) {
       return res.status(500).json({ message: "Database not available" });
     }
 
     const beforeStats = await getSessionStats();
-
+    
     const result = await pool.query(`
       DELETE FROM session 
       WHERE expire < NOW() - INTERVAL '${days} days'
@@ -3397,7 +3393,7 @@ async function getApplicationStatus(userId) {
     `, [userId]);
 
     const applications = result.rows;
-    const activeApplications = applications.filter(app =>
+    const activeApplications = applications.filter(app => 
       app.status !== 'cancelled' && app.status !== 'rejected'
     );
 
@@ -3534,7 +3530,7 @@ async function updateVideoProgress(progressData) {
           is_rewatching BOOLEAN DEFAULT FALSE
         );
       `);
-
+      
       // Add unique constraint if it doesn't exist (for existing tables)
       await pool.query(`
         DO $$ BEGIN
@@ -3554,7 +3550,7 @@ async function updateVideoProgress(progressData) {
       `, [progressData.userId, progressData.videoId]);
 
       const existingProgress = existingResult.rows[0];
-
+      
       // Preserve completion status - if video was already completed, keep it completed
       // unless explicitly setting it to completed again
       const finalCompleted = progressData.completed || (existingProgress?.completed || false);
@@ -3589,11 +3585,11 @@ async function updateVideoProgress(progressData) {
     // In-memory fallback - apply same logic as storage.ts
     const key = `${progressData.userId}-${progressData.videoId}`;
     const existingProgress = microlearningProgress.get(key);
-
+    
     // Preserve completion status - if video was already completed, keep it completed
     const finalCompleted = progressData.completed || (existingProgress?.completed || false);
     const finalCompletedAt = finalCompleted ? (existingProgress?.completedAt || progressData.completedAt) : null;
-
+    
     microlearningProgress.set(key, {
       ...progressData,
       completed: finalCompleted,
@@ -3618,7 +3614,7 @@ async function createMicrolearningCompletion(completionData) {
           created_at TIMESTAMP DEFAULT NOW()
         );
       `);
-
+      
       // Add unique constraint if it doesn't exist (for existing tables)
       await pool.query(`
         DO $$ BEGIN
@@ -3719,21 +3715,21 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
       req.session.userId = req.headers['x-user-id'];
       await new Promise(resolve => req.session.save(resolve));
     }
-
+    
     // Convert Firebase UIDs to integer user IDs
     let requestedUser = await getUser(req.params.userId);
     if (!requestedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-
+    
     // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
       return res.status(401).json({ message: 'Session user not found' });
     }
     const sessionUserIntId = sessionUser.id;
-
+    
     // Verify user can access this data (either their own or admin)
     if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
@@ -3760,13 +3756,13 @@ app.get("/api/microlearning/progress/:userId", async (req, res) => {
         hasCancelled: applicationStatus.hasCancelled,
         latestStatus: applicationStatus.latestStatus,
         canApply: !applicationStatus.hasActive, // Can apply if no active applications
-        message: applicationStatus.hasApproved
-          ? "✅ Application approved - Full access granted!"
-          : applicationStatus.hasPending
-            ? "⏳ Application under review - Limited access while pending"
-            : applicationStatus.hasRejected || applicationStatus.hasCancelled
-              ? "🔄 Previous application was not approved - You can submit a new application"
-              : "🚀 Submit an application to unlock full training access"
+        message: applicationStatus.hasApproved 
+          ? "✅ Application approved - Full access granted!" 
+          : applicationStatus.hasPending 
+          ? "⏳ Application under review - Limited access while pending"
+          : applicationStatus.hasRejected || applicationStatus.hasCancelled
+          ? "🔄 Previous application was not approved - You can submit a new application"
+          : "🚀 Submit an application to unlock full training access"
       }
     });
   } catch (error) {
@@ -3798,23 +3794,23 @@ app.post("/api/microlearning/progress", async (req, res) => {
       req.session.userId = req.headers['x-user-id'];
       await new Promise(resolve => req.session.save(resolve));
     }
-
+    
     const { userId: rawUserId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
-
+    
     // Convert Firebase UIDs to integer user IDs
     let requestedUser = await getUser(rawUserId);
     if (!requestedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-
+    
     // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
       return res.status(401).json({ message: 'Session user not found' });
     }
     const sessionUserIntId = sessionUser.id;
-
+    
     // Verify user can update this data (either their own or admin)
     if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
@@ -3827,12 +3823,12 @@ app.post("/api/microlearning/progress", async (req, res) => {
     const isAdmin = sessionUser?.role === 'admin';
     // Admins and completed users have unrestricted access to all videos
     if (!applicationStatus.hasApproved && !isAdmin && !isCompleted && videoId !== firstVideoId) {
-      const message = applicationStatus.hasPending
+      const message = applicationStatus.hasPending 
         ? 'Your application is under review. Full access will be granted once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
-          ? 'Your previous application was not approved. Please submit a new application for full access.'
-          : 'Please submit an application to access all training videos.';
-      return res.status(403).json({
+        ? 'Your previous application was not approved. Please submit a new application for full access.'
+        : 'Please submit an application to access all training videos.';
+      return res.status(403).json({ 
         message: message,
         accessLevel: 'limited',
         firstVideoOnly: true,
@@ -3875,23 +3871,23 @@ app.post("/api/microlearning/complete", async (req, res) => {
     if (!sessionUserId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
-
+    
     const { userId: rawUserId, completionDate, videoProgress } = req.body;
-
+    
     // Convert Firebase UIDs to integer user IDs
     let requestedUser = await getUser(rawUserId);
     if (!requestedUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-
+    
     // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
       return res.status(401).json({ message: 'Session user not found' });
     }
     const sessionUserIntId = sessionUser.id;
-
+    
     // Verify user can complete this (either their own or admin)
     if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
@@ -3901,12 +3897,12 @@ app.post("/api/microlearning/complete", async (req, res) => {
     const isAdmin = sessionUser?.role === 'admin';
     // Admins can complete certification without application approval
     if (!applicationStatus.hasApproved && !isAdmin) {
-      const message = applicationStatus.hasPending
+      const message = applicationStatus.hasPending 
         ? 'Your application is under review. Certification will be available once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
-          ? 'Your previous application was not approved. Please submit a new application to complete certification.'
-          : 'Please submit an application to complete full certification.';
-      return res.status(403).json({
+        ? 'Your previous application was not approved. Please submit a new application to complete certification.'
+        : 'Please submit an application to complete full certification.';
+      return res.status(403).json({ 
         message: message,
         accessLevel: 'limited',
         requiresApproval: true,
@@ -3942,7 +3938,7 @@ app.get("/api/microlearning/completion/:userId", async (req, res) => {
   try {
     // Check if user is authenticated - Match pattern from other working endpoints
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
-
+    
     // Debug logging for session issues (matching other endpoints)
     console.log('Completion status request:', {
       sessionId: req.session.id,
@@ -3951,7 +3947,7 @@ app.get("/api/microlearning/completion/:userId", async (req, res) => {
       requestedUserId: req.params.userId,
       cookiePresent: !!req.headers.cookie
     });
-
+    
     if (!sessionUserId) {
       console.log('Authentication failed - no session userId or header userId');
       return res.status(401).json({ message: 'Authentication required' });
@@ -3970,21 +3966,21 @@ app.get("/api/microlearning/completion/:userId", async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-
+    
     // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
       return res.status(401).json({ message: 'Session user not found' });
     }
     const sessionUserIntId = sessionUser.id;
-
+    
     // Verify user can access this completion (either their own or admin)
     if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
     const completion = await getMicrolearningCompletion(userId);
-
+    
     if (!completion) {
       return res.status(404).json({ message: 'No completion found' });
     }
@@ -4000,7 +3996,7 @@ app.get("/api/microlearning/completion/:userId", async (req, res) => {
 app.get('/api/microlearning/certificate-status/:userId', async (req, res) => {
   try {
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
-
+    
     if (!sessionUserId) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -4011,21 +4007,21 @@ app.get('/api/microlearning/certificate-status/:userId', async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     const userId = requestedUser.id;
-
+    
     // Get session user and convert to integer ID
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
       return res.status(401).json({ message: 'Session user not found' });
     }
     const sessionUserIntId = sessionUser.id;
-
+    
     // Verify user can access this status (either their own or admin)
     if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
     const completion = await getMicrolearningCompletion(userId);
-
+    
     if (!completion) {
       return res.status(404).json({ message: 'No completion found' });
     }
@@ -4053,14 +4049,14 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     console.log('Session object:', JSON.stringify(req.session, null, 2));
     console.log('Cookies:', req.headers.cookie);
     console.log('URL params:', req.params);
-
+    
     // Check if user is authenticated - Match pattern from other working endpoints
     let sessionUserId = req.session.userId || req.headers['x-user-id'];
-
+    
     // Production-specific authentication fallback for Vercel serverless
     if (!sessionUserId && process.env.NODE_ENV === 'production') {
       console.log('Production environment detected, checking alternative auth methods');
-
+      
       // Try to get userId from Authorization header
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -4076,7 +4072,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
           console.log('Failed to parse auth token:', e.message);
         }
       }
-
+      
       // Try to get from cookie directly (for Vercel Edge Functions)
       if (!sessionUserId && req.headers.cookie) {
         const cookies = req.headers.cookie.split(';').reduce((acc, cookie) => {
@@ -4084,25 +4080,25 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
           acc[key] = value;
           return acc;
         }, {});
-
+        
         if (cookies.userId) {
           console.log('Found userId in direct cookie:', cookies.userId);
           sessionUserId = cookies.userId;
         }
       }
     }
-
+    
     // If no session userId, try to authenticate using the requested userId and verify it exists
     if (!sessionUserId) {
       const requestedUserId = req.params.userId;
       console.log('No session userId found, attempting to verify requested userId:', requestedUserId);
-
+      
       // Check if the requested user exists in the database (handles both Firebase UID and integer ID)
       const requestedUser = await getUser(requestedUserId);
       if (requestedUser) {
         console.log('Requested user exists, treating as authenticated:', requestedUser.username);
         sessionUserId = requestedUserId.toString();
-
+        
         // Store in session for future requests (if session is available)
         if (req.session) {
           req.session.userId = sessionUserId;
@@ -4110,7 +4106,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
         }
       }
     }
-
+    
     // Debug logging for session issues (matching other endpoints)
     console.log('Certificate request:', {
       sessionId: req.session?.id,
@@ -4121,12 +4117,12 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
       finalSessionUserId: sessionUserId,
       environment: process.env.NODE_ENV
     });
-
+    
     if (!sessionUserId) {
       console.log('Authentication failed - no session userId or header userId');
       console.log('Session userId:', req.session?.userId);
       console.log('Header x-user-id:', req.headers['x-user-id']);
-      return res.status(401).json({
+      return res.status(401).json({ 
         message: 'Authentication required',
         debug: process.env.NODE_ENV === 'development' ? {
           sessionExists: !!req.session,
@@ -4150,7 +4146,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     }
     const userId = requestedUser.id;
     console.log('Parsed userId:', userId);
-
+    
     // Verify user can access this certificate (either their own or admin)
     const sessionUser = await getUser(sessionUserId);
     if (!sessionUser) {
@@ -4158,7 +4154,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     }
     const sessionUserIntId = sessionUser.id;
     console.log('Session user:', sessionUser ? { id: sessionUser.id, username: sessionUser.username, role: sessionUser.role } : null);
-
+    
     if (sessionUserIntId !== userId && sessionUser?.role !== 'admin') {
       console.log('Access denied - userId mismatch and not admin');
       return res.status(403).json({ message: 'Access denied' });
@@ -4166,7 +4162,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
 
     const completion = await getMicrolearningCompletion(userId);
     console.log('Microlearning completion:', completion);
-
+    
     if (!completion || !completion.confirmed) {
       console.log('No confirmed completion found');
       return res.status(404).json({ message: 'No confirmed completion found' });
@@ -4182,7 +4178,7 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
 
     const user = await getUser(userId);
     console.log('Target user:', user ? { id: user.id, username: user.username } : null);
-
+    
     if (!user) {
       console.log('User not found');
       return res.status(404).json({ message: 'User not found' });
@@ -4190,16 +4186,16 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
 
     // Generate professional PDF certificate
     const { generateCertificatePDF } = await import('./certificateGenerator.js');
-
+    
     const certificateId = `LC-${userId}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-
+    
     // Ensure completion date is valid
     const completionDate = completion.completedAt ? new Date(completion.completedAt) : new Date();
     if (isNaN(completionDate.getTime())) {
       console.warn('Invalid completion date, using current date as fallback');
       completionDate = new Date();
     }
-
+    
     const certificateData = {
       userName: user.full_name || user.username,
       completionDate: completionDate,
@@ -4208,27 +4204,27 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     };
 
     console.log('Generating PDF certificate with data:', certificateData);
-
+    
     try {
       const pdfBuffer = await generateCertificatePDF(certificateData);
-
+      
       // Update database to mark certificate as generated
       await updateCertificateGenerated(userId, true);
-
+      
       // Set proper headers for PDF download
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Certificate-${user.username}-${certificateId}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
-
+      
       console.log('Certificate PDF generated successfully, size:', pdfBuffer.length, 'bytes');
       console.log('Database updated: certificate_generated = true for user', userId);
-
+      
       // Send the PDF buffer directly
       res.send(pdfBuffer);
-
+      
     } catch (pdfError) {
       console.error('Error generating PDF certificate:', pdfError);
-
+      
       // Fallback to JSON response if PDF generation fails
       const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
       res.json({
@@ -4251,15 +4247,15 @@ app.post("/api/test-status-email", async (req, res) => {
     const { status, email, fullName } = req.body;
 
     if (!status || !email || !fullName) {
-      return res.status(400).json({
-        message: "Missing required fields: status, email, fullName"
+      return res.status(400).json({ 
+        message: "Missing required fields: status, email, fullName" 
       });
     }
 
     console.log('Testing status change email with:', { status, email, fullName });
 
     // Import the email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
     const emailContent = generateStatusChangeEmail({
       fullName,
@@ -4272,22 +4268,22 @@ app.post("/api/test-status-email", async (req, res) => {
     });
 
     if (emailSent) {
-      return res.status(200).json({
+      return res.status(200).json({ 
         message: "Test email sent successfully",
         status,
         email,
         fullName
       });
     } else {
-      return res.status(500).json({
-        message: "Failed to send test email - check email configuration"
+      return res.status(500).json({ 
+        message: "Failed to send test email - check email configuration" 
       });
     }
   } catch (error) {
     console.error("Error sending test email:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Error sending test email",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -4298,15 +4294,15 @@ app.post("/api/test-verification-email", async (req, res) => {
     const { fullName, email, phone } = req.body;
 
     if (!fullName || !email || !phone) {
-      return res.status(400).json({
-        message: "Missing required fields: fullName, email, phone"
+      return res.status(400).json({ 
+        message: "Missing required fields: fullName, email, phone" 
       });
     }
 
     console.log('Testing full verification email with:', { fullName, email, phone });
 
     // Import the email functions
-    const { sendEmail, generateFullVerificationEmail } = await import('../server/email');
+    const { sendEmail, generateFullVerificationEmail } = await import('../server/email.js');
 
     const emailContent = generateFullVerificationEmail({
       fullName,
@@ -4319,21 +4315,21 @@ app.post("/api/test-verification-email", async (req, res) => {
     });
 
     if (emailSent) {
-      return res.status(200).json({
+      return res.status(200).json({ 
         message: "Test verification email sent successfully",
         subject: emailContent.subject,
         to: emailContent.to
       });
     } else {
-      return res.status(500).json({
-        message: "Failed to send test verification email - check email configuration"
+      return res.status(500).json({ 
+        message: "Failed to send test verification email - check email configuration" 
       });
     }
   } catch (error) {
     console.error("Error sending test verification email:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Error sending test verification email",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -4343,11 +4339,11 @@ app.post('/api/firebase-sync-user', async (req, res) => {
   try {
     // Verify Firebase token for security
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'No auth token provided'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
       });
     }
 
@@ -4355,9 +4351,9 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid auth token'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
       });
     }
 
@@ -4366,31 +4362,31 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     const email = decodedToken.email;
     const emailVerified = decodedToken.email_verified;
     const { displayName, role, password } = req.body; // These can come from request body
-
+    
     // CRITICAL FIX: For Google OAuth (no password), always treat as verified
     const isGoogleAuth = (!password || password === null || password === undefined) && displayName;
     const effectiveEmailVerified = isGoogleAuth ? true : emailVerified;
-
+    
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
     }
 
     const syncResult = await syncFirebaseUser(uid, email, effectiveEmailVerified, displayName, role, password);
-
+    
     if (syncResult.success) {
       res.json(syncResult);
     } else {
-      res.status(500).json({
-        error: 'Sync failed',
-        message: syncResult.error
+      res.status(500).json({ 
+        error: 'Sync failed', 
+        message: syncResult.error 
       });
     }
   } catch (error) {
     console.error('❌ Error in firebase-sync-user:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Sync failed',
-        message: error.message
+      res.status(500).json({ 
+        error: 'Sync failed', 
+        message: error.message 
       });
     }
   }
@@ -4400,11 +4396,11 @@ app.post('/api/firebase-sync-user', async (req, res) => {
 app.post('/api/firebase-register-user', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'No auth token provided'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
       });
     }
 
@@ -4412,9 +4408,9 @@ app.post('/api/firebase-register-user', async (req, res) => {
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid auth token'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
       });
     }
 
@@ -4423,23 +4419,23 @@ app.post('/api/firebase-register-user', async (req, res) => {
     const email = decodedToken.email;
     const emailVerified = decodedToken.email_verified;
     const { displayName, role, password } = req.body;
-
+    
     // CRITICAL FIX: For Google OAuth registration (no password), always treat as verified
     const isGoogleRegistration = (!password || password === null || password === undefined) && displayName;
     const effectiveEmailVerified = isGoogleRegistration ? true : emailVerified;
-
+    
     if (!uid || !email) {
       return res.status(400).json({ error: 'Missing uid or email in token' });
     }
-
+    
     console.log(`📝 Firebase REGISTRATION request for email: ${email}, uid: ${uid}`);
     console.log(`   - Original emailVerified: ${emailVerified}`);
     console.log(`   - Is Google Registration: ${isGoogleRegistration}`);
     console.log(`   - Effective emailVerified: ${effectiveEmailVerified}`);
-
+    
     // Call sync logic directly instead of making internal fetch
     const syncResult = await syncFirebaseUser(uid, email, effectiveEmailVerified, displayName, role, password);
-
+    
     if (syncResult.success) {
       console.log(`✅ Registration sync completed for ${email}`);
       res.json({
@@ -4458,9 +4454,9 @@ app.post('/api/firebase-register-user', async (req, res) => {
   } catch (error) {
     console.error('❌ Error in firebase-register-user:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Registration failed',
-        message: error.message
+      res.status(500).json({ 
+        error: 'Registration failed', 
+        message: error.message 
       });
     }
   }
@@ -4477,22 +4473,22 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
     console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
     console.log(`   - Role: ${role}`);
     console.log(`   - Password provided: ${password ? 'YES (will be hashed)' : 'NO (OAuth user)'}`);
-
+    
     let user = null;
     let wasCreated = false;
-
+    
     if (pool) {
       // STEP 1: Check by Firebase UID FIRST (most reliable)
       console.log(`🔍 Primary check: Looking for user by Firebase UID: ${uid}`);
       const firebaseResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
-
+      
       if (firebaseResult.rows.length > 0) {
         user = firebaseResult.rows[0];
         console.log(`✅ Found existing user by Firebase UID: ${user.id} (${user.username})`);
         console.log(`   - is_verified in DB: ${user.is_verified}`);
         console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
         console.log(`   - emailVerified from Firebase: ${emailVerified}`);
-
+        
         // CRITICAL: Update verification status if Firebase shows user as verified but DB shows unverified
         if (emailVerified === true && !user.is_verified) {
           console.log(`🔄 UPDATING VERIFICATION STATUS - Firebase verified but DB not updated`);
@@ -4507,7 +4503,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
             console.error(`❌ Failed to update verification status for user ${user.id}:`, updateError);
           }
         }
-
+        
         // Also update displayName if it's missing and provided
         if (displayName && !user.display_name) {
           console.log(`🔄 UPDATING DISPLAY NAME - Adding missing display name: ${displayName}`);
@@ -4526,20 +4522,20 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
         // STEP 2: Check by email as secondary (for linking existing accounts)
         console.log(`🔍 Secondary check: Looking for user by email: ${email}`);
         const emailResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [email]);
-
+        
         if (emailResult.rows.length > 0) {
           user = emailResult.rows[0];
           console.log(`🔗 Found existing user by email: ${user.id} (${user.username})`);
-
+          
           // Check if this user already has a different Firebase UID
           if (user.firebase_uid && user.firebase_uid !== uid) {
             console.log(`⚠️  User ${user.id} already linked to different Firebase UID: ${user.firebase_uid} vs ${uid}`);
-            return {
+            return { 
               success: false,
               error: 'Email already registered with different account'
             };
           }
-
+          
           // Link this user to the Firebase UID if not already linked
           if (!user.firebase_uid) {
             console.log(`🔗 Linking existing user ${user.id} to Firebase UID ${uid}`);
@@ -4556,14 +4552,14 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           console.log(`   - emailVerified: ${emailVerified}, setting is_verified: ${isUserVerified}`);
           console.log(`   - Using EMAIL as username to ensure uniqueness`);
           console.log(`   - Password provided: ${password ? 'YES' : 'NO'}`);
-
+          
           // Hash the password if provided (for email/password users)
           let hashedPassword = '';
           if (password) {
             console.log(`🔐 Hashing password for email/password user`);
             hashedPassword = await hashPassword(password);
           }
-
+          
           try {
             const insertResult = await pool.query(
               'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
@@ -4574,30 +4570,30 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
             console.log(`✨ Successfully created new user: ${user.id} (${user.username})`);
             console.log(`   - is_verified in DB: ${user.is_verified}`);
             console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
-
+            
             // Send welcome email for new users (with delay for better deliverability)
             if (isUserVerified) {
               console.log(`📧 Scheduling welcome email for new user: ${email}`);
-
+              
               // Add 2-second delay to prevent Gmail rate limiting
               // CRITICAL FIX: Remove setTimeout - Make email sending SYNCHRONOUS
               try {
                 console.log(`🧪 SYNCHRONOUS TEST: Sending welcome email using APPLICATION EMAIL PATTERN`);
-
+                
                 // Use the proper welcome email function
-                const { sendEmail, generateWelcomeEmail } = await import('../server/email');
-
+                const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                
                 // Generate proper welcome email
                 const emailContent = generateWelcomeEmail({
                   fullName: displayName || email.split('@')[0],
                   email: email
                 });
-
+                
                 // Use the exact same tracking pattern as application emails - SYNCHRONOUSLY
                 const emailSent = await sendEmail(emailContent, {
                   trackingId: `account_active_${user.id}_${Date.now()}`
                 });
-
+                
                 if (emailSent) {
                   console.log(`✅ SYNCHRONOUS TEST: Account welcome email sent successfully to ${email} using APPLICATION PATTERN`);
                 } else {
@@ -4606,25 +4602,25 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
               } catch (emailError) {
                 console.error(`❌ SYNCHRONOUS TEST: Error sending account welcome email to ${email}:`, emailError);
               }
-
+              
             } else {
               // FALLBACK: For Google users, try sending email even if not marked as verified
               if (displayName && !password) {
                 console.log(`🔄 SYNCHRONOUS FALLBACK: Sending welcome email for Google user despite verification status`);
-
+                
                 try {
-                  const { sendEmail, generateWelcomeEmail } = await import('../server/email');
-
+                  const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                  
                   // Use proper welcome email function
                   const emailContent = generateWelcomeEmail({
                     fullName: displayName || email.split('@')[0],
                     email: email
                   });
-
+                  
                   const emailSent = await sendEmail(emailContent, {
                     trackingId: `account_fallback_${user.id}_${uid}_${Date.now()}`
                   });
-
+                  
                   if (emailSent) {
                     console.log(`✅ SYNCHRONOUS FALLBACK: Welcome email sent successfully to ${email}`);
                   } else {
@@ -4633,7 +4629,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                 } catch (emailError) {
                   console.error(`❌ SYNCHRONOUS FALLBACK: Error sending welcome email to ${email}:`, emailError);
                 }
-
+                
               } else {
                 console.log(`❌ Welcome email NOT sent - user not verified and not Google user`);
                 console.log(`   - isUserVerified: ${isUserVerified}`);
@@ -4643,11 +4639,11 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
             }
           } catch (insertError) {
             console.error(`❌ Failed to create user:`, insertError);
-
+            
             // Check if it's a uniqueness constraint error
             if (insertError.code === '23505') { // PostgreSQL unique violation
               console.log(`🔄 Uniqueness conflict detected, re-checking for existing user...`);
-
+              
               // Try to find the user again (might have been created by another request)
               const retryResult = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [uid]);
               if (retryResult.rows.length > 0) {
@@ -4665,7 +4661,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
     } else {
       // In-memory fallback with same Firebase UID first logic
       console.log(`📝 Using in-memory storage (no database connection)`);
-
+      
       // Try to find by Firebase UID first
       for (const u of users.values()) {
         if (u.firebase_uid === uid) {
@@ -4673,32 +4669,32 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           console.log(`✅ Found existing in-memory user by Firebase UID: ${u.id} (${u.username})`);
           console.log(`   - is_verified in memory: ${u.is_verified}`);
           console.log(`   - emailVerified from Firebase: ${emailVerified}`);
-
+          
           // Update verification status if Firebase shows verified but memory shows unverified
           if (emailVerified === true && !u.is_verified) {
             console.log(`🔄 UPDATING IN-MEMORY VERIFICATION STATUS - Firebase verified but memory not updated`);
             u.is_verified = true;
             console.log(`✅ IN-MEMORY VERIFICATION STATUS UPDATED - User ${u.id} is now verified`);
           }
-
+          
           // Also update displayName if missing
           if (displayName && !u.display_name) {
             console.log(`🔄 UPDATING IN-MEMORY DISPLAY NAME - Adding: ${displayName}`);
             u.display_name = displayName;
             console.log(`✅ IN-MEMORY DISPLAY NAME UPDATED`);
           }
-
+          
           break;
         }
       }
-
+      
       // If not found by Firebase UID, try by email for linking
       if (!user) {
         for (const u of users.values()) {
           if (u.username && u.username.toLowerCase() === email.toLowerCase()) {
             user = u;
             console.log(`🔗 Found existing in-memory user by email: ${u.id} (${u.username})`);
-
+            
             // Link to Firebase UID if not already linked
             if (!u.firebase_uid) {
               u.firebase_uid = uid;
@@ -4708,24 +4704,24 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           }
         }
       }
-
+      
       // Create new user if none found
       if (!user) {
         const id = Date.now();
         const isUserVerified = emailVerified === true;
-
+        
         // Hash the password if provided (for email/password users)
         let hashedPassword = '';
         if (password) {
           console.log(`🔐 Hashing password for in-memory email/password user`);
           hashedPassword = await hashPassword(password);
         }
-
-        user = {
-          id,
-          username: email,
-          role: role || 'applicant',
-          password: hashedPassword,
+        
+        user = { 
+          id, 
+          username: email, 
+          role: role || 'applicant', 
+          password: hashedPassword, 
           firebase_uid: uid,
           is_verified: isUserVerified,
           has_seen_welcome: false
@@ -4737,11 +4733,11 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
         console.log(`   - Password stored: ${hashedPassword ? 'YES' : 'NO'}`);
       }
     }
-
+    
     console.log(`✅ Firebase sync completed for email: ${email}, user ID: ${user.id} (${wasCreated ? 'CREATED' : 'EXISTING'})`);
-
-    return {
-      success: true,
+    
+    return { 
+      success: true, 
       user: {
         id: user.id,
         username: user.username,
@@ -4768,12 +4764,12 @@ let firebaseAdmin;
 try {
   if (process.env.VITE_FIREBASE_PROJECT_ID) {
     const { initializeApp, getApps } = await import('firebase-admin/app');
-
+    
     if (getApps().length === 0) {
       firebaseAdmin = initializeApp({
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
-
+      
       console.log('✅ Enhanced Firebase Admin SDK initialized with project:', process.env.VITE_FIREBASE_PROJECT_ID);
     } else {
       firebaseAdmin = getApps()[0];
@@ -4792,7 +4788,7 @@ async function verifyFirebaseToken(token) {
     if (!firebaseAdmin) {
       throw new Error('Enhanced Firebase Admin SDK not initialized');
     }
-
+    
     const { getAuth } = await import('firebase-admin/auth');
     const auth = getAuth(firebaseAdmin);
     const decodedToken = await auth.verifyIdToken(token);
@@ -4807,11 +4803,11 @@ async function verifyFirebaseToken(token) {
 async function verifyFirebaseAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'No auth token provided'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
       });
     }
 
@@ -4819,9 +4815,9 @@ async function verifyFirebaseAuth(req, res, next) {
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid auth token'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
       });
     }
 
@@ -4834,9 +4830,9 @@ async function verifyFirebaseAuth(req, res, next) {
     next();
   } catch (error) {
     console.error('Enhanced Firebase auth verification error:', error);
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Token verification failed'
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Token verification failed' 
     });
   }
 }
@@ -4846,11 +4842,11 @@ async function requireFirebaseAuthWithUser(req, res, next) {
   try {
     // Check for auth token
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'No auth token provided'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
       });
     }
 
@@ -4858,9 +4854,9 @@ async function requireFirebaseAuthWithUser(req, res, next) {
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid auth token'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
       });
     }
 
@@ -4887,11 +4883,11 @@ async function requireFirebaseAuthWithUser(req, res, next) {
         }
       }
     }
-
+    
     if (!neonUser) {
-      return res.status(404).json({
-        error: 'User not found',
-        message: 'No matching user in database. Please complete registration.'
+      return res.status(404).json({ 
+        error: 'User not found', 
+        message: 'No matching user in database. Please complete registration.' 
       });
     }
 
@@ -4909,9 +4905,9 @@ async function requireFirebaseAuthWithUser(req, res, next) {
   } catch (error) {
     console.error('Enhanced Firebase auth with user verification error:', error);
     if (!res.headersSent) {
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: 'Authentication verification failed'
+      return res.status(500).json({ 
+        error: 'Internal server error', 
+        message: 'Authentication verification failed' 
       });
     }
   }
@@ -4920,16 +4916,16 @@ async function requireFirebaseAuthWithUser(req, res, next) {
 // Enhanced Admin Role Verification
 function requireAdmin(req, res, next) {
   if (!req.neonUser) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Authentication required'
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Authentication required' 
     });
   }
 
   if (req.neonUser.role !== 'admin') {
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Admin access required'
+    return res.status(403).json({ 
+      error: 'Forbidden', 
+      message: 'Admin access required' 
     });
   }
 
@@ -5010,14 +5006,14 @@ app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req, 
       };
     }
 
-    res.json({
-      success: true,
+    res.json({ 
+      success: true, 
       application,
       message: 'Application submitted successfully'
     });
   } catch (error) {
     console.error('Error creating enhanced application:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to create application',
       message: error.message
     });
@@ -5028,7 +5024,7 @@ app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req, 
 app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req, res) => {
   try {
     let applications = [];
-
+    
     if (pool) {
       const result = await pool.query(
         'SELECT * FROM applications WHERE user_id = $1 ORDER BY created_at DESC',
@@ -5041,7 +5037,7 @@ app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req
         app => app.user_id === req.neonUser.id
       );
     }
-
+    
     console.log(`📋 Enhanced retrieval: ${applications.length} applications for Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id}`);
 
     res.json(applications);
@@ -5055,7 +5051,7 @@ app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req
 app.get('/api/firebase/admin/applications', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
     let applications = [];
-
+    
     if (pool) {
       const result = await pool.query('SELECT * FROM applications ORDER BY created_at DESC');
       applications = result.rows;
@@ -5063,7 +5059,7 @@ app.get('/api/firebase/admin/applications', requireFirebaseAuthWithUser, require
       // In-memory fallback
       applications = Array.from(applications.values());
     }
-
+    
     console.log(`👑 Enhanced admin ${req.firebaseUser.uid} requested all applications`);
 
     res.json(applications);
@@ -5124,34 +5120,34 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
   try {
     const requestedUserId = req.params.userId;
     const currentUserId = req.neonUser.id;
-
+    
     // Users can only access their own progress unless they're admin
     if (req.firebaseUser.uid !== requestedUserId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
-
+    
     // Get the user ID for the requested Firebase UID
     let targetUser = null;
     if (pool) {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [requestedUserId]);
       targetUser = result.rows[0];
     }
-
+    
     if (!targetUser) {
       return res.status(404).json({ message: 'User not found' });
     }
-
+    
     const progress = await getMicrolearningProgress(targetUser.id);
     const completionStatus = await getMicrolearningCompletion(targetUser.id);
     const applicationStatus = await getApplicationStatus(targetUser.id);
-
+    
     // Admins and completed users have unrestricted access regardless of application status
     const isAdmin = req.neonUser.role === 'admin';
     const isCompleted = completionStatus?.confirmed || false;
     const accessLevel = isAdmin || applicationStatus.hasApproved || isCompleted ? 'full' : 'limited';
-
+    
     console.log(`📺 Firebase microlearning progress: UID ${requestedUserId} → User ID ${targetUser.id} (Access: ${accessLevel})`);
-
+    
     res.json({
       success: true,
       progress: progress || [],
@@ -5167,13 +5163,13 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
         hasCancelled: applicationStatus.hasCancelled,
         latestStatus: applicationStatus.latestStatus,
         canApply: !applicationStatus.hasActive, // Can apply if no active applications
-        message: applicationStatus.hasApproved
-          ? "✅ Application approved - Full access granted!"
-          : applicationStatus.hasPending
-            ? "⏳ Application under review - Limited access until approved"
-            : applicationStatus.hasRejected || applicationStatus.hasCancelled
-              ? "❌ Previous application not approved - Please reapply for full access"
-              : "📝 Submit application for full training access"
+        message: applicationStatus.hasApproved 
+          ? "✅ Application approved - Full access granted!" 
+          : applicationStatus.hasPending 
+          ? "⏳ Application under review - Limited access until approved"
+          : applicationStatus.hasRejected || applicationStatus.hasCancelled
+          ? "❌ Previous application not approved - Please reapply for full access"
+          : "📝 Submit application for full training access"
       },
       userId: targetUser.id,
       firebaseUid: requestedUserId
@@ -5198,15 +5194,15 @@ app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, as
     const isCompleted = completion?.confirmed || false;
     const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
     const isAdmin = req.neonUser.role === 'admin';
-
+    
     // Admins and completed users have unrestricted access to all videos
     if (!applicationStatus.hasApproved && !isAdmin && !isCompleted && videoId !== firstVideoId) {
-      const message = applicationStatus.hasPending
+      const message = applicationStatus.hasPending 
         ? 'Your application is under review. Full access will be granted once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
-          ? 'Your previous application was not approved. Please submit a new application for full access.'
-          : 'Please submit an application to access all training videos.';
-      return res.status(403).json({
+        ? 'Your previous application was not approved. Please submit a new application for full access.'
+        : 'Please submit an application to access all training videos.';
+      return res.status(403).json({ 
         message: message,
         accessLevel: 'limited',
         firstVideoOnly: true,
@@ -5244,21 +5240,21 @@ app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, as
   try {
     const { completionDate, videoProgress } = req.body;
     const userId = req.neonUser.id;
-
+    
     console.log(`📺 Firebase microlearning completion: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${userId}`);
-
+    
     // Check if user has approved application to complete full training
     const applicationStatus = await getApplicationStatus(userId);
     const isAdmin = req.neonUser.role === 'admin';
-
+    
     // Admins can complete certification without application approval
     if (!applicationStatus.hasApproved && !isAdmin) {
-      const message = applicationStatus.hasPending
+      const message = applicationStatus.hasPending 
         ? 'Your application is under review. Certification will be available once approved.'
         : applicationStatus.hasRejected || applicationStatus.hasCancelled
-          ? 'Your previous application was not approved. Please submit a new application to complete certification.'
-          : 'Please submit an application to complete full certification.';
-      return res.status(403).json({
+        ? 'Your previous application was not approved. Please submit a new application to complete certification.'
+        : 'Please submit an application to complete full certification.';
+      return res.status(403).json({ 
         message: message,
         accessLevel: 'limited',
         requiresApproval: true,
@@ -5271,7 +5267,7 @@ app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, as
         }
       });
     }
-
+    
     // Create completion record
     const completion = await createMicrolearningCompletion({
       userId,
@@ -5279,7 +5275,7 @@ app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, as
       confirmed: true, // Default to confirmed when user completes training
       progress: videoProgress
     });
-
+    
     res.json({
       success: true,
       completion,
@@ -5295,27 +5291,27 @@ app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, as
 app.get('/api/firebase/microlearning/completion/:userId', requireFirebaseAuthWithUser, async (req, res) => {
   try {
     const requestedUserId = req.params.userId;
-
+    
     // Users can only access their own completion unless they're admin
     if (req.firebaseUser.uid !== requestedUserId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
-
+    
     // Get the user ID for the requested Firebase UID
     let targetUser = null;
     if (pool) {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [requestedUserId]);
       targetUser = result.rows[0];
     }
-
+    
     if (!targetUser) {
       return res.status(404).json({ message: 'User not found' });
     }
-
+    
     const completion = await getMicrolearningCompletion(targetUser.id);
-
+    
     console.log(`📺 Firebase microlearning completion status: UID ${requestedUserId} → User ID ${targetUser.id}`);
-
+    
     res.json({
       success: true,
       completion: completion || null,
@@ -5332,35 +5328,35 @@ app.get('/api/firebase/microlearning/completion/:userId', requireFirebaseAuthWit
 app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWithUser, async (req, res) => {
   try {
     const requestedUserId = req.params.userId;
-
+    
     // Users can only access their own certificate unless they're admin
     if (req.firebaseUser.uid !== requestedUserId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
-
+    
     // Get the user ID for the requested Firebase UID
     let targetUser = null;
     if (pool) {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [requestedUserId]);
       targetUser = result.rows[0];
     }
-
+    
     if (!targetUser) {
       return res.status(404).json({ message: 'User not found' });
     }
-
+    
     // Get completion status
     const completion = await getMicrolearningCompletion(targetUser.id);
-
+    
     if (!completion || !completion.confirmed) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         message: 'Certificate not available',
         reason: completion ? 'Not confirmed' : 'Training not completed'
       });
     }
-
+    
     console.log(`📺 Firebase microlearning certificate: UID ${requestedUserId} → User ID ${targetUser.id}`);
-
+    
     // Check if certificate was already generated before
     const isFirstTimeGeneration = !completion.certificateGenerated;
     console.log('Firebase certificate generation status:', {
@@ -5371,16 +5367,16 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
 
     // Generate professional PDF certificate directly (same as session-based endpoint)
     const { generateCertificatePDF } = await import('./certificateGenerator.js');
-
+    
     const certificateId = `LC-${targetUser.id}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-
+    
     // Ensure completion date is valid
     const completionDate = completion.completedAt ? new Date(completion.completedAt) : new Date();
     if (isNaN(completionDate.getTime())) {
       console.warn('Invalid completion date, using current date as fallback');
       completionDate = new Date();
     }
-
+    
     const certificateData = {
       userName: targetUser.full_name || targetUser.username,
       completionDate: completionDate,
@@ -5389,27 +5385,27 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
     };
 
     console.log('Generating Firebase PDF certificate with data:', certificateData);
-
+    
     try {
       const pdfBuffer = await generateCertificatePDF(certificateData);
-
+      
       // Update database to mark certificate as generated
       await updateCertificateGenerated(targetUser.id, true);
-
+      
       // Set proper headers for PDF download
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Certificate-${targetUser.username}-${certificateId}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
-
+      
       console.log('Firebase certificate PDF generated successfully, size:', pdfBuffer.length, 'bytes');
       console.log('Database updated: certificate_generated = true for user', targetUser.id);
-
+      
       // Send the PDF buffer directly
       res.send(pdfBuffer);
-
+      
     } catch (pdfError) {
       console.error('Error generating Firebase PDF certificate:', pdfError);
-
+      
       // Fallback to JSON response if PDF generation fails
       const certificateUrl = `/api/microlearning/certificate/${targetUser.id}`;
       res.json({
@@ -5446,18 +5442,18 @@ app.get('/api/firebase-health', (req, res) => {
   });
 });
 
-console.log('🔥 Enhanced Firebase authentication routes added to existing API');
-console.log('✨ Hybrid architecture: Both session-based and Firebase JWT authentication available');
-console.log('📧 Email-based login now supported alongside username login');
-console.log('🚀 Hybrid endpoints: /api/hybrid/* support both auth methods');
-console.log('👥 Admin support: Both Firebase and session admins fully supported');
-console.log('🐛 Debug endpoints: /api/debug-login, /api/auth-status available for troubleshooting');
+  console.log('🔥 Enhanced Firebase authentication routes added to existing API');
+  console.log('✨ Hybrid architecture: Both session-based and Firebase JWT authentication available');
+  console.log('📧 Email-based login now supported alongside username login');
+  console.log('🚀 Hybrid endpoints: /api/hybrid/* support both auth methods');
+  console.log('👥 Admin support: Both Firebase and session admins fully supported');
+  console.log('🐛 Debug endpoints: /api/debug-login, /api/auth-status available for troubleshooting');
 
 // Utility function to create admin user in Firebase (run once)
 async function createAdminInFirebase() {
   try {
     const admin = require('firebase-admin');
-
+    
     // Check if admin user exists in Firebase
     try {
       const adminUser = await admin.auth().getUserByEmail('admin@localcooks.com');
@@ -5466,20 +5462,20 @@ async function createAdminInFirebase() {
     } catch (error) {
       // User doesn't exist, create them
       console.log('Creating admin user in Firebase...');
-
+      
       const adminUser = await admin.auth().createUser({
         email: 'admin@localcooks.com',
         password: 'localcooks',
         displayName: 'Admin',
         emailVerified: true,
       });
-
+      
       // Set custom claims for admin role
       await admin.auth().setCustomUserClaims(adminUser.uid, {
         role: 'admin',
         isAdmin: true
       });
-
+      
       console.log('Admin user created in Firebase:', adminUser.uid);
       return adminUser;
     }
@@ -5495,7 +5491,7 @@ async function requireHybridAuth(req, res, next) {
     // Try Firebase auth first
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
       try {
-        await verifyFirebaseAuth(req, res, () => { });
+        await verifyFirebaseAuth(req, res, () => {});
         if (req.firebaseUser) {
           // Load Neon user from Firebase UID
           let neonUser = null;
@@ -5506,7 +5502,7 @@ async function requireHybridAuth(req, res, next) {
             );
             neonUser = result.rows[0] || null;
           }
-
+          
           if (neonUser) {
             req.user = {
               id: neonUser.id,
@@ -5523,15 +5519,15 @@ async function requireHybridAuth(req, res, next) {
         console.log('Firebase auth failed, trying session auth...');
       }
     }
-
+    
     // Fallback to session auth
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
     console.log('Checking session auth - userId:', sessionUserId, 'sessionId:', req.session.id);
-
+    
     if (sessionUserId) {
       const user = await getUser(sessionUserId);
       console.log('Found user for session:', user ? `${user.id}:${user.username}:${user.role}` : 'null');
-
+      
       if (user) {
         req.user = {
           id: user.id,
@@ -5544,8 +5540,8 @@ async function requireHybridAuth(req, res, next) {
         return next();
       }
     }
-
-    return res.status(401).json({
+    
+    return res.status(401).json({ 
       error: 'Authentication required',
       message: 'Please login with either Firebase or session authentication'
     });
@@ -5565,20 +5561,20 @@ async function requireHybridAdmin(req, res, next) {
         else resolve();
       });
     });
-
+    
     // Then check if they're an admin
     if (!req.user || req.user.role !== 'admin') {
-      return res.status(403).json({
+      return res.status(403).json({ 
         error: 'Admin access required',
         message: 'This endpoint requires admin privileges',
         userRole: req.user?.role || 'none'
       });
     }
-
+    
     next();
   } catch (error) {
     console.error('Hybrid admin auth error:', error);
-    return res.status(401).json({
+    return res.status(401).json({ 
       error: 'Authentication failed',
       message: 'Please login as an admin'
     });
@@ -5589,19 +5585,19 @@ async function requireHybridAdmin(req, res, next) {
 app.post('/api/sync-admin-to-firebase', async (req, res) => {
   try {
     console.log('Sync admin endpoint called');
-    console.log('Session data:', {
-      sessionId: req.session.id,
+    console.log('Session data:', { 
+      sessionId: req.session.id, 
       userId: req.session.userId,
-      user: req.session.user
+      user: req.session.user 
     });
     console.log('Headers:', {
       'x-user-id': req.headers['x-user-id'],
       'authorization': req.headers.authorization ? 'present' : 'missing'
     });
-
+    
     // Check if user is authenticated (session or Firebase)
     let authUser = null;
-
+    
     // Try session auth first
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
     console.log('Checking session authentication:', {
@@ -5609,11 +5605,11 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
       sessionId: req.session.id,
       headerUserId: req.headers['x-user-id']
     });
-
+    
     if (sessionUserId) {
       const user = await getUser(sessionUserId);
       console.log('Found user:', user ? `${user.id}:${user.username}:${user.role}` : null);
-
+      
       if (user && user.role === 'admin') {
         authUser = user;
         console.log('Authenticated via session:', user.username);
@@ -5623,11 +5619,11 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
     } else {
       console.log('No session userId found');
     }
-
+    
     // If no session auth, try Firebase (for future use)
     if (!authUser && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
       try {
-        await verifyFirebaseAuth(req, res, () => { });
+        await verifyFirebaseAuth(req, res, () => {});
         if (req.firebaseUser) {
           const result = await pool.query(
             'SELECT * FROM users WHERE firebase_uid = $1 AND role = $2',
@@ -5642,9 +5638,9 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
         console.log('Firebase auth failed:', firebaseError.message);
       }
     }
-
+    
     if (!authUser) {
-      return res.status(401).json({
+      return res.status(401).json({ 
         error: 'Admin authentication required',
         message: 'Please login as an admin first',
         debug: {
@@ -5654,10 +5650,10 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
         }
       });
     }
-
+    
     console.log('Creating admin in Firebase...');
     const firebaseUser = await createAdminInFirebase();
-
+    
     // Update the admin user in Neon DB with Firebase UID
     if (pool) {
       console.log('Updating admin user with Firebase UID...');
@@ -5666,9 +5662,9 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
         [firebaseUser.uid, authUser.id]
       );
     }
-
-    res.json({
-      success: true,
+    
+    res.json({ 
+      success: true, 
       message: 'Admin user synced to Firebase',
       firebaseUid: firebaseUser.uid,
       email: 'admin@localcooks.com',
@@ -5677,7 +5673,7 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
     });
   } catch (error) {
     console.error('Error syncing admin to Firebase:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       error: 'Failed to sync admin to Firebase',
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -5689,11 +5685,11 @@ app.post('/api/sync-admin-to-firebase', async (req, res) => {
 app.post('/api/find-login-info', async (req, res) => {
   try {
     const { email } = req.body;
-
+    
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
-
+    
     // Search for user by email in applications table
     const result = await pool.query(`
       SELECT u.username, u.role, u.firebase_uid, a.email, a.full_name 
@@ -5703,16 +5699,16 @@ app.post('/api/find-login-info', async (req, res) => {
       ORDER BY a.created_at DESC 
       LIMIT 1
     `, [email]);
-
+    
     if (result.rows.length === 0) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         error: 'No account found with this email',
         suggestion: 'Try registering a new account or check if you used a different email'
       });
     }
-
+    
     const userInfo = result.rows[0];
-
+    
     const loginOptions = [
       {
         method: 'Firebase Login (Enhanced)',
@@ -5729,14 +5725,14 @@ app.post('/api/find-login-info', async (req, res) => {
         description: 'Traditional email/password login'
       },
       {
-        method: 'Username Login (Legacy)',
+        method: 'Username Login (Legacy)', 
         url: '/auth',
         credentials: `Username: ${userInfo.username} + your password`,
         available: true,
         description: 'Username-based login'
       }
     ];
-
+    
     if (userInfo.role === 'admin') {
       loginOptions.push({
         method: 'Admin Panel Login',
@@ -5746,7 +5742,7 @@ app.post('/api/find-login-info', async (req, res) => {
         description: 'Direct admin panel access'
       });
     }
-
+    
     res.json({
       found: true,
       username: userInfo.username,
@@ -5756,7 +5752,7 @@ app.post('/api/find-login-info', async (req, res) => {
       firebaseEnabled: !!userInfo.firebase_uid,
       loginOptions
     });
-
+    
   } catch (error) {
     console.error('Error finding login info:', error);
     res.status(500).json({ error: 'Failed to find login information' });
@@ -5775,7 +5771,7 @@ app.get('/api/hybrid/user/profile', requireHybridAuth, async (req, res) => {
       );
       applicationData = appResult.rows[0] || null;
     }
-
+    
     res.json({
       user: {
         id: req.user.id,
@@ -5802,7 +5798,7 @@ app.get('/api/hybrid/user/profile', requireHybridAuth, async (req, res) => {
 app.get('/api/hybrid/applications', requireHybridAuth, async (req, res) => {
   try {
     let applications = [];
-
+    
     if (pool) {
       const result = await pool.query(
         'SELECT * FROM applications WHERE user_id = $1 ORDER BY created_at DESC',
@@ -5810,7 +5806,7 @@ app.get('/api/hybrid/applications', requireHybridAuth, async (req, res) => {
       );
       applications = result.rows;
     }
-
+    
     res.json({
       applications,
       authMethod: req.user.authMethod,
@@ -5826,18 +5822,18 @@ app.get('/api/hybrid/applications', requireHybridAuth, async (req, res) => {
 app.get('/api/hybrid/admin/dashboard', requireHybridAdmin, async (req, res) => {
   try {
     let stats = {};
-
+    
     if (pool) {
       // Get user statistics
       const userStats = await pool.query('SELECT role, COUNT(*) as count FROM users GROUP BY role');
       const appStats = await pool.query('SELECT status, COUNT(*) as count FROM applications GROUP BY status');
-
+      
       stats = {
         users: userStats.rows.reduce((acc, row) => ({ ...acc, [row.role]: parseInt(row.count) }), {}),
         applications: appStats.rows.reduce((acc, row) => ({ ...acc, [row.status]: parseInt(row.count) }), {})
       };
     }
-
+    
     res.json({
       admin: {
         id: req.user.id,
@@ -5863,7 +5859,7 @@ app.get('/api/auth-status', async (req, res) => {
       hybrid: null,
       recommendations: []
     };
-
+    
     // Check session auth
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
     if (sessionUserId) {
@@ -5878,13 +5874,13 @@ app.get('/api/auth-status', async (req, res) => {
         };
       }
     }
-
+    
     // Check Firebase auth
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
       try {
         const token = req.headers.authorization.split(' ')[1];
         const decodedToken = await verifyFirebaseToken(token);
-
+        
         if (decodedToken) {
           status.firebase = {
             authenticated: true,
@@ -5892,7 +5888,7 @@ app.get('/api/auth-status', async (req, res) => {
             email: decodedToken.email,
             emailVerified: decodedToken.email_verified
           };
-
+          
           // Try to find linked Neon user
           if (pool) {
             const result = await pool.query(
@@ -5912,15 +5908,15 @@ app.get('/api/auth-status', async (req, res) => {
         status.firebase = { authenticated: false, error: firebaseError.message };
       }
     }
-
+    
     // Determine hybrid status
     status.hybrid = {
       authenticated: !!(status.session?.authenticated || status.firebase?.authenticated),
-      primaryMethod: status.firebase?.authenticated ? 'firebase' :
-        status.session?.authenticated ? 'session' : null,
+      primaryMethod: status.firebase?.authenticated ? 'firebase' : 
+                    status.session?.authenticated ? 'session' : null,
       bothAvailable: !!(status.session?.authenticated && status.firebase?.authenticated)
     };
-
+    
     // Add recommendations
     if (!status.hybrid.authenticated) {
       status.recommendations.push({
@@ -5936,7 +5932,7 @@ app.get('/api/auth-status', async (req, res) => {
           url: '/api/sync-admin-to-firebase'
         });
       }
-
+      
       if (status.firebase?.authenticated && !status.firebase.linkedNeonUser) {
         status.recommendations.push({
           action: 'sync-to-neon',
@@ -5945,7 +5941,7 @@ app.get('/api/auth-status', async (req, res) => {
         });
       }
     }
-
+    
     res.json({
       timestamp: new Date().toISOString(),
       authStatus: status,
@@ -5965,11 +5961,11 @@ app.get('/api/auth-status', async (req, res) => {
 app.post('/api/debug-login', async (req, res) => {
   try {
     const { username, password } = req.body;
-
+    
     console.log('=== DEBUG LOGIN ===');
     console.log('Username:', username);
     console.log('Password length:', password ? password.length : 0);
-
+    
     const debugInfo = {
       step1_input: { username, passwordProvided: !!password },
       step2_usernameLookup: null,
@@ -5977,14 +5973,14 @@ app.post('/api/debug-login', async (req, res) => {
       step4_passwordCheck: null,
       step5_finalResult: null
     };
-
+    
     // Step 1: Try username lookup
     let user = await getUserByUsername(username);
     debugInfo.step2_usernameLookup = {
       found: !!user,
       userInfo: user ? { id: user.id, username: user.username, role: user.role } : null
     };
-
+    
     // Step 2: If no user found by username, try email lookup
     if (!user && username.includes('@')) {
       console.log('Trying email lookup...');
@@ -5996,7 +5992,7 @@ app.post('/api/debug-login', async (req, res) => {
           ORDER BY a.created_at DESC 
           LIMIT 1
         `, [username]);
-
+        
         if (emailResult.rows.length > 0) {
           user = emailResult.rows[0];
           debugInfo.step3_emailLookup = {
@@ -6010,7 +6006,7 @@ app.post('/api/debug-login', async (req, res) => {
         debugInfo.step3_emailLookup = { found: false, error: emailError.message };
       }
     }
-
+    
     // Step 3: Check password if user found
     if (user && password) {
       try {
@@ -6019,7 +6015,7 @@ app.post('/api/debug-login', async (req, res) => {
           match: passwordMatch,
           storedPasswordLength: user.password ? user.password.length : 0
         };
-
+        
         if (passwordMatch) {
           debugInfo.step5_finalResult = {
             success: true,
@@ -6038,15 +6034,15 @@ app.post('/api/debug-login', async (req, res) => {
     } else {
       debugInfo.step5_finalResult = { success: false, reason: 'No password provided' };
     }
-
+    
     // Also check available users for reference
     const availableUsers = await pool.query('SELECT id, username, role FROM users ORDER BY id LIMIT 10');
     debugInfo.availableUsers = availableUsers.rows;
-
+    
     // Check applications with emails
     const availableEmails = await pool.query('SELECT DISTINCT email, user_id FROM applications ORDER BY user_id LIMIT 10');
     debugInfo.availableEmails = availableEmails.rows;
-
+    
     res.json(debugInfo);
   } catch (error) {
     console.error('Debug login error:', error);
@@ -6059,17 +6055,17 @@ app.get('/api/test-admin', async (req, res) => {
   try {
     // Check if admin user exists
     const admin = await getUserByUsername('admin');
-
+    
     if (!admin) {
       return res.json({
         adminExists: false,
         message: 'Admin user not found in database'
       });
     }
-
+    
     // Test password comparison
     const passwordWorks = await comparePasswords('localcooks', admin.password);
-
+    
     res.json({
       adminExists: true,
       adminInfo: {
@@ -6097,7 +6093,7 @@ app.get('/api/debug-session', (req, res) => {
   console.log('Session data:', JSON.stringify(req.session, null, 2));
   console.log('Cookies:', req.headers.cookie);
   console.log('User-Agent:', req.headers['user-agent']);
-
+  
   res.json({
     sessionId: req.session.id,
     sessionData: req.session,
@@ -6137,8 +6133,8 @@ app.post('/api/hybrid-login', async (req, res) => {
     });
 
     if (!loginIdentifier || !password) {
-      return res.status(400).json({
-        error: 'Email/Username and password are required'
+      return res.status(400).json({ 
+        error: 'Email/Username and password are required' 
       });
     }
 
@@ -6150,7 +6146,7 @@ app.post('/api/hybrid-login', async (req, res) => {
     if (email && firebaseAdmin) {
       try {
         console.log('🔥 Attempting Firebase authentication...');
-
+        
         // Safely import Firebase Admin Auth
         let auth;
         try {
@@ -6160,26 +6156,26 @@ app.post('/api/hybrid-login', async (req, res) => {
           console.warn('Firebase Admin Auth import failed:', importError.message);
           // Skip Firebase auth and continue to Neon auth
         }
-
+        
         if (auth) {
           try {
             const firebaseUser = await auth.getUserByEmail(email);
             console.log('Firebase user found:', firebaseUser.uid);
-
+            
             // Check if this Firebase user is linked to a Neon user
             if (pool) {
               const result = await pool.query(
                 'SELECT * FROM users WHERE firebase_uid = $1',
                 [firebaseUser.uid]
               );
-
+              
               if (result.rows.length > 0) {
                 const linkedUser = result.rows[0];
                 console.log('Found linked Neon user for Firebase user');
-
+                
                 // Verify password against Neon database
                 const passwordMatch = await comparePasswords(password, linkedUser.password);
-
+                
                 if (passwordMatch) {
                   console.log('✅ Firebase-linked user authenticated via Neon password');
                   authResult = {
@@ -6210,7 +6206,7 @@ app.post('/api/hybrid-login', async (req, res) => {
     // Step 2: Try NeonDB authentication (always attempt this as fallback)
     if (!authResult) {
       console.log('🗃️ Attempting Neon database authentication...');
-
+      
       if (!pool) {
         console.error('❌ No database connection available');
         return res.status(500).json({
@@ -6218,11 +6214,11 @@ app.post('/api/hybrid-login', async (req, res) => {
           message: 'Authentication service is temporarily unavailable'
         });
       }
-
+      
       try {
         // First try to find user by username
         let user = await getUserByUsername(loginIdentifier);
-
+        
         // If not found by username, try to find by email in applications table
         if (!user && loginIdentifier.includes('@')) {
           console.log('Trying email lookup in applications table...');
@@ -6234,7 +6230,7 @@ app.post('/api/hybrid-login', async (req, res) => {
               ORDER BY a.created_at DESC 
               LIMIT 1
             `, [loginIdentifier]);
-
+            
             if (emailResult.rows.length > 0) {
               user = emailResult.rows[0];
               console.log('Found user by email in applications table:', user.username);
@@ -6243,13 +6239,13 @@ app.post('/api/hybrid-login', async (req, res) => {
             console.error('Error searching by email:', emailError);
           }
         }
-
+        
         if (user) {
           console.log('Found Neon user:', user.username);
-
+          
           // Verify password
           const passwordMatch = await comparePasswords(password, user.password);
-
+          
           if (passwordMatch) {
             console.log('✅ Neon database authentication successful');
             authResult = {
@@ -6277,7 +6273,7 @@ app.post('/api/hybrid-login', async (req, res) => {
     // Step 3: Handle authentication result
     if (!authResult || !neonUser) {
       console.log('❌ Authentication failed on both Firebase and Neon');
-      return res.status(401).json({
+      return res.status(401).json({ 
         error: 'Invalid credentials',
         message: 'Email/username or password is incorrect',
         debug: process.env.NODE_ENV === 'development' ? {
@@ -6314,13 +6310,13 @@ app.post('/api/hybrid-login', async (req, res) => {
           message: 'Authentication succeeded but session creation failed'
         });
       }
-
+      
       console.log('Session saved successfully for hybrid login:', {
         sessionId: req.session.id,
         userId: req.session.userId,
         username: userWithoutPassword.username
       });
-
+      
       res.status(200).json({
         success: true,
         authMethod,
@@ -6337,7 +6333,7 @@ app.post('/api/hybrid-login', async (req, res) => {
           email: authResult.email,
           emailVerified: authResult.emailVerified
         } : null,
-        message: authMethod === 'firebase-neon-hybrid'
+        message: authMethod === 'firebase-neon-hybrid' 
           ? 'Authenticated via Firebase account linked to database'
           : 'Authenticated via database'
       });
@@ -6346,17 +6342,17 @@ app.post('/api/hybrid-login', async (req, res) => {
   } catch (error) {
     console.error('❌ Hybrid login error:', error);
     console.error('Error stack:', error.stack);
-
-    res.status(500).json({
-      error: 'Login failed',
-      message: process.env.NODE_ENV === 'development'
-        ? error.message
+    
+    res.status(500).json({ 
+      error: 'Login failed', 
+      message: process.env.NODE_ENV === 'development' 
+        ? error.message 
         : 'Internal server error during authentication',
-      details: process.env.NODE_ENV === 'development'
+      details: process.env.NODE_ENV === 'development' 
         ? {
-          errorType: error.constructor.name,
-          stack: error.stack
-        }
+            errorType: error.constructor.name,
+            stack: error.stack
+          } 
         : undefined
     });
   }
@@ -6366,7 +6362,7 @@ app.post('/api/hybrid-login', async (req, res) => {
 app.get('/api/test-applications-auth', async (req, res) => {
   try {
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
-
+    
     const result = {
       timestamp: new Date().toISOString(),
       authentication: {
@@ -6381,7 +6377,7 @@ app.get('/api/test-applications-auth', async (req, res) => {
         applications: []
       }
     };
-
+    
     if (sessionUserId) {
       // Test user lookup
       const user = await getUser(sessionUserId);
@@ -6393,7 +6389,7 @@ app.get('/api/test-applications-auth', async (req, res) => {
           role: user.role,
           firebase_uid: user.firebase_uid
         };
-
+        
         // Test applications query
         if (pool) {
           const appResult = await pool.query(
@@ -6407,7 +6403,7 @@ app.get('/api/test-applications-auth', async (req, res) => {
         result.authentication.userNotFound = sessionUserId;
       }
     }
-
+    
     res.json(result);
   } catch (error) {
     res.status(500).json({
@@ -6422,7 +6418,7 @@ app.get('/api/test-applications-auth', async (req, res) => {
 app.get('/api/test-auth', async (req, res) => {
   try {
     const sessionUserId = req.session.userId || req.headers['x-user-id'];
-
+    
     const result = {
       authenticated: !!sessionUserId,
       sessionId: req.session.id,
@@ -6433,7 +6429,7 @@ app.get('/api/test-auth', async (req, res) => {
       hasCookies: !!req.headers.cookie,
       timestamp: new Date().toISOString()
     };
-
+    
     if (sessionUserId) {
       const user = await getUser(sessionUserId);
       if (user) {
@@ -6447,7 +6443,7 @@ app.get('/api/test-auth', async (req, res) => {
         result.userNotFound = sessionUserId;
       }
     }
-
+    
     res.json(result);
   } catch (error) {
     res.status(500).json({
@@ -6513,14 +6509,14 @@ app.get('/api/debug-hybrid-login', async (req, res) => {
 app.get('/api/verify-auth-methods', async (req, res) => {
   try {
     console.log('=== VERIFICATION: Testing all auth methods ===');
-
+    
     const results = {
       timestamp: new Date().toISOString(),
       existingEndpoints: {},
       authMethods: {},
       recommendations: []
     };
-
+    
     // Test 1: Check if admin user exists (for admin login)
     try {
       const admin = await getUserByUsername('admin');
@@ -6536,7 +6532,7 @@ app.get('/api/verify-auth-methods', async (req, res) => {
         error: error.message
       };
     }
-
+    
     // Test 2: Check if regular login endpoint is accessible
     results.existingEndpoints.regularLogin = {
       endpoint: '/api/login',
@@ -6544,15 +6540,15 @@ app.get('/api/verify-auth-methods', async (req, res) => {
       method: 'POST',
       description: 'Original email/username login - unchanged'
     };
-
+    
     // Test 3: Check if user endpoint is accessible
     results.existingEndpoints.userEndpoint = {
       endpoint: '/api/user',
-      status: 'available',
+      status: 'available', 
       method: 'GET',
       description: 'Original session user endpoint - unchanged'
     };
-
+    
     // Test 4: Check session functionality
     results.authMethods.sessionAuth = {
       status: req.session ? 'available' : 'unavailable',
@@ -6560,20 +6556,20 @@ app.get('/api/verify-auth-methods', async (req, res) => {
       userId: req.session?.userId || null,
       working: !!req.session
     };
-
+    
     // Test 5: Check Firebase admin availability
     results.authMethods.firebaseAdmin = {
       status: firebaseAdmin ? 'available' : 'not_configured',
       working: !!firebaseAdmin,
       note: firebaseAdmin ? 'Enhanced Firebase features available' : 'Firebase Admin SDK not configured'
     };
-
+    
     // Test 6: List sample users for verification
     if (pool) {
       try {
         const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
         const sampleUsers = await pool.query('SELECT id, username, role FROM users LIMIT 5');
-
+        
         results.authMethods.databaseAuth = {
           status: 'available',
           userCount: parseInt(userCount.rows[0].count),
@@ -6593,24 +6589,24 @@ app.get('/api/verify-auth-methods', async (req, res) => {
         working: false
       };
     }
-
-    const allWorking =
+    
+    const allWorking = 
       results.authMethods.adminLogin.working &&
       results.authMethods.sessionAuth.working &&
       results.authMethods.databaseAuth.working;
-
+    
     results.overallStatus = allWorking ? 'all_systems_operational' : 'some_issues_detected';
-    results.message = allWorking
+    results.message = allWorking 
       ? '✅ All existing authentication methods are working properly'
       : '⚠️ Some authentication methods need attention';
-
+    
     console.log('Verification results:', results);
-
+    
     res.json(results);
   } catch (error) {
     console.error('Verification endpoint error:', error);
-    res.status(500).json({
-      error: 'Verification failed',
+    res.status(500).json({ 
+      error: 'Verification failed', 
       message: error.message,
       timestamp: new Date().toISOString()
     });
@@ -6628,11 +6624,11 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 
     // Check if user exists
     const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-
+    
     if (userResult.rows.length === 0) {
       // Don't reveal if user exists or not for security
-      return res.status(200).json({
-        message: "If an account with this email exists, you will receive a password reset link."
+      return res.status(200).json({ 
+        message: "If an account with this email exists, you will receive a password reset link." 
       });
     }
 
@@ -6642,7 +6638,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const crypto = await import('crypto');
     const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
-
+    
     // Store reset token in database
     await pool.query(`
       INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
@@ -6654,7 +6650,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const resetUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/reset-password?token=${resetToken}`;
 
     // Send password reset email
-    const { sendEmail, generatePasswordResetEmail } = await import('../server/email');
+    const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
     const emailContent = generatePasswordResetEmail({
       fullName: user.display_name || user.username,
       email: user.email,
@@ -6668,19 +6664,19 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 
     if (emailSent) {
       console.log(`Password reset email sent to ${email}`);
-      return res.status(200).json({
-        message: "If an account with this email exists, you will receive a password reset link."
+      return res.status(200).json({ 
+        message: "If an account with this email exists, you will receive a password reset link." 
       });
     } else {
       console.error(`Failed to send password reset email to ${email}`);
-      return res.status(500).json({
-        message: "Error sending password reset email. Please try again later."
+      return res.status(500).json({ 
+        message: "Error sending password reset email. Please try again later." 
       });
     }
   } catch (error) {
     console.error("Error in forgot password:", error);
-    return res.status(500).json({
-      message: "Internal server error. Please try again later."
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
     });
   }
 });
@@ -6725,8 +6721,8 @@ app.post("/api/auth/reset-password", async (req, res) => {
 
   } catch (error) {
     console.error("Error in reset password:", error);
-    return res.status(500).json({
-      message: "Internal server error. Please try again later."
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
     });
   }
 });
@@ -6744,7 +6740,7 @@ app.post("/api/auth/send-verification-email", async (req, res) => {
     const crypto = await import('crypto');
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
-
+    
     // Store verification token
     await pool.query(`
       INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
@@ -6756,7 +6752,7 @@ app.post("/api/auth/send-verification-email", async (req, res) => {
     const verificationUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/verify-email?token=${verificationToken}`;
 
     // Send verification email
-    const { sendEmail, generateEmailVerificationEmail } = await import('../server/email');
+    const { sendEmail, generateEmailVerificationEmail } = await import('../server/email.js');
     const emailContent = generateEmailVerificationEmail({
       fullName,
       email,
@@ -6770,19 +6766,19 @@ app.post("/api/auth/send-verification-email", async (req, res) => {
 
     if (emailSent) {
       console.log(`Email verification sent to ${email}`);
-      return res.status(200).json({
-        message: "Verification email sent successfully"
+      return res.status(200).json({ 
+        message: "Verification email sent successfully" 
       });
     } else {
       console.error(`Failed to send verification email to ${email}`);
-      return res.status(500).json({
-        message: "Error sending verification email. Please try again later."
+      return res.status(500).json({ 
+        message: "Error sending verification email. Please try again later." 
       });
     }
   } catch (error) {
     console.error("Error sending verification email:", error);
-    return res.status(500).json({
-      message: "Internal server error. Please try again later."
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
     });
   }
 });
@@ -6826,15 +6822,15 @@ app.get("/api/auth/verify-email", async (req, res) => {
     console.log(`🗑️ Cleared verification token for email: ${email}`);
 
     console.log(`✅ Email verified successfully: ${email}`);
-
+    
     // Redirect to auth page with verification success and login prompt
     // The frontend will show a success message and prompt the user to log in
     return res.redirect(`${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth?verified=true&message=verification-success`);
 
   } catch (error) {
     console.error("❌ Error in email verification:", error);
-    return res.status(500).json({
-      message: "Internal server error. Please try again later."
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
     });
   }
 });
@@ -6843,13 +6839,13 @@ app.get("/api/auth/verify-email", async (req, res) => {
 app.post('/api/check-user-exists', async (req, res) => {
   try {
     const { email } = req.body;
-
+    
     if (!email) {
       return res.status(400).json({ error: 'Email required' });
     }
 
     console.log(`🔍 Checking if user exists: ${email}`);
-
+    
     let firebaseExists = false;
     let neonExists = false;
     let firebaseUser = null;
@@ -6859,55 +6855,55 @@ app.post('/api/check-user-exists', async (req, res) => {
     // Check Firebase with better error handling
     try {
       console.log(`🔥 Attempting Firebase check for: ${email}`);
-
-      // Check if we have Firebase Admin configured (using VITE_ variables)
-      console.log(`🔥 Environment check:`, {
-        VITE_FIREBASE_API_KEY: !!process.env.VITE_FIREBASE_API_KEY,
-        VITE_FIREBASE_AUTH_DOMAIN: !!process.env.VITE_FIREBASE_AUTH_DOMAIN,
-        VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID,
-        VITE_FIREBASE_STORAGE_BUCKET: !!process.env.VITE_FIREBASE_STORAGE_BUCKET,
-        VITE_FIREBASE_MESSAGING_SENDER_ID: !!process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-        VITE_FIREBASE_APP_ID: !!process.env.VITE_FIREBASE_APP_ID
-      });
-
-      if (!process.env.VITE_FIREBASE_PROJECT_ID) {
-        console.log(`🔥 Firebase Admin not configured (missing VITE_FIREBASE_PROJECT_ID)`);
-        firebaseError = 'Firebase not configured';
+      
+             // Check if we have Firebase Admin configured (using VITE_ variables)
+       console.log(`🔥 Environment check:`, {
+         VITE_FIREBASE_API_KEY: !!process.env.VITE_FIREBASE_API_KEY,
+         VITE_FIREBASE_AUTH_DOMAIN: !!process.env.VITE_FIREBASE_AUTH_DOMAIN,
+         VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID,
+         VITE_FIREBASE_STORAGE_BUCKET: !!process.env.VITE_FIREBASE_STORAGE_BUCKET,
+         VITE_FIREBASE_MESSAGING_SENDER_ID: !!process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+         VITE_FIREBASE_APP_ID: !!process.env.VITE_FIREBASE_APP_ID
+       });
+       
+       if (!process.env.VITE_FIREBASE_PROJECT_ID) {
+         console.log(`🔥 Firebase Admin not configured (missing VITE_FIREBASE_PROJECT_ID)`);
+         firebaseError = 'Firebase not configured';
       } else {
         // Use dynamic import for ES modules compatibility
         const admin = await import('firebase-admin');
-
+        
         if (!admin.default.apps.length) {
           console.log(`🔥 Firebase Admin not initialized - attempting to initialize`);
+          
+                     // Try to initialize Firebase Admin using VITE_ variables
+           try {
+             const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+             
+             console.log(`🔥 Attempting Firebase Admin initialization with project: ${projectId}`);
 
-          // Try to initialize Firebase Admin using VITE_ variables
-          try {
-            const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
-
-            console.log(`🔥 Attempting Firebase Admin initialization with project: ${projectId}`);
-
-            // Since we only have client-side variables, try to initialize without service account
-            // This will work in some environments or we'll rely on client-side checks
-            if (projectId) {
-              try {
-                admin.default.initializeApp({
-                  projectId: projectId,
-                });
-                console.log(`🔥 Firebase Admin initialized with default credentials for project: ${projectId}`);
-              } catch (initError) {
-                console.log(`🔥 Firebase Admin initialization failed, will use client-side checks only:`, initError.message);
-                firebaseError = 'Firebase Admin unavailable, using client-side checks';
-              }
-            } else {
-              console.log(`🔥 No Firebase project ID available`);
-              firebaseError = 'Firebase project not configured';
-            }
+             // Since we only have client-side variables, try to initialize without service account
+             // This will work in some environments or we'll rely on client-side checks
+             if (projectId) {
+               try {
+                 admin.default.initializeApp({
+                   projectId: projectId,
+                 });
+                 console.log(`🔥 Firebase Admin initialized with default credentials for project: ${projectId}`);
+               } catch (initError) {
+                 console.log(`🔥 Firebase Admin initialization failed, will use client-side checks only:`, initError.message);
+                 firebaseError = 'Firebase Admin unavailable, using client-side checks';
+               }
+             } else {
+               console.log(`🔥 No Firebase project ID available`);
+               firebaseError = 'Firebase project not configured';
+             }
           } catch (initError) {
             console.error(`🔥 Firebase Admin initialization failed:`, initError.message);
             firebaseError = 'Firebase initialization failed';
           }
         }
-
+        
         // Try to check user if Firebase is available
         if (admin.default.apps.length > 0) {
           try {
@@ -6956,7 +6952,7 @@ app.post('/api/check-user-exists', async (req, res) => {
     let canRegister = !firebaseExists && !neonExists;
     let status = 'available';
     let message = 'Email is available for registration';
-
+    
     if (firebaseExists && neonExists) {
       status = 'exists_both';
       message = 'User exists in both Firebase and NeonDB';
@@ -6973,29 +6969,29 @@ app.post('/api/check-user-exists', async (req, res) => {
 
     console.log(`📊 Result for ${email}: ${status} (canRegister: ${canRegister})`);
 
-    return res.json({
-      email,
-      canRegister,
-      status,
-      message,
-      firebase: {
-        exists: firebaseExists,
-        user: firebaseUser,
-        error: firebaseError
-      },
-      neon: {
-        exists: neonExists,
-        user: neonUser
-      },
-      suggestion: !canRegister ?
-        'Email already exists. Try the client-side Firebase check or use a different email.' :
-        'Email is available for registration.'
-    });
+         return res.json({
+       email,
+       canRegister,
+       status,
+       message,
+       firebase: {
+         exists: firebaseExists,
+         user: firebaseUser,
+         error: firebaseError
+       },
+       neon: {
+         exists: neonExists,
+         user: neonUser
+       },
+       suggestion: !canRegister ? 
+         'Email already exists. Try the client-side Firebase check or use a different email.' : 
+         'Email is available for registration.'
+     });
   } catch (error) {
     console.error('❌ Error checking user existence:', error);
-    res.status(500).json({
-      error: 'Failed to check user existence',
-      message: error.message
+    res.status(500).json({ 
+      error: 'Failed to check user existence', 
+      message: error.message 
     });
   }
 });
@@ -7004,7 +7000,7 @@ app.post('/api/check-user-exists', async (req, res) => {
 app.post('/api/debug/check-firebase-user', async (req, res) => {
   try {
     const { email } = req.body;
-
+    
     if (!email) {
       return res.status(400).json({ error: 'Email required' });
     }
@@ -7020,13 +7016,13 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
             projectId: projectId,
           });
         } catch (e) {
-          return res.status(500).json({
+          return res.status(500).json({ 
             error: 'Firebase Admin not configured',
             message: 'Cannot check Firebase users'
           });
         }
       } else {
-        return res.status(500).json({
+        return res.status(500).json({ 
           error: 'Firebase Admin not configured',
           message: 'Cannot check Firebase users'
         });
@@ -7036,7 +7032,7 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
     try {
       // Try to get user by email
       const userRecord = await admin.default.auth().getUserByEmail(email);
-
+      
       return res.json({
         exists: true,
         user: {
@@ -7064,9 +7060,9 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
     }
   } catch (error) {
     console.error('Error checking Firebase user:', error);
-    res.status(500).json({
-      error: 'Failed to check user',
-      message: error.message
+    res.status(500).json({ 
+      error: 'Failed to check user', 
+      message: error.message 
     });
   }
 });
@@ -7075,9 +7071,9 @@ app.post('/api/debug/check-firebase-user', async (req, res) => {
 app.post('/api/debug/delete-firebase-user', async (req, res) => {
   try {
     const { email, confirmDelete } = req.body;
-
+    
     if (!email || !confirmDelete) {
-      return res.status(400).json({
+      return res.status(400).json({ 
         error: 'Email and confirmDelete=true required',
         message: 'This endpoint requires explicit confirmation'
       });
@@ -7094,13 +7090,13 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
             projectId: projectId,
           });
         } catch (e) {
-          return res.status(500).json({
+          return res.status(500).json({ 
             error: 'Firebase Admin not configured',
             message: 'Cannot delete Firebase users'
           });
         }
       } else {
-        return res.status(500).json({
+        return res.status(500).json({ 
           error: 'Firebase Admin not configured',
           message: 'Cannot delete Firebase users'
         });
@@ -7110,12 +7106,12 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
     try {
       // Get user first
       const userRecord = await admin.default.auth().getUserByEmail(email);
-
+      
       // Delete user
       await admin.default.auth().deleteUser(userRecord.uid);
-
+      
       console.log(`Deleted Firebase user: ${email} (${userRecord.uid})`);
-
+      
       return res.json({
         success: true,
         message: `User ${email} deleted from Firebase`,
@@ -7134,9 +7130,9 @@ app.post('/api/debug/delete-firebase-user', async (req, res) => {
     }
   } catch (error) {
     console.error('Error deleting Firebase user:', error);
-    res.status(500).json({
-      error: 'Failed to delete user',
-      message: error.message
+    res.status(500).json({ 
+      error: 'Failed to delete user', 
+      message: error.message 
     });
   }
 });
@@ -7146,11 +7142,11 @@ app.post('/api/sync-verification-status', async (req, res) => {
   try {
     // Verify Firebase token for security
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'No auth token provided'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'No auth token provided' 
       });
     }
 
@@ -7158,25 +7154,25 @@ app.post('/api/sync-verification-status', async (req, res) => {
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid auth token'
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
       });
     }
 
     const uid = decodedToken.uid;
     const email = decodedToken.email;
     const emailVerified = decodedToken.email_verified;
-
+    
     console.log(`🔄 MANUAL VERIFICATION SYNC requested for ${email} (${uid})`);
     console.log(`   - Firebase emailVerified: ${emailVerified}`);
-
+    
     // Force sync the user's verification status
     const syncResult = await syncFirebaseUser(uid, email, emailVerified, null, null, null);
-
+    
     if (syncResult.success) {
       console.log(`✅ MANUAL VERIFICATION SYNC completed for ${email}`);
-
+      
       res.json({
         success: true,
         message: 'Verification status synced successfully',
@@ -7193,9 +7189,9 @@ app.post('/api/sync-verification-status', async (req, res) => {
     }
   } catch (error) {
     console.error('❌ Error in sync-verification-status:', error);
-    res.status(500).json({
-      error: 'Verification sync failed',
-      message: error.message
+    res.status(500).json({ 
+      error: 'Verification sync failed', 
+      message: error.message 
     });
   }
 });
@@ -7206,15 +7202,15 @@ app.post("/api/test-email-delivery", async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
     console.log('🧪 Testing email delivery to:', email);
 
     // Import the email functions
-    const { sendEmail } = await import('../server/email');
+    const { sendEmail } = await import('../server/email.js');
 
     const testEmailContent = {
       to: email,
@@ -7252,7 +7248,7 @@ From: Local Cooks Community
 
     if (emailSent) {
       console.log('✅ Test email sent successfully to:', email);
-      return res.status(200).json({
+      return res.status(200).json({ 
         message: "Test email sent successfully",
         email: email,
         timestamp: new Date().toISOString(),
@@ -7260,13 +7256,13 @@ From: Local Cooks Community
       });
     } else {
       console.error('❌ Test email failed to send to:', email);
-      return res.status(500).json({
-        message: "Failed to send test email - check email configuration"
+      return res.status(500).json({ 
+        message: "Failed to send test email - check email configuration" 
       });
     }
   } catch (error) {
     console.error("❌ Error sending test email:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Error sending test email",
       error: error.message,
       timestamp: new Date().toISOString()
@@ -7280,42 +7276,42 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
     console.log('🧪 Testing welcome email using STATUS CHANGE function (that works):', email);
 
     // Import the proper welcome email function
-    const { sendEmail, generateWelcomeEmail } = await import('../server/email');
+    const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
 
     // Use the proper welcome email function
     const emailContent = generateWelcomeEmail({
       fullName: email.split('@')[0],
       email: email
     });
-
+    
     const emailSent = await sendEmail(emailContent, {
       trackingId: `test_welcome_as_status_${Date.now()}`
     });
 
     if (emailSent) {
-      return res.status(200).json({
+      return res.status(200).json({ 
         message: "Test welcome email sent using proper welcome function",
         email: email,
         subject: emailContent.subject
       });
     } else {
-      return res.status(500).json({
-        message: "Failed to send test email - check email configuration"
+      return res.status(500).json({ 
+        message: "Failed to send test email - check email configuration" 
       });
     }
   } catch (error) {
     console.error("Error sending test welcome email:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Error sending test email",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -7326,8 +7322,8 @@ app.post("/api/test-email-comparison", async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
@@ -7339,7 +7335,7 @@ app.post("/api/test-email-comparison", async (req, res) => {
     };
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
     // Test 1: Send WORKING application status email (this should work)
     try {
@@ -7393,7 +7389,7 @@ app.post("/api/test-email-comparison", async (req, res) => {
       results.registrationEmail = { error: error.message };
     }
 
-    return res.status(200).json({
+    return res.status(200).json({ 
       message: "Email comparison test complete - Check which emails you receive",
       email: email,
       results: results,
@@ -7402,9 +7398,9 @@ app.post("/api/test-email-comparison", async (req, res) => {
 
   } catch (error) {
     console.error("Error in email comparison test:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Comparison test failed",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -7415,15 +7411,15 @@ app.post("/api/test-identical-subject", async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
     console.log('🎯 IDENTICAL SUBJECT TEST: Using exact working subject line');
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
     // Generate using the exact same pattern as working emails
     const emailContent = generateStatusChangeEmail({
@@ -7440,22 +7436,22 @@ app.post("/api/test-identical-subject", async (req, res) => {
     });
 
     if (emailSent) {
-      return res.status(200).json({
+      return res.status(200).json({ 
         message: "Test email sent with IDENTICAL subject as working emails",
         email: email,
         subject: emailContent.subject,
         note: "This should definitely arrive since it's identical to working application emails"
       });
     } else {
-      return res.status(500).json({
-        message: "Failed to send test email"
+      return res.status(500).json({ 
+        message: "Failed to send test email" 
       });
     }
   } catch (error) {
     console.error("Error in identical subject test:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Test failed",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -7466,15 +7462,15 @@ app.post("/api/test-delayed-email", async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
     console.log('⏰ TIMING TEST: Scheduling delayed email for:', email);
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
     // Generate the email content
     const emailContent = generateStatusChangeEmail({
@@ -7501,7 +7497,7 @@ app.post("/api/test-delayed-email", async (req, res) => {
       }
     }, 5 * 60 * 1000); // 5 minutes
 
-    return res.status(200).json({
+    return res.status(200).json({ 
       message: "Email scheduled for delivery in 5 minutes",
       email: email,
       subject: emailContent.subject,
@@ -7511,9 +7507,9 @@ app.post("/api/test-delayed-email", async (req, res) => {
 
   } catch (error) {
     console.error("Error in delayed email test:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Delayed email test failed",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -7524,8 +7520,8 @@ app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
@@ -7560,7 +7556,7 @@ app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
     }
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
 
     // Test 1: Standard application email (should work)
     try {
@@ -7653,7 +7649,7 @@ app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
       }
     }
 
-    return res.status(200).json({
+    return res.status(200).json({ 
       message: "Comprehensive diagnostic complete",
       originalEmail: email,
       analysis: results.emailAnalysis,
@@ -7664,9 +7660,9 @@ app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
 
   } catch (error) {
     console.error("Error in comprehensive diagnostic:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Diagnostic failed",
-      error: error.message
+      error: error.message 
     });
   }
 });
@@ -7674,23 +7670,23 @@ app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
 // Generate recommendations based on email analysis
 function generateRecommendations(analysis) {
   const recommendations = [];
-
+  
   if (analysis.potentialSpamTriggers.length > 0) {
     recommendations.push('Consider testing with a simpler email address (fewer dots, no subdomain-like patterns)');
   }
-
+  
   if (analysis.hasMultipleDots) {
     recommendations.push('Email has multiple dots - Gmail might treat this as an alias or suspicious pattern');
   }
-
+  
   if (analysis.hasSubdomainLike) {
     recommendations.push('Email contains subdomain-like patterns that might trigger spam filters');
   }
-
+  
   if (recommendations.length === 0) {
     recommendations.push('Email address appears clean - issue likely related to timing or context');
   }
-
+  
   return recommendations;
 }
 
@@ -7968,8 +7964,8 @@ app.post("/api/debug-google-registration", async (req, res) => {
     const { email, displayName } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        message: "Email address is required"
+      return res.status(400).json({ 
+        message: "Email address is required" 
       });
     }
 
@@ -8003,12 +7999,12 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
     // Step 2: Test welcome email generation
     try {
-      const { generateWelcomeEmail } = await import('../server/email');
+      const { generateWelcomeEmail } = await import('../server/email.js');
       const emailContent = generateWelcomeEmail({
         fullName: displayName || email.split('@')[0],
         email: email
       });
-
+      
       testResults.step2_emailGeneration = {
         success: true,
         subject: emailContent.subject,
@@ -8022,8 +8018,8 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
     // Step 3: Test email configuration (using main email system)
     try {
-      const { sendEmail } = await import('../server/email');
-
+      const { sendEmail } = await import('../server/email.js');
+      
       testResults.step3_emailSending = {
         configValid: !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS),
         config: {
@@ -8039,19 +8035,19 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
     // Step 4: Compare with working status email
     try {
-      const { generateStatusChangeEmail } = await import('../server/email');
+      const { generateStatusChangeEmail } = await import('../server/email.js');
       const statusEmail = generateStatusChangeEmail({
         fullName: displayName || email.split('@')[0],
         email: email,
         status: 'approved'
       });
-
-      const { generateWelcomeEmail } = await import('../server/email');
+      
+      const { generateWelcomeEmail } = await import('../server/email.js');
       const welcomeEmail = generateWelcomeEmail({
         fullName: displayName || email.split('@')[0],
         email: email
       });
-
+      
       testResults.step4_comparison = {
         statusEmail: {
           subject: statusEmail.subject,
@@ -8069,7 +8065,7 @@ app.post("/api/debug-google-registration", async (req, res) => {
       testResults.step4_comparison = { error: error.message };
     }
 
-    return res.status(200).json({
+    return res.status(200).json({ 
       message: "Google OAuth registration diagnostic complete",
       email: email,
       displayName: displayName,
@@ -8078,9 +8074,9 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
   } catch (error) {
     console.error("Error in Google OAuth diagnostic:", error);
-    return res.status(500).json({
+    return res.status(500).json({ 
       message: "Diagnostic failed",
-      error: error.message
+      error: error.message 
     });
   }
 });
