@@ -792,10 +792,7 @@ export default function ApplicantDashboard() {
                       </div>
                       
                       <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
-                        <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                          <span className="text-lg">📋</span>
-                          Training Modules
-                        </h4>
+                        <h4 className="font-semibold text-gray-900 mb-3">Training Modules</h4>
                         <div className="space-y-3 text-sm">
                           <div className="flex items-center justify-between">
                             <span className="text-gray-700">Module 1: Food Safety Basics</span>
@@ -838,8 +835,8 @@ export default function ApplicantDashboard() {
                       </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                    <div className="flex flex-col">
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200 mb-4">
                         <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
                           <span className="text-lg">🏆</span>
                           What You'll Achieve
@@ -864,7 +861,7 @@ export default function ApplicantDashboard() {
                         </div>
                       </div>
                       
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 mt-auto">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg">🚀</span>
                           <span className="font-semibold text-blue-900 text-sm">Get Started Today</span>
