@@ -357,6 +357,13 @@ export default function ApplicantDashboard() {
     refetchOnWindowFocus: true,
   });
 
+  // Add debug logging for completion data
+  useEffect(() => {
+    if (microlearningCompletion) {
+      console.log('📊 Dashboard completion data:', microlearningCompletion);
+    }
+  }, [microlearningCompletion]);
+
   // Query training access level and progress
   const { data: trainingAccess, isLoading: isLoadingTrainingAccess } = useQuery({
     queryKey: ["training-access", user?.uid],
@@ -697,7 +704,7 @@ export default function ApplicantDashboard() {
         >
           <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
             <div className="flex-1">
-              {microlearningCompletion?.confirmed ? (
+              {(microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed) ? (
                 // Completed Training Display
                 <>
                   <h2 className="text-lg md:text-xl font-bold text-emerald-800 mb-2 flex items-center gap-2">
@@ -716,14 +723,14 @@ export default function ApplicantDashboard() {
                       <div>
                         <h3 className="font-semibold text-emerald-800 text-sm">Certificate Available</h3>
                         <p className="text-xs text-emerald-700">
-                          Completed on {microlearningCompletion.completedAt ? new Date(microlearningCompletion.completedAt).toLocaleDateString('en-US', {
+                          Completed on {(microlearningCompletion?.completion?.completedAt || microlearningCompletion?.completedAt) ? new Date(microlearningCompletion?.completion?.completedAt || microlearningCompletion?.completedAt).toLocaleDateString('en-US', {
                             weekday: 'long',
                             year: 'numeric',
                             month: 'long',
                             day: 'numeric'
                           }) : "Recently"}
                         </p>
-                        {microlearningCompletion.certificateGenerated && (
+                        {(microlearningCompletion?.completion?.certificateGenerated || microlearningCompletion?.certificateGenerated) && (
                           <p className="text-xs text-emerald-600 font-medium">
                             ✅ Certificate previously generated
                           </p>

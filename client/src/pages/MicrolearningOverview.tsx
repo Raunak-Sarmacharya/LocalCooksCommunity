@@ -122,7 +122,7 @@ export default function MicrolearningOverview() {
     refetchOnWindowFocus: true,
   });
 
-  if (loading || isLoadingTrainingAccess) {
+  if (loading || isLoadingTrainingAccess || isLoadingCompletion) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
         <div className="text-center space-y-4">
@@ -142,7 +142,17 @@ export default function MicrolearningOverview() {
   }
 
   const hasFullAccess = trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication;
-  const isCompleted = microlearningCompletion?.confirmed;
+  const isCompleted = microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed;
+
+  // Add debug logging to understand what data we're getting
+  React.useEffect(() => {
+    if (microlearningCompletion) {
+      console.log('🎯 Microlearning completion data:', microlearningCompletion);
+      console.log('🎯 Is completed?', isCompleted);
+      console.log('🎯 Has full access?', hasFullAccess);
+      console.log('🎯 Training access data:', trainingAccess);
+    }
+  }, [microlearningCompletion, isCompleted, hasFullAccess, trainingAccess]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
@@ -313,7 +323,46 @@ export default function MicrolearningOverview() {
                         <Button 
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
                           onClick={async () => {
-                            // Certificate download logic here
+                            try {
+                              // Get Firebase token for authentication
+                              const currentUser = auth.currentUser;
+                              if (!currentUser) {
+                                console.error('No authenticated user found');
+                                alert('Authentication required. Please log in again.');
+                                return;
+                              }
+                              
+                              const token = await currentUser.getIdToken();
+                              
+                              const response = await fetch(`/api/firebase/microlearning/certificate/${user.uid}`, {
+                                method: 'GET',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${token}`
+                                }
+                              });
+
+                              if (response.ok) {
+                                // Handle PDF download
+                                const blob = await response.blob();
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.style.display = 'none';
+                                a.href = url;
+                                a.download = `LocalCooks-Certificate-${user.displayName || user.email || 'user'}.pdf`;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                              } else {
+                                const error = await response.json();
+                                console.error('Certificate download failed:', error);
+                                alert('Failed to download certificate. Please try again.');
+                              }
+                            } catch (error) {
+                              console.error('Error downloading certificate:', error);
+                              alert('Failed to download certificate. Please try again.');
+                            }
                           }}
                         >
                           <Download className="h-4 w-4 mr-2" />

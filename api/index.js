@@ -5138,12 +5138,12 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
     }
     
     const progress = await getMicrolearningProgress(targetUser.id);
-    const completionStatus = await getMicrolearningCompletion(targetUser.id);
+    const completion = await getMicrolearningCompletion(targetUser.id);
     const applicationStatus = await getApplicationStatus(targetUser.id);
     
     // Admins and completed users have unrestricted access regardless of application status
     const isAdmin = req.neonUser.role === 'admin';
-    const isCompleted = completionStatus?.confirmed || false;
+    const isCompleted = completion?.confirmed || false;
     const accessLevel = isAdmin || applicationStatus.hasApproved || isCompleted ? 'full' : 'limited';
     
     console.log(`📺 Firebase microlearning progress: UID ${requestedUserId} → User ID ${targetUser.id} (Access: ${accessLevel})`);
@@ -5151,8 +5151,13 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
     res.json({
       success: true,
       progress: progress || [],
-      completionConfirmed: completionStatus?.confirmed || false,
-      completedAt: completionStatus?.completedAt,
+      completion: completion || null,
+      userId: targetUser.id,
+      firebaseUid: requestedUserId,
+      // Add convenience fields for easier access
+      confirmed: completion?.confirmed || false,
+      certificateGenerated: completion?.certificateGenerated || false,
+      completedAt: completion?.completedAt || null,
       hasApprovedApplication: applicationStatus.hasApproved,
       accessLevel: accessLevel,
       isAdmin: isAdmin,
@@ -5171,8 +5176,6 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
           ? "❌ Previous application not approved - Please reapply for full access"
           : "📝 Submit application for full training access"
       },
-      userId: targetUser.id,
-      firebaseUid: requestedUserId
     });
   } catch (error) {
     console.error('Error getting Firebase microlearning progress:', error);
@@ -5316,7 +5319,11 @@ app.get('/api/firebase/microlearning/completion/:userId', requireFirebaseAuthWit
       success: true,
       completion: completion || null,
       userId: targetUser.id,
-      firebaseUid: requestedUserId
+      firebaseUid: requestedUserId,
+      // Add convenience fields for easier access
+      confirmed: completion?.confirmed || false,
+      certificateGenerated: completion?.certificateGenerated || false,
+      completedAt: completion?.completedAt || null
     });
   } catch (error) {
     console.error('Error getting Firebase microlearning completion:', error);
