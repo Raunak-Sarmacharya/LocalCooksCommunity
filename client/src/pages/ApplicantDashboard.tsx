@@ -45,7 +45,6 @@ import {
     RefreshCw,
     Shield,
     Star,
-    Trophy,
     XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -244,33 +243,36 @@ export default function ApplicantDashboard() {
     if (applications && prevApplicationsRef.current) {
       const prevApps = prevApplicationsRef.current;
       
-      applications.forEach((currentApp) => {
-        const prevApp = prevApps.find(app => app.id === currentApp.id);
-        
-        if (prevApp && prevApp.status !== currentApp.status) {
-          // Application status changed
-          switch (currentApp.status) {
-            case "approved":
-              toast({
-                title: "🎉 Application Approved!",
-                description: "Congratulations! Your application has been approved. You can now manage your documents for verification.",
-              });
-              break;
-            case "rejected":
-              toast({
-                title: "Application Update",
-                description: "Your application status has been updated. Please check your dashboard for details.",
-                variant: "destructive",
-              });
-              break;
-            case "inReview":
-              toast({
-                title: "📋 Application Under Review",
-                description: "Your application is now being reviewed by our team.",
-              });
-              break;
+              applications.forEach((currentApp) => {
+          const prevApp = prevApps.find(app => app.id === currentApp.id);
+          
+          if (prevApp && prevApp.status !== currentApp.status) {
+            // Application status changed - invalidate training access to reflect new permissions
+            queryClient.invalidateQueries({ queryKey: ["training-access", user?.uid] });
+            
+            // Application status changed
+            switch (currentApp.status) {
+              case "approved":
+                toast({
+                  title: "🎉 Application Approved!",
+                  description: "Congratulations! Your application has been approved. You now have full access to all training modules!",
+                });
+                break;
+              case "rejected":
+                toast({
+                  title: "Application Update",
+                  description: "Your application status has been updated. Please check your dashboard for details.",
+                  variant: "destructive",
+                });
+                break;
+              case "inReview":
+                toast({
+                  title: "📋 Application Under Review",
+                  description: "Your application is now being reviewed by our team.",
+                });
+                break;
+            }
           }
-        }
         
         // Check for document verification status changes (only for approved applications)
         if (prevApp && currentApp.status === "approved") {
@@ -353,6 +355,72 @@ export default function ApplicantDashboard() {
     enabled: Boolean(user?.uid),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
+  });
+
+  // Query training access level and progress
+  const { data: trainingAccess, isLoading: isLoadingTrainingAccess } = useQuery({
+    queryKey: ["training-access", user?.uid],
+    queryFn: async () => {
+      if (!user?.uid) return null;
+      
+      try {
+        // Get Firebase token for authentication
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          throw new Error("No authenticated user found");
+        }
+        
+        const token = await currentUser.getIdToken();
+        
+        const response = await fetch(`/api/firebase/microlearning/progress/${user.uid}`, {
+          method: "GET",
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            // No training progress found - default to limited access
+            return {
+              accessLevel: 'limited',
+              hasApprovedApplication: false,
+              applicationInfo: { message: 'Submit application for full training access' }
+            };
+          }
+          throw new Error("Failed to fetch training access");
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.error("Error fetching training access:", error);
+        return {
+          accessLevel: 'limited',
+          hasApprovedApplication: false,
+          applicationInfo: { message: 'Submit application for full training access' }
+        };
+      }
+    },
+    enabled: Boolean(user?.uid),
+    staleTime: 30 * 1000, // 30 seconds - shorter cache for real-time training access updates
+    refetchOnWindowFocus: true,
+    // Refetch when applications change to immediately reflect access level changes
+    refetchInterval: (data) => {
+      // Check if user has applications under review (might get approved soon)
+      const hasApplicationsUnderReview = applications?.some(app => app.status === "inReview");
+      
+      if (hasApplicationsUnderReview) {
+        // More frequent updates when applications are being reviewed
+        return 10000; // 10 seconds
+      } else if (data?.accessLevel === 'limited') {
+        // Check more frequently if user still has limited access
+        return 15000; // 15 seconds
+      } else {
+        // Less frequent once user has full access
+        return 60000; // 1 minute
+      }
+    },
   });
 
   // Monitor microlearning completion and show celebration
@@ -790,41 +858,87 @@ export default function ApplicantDashboard() {
                             <div className="flex items-center justify-between">
                               <span className="text-gray-700">Module 1: Food Safety Basics</span>
                               <div className="flex gap-1">
-                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
-                                  1 Available
-                                </Badge>
-                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
-                                  13 Locked
-                                </Badge>
+                                {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? (
+                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                                    14 Available
+                                  </Badge>
+                                ) : (
+                                  <>
+                                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                                      1 Available
+                                    </Badge>
+                                    <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
+                                      13 Locked
+                                    </Badge>
+                                  </>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-gray-700">Module 2: Safety & Hygiene How-To's</span>
-                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
-                                8 Locked
-                              </Badge>
+                              {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? (
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
+                                  8 Available
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
+                                  8 Locked
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
                       </div>
                       
-                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mt-4">
+                      <div className={`rounded-lg p-4 border mt-4 ${
+                        trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                          ? 'bg-green-50 border-green-200' 
+                          : 'bg-blue-50 border-blue-200'
+                      }`}>
                         <div className="flex items-center gap-2 mb-2">
-                          <Shield className="h-4 w-4 text-blue-600" />
-                          <span className="font-semibold text-blue-900 text-sm">Access Status</span>
+                          <Shield className={`h-4 w-4 ${
+                            trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                              ? 'text-green-600' 
+                              : 'text-blue-600'
+                          }`} />
+                          <span className={`font-semibold text-sm ${
+                            trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                              ? 'text-green-900' 
+                              : 'text-blue-900'
+                          }`}>
+                            Access Status
+                            {isLoadingTrainingAccess && (
+                              <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />
+                            )}
+                          </span>
                         </div>
                         <div className="flex items-center gap-3 mb-2">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-xs font-medium text-blue-800">Available Now: 1 Video</span>
+                            <span className={`text-xs font-medium ${
+                              trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                                ? 'text-green-800' 
+                                : 'text-blue-800'
+                            }`}>
+                              Available Now: {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? '22' : '1'} Video{trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? 's' : ''}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                            <span className="text-xs font-medium text-blue-800">Application Required: 21 Videos</span>
-                          </div>
+                          {!(trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication) && (
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <span className="text-xs font-medium text-blue-800">Application Required: 21 Videos</span>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-xs text-blue-800 leading-relaxed">
-                          Complete your application to unlock the full curriculum and earn your completion certificate.
+                        <p className={`text-xs leading-relaxed ${
+                          trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                            ? 'text-green-800' 
+                            : 'text-blue-800'
+                        }`}>
+                          {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                            ? 'Full access granted! Complete all modules to earn your training certificate.'
+                            : trainingAccess?.applicationInfo?.message || 'Complete your application to unlock the full curriculum and earn your completion certificate.'
+                          }
                         </p>
                       </div>
                     </div>
@@ -857,13 +971,33 @@ export default function ApplicantDashboard() {
                         </div>
                       </div>
                       
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 mt-4">
+                      <div className={`bg-gradient-to-br rounded-lg p-4 border mt-4 ${
+                        trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                          ? 'from-green-50 to-emerald-50 border-green-200' 
+                          : 'from-blue-50 to-indigo-50 border-blue-200'
+                      }`}>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg">🚀</span>
-                          <span className="font-semibold text-blue-900 text-sm">Get Started Today</span>
+                          <span className={`font-semibold text-sm ${
+                            trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                              ? 'text-green-900' 
+                              : 'text-blue-900'
+                          }`}>
+                            {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                              ? 'Full Access Granted' 
+                              : 'Get Started Today'
+                            }
+                          </span>
                         </div>
-                        <p className="text-xs text-blue-800 leading-relaxed">
-                          Begin with the introduction video immediately. Track your progress as you advance through your food safety education journey.
+                        <p className={`text-xs leading-relaxed ${
+                          trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                            ? 'text-green-800' 
+                            : 'text-blue-800'
+                        }`}>
+                          {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
+                            ? 'You now have access to all 22 training videos across both modules. Complete your comprehensive food safety education journey at your own pace.'
+                            : 'Begin with the introduction video immediately. Track your progress as you advance through your food safety education journey.'
+                          }
                         </p>
                       </div>
                     </div>
