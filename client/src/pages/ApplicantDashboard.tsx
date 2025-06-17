@@ -843,21 +843,52 @@ export default function ApplicantDashboard() {
         {applications && applications.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {applications.map((app) => (
-              <div key={app.id} className="bg-white rounded-xl shadow border border-slate-200 p-4 flex flex-col gap-2">
+              <div key={app.id} className="bg-white rounded-xl shadow border border-slate-200 p-4 flex flex-col gap-2 text-xs">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)} border-opacity-60`}>{formatApplicationStatus(app.status)}</span>
                   <span className="text-xs text-gray-400 ml-auto">#{app.id}</span>
                 </div>
-                <div className="text-xs text-gray-500 mb-1">Submitted: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}</div>
+                <div className="text-gray-500 mb-1">Submitted: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}</div>
+                <div className="font-semibold text-gray-900">{app.fullName}</div>
+                <div className="text-gray-700">{app.email}</div>
+                <div className="text-gray-700">{app.phone}</div>
+                <div className="text-gray-700">Kitchen: <span className="font-medium">{app.kitchenPreference}</span></div>
+                <div className="text-gray-700">Food Safety License: <span className="font-medium">{app.foodSafetyLicense}</span></div>
+                <div className="flex items-center gap-2">
+                  <span>License Doc:</span>
+                  {app.foodSafetyLicenseUrl ? (
+                    <a href={app.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View</a>
+                  ) : (
+                    <span className="text-gray-400">N/A</span>
+                  )}
+                  {app.foodSafetyLicenseStatus && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${app.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800 border-green-200' : app.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-red-100 text-red-800 border-red-200'}`}>{app.foodSafetyLicenseStatus.charAt(0).toUpperCase() + app.foodSafetyLicenseStatus.slice(1)}</span>
+                  )}
+                </div>
+                <div className="text-gray-700">Establishment Cert: <span className="font-medium">{app.foodEstablishmentCert}</span></div>
+                <div className="flex items-center gap-2">
+                  <span>Cert Doc:</span>
+                  {app.foodEstablishmentCertUrl ? (
+                    <a href={app.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View</a>
+                  ) : (
+                    <span className="text-gray-400">N/A</span>
+                  )}
+                  {app.foodEstablishmentCertStatus && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${app.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800 border-green-200' : app.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-red-100 text-red-800 border-red-200'}`}>{app.foodEstablishmentCertStatus.charAt(0).toUpperCase() + app.foodEstablishmentCertStatus.slice(1)}</span>
+                  )}
+                </div>
                 {app.feedback && (
-                  <div className="text-xs text-red-600 bg-red-50 rounded p-2 border border-red-100">{app.feedback}</div>
+                  <div className="text-xs text-red-600 bg-red-50 rounded p-2 border border-red-100">Feedback: {app.feedback}</div>
                 )}
-                <Button asChild size="sm" variant="outline" className="rounded-full mt-2">
-                  <Link href="/apply">
-                    <FileText className="mr-2 h-4 w-4" />
-                    View Details
-                  </Link>
-                </Button>
+                {app.documentsAdminFeedback && (
+                  <div className="text-xs text-yellow-700 bg-yellow-50 rounded p-2 border border-yellow-100">Admin: {app.documentsAdminFeedback}</div>
+                )}
+                {app.documentsReviewedBy && (
+                  <div className="text-gray-500">Reviewed by: {app.documentsReviewedBy}</div>
+                )}
+                {app.documentsReviewedAt && (
+                  <div className="text-gray-500">Reviewed: {new Date(app.documentsReviewedAt).toLocaleDateString()}</div>
+                )}
               </div>
             ))}
           </div>
