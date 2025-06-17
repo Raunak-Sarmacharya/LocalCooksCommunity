@@ -240,7 +240,7 @@ export default function Header() {
             {user && (
               <li>
                 <Link 
-                  href="/microlearning" 
+                  href="/microlearning/overview" 
                   className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors"
                 >
                   <GraduationCap className="h-4 w-4" />

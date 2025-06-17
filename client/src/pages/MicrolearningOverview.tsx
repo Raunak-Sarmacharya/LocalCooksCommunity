@@ -32,15 +32,18 @@ export default function MicrolearningOverview() {
   // Redirect to login if not authenticated
   React.useEffect(() => {
     if (!loading && !user) {
+      console.log('🔄 MicrolearningOverview: Redirecting to auth - no user');
       navigate('/auth');
     }
   }, [user, loading, navigate]);
 
   // Query training access level and progress - Same as dashboard
-  const { data: trainingAccess, isLoading: isLoadingTrainingAccess } = useQuery({
+  const { data: trainingAccess, isLoading: isLoadingTrainingAccess, error: trainingAccessError } = useQuery({
     queryKey: ["training-access", user?.uid],
     queryFn: async () => {
       if (!user?.uid) return null;
+      
+      console.log('🔄 MicrolearningOverview: Fetching training access for user:', user.uid);
       
       try {
         // Get Firebase token for authentication
@@ -61,6 +64,7 @@ export default function MicrolearningOverview() {
 
         if (!response.ok) {
           if (response.status === 404) {
+            console.log('📝 MicrolearningOverview: No training progress found - defaulting to limited access');
             // No training progress found - default to limited access
             return {
               accessLevel: 'limited',
@@ -68,12 +72,14 @@ export default function MicrolearningOverview() {
               applicationInfo: { message: 'Submit application for full training access' }
             };
           }
-          throw new Error("Failed to fetch training access");
+          throw new Error(`Failed to fetch training access: ${response.status} ${response.statusText}`);
         }
 
-        return await response.json();
+        const result = await response.json();
+        console.log('✅ MicrolearningOverview: Training access fetched:', result);
+        return result;
       } catch (error) {
-        console.error("Error fetching training access:", error);
+        console.error("❌ MicrolearningOverview: Error fetching training access:", error);
         return {
           accessLevel: 'limited',
           hasApprovedApplication: false,
@@ -84,13 +90,17 @@ export default function MicrolearningOverview() {
     enabled: Boolean(user?.uid),
     staleTime: 30 * 1000, // 30 seconds
     refetchOnWindowFocus: true,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
   // Query microlearning completion status
-  const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
+  const { data: microlearningCompletion, isLoading: isLoadingCompletion, error: completionError } = useQuery({
     queryKey: ["microlearning-completion", user?.uid],
     queryFn: async () => {
       if (!user?.uid) return null;
+      
+      console.log('🔄 MicrolearningOverview: Fetching completion status for user:', user.uid);
       
       try {
         const currentUser = auth.currentUser;
@@ -110,28 +120,54 @@ export default function MicrolearningOverview() {
 
         if (!response.ok) {
           if (response.status === 404) {
+            console.log('📝 MicrolearningOverview: No completion found');
             return null; // No completion found
           }
-          throw new Error("Failed to fetch completion status");
+          throw new Error(`Failed to fetch completion status: ${response.status} ${response.statusText}`);
         }
 
-        return await response.json();
+        const result = await response.json();
+        console.log('✅ MicrolearningOverview: Completion status fetched:', result);
+        return result;
       } catch (error) {
-        console.error("Error fetching microlearning completion:", error);
+        console.error("❌ MicrolearningOverview: Error fetching microlearning completion:", error);
         return null;
       }
     },
     enabled: Boolean(user?.uid),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
-  if (loading || isLoadingTrainingAccess || isLoadingCompletion) {
+  // Enhanced loading logic with better error handling
+  const isInitialLoading = loading || (user && (isLoadingTrainingAccess || isLoadingCompletion));
+  const hasError = trainingAccessError || completionError;
+  
+  console.log('🔄 MicrolearningOverview: Render state:', {
+    loading,
+    user: !!user,
+    isLoadingTrainingAccess,
+    isLoadingCompletion,
+    isInitialLoading,
+    hasError: !!hasError,
+    trainingAccess: !!trainingAccess,
+    microlearningCompletion: !!microlearningCompletion
+  });
+
+  if (isInitialLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-500 border-t-transparent mx-auto"></div>
           <p className="text-slate-600 font-medium">Loading your training overview...</p>
+          <p className="text-slate-500 text-sm">
+            {loading ? 'Authenticating...' : 
+             isLoadingTrainingAccess ? 'Checking access level...' : 
+             isLoadingCompletion ? 'Loading completion status...' : 
+             'Preparing content...'}
+          </p>
         </div>
       </div>
     );
@@ -145,16 +181,66 @@ export default function MicrolearningOverview() {
     );
   }
 
-  const hasFullAccess = trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication;
-  const isCompleted = microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed;
+  // Provide fallback data if there was an error loading
+  const safeTrainingAccess = trainingAccess || {
+    accessLevel: 'limited',
+    hasApprovedApplication: false,
+    applicationInfo: { message: 'Submit application for full training access' }
+  };
+
+  const safeMicrolearningCompletion = microlearningCompletion || null;
+
+  const hasFullAccess = safeTrainingAccess?.accessLevel === 'full' || safeTrainingAccess?.hasApprovedApplication;
+  const isCompleted = safeMicrolearningCompletion?.completion?.confirmed || safeMicrolearningCompletion?.confirmed;
 
   // Add debug logging to understand what data we're getting (fixed dependencies)
   React.useEffect(() => {
-    if (microlearningCompletion || trainingAccess) {
-      console.log('🎯 Microlearning completion data:', microlearningCompletion);
-      console.log('🎯 Training access data:', trainingAccess);
+    if (safeMicrolearningCompletion || safeTrainingAccess) {
+      console.log('🎯 Microlearning completion data:', safeMicrolearningCompletion);
+      console.log('🎯 Training access data:', safeTrainingAccess);
     }
-  }, [microlearningCompletion, trainingAccess]);
+  }, [safeMicrolearningCompletion, safeTrainingAccess]);
+
+  // Show error state if data failed to load but still render with fallbacks
+  if (hasError && !trainingAccess && !microlearningCompletion) {
+    console.log('⚠️ MicrolearningOverview: Error state with fallbacks');
+  }
+
+  // If there's a critical error and we have no fallback data, show error page but with minimal UI
+  if (hasError && !trainingAccess && !microlearningCompletion && !isInitialLoading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
+        <Header />
+        <main className="flex-grow pt-16 md:pt-20 pb-12 flex items-center justify-center">
+          <div className="text-center space-y-6 max-w-md mx-auto px-4">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+              <span className="text-red-600 text-2xl">⚠️</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">Unable to Load Training Data</h2>
+              <p className="text-slate-600 mb-4">
+                We're having trouble loading your training information. This is usually temporary.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Try Again
+                </button>
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Go to Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
@@ -485,7 +571,7 @@ export default function MicrolearningOverview() {
               )}
 
               {/* Application Status - Dynamic based on access level */}
-              {!hasFullAccess && trainingAccess?.applicationInfo?.message && (
+              {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -499,7 +585,7 @@ export default function MicrolearningOverview() {
                       </div>
                       <div className="flex-1">
                         <h3 className="text-xl font-bold text-yellow-900 mb-2">Application Required</h3>
-                        <p className="text-yellow-800">{trainingAccess.applicationInfo.message}</p>
+                        <p className="text-yellow-800">{safeTrainingAccess.applicationInfo.message}</p>
                       </div>
                     </div>
                     <Button 
