@@ -18,7 +18,6 @@ import {
   ChefHat,
   Clock,
   FileText,
-  GraduationCap,
   Shield,
   Upload,
   XCircle
@@ -653,38 +652,17 @@ export default function ApplicantDashboard() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
+            className="mb-8 mt-4"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
-                  {user?.displayName ? user.displayName[0]?.toUpperCase() : user?.email?.[0]?.toUpperCase() || "U"}
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">
-                    Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Applicant'}
-                  </h1>
-                  <p className="text-gray-500">Manage your applications and training progress</p>
-                </div>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
+                {user?.displayName ? user.displayName[0]?.toUpperCase() : user?.email?.[0]?.toUpperCase() || "U"}
               </div>
-              
-              {/* Quick Status Overview */}
-              <div className="hidden md:flex items-center gap-3">
-                {getApplicationStatus() && (
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    getStatusVariant(getApplicationStatus()!) === 'default' ? 'bg-blue-100 text-blue-800' :
-                    getStatusVariant(getApplicationStatus()!) === 'secondary' ? 'bg-gray-100 text-gray-800' :
-                    getStatusVariant(getApplicationStatus()!) === 'destructive' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {getApplicationStatus()}
-                  </span>
-                )}
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  microlearningCompletion?.confirmed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  Training: {microlearningCompletion?.confirmed ? "Complete" : "In Progress"}
-                </span>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Applicant'}
+                </h1>
+                <p className="text-gray-500">Manage your applications and training progress</p>
               </div>
             </div>
           </motion.div>
@@ -767,152 +745,144 @@ export default function ApplicantDashboard() {
             </motion.div>
           </div>
 
-          {/* Main Action Cards - World Class Design */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    {/* Application Management & History Card */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300 mb-6"
+          >
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Application Management</h3>
+                <p className="text-sm text-gray-500">Your cook applications and history</p>
+              </div>
+            </div>
             
-            {/* Application Management Card */}
-            <motion.div 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.5 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                  <FileText className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900">Application</h3>
-                  <p className="text-sm text-gray-500">Manage your cook application</p>
-                </div>
-              </div>
-              
-              {applications && applications.length > 0 ? (
-                (() => {
-                  const latestApp = applications[0];
-                  return (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                          latestApp.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          latestApp.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
-                          latestApp.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                          latestApp.status === 'cancelled' ? 'bg-gray-100 text-gray-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {formatApplicationStatus(latestApp.status)}
-                        </span>
-                        {latestApp.status === 'approved' && <CheckCircle className="h-5 w-5 text-green-600" />}
-                        {latestApp.status === 'inReview' && <Clock className="h-5 w-5 text-blue-600" />}
-                        {latestApp.status === 'rejected' && <XCircle className="h-5 w-5 text-red-600" />}
-                      </div>
-                      
-                      <p className="text-gray-600">
-                                                 {latestApp.status === 'approved' && 'Congratulations! Your application has been approved.'}
-                         {latestApp.status === 'inReview' && 'Your application is being reviewed by our team.'}
-                         {latestApp.status === 'rejected' && 'Your application needs attention. Please review feedback.'}
-                         {latestApp.status === 'cancelled' && 'This application was cancelled.'}
-                      </p>
-                      
-                      {latestApp.feedback && (
-                        <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                          <p className="text-sm text-red-800 font-medium">Feedback:</p>
-                          <p className="text-sm text-red-700 mt-1">{latestApp.feedback}</p>
-                        </div>
-                      )}
-                      
-                      <div className="flex gap-3 pt-2">
-                        <Button asChild className="flex-1 rounded-xl">
-                          <Link href="/apply">
-                            <FileText className="mr-2 h-4 w-4" />
-                            View Application
-                          </Link>
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })()
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-600 mb-4">Ready to join Local Cooks?</p>
-                  <Button asChild className="rounded-xl">
-                    <Link href="/apply">
-                      <ChefHat className="mr-2 h-4 w-4" />
-                      Start Application
-                    </Link>
-                  </Button>
-                </div>
-              )}
-            </motion.div>
-
-            {/* Training & Certification Card */}
-            <motion.div 
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
-                  <GraduationCap className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900">Training</h3>
-                  <p className="text-sm text-gray-500">Food safety certification</p>
-                </div>
-              </div>
-              
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Current Application Status */}
               <div className="space-y-4">
-                {microlearningCompletion?.confirmed ? (
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                      Completed
-                    </span>
-                  </div>
+                <h4 className="font-semibold text-gray-900">Current Status</h4>
+                {applications && applications.length > 0 ? (
+                  (() => {
+                    const latestApp = applications[0];
+                    const hasActiveApplication = latestApp.status !== 'cancelled' && latestApp.status !== 'rejected';
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                            latestApp.status === 'approved' ? 'bg-green-100 text-green-800' :
+                            latestApp.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
+                            latestApp.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                            latestApp.status === 'cancelled' ? 'bg-gray-100 text-gray-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {formatApplicationStatus(latestApp.status)}
+                          </span>
+                          {latestApp.status === 'approved' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                          {latestApp.status === 'inReview' && <Clock className="h-5 w-5 text-blue-600" />}
+                          {latestApp.status === 'rejected' && <XCircle className="h-5 w-5 text-red-600" />}
+                        </div>
+                        
+                        <p className="text-gray-600">
+                          {latestApp.status === 'approved' && 'Congratulations! Your application has been approved.'}
+                          {latestApp.status === 'inReview' && 'Your application is being reviewed by our team.'}
+                          {latestApp.status === 'rejected' && 'Your application needs attention. Please review feedback.'}
+                          {latestApp.status === 'cancelled' && 'This application was cancelled.'}
+                        </p>
+                        
+                        {latestApp.feedback && (
+                          <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                            <p className="text-sm text-red-800 font-medium">Feedback:</p>
+                            <p className="text-sm text-red-700 mt-1">{latestApp.feedback}</p>
+                          </div>
+                        )}
+                        
+                        <div className="flex gap-3 pt-2">
+                          {hasActiveApplication ? (
+                            <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
+                              <FileText className="mr-2 h-4 w-4" />
+                              Application Submitted
+                            </Button>
+                          ) : (
+                            <Button asChild className="flex-1 rounded-xl">
+                              <Link href="/apply">
+                                <ChefHat className="mr-2 h-4 w-4" />
+                                Apply Again
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
                 ) : (
-                  <div className="flex items-center gap-3">
-                    <Clock className="h-5 w-5 text-yellow-600" />
-                    <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                      In Progress
-                    </span>
-                  </div>
-                )}
-                
-                <p className="text-gray-600">
-                  {microlearningCompletion?.confirmed 
-                    ? 'Great job! You\'ve completed the food safety training.'
-                    : trainingAccess?.accessLevel === 'full'
-                    ? 'Complete your food safety training to get certified.'
-                    : 'Submit an approved application to unlock full training access.'
-                  }
-                </p>
-                
-                <div className="flex gap-3 pt-2">
-                  <Button asChild className="flex-1 rounded-xl" variant={microlearningCompletion?.confirmed ? "outline" : "default"}>
-                    <Link href="/microlearning/overview">
-                      <BookOpen className="mr-2 h-4 w-4" />
-                      {microlearningCompletion?.confirmed ? 'Review Training' : 'Start Training'}
-                    </Link>
-                  </Button>
-                  {microlearningCompletion?.confirmed && (
-                    <Button asChild variant="outline" className="rounded-xl">
-                      <Link href="/certificate">
-                        <Shield className="mr-2 h-4 w-4" />
-                        Certificate
+                  <div className="text-center py-6">
+                    <p className="text-gray-600 mb-4">Ready to join Local Cooks?</p>
+                    <Button asChild className="rounded-xl">
+                      <Link href="/apply">
+                        <ChefHat className="mr-2 h-4 w-4" />
+                        Start Application
                       </Link>
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            </motion.div>
+
+              {/* Application History */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-900">Application History</h4>
+                {applications && applications.length > 0 ? (
+                  <div className="max-h-80 overflow-y-auto space-y-3">
+                    {applications.slice(0, 3).map((app, index) => (
+                      <div 
+                        key={app.id}
+                        className="border border-gray-200 rounded-xl p-4 bg-gray-50"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                            app.status === 'approved' ? 'bg-green-100 text-green-800' :
+                            app.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
+                            app.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {formatApplicationStatus(app.status)}
+                          </span>
+                          <span className="text-xs text-gray-500">#{app.id}</span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          <p className="font-medium">{app.fullName}</p>
+                          <p>Submitted: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {applications.length > 3 && (
+                      <p className="text-sm text-gray-500 text-center">
+                        +{applications.length - 3} more applications
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-500">
+                    <p className="text-sm">No applications submitted yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Bottom Row: Document Verification & Training */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             
             {/* Document Verification Card */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300 lg:col-span-2"
+              transition={{ delay: 0.6 }}
+              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300"
             >
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
@@ -932,55 +902,53 @@ export default function ApplicantDashboard() {
                     (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
                   
                   return (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Food Safety License */}
-                        <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-gray-900">Food Safety License</h4>
-                            {latestApp.foodSafetyLicenseStatus && (
-                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                                latestApp.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                                latestApp.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {latestApp.foodSafetyLicenseStatus.charAt(0).toUpperCase() + latestApp.foodSafetyLicenseStatus.slice(1)}
-                              </span>
-                            )}
-                          </div>
-                          {latestApp.foodSafetyLicenseUrl ? (
-                            <a href={latestApp.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" 
-                               className="text-blue-600 hover:text-blue-800 underline text-sm">
-                              View Document
-                            </a>
-                          ) : (
-                            <span className="text-gray-500 text-sm">Not uploaded</span>
+                    <div className="space-y-4">
+                      {/* Food Safety License - Stacked */}
+                      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-900">Food Safety License</h4>
+                          {latestApp.foodSafetyLicenseStatus && (
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                              latestApp.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                              latestApp.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {latestApp.foodSafetyLicenseStatus.charAt(0).toUpperCase() + latestApp.foodSafetyLicenseStatus.slice(1)}
+                            </span>
                           )}
                         </div>
-                        
-                        {/* Food Establishment Certificate */}
-                        <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-gray-900">Establishment Certificate</h4>
-                            {latestApp.foodEstablishmentCertStatus && (
-                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                                latestApp.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                                latestApp.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {latestApp.foodEstablishmentCertStatus.charAt(0).toUpperCase() + latestApp.foodEstablishmentCertStatus.slice(1)}
-                              </span>
-                            )}
-                          </div>
-                          {latestApp.foodEstablishmentCertUrl ? (
-                            <a href={latestApp.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" 
-                               className="text-blue-600 hover:text-blue-800 underline text-sm">
-                              View Document
-                            </a>
-                          ) : (
-                            <span className="text-gray-500 text-sm">Not uploaded</span>
+                        {latestApp.foodSafetyLicenseUrl ? (
+                          <a href={latestApp.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" 
+                             className="text-blue-600 hover:text-blue-800 underline text-sm">
+                            View Document
+                          </a>
+                        ) : (
+                          <span className="text-gray-500 text-sm">Not uploaded</span>
+                        )}
+                      </div>
+                      
+                      {/* Food Establishment Certificate - Stacked */}
+                      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-gray-900">Establishment Certificate</h4>
+                          {latestApp.foodEstablishmentCertStatus && (
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                              latestApp.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                              latestApp.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {latestApp.foodEstablishmentCertStatus.charAt(0).toUpperCase() + latestApp.foodEstablishmentCertStatus.slice(1)}
+                            </span>
                           )}
                         </div>
+                        {latestApp.foodEstablishmentCertUrl ? (
+                          <a href={latestApp.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" 
+                             className="text-blue-600 hover:text-blue-800 underline text-sm">
+                            View Document
+                          </a>
+                        ) : (
+                          <span className="text-gray-500 text-sm">Not uploaded</span>
+                        )}
                       </div>
                       
                       {latestApp.documentsAdminFeedback && (
@@ -990,8 +958,8 @@ export default function ApplicantDashboard() {
                         </div>
                       )}
                       
-                      <div className="flex gap-3">
-                        <Button asChild className="rounded-xl">
+                      <div className="flex gap-3 mt-4">
+                        <Button asChild className="flex-1 rounded-xl">
                           <Link href="/document-verification">
                             <Upload className="mr-2 h-4 w-4" />
                             {hasDocuments ? 'Manage Documents' : 'Upload Documents'}
@@ -1019,152 +987,94 @@ export default function ApplicantDashboard() {
                 </div>
               )}
             </motion.div>
-            
-            {/* Application History Section */}
+
+            {/* Training & Certification Card */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200"
+              transition={{ delay: 0.7 }}
+              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300"
             >
               <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center">
-                  <Clock className="h-6 w-6 text-white" />
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                  <BookOpen className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold text-gray-900">Application History</h3>
-                  <p className="text-sm text-gray-500">View all your previous applications</p>
+                  <h3 className="text-xl font-semibold text-gray-900">Training & Certification</h3>
+                  <p className="text-sm text-gray-500">Food safety program</p>
                 </div>
               </div>
               
-              {applications && applications.length > 0 ? (
-                <div className="space-y-4">
-                  {applications.map((app, index) => (
-                    <motion.div 
-                      key={app.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.9 + index * 0.1 }}
-                      className="border border-gray-200 rounded-2xl p-6 hover:shadow-md transition-all duration-200"
-                    >
-                      <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                        {/* Status and ID */}
-                        <div className="flex items-center gap-3">
-                          <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                            app.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            app.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
-                            app.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {formatApplicationStatus(app.status)}
-                          </span>
-                          <span className="text-sm text-gray-500">#{app.id}</span>
-                        </div>
-                        
-                        {/* Application Details */}
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-500">Applicant</p>
-                            <p className="font-medium text-gray-900">{app.fullName}</p>
-                            <p className="text-sm text-gray-600">{app.email}</p>
-                          </div>
-                          
-                          <div>
-                            <p className="text-sm text-gray-500">Kitchen Preference</p>
-                            <p className="font-medium text-gray-900">{app.kitchenPreference || 'Not specified'}</p>
-                            <p className="text-sm text-gray-600">Submitted: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}</p>
-                          </div>
-                          
-                          <div>
-                            <p className="text-sm text-gray-500">Documents</p>
-                            <div className="flex gap-2 mt-1">
-                              {app.foodSafetyLicenseStatus && (
-                                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                                  app.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                                  app.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}>
-                                  Food Safety: {app.foodSafetyLicenseStatus}
-                                </span>
-                              )}
-                              {app.foodEstablishmentCertStatus && (
-                                <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
-                                  app.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                                  app.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}>
-                                  Establishment: {app.foodEstablishmentCertStatus}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Feedback sections */}
-                      {(app.feedback || app.documentsAdminFeedback) && (
-                        <div className="mt-4 space-y-3">
-                          {app.feedback && (
-                            <div className="p-4 bg-red-50 rounded-xl border border-red-100">
-                              <p className="text-sm font-medium text-red-800">Application Feedback:</p>
-                              <p className="text-sm text-red-700 mt-1">{app.feedback}</p>
-                            </div>
-                          )}
-                          {app.documentsAdminFeedback && (
-                            <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-100">
-                              <p className="text-sm font-medium text-yellow-800">Document Feedback:</p>
-                              <p className="text-sm text-yellow-700 mt-1">{app.documentsAdminFeedback}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Document links */}
-                      {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && (
-                        <div className="mt-4 flex gap-3">
-                          {app.foodSafetyLicenseUrl && (
-                            <a 
-                              href={app.foodSafetyLicenseUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"
-                            >
-                              <FileText className="h-4 w-4" />
-                              Food Safety License
-                            </a>
-                          )}
-                          {app.foodEstablishmentCertUrl && (
-                            <a 
-                              href={app.foodEstablishmentCertUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"
-                            >
-                              <FileText className="h-4 w-4" />
-                              Establishment Certificate
-                            </a>
-                          )}
-                        </div>
-                      )}
-                    </motion.div>
-                  ))}
+              <div className="space-y-4">
+                {/* Training Status */}
+                <div className="space-y-3">
+                  {microlearningCompletion?.confirmed ? (
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                        Completed
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-5 w-5 text-yellow-600" />
+                      <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                        In Progress
+                      </span>
+                    </div>
+                  )}
+                  
+                  <p className="text-gray-600">
+                    {microlearningCompletion?.confirmed 
+                      ? 'Congratulations! You\'ve completed the comprehensive food safety training program.'
+                      : trainingAccess?.accessLevel === 'full'
+                      ? 'Complete your food safety training to get certified and unlock additional features.'
+                      : 'Submit an approved application to unlock full training access and certification.'
+                    }
+                  </p>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                    <FileText className="h-8 w-8 text-gray-400" />
+
+                {/* Training Progress Details */}
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <h4 className="font-medium text-gray-900 mb-2">Program Details</h4>
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Modules:</span>
+                      <span className="font-medium">22 Videos</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Duration:</span>
+                      <span className="font-medium">~2 Hours</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Certificate:</span>
+                      <span className="font-medium">{microlearningCompletion?.confirmed ? 'Earned' : 'Pending'}</span>
+                    </div>
                   </div>
-                  <h4 className="text-lg font-medium text-gray-900 mb-2">No Applications Yet</h4>
-                  <p className="text-gray-600 mb-6">Start your journey with Local Cooks by submitting your first application.</p>
-                  <Button asChild className="rounded-xl">
-                    <Link href="/apply">
-                      <ChefHat className="mr-2 h-4 w-4" />
-                      Start Application
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3 pt-2">
+                  <Button asChild className="w-full rounded-xl" variant={microlearningCompletion?.confirmed ? "outline" : "default"}>
+                    <Link href="/microlearning/overview">
+                      <BookOpen className="mr-2 h-4 w-4" />
+                      {microlearningCompletion?.confirmed ? 'Review Training' : 'Start Training'}
                     </Link>
                   </Button>
+                  
+                  {microlearningCompletion?.confirmed && (
+                    <Button asChild variant="outline" className="w-full rounded-xl">
+                      <Link href="/certificate">
+                        <Shield className="mr-2 h-4 w-4" />
+                        Download Certificate
+                      </Link>
+                    </Button>
+                  )}
                 </div>
-              )}
+              </div>
             </motion.div>
+            
+
           </div>
         </div>
       </main>
