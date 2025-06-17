@@ -59,9 +59,9 @@ export default function VideoPlayer({
   const [hasReachedNearEnd, setHasReachedNearEnd] = useState(false);
   const [showCompletionBanner, setShowCompletionBanner] = useState(false);
 
-  // Reset video state when video URL or completion status changes
+  // Reset video state when video URL changes or completion status changes
   useEffect(() => {
-    setVideoCompleted(isCompleted);
+    // Always reset state when URL changes to prevent state bleed between videos
     setProgress(0);
     setCurrentTime(0);
     setHasStarted(false);
@@ -75,7 +75,25 @@ export default function VideoPlayer({
     setShouldShowCompletePrompt(false);
     setHasReachedNearEnd(false);
     setShowCompletionBanner(false);
+    
+    // Set completion state based on props, but only after a small delay to prevent flickering
+    setTimeout(() => {
+      setVideoCompleted(isCompleted);
+    }, 100);
   }, [videoUrl, isCompleted]);
+
+  // Additional effect to handle completion state changes independently
+  useEffect(() => {
+    // Update completion state without resetting other states
+    // This handles cases where completion status changes for the same video
+    setVideoCompleted(isCompleted);
+    
+    // If video becomes completed, hide prompts
+    if (isCompleted) {
+      setShouldShowCompletePrompt(false);
+      setShowCompletionBanner(false);
+    }
+  }, [isCompleted]);
 
   // Timer to detect when video should have ended but didn't
   useEffect(() => {
