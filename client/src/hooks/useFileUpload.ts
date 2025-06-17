@@ -1,3 +1,4 @@
+import { auth } from '@/lib/firebase';
 import { useState } from 'react';
 
 interface UploadResponse {
@@ -55,6 +56,17 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
         return null;
       }
 
+      // Get Firebase auth token
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        const errorMsg = 'Authentication required. Please log in to upload files.';
+        setError(errorMsg);
+        onError?.(errorMsg);
+        return null;
+      }
+
+      const idToken = await currentUser.getIdToken();
+
       // Create form data
       const formData = new FormData();
       formData.append('file', file);
@@ -106,15 +118,14 @@ export const useFileUpload = (options: UseFileUploadOptions = {}) => {
           resolve(null);
         });
 
-        xhr.open('POST', '/api/upload-file');
+        // Use the Firebase-authenticated upload endpoint
+        xhr.open('POST', '/api/firebase/upload-file');
         xhr.withCredentials = true; // Include cookies and session
         
-        // Add X-User-ID header if userId is available in localStorage
-        const userId = localStorage.getItem('userId');
-        if (userId) {
-          xhr.setRequestHeader('X-User-ID', userId);
-          console.log('Including userId in upload request headers:', userId);
-        }
+        // Add Firebase Authorization header
+        xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+        
+        console.log('Uploading file with Firebase authentication');
         
         xhr.send(formData);
       });

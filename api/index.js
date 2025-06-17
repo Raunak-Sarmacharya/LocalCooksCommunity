@@ -5433,6 +5433,119 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
   }
 });
 
+// Firebase-authenticated file upload endpoint
+app.post("/api/firebase/upload-file", 
+  requireFirebaseAuthWithUser,
+  upload.single('file'), 
+  async (req, res) => {
+    try {
+      console.log('🔄 === FIREBASE FILE UPLOAD DEBUG START ===');
+      console.log('📤 Firebase Upload: User data:', {
+        firebaseUid: req.firebaseUser?.uid,
+        neonUserId: req.neonUser?.id,
+        hasFile: !!req.file,
+        fileDetails: req.file ? {
+          originalname: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        } : null
+      });
+      
+      const userId = req.neonUser.id;
+
+      if (!req.file) {
+        console.log('❌ Firebase Upload: No file in request');
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      console.log('✅ Firebase Upload: File received successfully');
+
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      console.log('🌍 Environment:', isProduction ? 'Production (Vercel)' : 'Development');
+      
+      let fileUrl;
+      let fileName;
+
+      if (isProduction) {
+        // Upload to Vercel Blob in production
+        try {
+          console.log('☁️ Starting Vercel Blob upload...');
+          // Import Vercel Blob
+          const { put } = await import('@vercel/blob');
+          
+          const timestamp = Date.now();
+          const documentType = req.file.fieldname || 'file';
+          const ext = path.extname(req.file.originalname);
+          const baseName = path.basename(req.file.originalname, ext);
+          
+          const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+          
+          console.log('☁️ Uploading to Vercel Blob:', {
+            filename,
+            size: req.file.size,
+            mimetype: req.file.mimetype
+          });
+          
+          const blob = await put(filename, req.file.buffer, {
+            access: 'public',
+            contentType: req.file.mimetype,
+          });
+          
+          console.log(`✅ File uploaded to Vercel Blob successfully: ${filename} -> ${blob.url}`);
+          fileUrl = blob.url;
+          fileName = filename;
+        } catch (error) {
+          console.error('❌ Error uploading to Vercel Blob:', error);
+          return res.status(500).json({ 
+            error: "File upload failed",
+            details: "Failed to upload file to cloud storage"
+          });
+        }
+      } else {
+        // In development, return a local file path (note: file serving is limited in this environment)
+        fileUrl = `/api/files/documents/${req.file.filename}`;
+        fileName = req.file.filename;
+        console.log('💻 Development upload - file saved locally:', {
+          fileUrl,
+          fileName
+        });
+      }
+
+      // Return success response with file information
+      const response = {
+        success: true,
+        url: fileUrl,
+        fileName: fileName,
+        size: req.file.size,
+        type: req.file.mimetype
+      };
+      
+      console.log('📤 Firebase Upload successful, returning response:', response);
+      console.log('🔄 === FIREBASE FILE UPLOAD DEBUG END (SUCCESS) ===');
+      
+      return res.status(200).json(response);
+    } catch (error) {
+      console.error("❌ Firebase File upload error:", error);
+      console.error("Error stack:", error.stack);
+      
+      // Clean up uploaded file on error
+      if (req.file && req.file.path) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (e) {
+          console.error('Error cleaning up file:', e);
+        }
+      }
+      
+      console.log('🔄 === FIREBASE FILE UPLOAD DEBUG END (ERROR) ===');
+      return res.status(500).json({ 
+        error: "File upload failed",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  }
+);
+
 // Enhanced Health Check
 app.get('/api/firebase-health', (req, res) => {
   res.json({
