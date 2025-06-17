@@ -6,6 +6,12 @@ import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -68,6 +74,8 @@ export default function ApplicantDashboard() {
   const { user, logout } = useFirebaseAuth();
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
+  const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
+  const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(false);
 
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
@@ -648,8 +656,74 @@ export default function ApplicantDashboard() {
     }
   };
 
+  // Check if user is fully verified for vendor portal access
+  const isUserFullyVerified = applications && applications.length > 0 && (() => {
+    const latestApp = applications[0];
+    return latestApp.foodSafetyLicenseStatus === 'approved' && 
+      (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
+  })();
+
+  // Show vendor portal popup for fully verified users (only once per session)
+  useEffect(() => {
+    if (isUserFullyVerified && !hasClosedVendorPopup) {
+      // Small delay to let the page load first
+      const timer = setTimeout(() => {
+        setShowVendorPortalPopup(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isUserFullyVerified, hasClosedVendorPopup]);
+
+  const handleCloseVendorPopup = () => {
+    setShowVendorPortalPopup(false);
+    setHasClosedVendorPopup(true);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50">
+      {/* Vendor Portal Popup for Fully Verified Users */}
+      <Dialog open={showVendorPortalPopup} onOpenChange={handleCloseVendorPopup}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-xl font-bold text-gray-900 mb-2">
+              🎉 Congratulations! You're Fully Verified
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 p-4">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="h-8 w-8 text-white" />
+              </div>
+              <p className="text-gray-600 leading-relaxed">
+                Your documents have been approved! You can now access your vendor portal to set up payments and start selling.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <Button asChild className="w-full rounded-xl bg-green-600 hover:bg-green-700">
+                <a href="https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer">
+                  <Shield className="mr-2 h-4 w-4" />
+                  Manage Stripe Setup
+                </a>
+              </Button>
+              
+              <Button asChild variant="outline" className="w-full rounded-xl">
+                <a href="https://localcook.shop/app/shop/index.php" target="_blank" rel="noopener noreferrer">
+                  <ChefHat className="mr-2 h-4 w-4" />
+                  Access Your Vendor Portal
+                </a>
+              </Button>
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>💡 Next Steps:</strong> Set up your payment processing and complete your vendor profile to start receiving orders!
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Subtle background pattern */}
       <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
         <div 
@@ -781,10 +855,10 @@ export default function ApplicantDashboard() {
               </div>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Current Application Status */}
-              <div className="space-y-4">
-                <h4 className="font-semibold text-gray-900">Current Status</h4>
+            <div className="grid grid-cols-1 gap-8">
+              {/* Application Management - Full Width */}
+              <div className="space-y-4 w-full">
+                <h4 className="font-semibold text-gray-900">Application Management</h4>
                 {applications && applications.length > 0 ? (
                   (() => {
                     // Set default selected application to the latest one
@@ -986,52 +1060,6 @@ export default function ApplicantDashboard() {
                   </div>
                 )}
               </div>
-
-              {/* Application History */}
-              <div className="space-y-4">
-                <h4 className="font-semibold text-gray-900">Application History</h4>
-                {applications && applications.length > 0 ? (
-                  <div className="max-h-80 overflow-y-auto space-y-3 pr-2">
-                    {applications.slice(0, 4).map((app, index) => (
-                      <div 
-                        key={app.id}
-                        className="border border-gray-200 rounded-xl p-4 bg-gradient-to-br from-gray-50 to-gray-100/30 hover:shadow-md transition-all duration-200"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
-                            app.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            app.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
-                            app.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {formatApplicationStatus(app.status)}
-                          </span>
-                          <span className="text-xs text-gray-500 font-mono">#{app.id}</span>
-                        </div>
-                        <div className="text-sm text-gray-600 space-y-1">
-                          <p className="font-medium text-gray-900">{app.fullName}</p>
-                          <p className="text-xs text-gray-500">{app.email}</p>
-                          <p className="text-xs">Submitted: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {applications.length > 4 && (
-                      <div className="text-center py-2">
-                        <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                          +{applications.length - 4} more applications
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                      <Clock className="h-6 w-6 text-gray-400" />
-                    </div>
-                    <p className="text-sm text-gray-500">No applications submitted yet</p>
-                  </div>
-                )}
-              </div>
             </div>
           </motion.div>
 
@@ -1150,12 +1178,6 @@ export default function ApplicantDashboard() {
                             <Button variant="outline" className="w-full rounded-xl">
                               <CheckCircle className="mr-2 h-4 w-4" />
                               All Documents Verified
-                            </Button>
-                            <Button asChild className="w-full rounded-xl bg-green-600 hover:bg-green-700">
-                              <a href="https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer">
-                                <Shield className="mr-2 h-4 w-4" />
-                                Manage Stripe Setup
-                              </a>
                             </Button>
                           </>
                         )}
@@ -1332,6 +1354,78 @@ export default function ApplicantDashboard() {
             
 
           </div>
+
+          {/* Vendor Portal Access Card - Shows when user is fully verified and has closed popup */}
+          {isUserFullyVerified && hasClosedVendorPopup && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8 }}
+              className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-3xl p-8 shadow-sm border border-green-200/60 hover:shadow-lg hover:border-green-300/60 transition-all duration-300 backdrop-blur-sm mb-8"
+            >
+              <div className="text-center space-y-6">
+                <div className="flex items-center justify-center gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                    <Shield className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-xl font-semibold text-gray-900">Vendor Portal Access</h3>
+                    <p className="text-sm text-gray-600">You're fully verified! Set up your business</p>
+                  </div>
+                </div>
+                
+                <div className="bg-white/60 rounded-2xl p-6 space-y-4">
+                  <h4 className="font-semibold text-green-900 flex items-center justify-center gap-2 mb-4">
+                    <span className="text-green-600">🎉</span>
+                    Ready to Start Selling
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center gap-3 text-green-700">
+                      <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      <span>Documents Verified</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-green-700">
+                      <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      <span>Training Complete</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-green-700">
+                      <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      <span>Application Approved</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-green-700">
+                      <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      <span>Portal Access Granted</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button asChild className="rounded-xl bg-green-600 hover:bg-green-700 px-8">
+                    <a href="https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer">
+                      <Shield className="mr-2 h-4 w-4" />
+                      Manage Stripe Setup
+                    </a>
+                  </Button>
+                  
+                  <Button asChild variant="outline" className="rounded-xl border-green-300 text-green-700 hover:bg-green-50 px-8">
+                    <a href="https://localcook.shop/app/shop/index.php" target="_blank" rel="noopener noreferrer">
+                      <ChefHat className="mr-2 h-4 w-4" />
+                      Access Vendor Portal
+                    </a>
+                  </Button>
+                </div>
+                
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>💡 Next Steps:</strong> Complete your Stripe payment setup and vendor profile to start receiving orders from hungry customers!
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Sync Account Section - moved to bottom */}
         </div>
       </main>
       <Footer />
