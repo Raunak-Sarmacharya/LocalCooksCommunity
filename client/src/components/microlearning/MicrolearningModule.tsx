@@ -740,7 +740,7 @@ export default function MicrolearningModule({
                     isRewatching={completionConfirmed || user?.role === 'admin' || ((getVideoProgress(currentVideo.id) as any)?.completed || false)}
                     requireFullWatch={false}
                     accessLevel={accessLevel}
-                    showApplicationPrompt={showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0}
+                    showApplicationPrompt={showApplicationPrompt && accessLevel === 'limited' && currentVideoIndex === 0 && applicationInfo?.canApply}
                     onApplicationPromptClose={() => setShowApplicationPrompt(false)}
                   />
                 ) : (
@@ -789,11 +789,22 @@ export default function MicrolearningModule({
                       const isLastVideo = nextIndex >= currentModuleVideos.length;
                       const isLimitedAccess = accessLevel === 'limited' && currentVideoIndex === 0;
 
-                    if (isLimitedAccess) {
+                    if (isLimitedAccess && applicationInfo?.canApply) {
                       return (
                         <Button asChild className="bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600">
                           <Link href="/apply">
                             Submit Application
+                            <ArrowRight className="h-4 w-4 ml-2" />
+                          </Link>
+                        </Button>
+                      );
+                    }
+
+                    if (isLimitedAccess && !applicationInfo?.canApply) {
+                      return (
+                        <Button asChild className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600">
+                          <Link href="/dashboard">
+                            Check Status
                             <ArrowRight className="h-4 w-4 ml-2" />
                           </Link>
                         </Button>
@@ -946,7 +957,8 @@ export default function MicrolearningModule({
               </div>
 
               {/* Application Status - Detailed for Different States */}
-              {accessLevel === 'limited' && (
+              {/* Limited Access - Application Required (only show if user can apply) */}
+              {accessLevel === 'limited' && applicationInfo?.canApply && (
                 <div className="space-y-4">
                   <UnlockProgress hasApprovedApplication={hasApprovedApplication} />
                   
@@ -1029,6 +1041,47 @@ export default function MicrolearningModule({
                       </Link>
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {/* Limited Access - Application Status (for users with active applications) */}
+              {accessLevel === 'limited' && !applicationInfo?.canApply && applicationInfo?.message && (
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center">
+                      <Clock className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-900">Application Status</h3>
+                      <p className="text-sm text-slate-600">Your application is being processed</p>
+                    </div>
+                  </div>
+                  
+                  <div className={`rounded-xl p-4 mb-4 ${
+                    applicationInfo.hasPending 
+                      ? 'bg-blue-50 border border-blue-200' 
+                      : 'bg-slate-50 border border-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="h-4 w-4 text-blue-600" />
+                      <span className="font-medium text-sm text-blue-800">
+                        {applicationInfo.hasPending ? 'Application Under Review' : 'Application Submitted'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-blue-800">
+                      {applicationInfo.message}
+                    </p>
+                  </div>
+                  
+                  <Button 
+                    asChild
+                    className="w-full font-semibold bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+                  >
+                    <Link href="/dashboard">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Check Application Status
+                    </Link>
+                  </Button>
                 </div>
               )}
 
