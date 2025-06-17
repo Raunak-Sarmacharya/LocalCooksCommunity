@@ -12,13 +12,16 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import {
   BadgeCheck,
+  BookOpen,
   CheckCircle,
   ChefHat,
   Clock,
   FileText,
   GraduationCap,
+  Shield,
   XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -69,6 +72,27 @@ export default function ApplicantDashboard() {
     userRole: user?.role,
     localStorageUserId: localStorage.getItem('userId')
   });
+
+  // Helper functions for status management
+  const getApplicationStatus = () => {
+    if (!applications || applications.length === 0) return null;
+    return formatApplicationStatus(applications[0].status);
+  };
+
+  const getStatusVariant = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'approved':
+        return 'default';
+      case 'pending':
+      case 'in review':
+        return 'secondary';
+      case 'rejected':
+      case 'cancelled':
+        return 'destructive';
+      default:
+        return 'outline';
+    }
+  };
 
   // Fetch applicant's applications with user ID in header (skip for admins)
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
@@ -619,219 +643,271 @@ export default function ApplicantDashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
+    <div className="min-h-screen bg-gray-50">
       <Header />
-      <main className="flex-grow pt-20 pb-12">
-        {/* Summary/Status Bar (Applicant Status) */}
-        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/80 border border-slate-200 rounded-xl shadow-sm p-4">
-            <div className="flex items-center gap-3">
-              {/* User Avatar/Initials */}
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-700 text-lg">
-                {user?.displayName ? user.displayName[0] : user?.email?.[0] || "U"}
+      
+      {/* Main Dashboard Container */}
+      <main className="pt-20 pb-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
+          {/* Welcome Header Section */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
+                  {user?.displayName ? user.displayName[0]?.toUpperCase() : user?.email?.[0]?.toUpperCase() || "U"}
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Applicant'}
+                  </h1>
+                  <p className="text-gray-500">Manage your applications and training progress</p>
+                </div>
               </div>
-              <div>
-                <div className="font-semibold text-gray-900 text-base">{user?.displayName || user?.email || "Applicant"}</div>
-                <div className="text-xs text-gray-500">Applicant Dashboard</div>
+              
+              {/* Quick Status Overview */}
+              <div className="hidden md:flex items-center gap-3">
+                {getApplicationStatus() && (
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    getStatusVariant(getApplicationStatus()!) === 'default' ? 'bg-blue-100 text-blue-800' :
+                    getStatusVariant(getApplicationStatus()!) === 'secondary' ? 'bg-gray-100 text-gray-800' :
+                    getStatusVariant(getApplicationStatus()!) === 'destructive' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {getApplicationStatus()}
+                  </span>
+                )}
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  microlearningCompletion?.confirmed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  Training: {microlearningCompletion?.confirmed ? "Complete" : "In Progress"}
+                </span>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 justify-center sm:justify-end">
-              {/* Application Status */}
-              {(() => {
-                let status = 'Not Started';
-                let color = 'bg-gray-100 text-gray-700';
-                if (applications && applications.length > 0) {
-                  const latestApp = applications[0];
-                  status = formatApplicationStatus(latestApp.status);
-                  color =
-                    latestApp.status === 'approved' ? 'bg-green-100 text-green-800' :
-                    latestApp.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
-                    latestApp.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                    latestApp.status === 'cancelled' ? 'bg-gray-100 text-gray-500' :
-                    'bg-yellow-100 text-yellow-800';
-                }
-                return (
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${color} border-opacity-60`}>Application: {status}</span>
-                );
-              })()}
-              {/* Training Status */}
-              {(() => {
-                let status = 'Limited';
-                let color = 'bg-yellow-100 text-yellow-800';
-                if (microlearningCompletion?.confirmed) {
-                  status = 'Completed';
-                  color = 'bg-green-100 text-green-800';
-                } else if (trainingAccess?.accessLevel === 'full') {
-                  status = 'Full Access';
-                  color = 'bg-blue-100 text-blue-800';
-                }
-                return (
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${color} border-opacity-60`}>Training: {status}</span>
-                );
-              })()}
-              {/* Documents Status */}
-              {(() => {
-                let status = 'Upload Needed';
-                let color = 'bg-yellow-100 text-yellow-800';
-                if (applications && applications.length > 0) {
-                  const latestApp = applications[0];
-                  const isVerified = latestApp.foodSafetyLicenseStatus === 'approved' && (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
-                  if (isVerified) {
-                    status = 'Verified';
-                    color = 'bg-green-100 text-green-800';
-                  } else if (latestApp.foodSafetyLicenseUrl || latestApp.foodEstablishmentCertUrl) {
-                    status = 'Under Review';
-                    color = 'bg-blue-100 text-blue-800';
-                  }
-                }
-                return (
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${color} border-opacity-60`}>Documents: {status}</span>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
+          </motion.div>
 
-        {/* Main Content Container */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Application Status Card */}
-            <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
-              <div className="flex items-center gap-3 mb-2">
-                <FileText className="h-6 w-6 text-blue-500" />
-                <h2 className="font-semibold text-lg text-gray-900">Application</h2>
+          {/* Quick Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Applications</p>
+                  <p className="text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
+                </div>
               </div>
-              <div className="flex-1 flex flex-col gap-2">
-                {applications && applications.length > 0 ? (
-                  (() => {
-                    const app = applications[0];
-                    const status = formatApplicationStatus(app.status);
-                    return (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)} border-opacity-60`}>{status}</span>
-                          {app.status === 'approved' && (
-                            <span className="text-green-600 text-xs font-medium flex items-center gap-1"><CheckCircle className="h-4 w-4" /> Approved</span>
-                          )}
-                          {app.status === 'inReview' && (
-                            <span className="text-blue-600 text-xs font-medium flex items-center gap-1"><Clock className="h-4 w-4" /> In Review</span>
-                          )}
-                          {app.status === 'rejected' && (
-                            <span className="text-red-600 text-xs font-medium flex items-center gap-1"><XCircle className="h-4 w-4" /> Rejected</span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-700 mt-2">
-                          {app.status === 'approved' && 'Your application is approved! You can now access all features.'}
-                          {app.status === 'inReview' && 'Your application is under review. We will notify you once it is processed.'}
-                          {app.status === 'rejected' && (app.feedback || 'Your application was rejected. Please review feedback and reapply.')}
-                          {app.status === 'cancelled' && 'Your application was cancelled.'}
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : (
-                  <div className="text-sm text-gray-700">You haven't submitted an application yet.</div>
-                )}
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Training</p>
+                  <p className="text-sm font-semibold text-gray-900">{microlearningCompletion?.confirmed ? "Complete" : "In Progress"}</p>
+                </div>
               </div>
-              <div className="mt-4 flex gap-2">
-                {canApplyAgain(applications) && (
-                  <Button asChild size="sm" className="rounded-full">
-                    <Link href="/apply">
-                      <ChefHat className="mr-2 h-4 w-4" />
-                      Start Application
-                    </Link>
-                  </Button>
-                )}
-                {applications && applications.length > 0 && (
-                  <Button asChild size="sm" variant="outline" className="rounded-full">
-                    <Link href="/application-details">
-                      <FileText className="mr-2 h-4 w-4" />
-                      View Details
-                    </Link>
-                  </Button>
-                )}
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Documents</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {applications && applications.some(app => app.status === "approved") && 
+                     applications.every(app => 
+                       app.status !== "approved" || 
+                       (app.foodSafetyLicenseStatus === "approved" && 
+                        (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved"))
+                     ) ? "Verified" : "Pending"}
+                  </p>
+                </div>
               </div>
-            </div>
-            {/* Training Progress Card */}
-            <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
-              <div className="flex items-center gap-3 mb-2">
-                <GraduationCap className="h-6 w-6 text-blue-500" />
-                <h2 className="font-semibold text-lg text-gray-900">Training Progress</h2>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Status</p>
+                  <p className="text-sm font-semibold text-gray-900">{getApplicationStatus() || "New"}</p>
+                </div>
               </div>
-              <div className="flex-1 flex flex-col gap-2">
-                {trainingAccess?.accessLevel === 'full' ? (
-                  <div className="text-sm text-gray-700">You have full access to all training materials.</div>
-                ) : (
-                  <div className="text-sm text-gray-700">You have limited access to training materials.</div>
-                )}
+            </motion.div>
+          </div>
+
+          {/* Main Action Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Application Status Card */}
+              <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
+                <div className="flex items-center gap-3 mb-2">
+                  <FileText className="h-6 w-6 text-blue-500" />
+                  <h2 className="font-semibold text-lg text-gray-900">Application</h2>
+                </div>
+                <div className="flex-1 flex flex-col gap-2">
+                  {applications && applications.length > 0 ? (
+                    (() => {
+                      const app = applications[0];
+                      const status = formatApplicationStatus(app.status);
+                      return (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)} border-opacity-60`}>{status}</span>
+                            {app.status === 'approved' && (
+                              <span className="text-green-600 text-xs font-medium flex items-center gap-1"><CheckCircle className="h-4 w-4" /> Approved</span>
+                            )}
+                            {app.status === 'inReview' && (
+                              <span className="text-blue-600 text-xs font-medium flex items-center gap-1"><Clock className="h-4 w-4" /> In Review</span>
+                            )}
+                            {app.status === 'rejected' && (
+                              <span className="text-red-600 text-xs font-medium flex items-center gap-1"><XCircle className="h-4 w-4" /> Rejected</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-700 mt-2">
+                            {app.status === 'approved' && 'Your application is approved! You can now access all features.'}
+                            {app.status === 'inReview' && 'Your application is under review. We will notify you once it is processed.'}
+                            {app.status === 'rejected' && (app.feedback || 'Your application was rejected. Please review feedback and reapply.')}
+                            {app.status === 'cancelled' && 'Your application was cancelled.'}
+                          </div>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <div className="text-sm text-gray-700">You haven't submitted an application yet.</div>
+                  )}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  {canApplyAgain(applications) && (
+                    <Button asChild size="sm" className="rounded-full">
+                      <Link href="/apply">
+                        <ChefHat className="mr-2 h-4 w-4" />
+                        Start Application
+                      </Link>
+                    </Button>
+                  )}
+                  {applications && applications.length > 0 && (
+                    <Button asChild size="sm" variant="outline" className="rounded-full">
+                      <Link href="/application-details">
+                        <FileText className="mr-2 h-4 w-4" />
+                        View Details
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="mt-4 flex gap-2">
-                {trainingAccess?.accessLevel === 'full' ? (
-                  <Button asChild size="sm" className="rounded-full">
-                    <Link href="/microlearning/overview">
-                      <GraduationCap className="mr-2 h-4 w-4" />
-                      Complete Training
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button asChild size="sm" className="rounded-full">
-                    <Link href="/microlearning/overview">
-                      <GraduationCap className="mr-2 h-4 w-4" />
-                      Start Training
-                    </Link>
-                  </Button>
-                )}
+              {/* Training Progress Card */}
+              <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
+                <div className="flex items-center gap-3 mb-2">
+                  <GraduationCap className="h-6 w-6 text-blue-500" />
+                  <h2 className="font-semibold text-lg text-gray-900">Training Progress</h2>
+                </div>
+                <div className="flex-1 flex flex-col gap-2">
+                  {trainingAccess?.accessLevel === 'full' ? (
+                    <div className="text-sm text-gray-700">You have full access to all training materials.</div>
+                  ) : (
+                    <div className="text-sm text-gray-700">You have limited access to training materials.</div>
+                  )}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  {trainingAccess?.accessLevel === 'full' ? (
+                    <Button asChild size="sm" className="rounded-full">
+                      <Link href="/microlearning/overview">
+                        <GraduationCap className="mr-2 h-4 w-4" />
+                        Complete Training
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild size="sm" className="rounded-full">
+                      <Link href="/microlearning/overview">
+                        <GraduationCap className="mr-2 h-4 w-4" />
+                        Start Training
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-            {/* Document Management Card */}
-            <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
-              <div className="flex items-center gap-3 mb-2">
-                <FileText className="h-6 w-6 text-blue-500" />
-                <h2 className="font-semibold text-lg text-gray-900">Documents</h2>
-              </div>
-              <div className="flex-1 flex flex-col gap-2">
-                {applications && applications.length > 0 ? (
-                  (() => {
-                    const app = applications[0];
-                    const isVerified = app.foodSafetyLicenseStatus === 'approved' && (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === 'approved');
-                    return (
-                      <>
-                        <div className="text-sm text-gray-700">
-                          {isVerified ? 'Documents are verified and ready to use.' : 'Documents are pending verification.'}
-                        </div>
-                        <div className="mt-4 flex gap-2">
-                          {isVerified ? (
-                            <Button asChild size="sm" className="rounded-full">
-                              <Link href="/document-verification">
-                                <BadgeCheck className="mr-2 h-4 w-4" />
-                                Manage Documents
-                              </Link>
-                            </Button>
-                          ) : (
-                            <Button asChild size="sm" className="rounded-full">
-                              <Link href="/document-verification">
-                                <BadgeCheck className="mr-2 h-4 w-4" />
-                                Verify Documents
-                              </Link>
-                            </Button>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : (
-                  <div className="text-sm text-gray-700">You haven't uploaded any documents yet.</div>
-                )}
-              </div>
-              <div className="mt-4 flex gap-2">
-                {applications && applications.length > 0 && (
-                  <Button asChild size="sm" variant="outline" className="rounded-full">
-                    <Link href="/document-verification">
-                      <FileText className="mr-2 h-4 w-4" />
-                      View Documents
-                    </Link>
-                  </Button>
-                )}
+              {/* Document Management Card */}
+              <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
+                <div className="flex items-center gap-3 mb-2">
+                  <FileText className="h-6 w-6 text-blue-500" />
+                  <h2 className="font-semibold text-lg text-gray-900">Documents</h2>
+                </div>
+                <div className="flex-1 flex flex-col gap-2">
+                  {applications && applications.length > 0 ? (
+                    (() => {
+                      const app = applications[0];
+                      const isVerified = app.foodSafetyLicenseStatus === 'approved' && (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === 'approved');
+                      return (
+                        <>
+                          <div className="text-sm text-gray-700">
+                            {isVerified ? 'Documents are verified and ready to use.' : 'Documents are pending verification.'}
+                          </div>
+                          <div className="mt-4 flex gap-2">
+                            {isVerified ? (
+                              <Button asChild size="sm" className="rounded-full">
+                                <Link href="/document-verification">
+                                  <BadgeCheck className="mr-2 h-4 w-4" />
+                                  Manage Documents
+                                </Link>
+                              </Button>
+                            ) : (
+                              <Button asChild size="sm" className="rounded-full">
+                                <Link href="/document-verification">
+                                  <BadgeCheck className="mr-2 h-4 w-4" />
+                                  Verify Documents
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <div className="text-sm text-gray-700">You haven't uploaded any documents yet.</div>
+                  )}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  {applications && applications.length > 0 && (
+                    <Button asChild size="sm" variant="outline" className="rounded-full">
+                      <Link href="/document-verification">
+                        <FileText className="mr-2 h-4 w-4" />
+                        View Documents
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
