@@ -342,7 +342,7 @@ export default function MicrolearningOverview() {
                         </motion.div>
                         <Badge className="bg-emerald-200 text-emerald-800 border-emerald-400 px-3 py-1 font-semibold">
                           <BadgeCheck className="h-4 w-4 mr-1" />
-                          Certified Professional
+                          Local Cooks Certified
                         </Badge>
                         <motion.div
                           animate={{ opacity: [0.5, 1, 0.5] }}
