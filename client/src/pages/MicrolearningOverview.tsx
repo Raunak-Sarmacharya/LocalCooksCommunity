@@ -7,21 +7,21 @@ import { auth } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  ArrowRight,
-  Award,
-  CheckCircle,
-  Clock,
-  Download,
-  ExternalLink,
-  FileText,
-  GraduationCap,
-  Play,
-  Shield,
-  Star,
-  Users,
-  Sparkles,
-  BadgeCheck,
-  Trophy
+    ArrowRight,
+    Award,
+    BadgeCheck,
+    CheckCircle,
+    Clock,
+    Download,
+    ExternalLink,
+    FileText,
+    GraduationCap,
+    Play,
+    Shield,
+    Sparkles,
+    Star,
+    Trophy,
+    Users
 } from 'lucide-react';
 import React from 'react';
 import { Link, useLocation } from 'wouter';
@@ -146,6 +146,26 @@ export default function MicrolearningOverview() {
   const isInitialLoading = loading || (user && (isLoadingTrainingAccess || isLoadingCompletion));
   const hasError = trainingAccessError || completionError;
   
+  // Provide fallback data if there was an error loading (moved before early returns)
+  const safeTrainingAccess = trainingAccess || {
+    accessLevel: 'limited',
+    hasApprovedApplication: false,
+    applicationInfo: { message: 'Submit application for full training access' }
+  };
+
+  const safeMicrolearningCompletion = microlearningCompletion || null;
+
+  const hasFullAccess = safeTrainingAccess?.accessLevel === 'full' || safeTrainingAccess?.hasApprovedApplication;
+  const isCompleted = safeMicrolearningCompletion?.completion?.confirmed || safeMicrolearningCompletion?.confirmed;
+
+  // Add debug logging to understand what data we're getting (moved before early returns)
+  React.useEffect(() => {
+    if (microlearningCompletion || trainingAccess) {
+      console.log('🎯 Microlearning completion data:', microlearningCompletion);
+      console.log('🎯 Training access data:', trainingAccess);
+    }
+  }, [microlearningCompletion, trainingAccess]);
+  
   console.log('🔄 MicrolearningOverview: Render state:', {
     loading,
     user: !!user,
@@ -181,26 +201,6 @@ export default function MicrolearningOverview() {
       </div>
     );
   }
-
-  // Provide fallback data if there was an error loading
-  const safeTrainingAccess = trainingAccess || {
-    accessLevel: 'limited',
-    hasApprovedApplication: false,
-    applicationInfo: { message: 'Submit application for full training access' }
-  };
-
-  const safeMicrolearningCompletion = microlearningCompletion || null;
-
-  const hasFullAccess = safeTrainingAccess?.accessLevel === 'full' || safeTrainingAccess?.hasApprovedApplication;
-  const isCompleted = safeMicrolearningCompletion?.completion?.confirmed || safeMicrolearningCompletion?.confirmed;
-
-  // Add debug logging to understand what data we're getting (fixed dependencies)
-  React.useEffect(() => {
-    if (safeMicrolearningCompletion || safeTrainingAccess) {
-      console.log('🎯 Microlearning completion data:', safeMicrolearningCompletion);
-      console.log('🎯 Training access data:', safeTrainingAccess);
-    }
-  }, [safeMicrolearningCompletion, safeTrainingAccess]);
 
   // Show error state if data failed to load but still render with fallbacks
   if (hasError && !trainingAccess && !microlearningCompletion) {
