@@ -1643,7 +1643,7 @@ app.post('/api/applications', upload.fields([
             if (hasDocuments) {
               // Application submitted WITH documents - send combined email
               console.log("📧 Sending WITH documents email...");
-              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
+              const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.ts');
               const emailContent = generateApplicationWithDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
@@ -1657,7 +1657,7 @@ app.post('/api/applications', upload.fields([
             } else {
               // Application submitted WITHOUT documents - prompt to upload
               console.log("📧 Sending WITHOUT documents email...");
-              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
+              const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.ts');
               const emailContent = generateApplicationWithoutDocumentsEmail({
                 fullName: createdApplication.full_name || "Applicant",
                 email: createdApplication.email
@@ -1744,7 +1744,7 @@ app.post('/api/applications', upload.fields([
         if (hasDocuments) {
           // Application submitted WITH documents - send combined email
           console.log("📧 Sending WITH documents email (MEMORY)...");
-          const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.js');
+          const { sendEmail, generateApplicationWithDocumentsEmail } = await import('../server/email.ts');
           const emailContent = generateApplicationWithDocumentsEmail({
             fullName: application.fullName || "Applicant",
             email: application.email
@@ -1758,7 +1758,7 @@ app.post('/api/applications', upload.fields([
         } else {
           // Application submitted WITHOUT documents - prompt to upload
           console.log("📧 Sending WITHOUT documents email (MEMORY)...");
-          const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.js');
+          const { sendEmail, generateApplicationWithoutDocumentsEmail } = await import('../server/email.ts');
           const emailContent = generateApplicationWithoutDocumentsEmail({
             fullName: application.fullName || "Applicant",
             email: application.email
@@ -2329,7 +2329,7 @@ app.patch('/api/applications/:id/status', async (req, res) => {
       // Send email notification about status change
       try {
         // Import the email functions
-        const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+        const { sendEmail, generateStatusChangeEmail } = await import('../server/email.ts');
 
         if (updatedApplication.email) {
           const emailContent = generateStatusChangeEmail({
@@ -2610,7 +2610,7 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
       // Send document update confirmation email (only for dashboard updates, not initial submissions)
       try {
         if (updatedApplication.email) {
-          const { sendEmail, generateDocumentUpdateEmail } = await import('../server/email.js');
+          const { sendEmail, generateDocumentUpdateEmail } = await import('../server/email.ts');
           const emailContent = generateDocumentUpdateEmail({
             fullName: updatedApplication.full_name || "User",
             email: updatedApplication.email
@@ -2733,8 +2733,13 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       
       // Send full verification email with vendor credentials
       try {
+        console.log(`🔍 Full verification email trigger - User ${targetUserId}`);
+        console.log(`📧 Application email: ${updatedApplication.email}`);
+        console.log(`📱 Application phone: ${updatedApplication.phone}`);
+        console.log(`👤 Application name: ${updatedApplication.full_name}`);
+        
         // Import the email functions
-        const { sendEmail, generateFullVerificationEmail } = await import('../server/email.js');
+        const { sendEmail, generateFullVerificationEmail } = await import('../server/email.ts');
         
         // Get user details for email
         const userResult = await pool.query(`
@@ -2743,23 +2748,41 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
         
         if (userResult.rows.length > 0 && updatedApplication.email) {
           const user = userResult.rows[0];
-          const emailContent = generateFullVerificationEmail({
-            fullName: updatedApplication.full_name || user.username,
+          
+          // Ensure we have all required data
+          const emailData = {
+            fullName: updatedApplication.full_name || user.username || 'User',
             email: updatedApplication.email,
-            phone: updatedApplication.phone || user.username // Assuming username is phone number
+            phone: updatedApplication.phone || user.username || '0000000000'
+          };
+          
+          console.log(`📤 Preparing email with data:`, {
+            fullName: emailData.fullName,
+            email: emailData.email,
+            phone: emailData.phone ? 'Present' : 'Missing'
           });
-
-          await sendEmail(emailContent, {
+          
+          const emailContent = generateFullVerificationEmail(emailData);
+          
+          const emailSent = await sendEmail(emailContent, {
             trackingId: `full_verification_${targetUserId}_${Date.now()}`
           });
-          console.log(`Full verification email sent to ${updatedApplication.email} for user ${targetUserId}`);
-          console.log(`Vendor credentials generated: username=${updatedApplication.phone || user.username}`); // Don't log password
+          
+          if (emailSent) {
+            console.log(`✅ Full verification email sent successfully to ${updatedApplication.email} for user ${targetUserId}`);
+            console.log(`🔑 Vendor credentials generated: username=${emailData.phone.replace(/[^0-9]/g, '')}`);
+          } else {
+            console.error(`❌ Failed to send full verification email to ${updatedApplication.email} for user ${targetUserId}`);
+          }
         } else {
-          console.warn(`Cannot send full verification email: Missing user data or email for user ${targetUserId}`);
+          console.warn(`⚠️ Cannot send full verification email: Missing user data or email for user ${targetUserId}`);
+          console.warn(`   - User found: ${userResult.rows.length > 0}`);
+          console.warn(`   - Email present: ${!!updatedApplication.email}`);
         }
       } catch (emailError) {
         // Log the error but don't fail the request
-        console.error("Error sending full verification email:", emailError);
+        console.error("💥 Error sending full verification email:", emailError);
+        console.error("💥 Error stack:", emailError.stack);
       }
     }
 
@@ -4255,7 +4278,7 @@ app.post("/api/test-status-email", async (req, res) => {
     console.log('Testing status change email with:', { status, email, fullName });
 
     // Import the email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.ts');
 
     const emailContent = generateStatusChangeEmail({
       fullName,
@@ -4302,7 +4325,7 @@ app.post("/api/test-verification-email", async (req, res) => {
     console.log('Testing full verification email with:', { fullName, email, phone });
 
     // Import the email functions
-    const { sendEmail, generateFullVerificationEmail } = await import('../server/email.js');
+    const { sendEmail, generateFullVerificationEmail } = await import('../server/email.ts');
 
     const emailContent = generateFullVerificationEmail({
       fullName,
@@ -4330,6 +4353,118 @@ app.post("/api/test-verification-email", async (req, res) => {
     return res.status(500).json({ 
       message: "Error sending test verification email",
       error: error.message 
+    });
+  }
+});
+
+// Debug endpoint specifically for full verification email testing
+app.post("/api/debug/test-full-verification-email", async (req, res) => {
+  try {
+    const { userId, email, fullName, phone } = req.body;
+
+    console.log('🧪 FULL VERIFICATION EMAIL DEBUG TEST');
+    console.log('📝 Input data:', { userId, email, fullName, phone });
+
+    if (!email || !fullName || !phone) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Missing required fields: email, fullName, phone",
+        received: { email: !!email, fullName: !!fullName, phone: !!phone }
+      });
+    }
+
+    // Test 1: Import email functions
+    console.log('🔧 Testing email function imports...');
+    let sendEmail, generateFullVerificationEmail;
+    try {
+      const emailModule = await import('../server/email.ts');
+      sendEmail = emailModule.sendEmail;
+      generateFullVerificationEmail = emailModule.generateFullVerificationEmail;
+      console.log('✅ Email functions imported successfully');
+    } catch (importError) {
+      console.error('❌ Failed to import email functions:', importError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to import email functions',
+        details: importError.message
+      });
+    }
+
+    // Test 2: Generate email content
+    console.log('📧 Generating email content...');
+    let emailContent;
+    try {
+      emailContent = generateFullVerificationEmail({
+        fullName,
+        email,
+        phone
+      });
+      console.log('✅ Email content generated successfully');
+      console.log('📄 Subject:', emailContent.subject);
+      console.log('📤 To:', emailContent.to);
+    } catch (contentError) {
+      console.error('❌ Failed to generate email content:', contentError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to generate email content',
+        details: contentError.message
+      });
+    }
+
+    // Test 3: Send email
+    console.log('📬 Attempting to send email...');
+    try {
+      const trackingId = `debug_full_verification_${userId || 'test'}_${Date.now()}`;
+      const emailSent = await sendEmail(emailContent, {
+        trackingId
+      });
+
+      if (emailSent) {
+        console.log('✅ Email sent successfully!');
+        
+        // Generate credentials for display (don't log password)
+        const username = phone.replace(/[^0-9]/g, '');
+        const namePrefix = fullName.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 3) || 'usr';
+        const phoneSuffix = phone.replace(/[^0-9]/g, '').slice(-4) || '0000';
+        
+        return res.status(200).json({
+          success: true,
+          message: "Full verification email sent successfully",
+          details: {
+            to: email,
+            subject: emailContent.subject,
+            trackingId,
+            credentials: {
+              username,
+              passwordHint: `${namePrefix}****`
+            }
+          }
+        });
+      } else {
+        console.error('❌ Email sending failed (returned false)');
+        return res.status(500).json({
+          success: false,
+          error: 'Email sending failed',
+          details: 'sendEmail function returned false'
+        });
+      }
+    } catch (sendError) {
+      console.error('❌ Error during email sending:', sendError);
+      return res.status(500).json({
+        success: false,
+        error: 'Error during email sending',
+        details: sendError.message,
+        stack: sendError.stack
+      });
+    }
+
+  } catch (error) {
+    console.error('💥 Debug endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Debug endpoint error',
+      details: error.message,
+      stack: error.stack
     });
   }
 });
@@ -4581,7 +4716,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                 console.log(`🧪 SYNCHRONOUS TEST: Sending welcome email using APPLICATION EMAIL PATTERN`);
                 
                 // Use the proper welcome email function
-                const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                const { sendEmail, generateWelcomeEmail } = await import('../server/email.ts');
                 
                 // Generate proper welcome email
                 const emailContent = generateWelcomeEmail({
@@ -4609,7 +4744,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
                 console.log(`🔄 SYNCHRONOUS FALLBACK: Sending welcome email for Google user despite verification status`);
                 
                 try {
-                  const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+                  const { sendEmail, generateWelcomeEmail } = await import('../server/email.ts');
                   
                   // Use proper welcome email function
                   const emailContent = generateWelcomeEmail({
@@ -6770,7 +6905,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const resetUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/reset-password?token=${resetToken}`;
 
     // Send password reset email
-    const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
+    const { sendEmail, generatePasswordResetEmail } = await import('../server/email.ts');
     const emailContent = generatePasswordResetEmail({
       fullName: user.display_name || user.username,
       email: user.email,
@@ -6872,7 +7007,7 @@ app.post("/api/auth/send-verification-email", async (req, res) => {
     const verificationUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/verify-email?token=${verificationToken}`;
 
     // Send verification email
-    const { sendEmail, generateEmailVerificationEmail } = await import('../server/email.js');
+    const { sendEmail, generateEmailVerificationEmail } = await import('../server/email.ts');
     const emailContent = generateEmailVerificationEmail({
       fullName,
       email,
@@ -7330,7 +7465,7 @@ app.post("/api/test-email-delivery", async (req, res) => {
     console.log('🧪 Testing email delivery to:', email);
 
     // Import the email functions
-    const { sendEmail } = await import('../server/email.js');
+    const { sendEmail } = await import('../server/email.ts');
 
     const testEmailContent = {
       to: email,
@@ -7404,7 +7539,7 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
     console.log('🧪 Testing welcome email using STATUS CHANGE function (that works):', email);
 
     // Import the proper welcome email function
-    const { sendEmail, generateWelcomeEmail } = await import('../server/email.js');
+    const { sendEmail, generateWelcomeEmail } = await import('../server/email.ts');
 
     // Use the proper welcome email function
     const emailContent = generateWelcomeEmail({
@@ -7455,7 +7590,7 @@ app.post("/api/test-email-comparison", async (req, res) => {
     };
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.ts');
 
     // Test 1: Send WORKING application status email (this should work)
     try {
@@ -7539,7 +7674,7 @@ app.post("/api/test-identical-subject", async (req, res) => {
     console.log('🎯 IDENTICAL SUBJECT TEST: Using exact working subject line');
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.ts');
 
     // Generate using the exact same pattern as working emails
     const emailContent = generateStatusChangeEmail({
@@ -7590,7 +7725,7 @@ app.post("/api/test-delayed-email", async (req, res) => {
     console.log('⏰ TIMING TEST: Scheduling delayed email for:', email);
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.ts');
 
     // Generate the email content
     const emailContent = generateStatusChangeEmail({
@@ -7676,7 +7811,7 @@ app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
     }
 
     // Import email functions
-    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+    const { sendEmail, generateStatusChangeEmail } = await import('../server/email.ts');
 
     // Test 1: Standard application email (should work)
     try {
@@ -8119,7 +8254,7 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
     // Step 2: Test welcome email generation
     try {
-      const { generateWelcomeEmail } = await import('../server/email.js');
+      const { generateWelcomeEmail } = await import('../server/email.ts');
       const emailContent = generateWelcomeEmail({
         fullName: displayName || email.split('@')[0],
         email: email
@@ -8138,7 +8273,7 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
     // Step 3: Test email configuration (using main email system)
     try {
-      const { sendEmail } = await import('../server/email.js');
+      const { sendEmail } = await import('../server/email.ts');
       
       testResults.step3_emailSending = {
         configValid: !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS),
@@ -8147,7 +8282,7 @@ app.post("/api/debug-google-registration", async (req, res) => {
           port: process.env.EMAIL_PORT,
           user: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 5)}...` : null
         },
-        note: "Using main email system from server/email.js"
+        note: "Using main email system from server/email.ts"
       };
     } catch (error) {
       testResults.step3_emailSending = { error: error.message };
@@ -8155,14 +8290,14 @@ app.post("/api/debug-google-registration", async (req, res) => {
 
     // Step 4: Compare with working status email
     try {
-      const { generateStatusChangeEmail } = await import('../server/email.js');
+      const { generateStatusChangeEmail } = await import('../server/email.ts');
       const statusEmail = generateStatusChangeEmail({
         fullName: displayName || email.split('@')[0],
         email: email,
         status: 'approved'
       });
       
-      const { generateWelcomeEmail } = await import('../server/email.js');
+      const { generateWelcomeEmail } = await import('../server/email.ts');
       const welcomeEmail = generateWelcomeEmail({
         fullName: displayName || email.split('@')[0],
         email: email
