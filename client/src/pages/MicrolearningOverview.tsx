@@ -17,7 +17,10 @@ import {
   Play,
   Shield,
   Star,
-  Users
+  Users,
+  Sparkles,
+  BadgeCheck,
+  Trophy
 } from 'lucide-react';
 import React from 'react';
 import { Link, useLocation } from 'wouter';
@@ -313,6 +316,58 @@ export default function MicrolearningOverview() {
                       <h3 className="text-2xl font-bold text-emerald-900 mb-2">🎉 Training Completed!</h3>
                       <p className="text-emerald-700">Congratulations! You've earned your Local Cooks certification.</p>
                     </div>
+                    
+                    {/* Added celebratory elements to fill white space */}
+                    <div className="flex justify-center items-center gap-3 py-4">
+                      <motion.div
+                        animate={{ 
+                          rotate: [0, 15, -15, 0],
+                          scale: [1, 1.1, 1]
+                        }}
+                        transition={{ 
+                          duration: 2,
+                          repeat: Infinity,
+                          repeatType: "reverse"
+                        }}
+                        className="text-2xl"
+                      >
+                        🏆
+                      </motion.div>
+                      <div className="flex items-center gap-2">
+                        <motion.div
+                          animate={{ opacity: [0.5, 1, 0.5] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        >
+                          <Sparkles className="h-6 w-6 text-yellow-500" />
+                        </motion.div>
+                        <Badge className="bg-emerald-200 text-emerald-800 border-emerald-400 px-3 py-1 font-semibold">
+                          <BadgeCheck className="h-4 w-4 mr-1" />
+                          Certified Professional
+                        </Badge>
+                        <motion.div
+                          animate={{ opacity: [0.5, 1, 0.5] }}
+                          transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
+                        >
+                          <Sparkles className="h-6 w-6 text-yellow-500" />
+                        </motion.div>
+                      </div>
+                      <motion.div
+                        animate={{ 
+                          rotate: [0, -15, 15, 0],
+                          scale: [1, 1.1, 1]
+                        }}
+                        transition={{ 
+                          duration: 2,
+                          repeat: Infinity,
+                          repeatType: "reverse",
+                          delay: 0.5
+                        }}
+                        className="text-2xl"
+                      >
+                        🎊
+                      </motion.div>
+                    </div>
+                    
                     <div className="bg-emerald-100 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
                         <div>
@@ -373,7 +428,7 @@ export default function MicrolearningOverview() {
                 </motion.div>
               )}
 
-              {/* SkillPass.nl Official License Card - For completed users */}
+              {/* Get Official Food Safety Certificate - For completed users */}
               {isCompleted && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -386,40 +441,43 @@ export default function MicrolearningOverview() {
                       <Shield className="h-8 w-8 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-bold text-blue-900 mb-2">🎓 Get Food Safety Certificate</h3>
-                      <p className="text-blue-700">Continue your food safety journey with SkillsPass NL's free Food Safety Basics certification.</p>
+                      <h3 className="text-2xl font-bold text-blue-900 mb-2">🎓 Get Your Official Food Safety Certificate</h3>
+                      <p className="text-blue-700">Complete your certification journey with a FREE official Food Safety Basics certificate from SkillsPass NL.</p>
                     </div>
                     <div className="bg-blue-100 rounded-2xl p-4 space-y-4">
                       <div className="text-left">
-                        <p className="font-semibold text-blue-800 mb-2">How to Get Certified:</p>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Trophy className="h-5 w-5 text-blue-600" />
+                          <p className="font-semibold text-blue-800">Why Get This Official Certificate:</p>
+                        </div>
                         <div className="space-y-2 text-sm text-blue-700">
                           <div className="flex items-start gap-2">
-                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
-                            <span>Browse courses and find "Food Safety Basics"</span>
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">✓</span>
+                            <span>Recognized by employers & health authorities</span>
                           </div>
                           <div className="flex items-start gap-2">
-                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
-                            <span>Register for free SkillsPass NL account</span>
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">✓</span>
+                            <span>100% FREE certification - no hidden costs</span>
                           </div>
                           <div className="flex items-start gap-2">
-                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
-                            <span>Complete training & earn lifelong e-Certificate</span>
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">✓</span>
+                            <span>Lifetime digital certificate access</span>
                           </div>
                         </div>
                         <div className="mt-3 p-2 bg-blue-50 rounded-lg">
                           <p className="text-xs text-blue-600">
-                            <span className="font-semibold">✨ Bonus:</span> Access 35+ additional training programs
+                            <span className="font-semibold">✨ Bonus:</span> Access 35+ additional FREE training programs
                           </p>
                         </div>
                       </div>
                       <Button 
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
                         onClick={() => {
                           window.open('https://skillspassnl.com', '_blank', 'noopener,noreferrer');
                         }}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        Start Free Certification
+                        Get Your FREE Official Certificate
                       </Button>
                     </div>
                   </div>
