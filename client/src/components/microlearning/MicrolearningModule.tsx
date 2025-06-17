@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
     AlertCircle,
     ArrowRight,
@@ -21,9 +21,8 @@ import {
     TrendingUp,
     Users,
     Sparkles,
-    Menu,
-    X,
-    Circle
+    Circle,
+    XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
@@ -306,7 +305,6 @@ export default function MicrolearningModule({
   const [hasApprovedApplication, setHasApprovedApplication] = useState(false);
   const [applicationInfo, setApplicationInfo] = useState<any>(null);
   const [showApplicationPrompt, setShowApplicationPrompt] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Filter videos by current module
   const currentModuleVideos = videos.filter(video => video.module === currentModule);
@@ -583,7 +581,6 @@ export default function MicrolearningModule({
 
     if (canAccess) {
       setCurrentVideoIndex(videoIndex);
-      setIsSidebarOpen(false); // Close sidebar on mobile after selection
     } else if (accessLevel === 'limited') {
       // Show application prompt for limited users
       setShowApplicationPrompt(true);
@@ -685,15 +682,7 @@ export default function MicrolearningModule({
                 </div>
               </div>
 
-              {/* Mobile Menu Button */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="lg:hidden"
-              >
-                {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </Button>
+
             </div>
           </div>
         </div>
@@ -703,7 +692,7 @@ export default function MicrolearningModule({
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           {/* Main Content Area */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="lg:col-span-3 space-y-6 order-1 lg:order-1">
             
             {/* Video Section */}
             <motion.div
@@ -722,7 +711,7 @@ export default function MicrolearningModule({
                     <h2 className="text-xl font-bold text-slate-900 mb-2 leading-tight">{currentVideo.title}</h2>
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">
-                        {currentVideo.source}
+                        HACCP-based
                       </Badge>
                       {accessLevel === 'limited' && currentVideoIndex === 0 && (
                         <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
@@ -765,26 +754,40 @@ export default function MicrolearningModule({
               </div>
 
               {/* Video Controls */}
-              <div className="p-6 bg-slate-50 border-t border-slate-200">
-                <div className="flex items-center justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
-                    disabled={currentVideoIndex === 0}
-                    className="flex items-center gap-2"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <span>Video {currentVideoIndex + 1} of {currentModuleVideos.length}</span>
+              <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200">
+                {/* Mobile-first responsive layout */}
+                <div className="space-y-4 sm:space-y-0">
+                  {/* Progress indicator - full width on mobile */}
+                  <div className="text-center sm:hidden">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white rounded-full text-sm text-slate-600 border border-slate-200">
+                      <Circle className="h-1.5 w-1.5 fill-current" />
+                      <span className="font-medium">Video {currentVideoIndex + 1} of {currentModuleVideos.length}</span>
+                    </div>
                   </div>
+                  
+                  {/* Controls layout */}
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
+                      disabled={currentVideoIndex === 0}
+                      className="flex items-center gap-1.5 px-3 sm:px-4"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="hidden xs:inline">Previous</span>
+                      <span className="xs:hidden">Prev</span>
+                    </Button>
 
-                  {(() => {
-                    const nextIndex = currentVideoIndex + 1;
-                    const isLastVideo = nextIndex >= currentModuleVideos.length;
-                    const isLimitedAccess = accessLevel === 'limited' && currentVideoIndex === 0;
+                    {/* Desktop progress indicator */}
+                    <div className="hidden sm:flex items-center gap-2 text-sm text-slate-600">
+                      <span>Video {currentVideoIndex + 1} of {currentModuleVideos.length}</span>
+                    </div>
+
+                    {(() => {
+                      const nextIndex = currentVideoIndex + 1;
+                      const isLastVideo = nextIndex >= currentModuleVideos.length;
+                      const isLimitedAccess = accessLevel === 'limited' && currentVideoIndex === 0;
 
                     if (isLimitedAccess) {
                       return (
@@ -806,30 +809,35 @@ export default function MicrolearningModule({
 
                     return (
                       <Button
+                        size="sm"
                         onClick={() => !isLastVideo && canAccessNext && setCurrentVideoIndex(nextIndex)}
                         disabled={isLastVideo || !canAccessNext}
-                        className={canAccessNext && !isLastVideo ? "bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600" : ""}
+                        className={`flex items-center gap-1.5 px-3 sm:px-4 ${canAccessNext && !isLastVideo ? "bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600" : ""}`}
                         variant={canAccessNext && !isLastVideo ? "default" : "outline"}
                       >
                         {isLastVideo ? (
                           <>
-                            Module Complete
-                            <CheckCircle className="h-4 w-4 ml-2" />
+                            <span className="hidden xs:inline">Module Complete</span>
+                            <span className="xs:hidden">Complete</span>
+                            <CheckCircle className="h-4 w-4" />
                           </>
                         ) : !canAccessNext ? (
                           <>
-                            Locked
-                            <Lock className="h-4 w-4 ml-2" />
+                            <span className="hidden xs:inline">Locked</span>
+                            <span className="xs:hidden">🔒</span>
+                            <Lock className="h-4 w-4 hidden xs:inline" />
                           </>
                         ) : (
                           <>
-                            Next Video
-                            <ChevronRight className="h-4 w-4 ml-2" />
+                            <span className="hidden xs:inline">Next Video</span>
+                            <span className="xs:hidden">Next</span>
+                            <ChevronRight className="h-4 w-4" />
                           </>
                         )}
                       </Button>
                     );
                   })()}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -891,7 +899,7 @@ export default function MicrolearningModule({
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className={`lg:col-span-1 ${isSidebarOpen ? 'block' : 'hidden lg:block'}`}
+            className="lg:col-span-1 order-2 lg:order-2"
           >
             <div className="space-y-6">
               
@@ -1038,23 +1046,26 @@ export default function MicrolearningModule({
                   </div>
                   
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                    <h4 className="font-medium text-emerald-900 mb-2">Your Access Includes:</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="flex items-center gap-2 text-emerald-700">
-                        <CheckCircle className="h-3 w-3" />
-                        <span>All 22 Videos</span>
+                    <h4 className="font-medium text-emerald-900 mb-3 flex items-center gap-2">
+                      <span className="text-green-600">🔓</span>
+                      Your Access Includes:
+                    </h4>
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-3 text-emerald-700">
+                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                        <span className="text-sm">Complete 22-video curriculum</span>
                       </div>
-                      <div className="flex items-center gap-2 text-emerald-700">
-                        <CheckCircle className="h-3 w-3" />
-                        <span>Both Modules</span>
+                      <div className="flex items-center gap-3 text-emerald-700">
+                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                        <span className="text-sm">Both training modules</span>
                       </div>
-                      <div className="flex items-center gap-2 text-emerald-700">
-                        <CheckCircle className="h-3 w-3" />
-                        <span>Progress Tracking</span>
+                      <div className="flex items-center gap-3 text-emerald-700">
+                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                        <span className="text-sm">Progress tracking & analytics</span>
                       </div>
-                      <div className="flex items-center gap-2 text-emerald-700">
-                        <CheckCircle className="h-3 w-3" />
-                        <span>Certificate</span>
+                      <div className="flex items-center gap-3 text-emerald-700">
+                        <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                        <span className="text-sm">Official completion certificate</span>
                       </div>
                     </div>
                   </div>
@@ -1178,107 +1189,7 @@ export default function MicrolearningModule({
         </div>
       </div>
 
-      {/* Mobile Sidebar Overlay */}
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 lg:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-          >
-            <div className="absolute inset-0 bg-black/50" />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="absolute right-0 top-0 h-full w-80 bg-white shadow-xl overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-slate-900">Course Navigation</h3>
-                  <Button variant="ghost" size="sm" onClick={() => setIsSidebarOpen(false)}>
-                    <X className="h-5 w-5" />
-                  </Button>
-                </div>
-                
-                {/* Mobile version of sidebar content */}
-                <div className="space-y-6">
-                  {/* Progress Overview */}
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <div className="text-center mb-4">
-                      <div className="text-2xl font-bold text-emerald-600">{Math.round(moduleProgress)}%</div>
-                      <div className="text-sm text-slate-600">Module Progress</div>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2 mb-4">
-                      <div
-                        className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full"
-                        style={{ width: `${moduleProgress}%` }}
-                      />
-                    </div>
-                  </div>
 
-                  {/* Video List */}
-                  <div>
-                    <h4 className="font-medium text-slate-900 mb-3">Module Videos</h4>
-                    <div className="space-y-2">
-                      {currentModuleVideos.map((video, index) => {
-                        const progress = getVideoProgress(video.id);
-                        const isCompleted = (progress as any)?.completed || false;
-                        const isCurrent = currentVideoIndex === index;
-                        
-                        let canAccess = false;
-                        if (completionConfirmed || user?.role === 'admin') {
-                          canAccess = true;
-                        } else if (accessLevel === 'full') {
-                          canAccess = true;
-                        } else {
-                          canAccess = index === 0;
-                        }
-
-                        return (
-                          <button
-                            key={video.id}
-                            onClick={() => handleVideoClick(video.id, index)}
-                            className={`w-full p-3 rounded-lg text-left transition-all ${
-                              isCurrent
-                                ? 'bg-emerald-100 border-2 border-emerald-300'
-                                : canAccess
-                                ? 'hover:bg-slate-100 border border-slate-200'
-                                : 'opacity-60 cursor-not-allowed border border-slate-100'
-                            }`}
-                            disabled={!canAccess}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                                isCompleted
-                                  ? 'bg-green-500 text-white'
-                                  : isCurrent
-                                  ? 'bg-emerald-500 text-white'
-                                  : canAccess
-                                  ? 'bg-slate-300 text-slate-700'
-                                  : 'bg-slate-200 text-slate-400'
-                              }`}>
-                                {isCompleted ? '✓' : !canAccess ? '🔒' : index + 1}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium truncate">{video.title}</div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 } 

@@ -507,7 +507,7 @@ export default function VideoPlayer({
                   </Button>
                 </div>
                 <p className="text-xs text-blue-200">
-                  💡 Application approval unlocks: Full video library • Interactive exercises • Official certification • Chef network access
+                  💡 Application approval unlocks: Full video library • HACCP-based training • Local Cooks certification • Chef network access
                 </p>
                 <Button
                   variant="ghost"
