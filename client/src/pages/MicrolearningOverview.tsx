@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Award,
   CheckCircle,
+  Clock,
   Download,
   ExternalLink,
   FileText,
@@ -571,7 +572,7 @@ export default function MicrolearningOverview() {
               )}
 
               {/* Application Status - Dynamic based on access level */}
-              {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && (
+              {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && safeTrainingAccess?.applicationInfo?.canApply && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -595,6 +596,37 @@ export default function MicrolearningOverview() {
                       <Link href="/apply">
                         <FileText className="h-5 w-5 mr-2" />
                         Submit Application Now
+                      </Link>
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Application Status Info - For users with active applications */}
+              {!hasFullAccess && safeTrainingAccess?.applicationInfo?.message && !safeTrainingAccess?.applicationInfo?.canApply && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-3xl p-8 border-2 border-blue-200 shadow-lg"
+                >
+                  <div className="space-y-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Clock className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-blue-900 mb-2">Application Status</h3>
+                        <p className="text-blue-800">{safeTrainingAccess.applicationInfo.message}</p>
+                      </div>
+                    </div>
+                    <Button 
+                      asChild
+                      className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-semibold py-3"
+                    >
+                      <Link href="/dashboard">
+                        <FileText className="h-5 w-5 mr-2" />
+                        Check Application Status
                       </Link>
                     </Button>
                   </div>
