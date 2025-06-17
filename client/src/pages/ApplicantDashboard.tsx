@@ -1,51 +1,25 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 
 import {
-    formatApplicationStatus,
-    formatKitchenPreference,
-    getStatusBadgeColor
+  formatApplicationStatus,
+  getStatusBadgeColor
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
 import {
-    ArrowRight,
-    Award,
-    BadgeCheck,
-    CalendarDays,
-    CheckCircle,
-    ChefHat,
-    Clock,
-    CreditCard,
-    DollarSign,
-    Download,
-    ExternalLink,
-    FileText,
-    GraduationCap,
-    Info,
-    Loader2,
-    RefreshCw,
-    Shield,
-    Star,
-    XCircle
+  BadgeCheck,
+  CheckCircle,
+  ChefHat,
+  Clock,
+  FileText,
+  GraduationCap,
+  XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -645,907 +619,225 @@ export default function ApplicantDashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
       <Header />
-      <main className="flex-grow container max-w-6xl mx-auto px-4 pt-28 pb-8">
-        <div className="mb-6 md:mb-8 p-4 md:p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-xl">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2">
-                {/* Get user's full name from latest application, fallback to username */}
-                {(() => {
-                  // Use consistent naming convention like header navigation - just use username
-                  const displayName = user?.displayName || "";
-                  
-                  // Determine if user is fully verified
-                  let isFullyVerified = false;
-                  if (applications && applications.length > 0) {
-                    const app = applications[0];
-                    isFullyVerified =
-                      app.status === "approved" &&
-                      app.foodSafetyLicenseStatus === "approved" &&
-                      (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved");
-                  }
-                  return (
-                    <>
-                      <span className="font-logo text-primary mr-2">{displayName + "'s"}</span> Dashboard
-                      {isFullyVerified && (
-                        <span className="ml-2">
-                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1 px-2 py-1">
-                            <Award className="h-3 w-3 mr-1" />
-                            Verified Chef
-                          </Badge>
-                        </span>
-                      )}
-                    </>
-                  );
-                })()}
-              </h1>
-              <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2 max-w-lg">
-                {user?.role === "admin" 
-                  ? "Access training materials, view your certificates, and manage the Local Cooks community platform."
-                  : "Track your applications, manage documents, view training progress, and access certificates. We're excited to have you join our community of talented chefs!"
+      <main className="flex-grow pt-8 pb-12">
+        {/* Summary Bar */}
+        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/80 border border-slate-200 rounded-xl shadow-sm py-4 px-6">
+            {/* User Info */}
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Avatar/Initials */}
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-400 flex items-center justify-center text-white font-bold text-lg">
+                {user?.displayName ? user.displayName[0].toUpperCase() : 'U'}
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-gray-900 truncate">{user?.displayName || 'User'}</div>
+                <div className="text-xs text-gray-500 truncate">{user?.email}</div>
+              </div>
+            </div>
+            {/* Status Badges */}
+            <div className="flex flex-wrap gap-2 justify-center sm:justify-end">
+              {/* Application Status */}
+              {(() => {
+                let status = 'Not Started';
+                let color = 'bg-gray-100 text-gray-700';
+                if (applications && applications.length > 0) {
+                  const latestApp = applications[0];
+                  status = formatApplicationStatus(latestApp.status);
+                  color =
+                    latestApp.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    latestApp.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
+                    latestApp.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                    latestApp.status === 'cancelled' ? 'bg-gray-100 text-gray-500' :
+                    'bg-yellow-100 text-yellow-800';
                 }
-              </p>
+                return (
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${color} border-opacity-60`}>Application: {status}</span>
+                );
+              })()}
+              {/* Training Status */}
+              {(() => {
+                let status = 'Limited';
+                let color = 'bg-yellow-100 text-yellow-800';
+                if (microlearningCompletion?.confirmed) {
+                  status = 'Completed';
+                  color = 'bg-green-100 text-green-800';
+                } else if (trainingAccess?.accessLevel === 'full') {
+                  status = 'Full Access';
+                  color = 'bg-blue-100 text-blue-800';
+                }
+                return (
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${color} border-opacity-60`}>Training: {status}</span>
+                );
+              })()}
+              {/* Documents Status */}
+              {(() => {
+                let status = 'Upload Needed';
+                let color = 'bg-yellow-100 text-yellow-800';
+                if (applications && applications.length > 0) {
+                  const latestApp = applications[0];
+                  const isVerified = latestApp.foodSafetyLicenseStatus === 'approved' && (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
+                  if (isVerified) {
+                    status = 'Verified';
+                    color = 'bg-green-100 text-green-800';
+                  } else if (latestApp.foodSafetyLicenseUrl || latestApp.foodEstablishmentCertUrl) {
+                    status = 'Under Review';
+                    color = 'bg-blue-100 text-blue-800';
+                  }
+                }
+                return (
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${color} border-opacity-60`}>Documents: {status}</span>
+                );
+              })()}
             </div>
           </div>
         </div>
 
-        {/* Food Safety Training Section */}
-        <motion.div
-          className={`mb-6 md:mb-8 ${
-            microlearningCompletion?.confirmed
-              ? "bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200"
-              : "bg-gradient-to-r from-green-50 to-blue-50 border border-green-200"
-          } rounded-xl p-4 md:p-6`}
-          variants={itemVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-            <div className="flex-1">
-              {(microlearningCompletion?.completion?.confirmed || microlearningCompletion?.confirmed) ? (
-                // Completed Training Display
-                <>
-                  <h2 className="text-lg md:text-xl font-bold text-emerald-800 mb-2 flex items-center gap-2">
-                    🎉 Food Safety Training Completed!
-                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs flex items-center gap-1">
-                      <Award className="h-3 w-3" />
-                      Local Cooks Certified
-                    </Badge>
-                  </h2>
-                  <p className="text-sm md:text-base text-emerald-700 mb-4 flex items-center gap-2">
-                    <Star className="h-4 w-4 text-emerald-600" />
-                    Congratulations! You have successfully completed our comprehensive Local Cooks Food Safety Training program and earned your certificate.
-                  </p>
-                  <div className="bg-emerald-100 border border-emerald-200 rounded-lg p-3 mb-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-emerald-800 text-sm">Certificate Available</h3>
-                        <p className="text-xs text-emerald-700">
-                          Completed on {(microlearningCompletion?.completion?.completedAt || microlearningCompletion?.completedAt) ? new Date(microlearningCompletion?.completion?.completedAt || microlearningCompletion?.completedAt).toLocaleDateString('en-US', {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          }) : "Recently"}
-                        </p>
-                        {(microlearningCompletion?.completion?.certificateGenerated || microlearningCompletion?.certificateGenerated) && (
-                          <p className="text-xs text-emerald-600 font-medium">
-                            ✅ Certificate previously generated
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={async () => {
-                          try {
-                            // Get Firebase token for authentication
-                            const currentUser = auth.currentUser;
-                            if (!currentUser) {
-                              throw new Error("Authentication required. Please log in again.");
-                            }
-                            
-                            const token = await currentUser.getIdToken();
-                            
-                            const response = await fetch(`/api/firebase/microlearning/certificate/${user?.uid}`, {
-                              method: 'GET',
-                              headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`
-                              }
-                            });
-                            
-                            if (response.ok) {
-                              const contentType = response.headers.get('content-type');
-                              
-                              if (contentType && contentType.includes('application/pdf')) {
-                                // Handle PDF download
-                                const pdfBlob = await response.blob();
-                                const url = window.URL.createObjectURL(pdfBlob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = `LocalCooks-Certificate-${user?.displayName}.pdf`;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                window.URL.revokeObjectURL(url);
-                                
-                                toast({
-                                  title: "Certificate Downloaded!",
-                                  description: "🎉 Your certificate has been downloaded successfully.",
-                                });
-                              } else {
-                                // Handle JSON response (fallback)
-                                const data = await response.json();
-                                toast({
-                                  title: "Certificate Generated",
-                                  description: data.message || "Certificate ready for download",
-                                });
-                              }
-                            } else {
-                              throw new Error('Failed to download certificate');
-                            }
-                          } catch (error) {
-                            console.error('Error downloading certificate:', error);
-                            toast({
-                              title: "Download Error",
-                              description: "Failed to download certificate. Please try again.",
-                              variant: "destructive",
-                            });
-                          }
-                        }}
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        Download Certificate
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                    >
-                      <Link href="/microlearning">
-                        <GraduationCap className="mr-2 h-4 w-4" />
-                        Review Training Materials
-                      </Link>
-                    </Button>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-4 text-xs text-emerald-600">
-                        <span className="flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          All 22 Videos Completed
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          Certificate Generated
-                        </span>
-                      </div>
-                      <div className="text-xs text-emerald-600">
-                        <span className="font-medium">🏆 Training Complete:</span> You can now rewatch any training module at any time
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                // Training Not Completed Display
-                <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="bg-green-100 p-3 rounded-full">
-                      <GraduationCap className="h-6 w-6 text-green-600" />
-                    </div>
-                    <h2 className="text-xl md:text-2xl font-bold text-gray-900">
-                      Food Safety Training
-                    </h2>
-                    {isLoadingCompletion && (
-                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                    )}
-                    <Badge className="bg-green-100 text-green-800 border-green-300 text-xs">
-                      HACCP-Based
-                    </Badge>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                    <div className="flex flex-col h-full">
-                      <div className="flex-grow space-y-4">
-                        <div>
-                          <h3 className="font-semibold text-gray-900 mb-2">🍽️ Comprehensive Food Safety Curriculum</h3>
-                          <p className="text-sm text-gray-700 leading-relaxed">
-                            Master food safety fundamentals with our 22-video program featuring content from Unilever Food Solutions. 
-                            Covers HACCP principles, hygiene best practices, and industry-standard procedures.
-                          </p>
-                        </div>
-                        
-                        <div className="bg-white/60 rounded-lg p-4 border border-gray-200">
-                          <h4 className="font-semibold text-gray-900 mb-3">Training Modules</h4>
-                          <div className="space-y-3 text-sm">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-700">Module 1: Food Safety Basics</span>
-                              <div className="flex gap-1">
-                                {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? (
-                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
-                                    14 Available
-                                  </Badge>
-                                ) : (
-                                  <>
-                                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
-                                      1 Available
-                                    </Badge>
-                                    <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300 px-2 py-1">
-                                      13 Locked
-                                    </Badge>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-700">Module 2: Safety & Hygiene How-To's</span>
-                              {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? (
-                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300 px-2 py-1">
-                                  8 Available
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
-                                  8 Locked
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className={`rounded-lg p-4 border mt-4 ${
-                        trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                          ? 'bg-green-50 border-green-200' 
-                          : 'bg-blue-50 border-blue-200'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Shield className={`h-4 w-4 ${
-                            trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                              ? 'text-green-600' 
-                              : 'text-blue-600'
-                          }`} />
-                          <span className={`font-semibold text-sm ${
-                            trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                              ? 'text-green-900' 
-                              : 'text-blue-900'
-                          }`}>
-                            Access Status
-                            {isLoadingTrainingAccess && (
-                              <Loader2 className="ml-2 h-3 w-3 animate-spin inline" />
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className={`text-xs font-medium ${
-                              trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                                ? 'text-green-800' 
-                                : 'text-blue-800'
-                            }`}>
-                              Available Now: {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? '22' : '1'} Video{trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication ? 's' : ''}
-                            </span>
-                          </div>
-                          {!(trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication) && (
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                              <span className="text-xs font-medium text-blue-800">Application Required: 21 Videos</span>
-                            </div>
+        {/* Main Content Container */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Application Status Card */}
+            <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
+              <div className="flex items-center gap-3 mb-2">
+                <FileText className="h-6 w-6 text-blue-500" />
+                <h2 className="font-semibold text-lg text-gray-900">Application</h2>
+              </div>
+              <div className="flex-1 flex flex-col gap-2">
+                {applications && applications.length > 0 ? (
+                  (() => {
+                    const app = applications[0];
+                    const status = formatApplicationStatus(app.status);
+                    return (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)} border-opacity-60`}>{status}</span>
+                          {app.status === 'approved' && (
+                            <span className="text-green-600 text-xs font-medium flex items-center gap-1"><CheckCircle className="h-4 w-4" /> Approved</span>
+                          )}
+                          {app.status === 'inReview' && (
+                            <span className="text-blue-600 text-xs font-medium flex items-center gap-1"><Clock className="h-4 w-4" /> In Review</span>
+                          )}
+                          {app.status === 'rejected' && (
+                            <span className="text-red-600 text-xs font-medium flex items-center gap-1"><XCircle className="h-4 w-4" /> Rejected</span>
                           )}
                         </div>
-                        <p className={`text-xs leading-relaxed ${
-                          trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                            ? 'text-green-800' 
-                            : 'text-blue-800'
-                        }`}>
-                          {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                            ? 'Full access granted! Complete all modules to earn your training certificate.'
-                            : trainingAccess?.applicationInfo?.message || 'Complete your application to unlock the full curriculum and earn your completion certificate.'
-                          }
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col h-full">
-                      <div className="mt-auto">
-                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-                          <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
-                            <span className="text-lg">🏆</span>
-                            What You'll Achieve
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex items-center gap-2 text-green-800">
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                              <span>Food Safety Knowledge</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-green-800">
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                              <span>HACCP Understanding</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-green-800">
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                              <span>Training Completion Certificate</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-green-800">
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                              <span>Lifetime Access to Materials</span>
-                            </div>
-                          </div>
+                        <div className="text-sm text-gray-700 mt-2">
+                          {app.status === 'approved' && 'Your application is approved! You can now access all features.'}
+                          {app.status === 'inReview' && 'Your application is under review. We will notify you once it is processed.'}
+                          {app.status === 'rejected' && (app.feedback || 'Your application was rejected. Please review feedback and reapply.')}
+                          {app.status === 'cancelled' && 'Your application was cancelled.'}
                         </div>
-                      </div>
-                      
-                      <div className={`bg-gradient-to-br rounded-lg p-4 border mt-4 ${
-                        trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                          ? 'from-green-50 to-emerald-50 border-green-200' 
-                          : 'from-blue-50 to-indigo-50 border-blue-200'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-lg">🚀</span>
-                          <span className={`font-semibold text-sm ${
-                            trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                              ? 'text-green-900' 
-                              : 'text-blue-900'
-                          }`}>
-                            {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                              ? 'Full Access Granted' 
-                              : 'Get Started Today'
-                            }
-                          </span>
-                        </div>
-                        <p className={`text-xs leading-relaxed ${
-                          trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                            ? 'text-green-800' 
-                            : 'text-blue-800'
-                        }`}>
-                          {trainingAccess?.accessLevel === 'full' || trainingAccess?.hasApprovedApplication 
-                            ? 'You now have access to all 22 training videos across both modules. Complete your comprehensive food safety education journey at your own pace.'
-                            : 'Begin with the introduction video immediately. Track your progress as you advance through your food safety education journey.'
-                          }
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center">
-                    <Button
-                      asChild
-                      size="lg"
-                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-8 py-3 h-auto w-full sm:w-auto"
-                    >
-                      <Link href="/microlearning">
-                        <GraduationCap className="mr-3 h-5 w-5" />
-                        Begin Training Journey
-                        <ArrowRight className="ml-3 h-5 w-5" />
-                      </Link>
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </motion.div>
-
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : error ? (
-          <div className="text-center py-12">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
-              <XCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-red-800 mb-2">Unable to Load Dashboard</h3>
-              <p className="text-red-600 mb-4 text-sm">
-                {error.message || "There was an issue loading your data."}
-              </p>
-              <Button
-                onClick={handleSyncAccount}
-                disabled={isSyncing}
-                variant="outline"
-                size="sm"
-                className="border-red-300 text-red-700 hover:bg-red-50"
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Syncing...
-                  </>
+                      </>
+                    );
+                  })()
                 ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Try Syncing Account
-                  </>
+                  <div className="text-sm text-gray-700">You haven't submitted an application yet.</div>
                 )}
-              </Button>
-            </div>
-          </div>
-        ) : applications && applications.length > 0 ? (
-          <motion.div
-            className="space-y-6"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            {applications.map((application) => {
-              const canApply = !isApplicationActive(application);
-              const isApproved = application.status === "approved";
-              const isInReview = application.status === "inReview";
-              const canManageDocuments = isApproved || isInReview;
-              const statusIcon = () => {
-                switch (application.status) {
-                  case "inReview": return <Clock className="h-5 w-5 text-blue-500" />;
-                  case "approved": return <CheckCircle className="h-5 w-5 text-green-500" />;
-                  case "rejected": return <XCircle className="h-5 w-5 text-red-500" />;
-                  case "cancelled": return <XCircle className="h-5 w-5 text-gray-500" />;
-                  default: return null;
-                }
-              };
-
-              return (
-                <motion.div
-                  key={application.id}
-                  className="bg-white rounded-lg shadow-md border p-4 md:p-6 hover:shadow-lg hover-shadow group"
-                  variants={itemVariants}
-                >
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 md:gap-0">
-                    <div>
-                      <h2 className="text-lg md:text-xl font-semibold">{application.fullName || "No Name Provided"}</h2>
-                      <p className="text-sm text-muted-foreground">{application.email || "No Email Provided"}</p>
-                    </div>
-                    <Badge className={`${getStatusBadgeColor(application.status)} self-start sm:self-auto flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm mt-1 sm:mt-0`}>
-                      {statusIcon()}
-                      {formatApplicationStatus(application.status)}
-                    </Badge>
-                  </div>
-
-                  {/* Document Verification Alert for Approved and In-Review Applications */}
-                  {canManageDocuments && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      transition={{ duration: 0.3 }}
-                      className="mt-4"
-                    >
-                      {/* Check if user is fully verified */}
-                      {(() => {
-                        const isFullyVerified = application.foodSafetyLicenseStatus === "approved" && 
-                          (!application.foodEstablishmentCertUrl || application.foodEstablishmentCertStatus === "approved");
-                        
-                        if (isFullyVerified) {
-                          return (
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                              <div className="flex items-start gap-3">
-                                <div className="bg-green-100 p-2 rounded-full">
-                                  <CheckCircle className="h-5 w-5 text-green-600" />
-                                </div>
-                                <div className="flex-1">
-                                  <h3 className="font-semibold text-green-800 mb-1 flex items-center gap-2">
-                                    <Award className="h-4 w-4" />
-                                    Verification Complete!
-                                  </h3>
-                                  <p className="text-sm text-green-700 mb-3">
-                                    🎉 Congratulations! Your documents have been approved and you are now a verified Local Cook. You can start accepting orders from customers.
-                                  </p>
-                                  <div className="flex flex-col sm:flex-row gap-2 items-start">
-                                    <div className="flex items-center gap-2">
-                                      <Badge className="bg-green-100 text-green-800 border-green-300">
-                                        <CheckCircle className="h-3 w-3 mr-1" />
-                                        Food Safety License: Approved
-                                      </Badge>
-                                      {application.foodEstablishmentCertUrl && (
-                                        <Badge className="bg-green-100 text-green-800 border-green-300">
-                                          <CheckCircle className="h-3 w-3 mr-1" />
-                                          Food Establishment Cert: Approved
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                                    <Button
-                                      asChild
-                                      size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white"
-                                    >
-                                      <Link href="/document-verification">
-                                        <BadgeCheck className="mr-2 h-4 w-4" />
-                                        Manage Documents
-                                      </Link>
-                                    </Button>
-                                    <span className="text-xs text-green-600 flex items-center">
-                                      <Info className="mr-1 h-3 w-3" />
-                                      Update documents anytime
-                                    </span>
-                                  </div>
-                                  {application.documentsReviewedAt && (
-                                    <p className="text-xs text-green-600 mt-2">
-                                      Verified on {new Date(application.documentsReviewedAt).toLocaleDateString('en-US', {
-                                        weekday: 'short',
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric'
-                                      })}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Stripe Onboarding Section */}
-                              <div className="mt-4">
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                  <div className="flex items-start gap-3">
-                                    <div className="bg-blue-100 p-2 rounded-full">
-                                      <CreditCard className="h-5 w-5 text-blue-600" />
-                                    </div>
-                                    <div className="flex-1">
-                                      <h3 className="font-semibold text-blue-800 mb-1 flex items-center gap-2">
-                                        <DollarSign className="h-4 w-4" />
-                                        Set Up Payment Processing
-                                      </h3>
-                                      <p className="text-sm text-blue-700 mb-3">
-                                        💳 To start receiving payments from customers, you need to set up your Stripe account. This is required to get paid for your orders.
-                                      </p>
-                                      <div className="flex flex-col sm:flex-row gap-2">
-                                        <Button
-                                          asChild
-                                          size="sm"
-                                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                                        >
-                                          <a 
-                                            href={`https://localcook.shop/app/shop/login.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                          >
-                                            <CreditCard className="mr-2 h-4 w-4" />
-                                            Set Up Stripe Account
-                                            <ExternalLink className="ml-2 h-3 w-3" />
-                                          </a>
-                                        </Button>
-                                        <span className="text-xs text-blue-600 flex items-center">
-                                          <Info className="mr-1 h-3 w-3" />
-                                          Secure payment processing by Stripe
-                                        </span>
-                                      </div>
-                                      <div className="mt-3 p-3 bg-blue-50/50 rounded border border-blue-100">
-                                        <h4 className="text-xs font-medium text-blue-700 mb-1">What happens next:</h4>
-                                        <ul className="text-xs text-blue-600 space-y-1">
-                                          <li>• Complete Stripe account setup (bank details, tax info)</li>
-                                          <li>• Verify your identity with Stripe</li>
-                                          <li>• Start receiving payments from customers</li>
-                                          <li>• Track your earnings in your Stripe dashboard</li>
-                                        </ul>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        } else {
-                          // Show document management interface for non-verified users
-                          const bgColor = isApproved ? "bg-green-50 border border-green-200" : "bg-blue-50 border border-blue-200";
-                          const iconBgColor = isApproved ? "bg-green-100" : "bg-blue-100";
-                          const iconColor = isApproved ? "text-green-600" : "text-blue-600";
-                          
-                          return (
-                            <div className={`${bgColor} rounded-lg p-4`}>
-                              <div className="flex items-start gap-3">
-                                <div className={`${iconBgColor} p-2 rounded-full`}>
-                                  <FileText className={`h-5 w-5 ${iconColor}`} />
-                                </div>
-                                <div className="flex-1">
-                                  <h3 className={`font-semibold mb-1 ${isApproved ? 'text-green-800' : 'text-blue-800'}`}>Document Verification Center</h3>
-                                  <p className={`text-sm mb-3 ${isApproved ? 'text-green-700' : 'text-blue-700'}`}>
-                                    {isApproved 
-                                      ? (() => {
-                                          // Check if documents are pending review
-                                          const hasDocumentsPending = (application.foodSafetyLicenseUrl && application.foodSafetyLicenseStatus === "pending") ||
-                                                                    (application.foodEstablishmentCertUrl && application.foodEstablishmentCertStatus === "pending");
-                                          
-                                          if (hasDocumentsPending) {
-                                            return "🎉 Congratulations! Your application has been approved and we're currently reviewing your documents. We'll notify you once they're verified. Until then, you have access to the full dashboard!";
-                                          }
-                                          return "Congratulations! Your application has been approved. Upload your documents for verification to get started.";
-                                        })()
-                                      : "Upload your verification documents to speed up your application review. You can update or replace documents anytime before approval."
-                                    }
-                                  </p>
-                                  
-                                  {/* Special status message for documents under review */}
-                                  {isApproved && (() => {
-                                    const hasDocumentsPending = (application.foodSafetyLicenseUrl && application.foodSafetyLicenseStatus === "pending") ||
-                                                              (application.foodEstablishmentCertUrl && application.foodEstablishmentCertStatus === "pending");
-                                    
-                                    if (hasDocumentsPending) {
-                                      return (
-                                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                          <div className="flex items-center gap-2">
-                                            <Clock className="h-4 w-4 text-amber-600" />
-                                            <span className="text-sm font-medium text-amber-800">
-                                              Documents Under Review
-                                            </span>
-                                          </div>
-                                          <p className="text-xs text-amber-700 mt-1">
-                                            Our team is currently reviewing your submitted documents. This typically takes 1-3 business days. 
-                                            You'll receive an email notification once the review is complete.
-                                          </p>
-                                        </div>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-
-                                  <div className="flex flex-col sm:flex-row gap-2">
-                                    <Button
-                                      asChild
-                                      size="sm"
-                                      className={isApproved ? "bg-green-600 hover:bg-green-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}
-                                    >
-                                      <Link href="/document-verification">
-                                        <BadgeCheck className="mr-2 h-4 w-4" />
-                                        Manage Documents
-                                      </Link>
-                                    </Button>
-                                    <span className={`text-xs flex items-center ${isApproved ? 'text-green-600' : 'text-blue-600'}`}>
-                                      <Info className="mr-1 h-3 w-3" />
-                                      Upload new or replace existing files
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Show current document status if documents are uploaded */}
-                                  {(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl) && (
-                                    <div className={`mt-3 pt-3 border-t ${isApproved ? 'border-green-200' : 'border-blue-200'}`}>
-                                      <h4 className={`text-xs font-medium mb-2 ${isApproved ? 'text-green-700' : 'text-blue-700'}`}>Current Status:</h4>
-                                      <div className="flex flex-wrap gap-2">
-                                        {application.foodSafetyLicenseUrl && (
-                                          <Badge variant="secondary" className={
-                                            application.foodSafetyLicenseStatus === "approved" 
-                                              ? "bg-green-100 text-green-800 border-green-300"
-                                              : application.foodSafetyLicenseStatus === "rejected"
-                                              ? "bg-red-100 text-red-800 border-red-300"
-                                              : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                                          }>
-                                            {application.foodSafetyLicenseStatus === "approved" && <CheckCircle className="h-3 w-3 mr-1" />}
-                                            {application.foodSafetyLicenseStatus === "rejected" && <XCircle className="h-3 w-3 mr-1" />}
-                                            {application.foodSafetyLicenseStatus === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                                            FSL: {application.foodSafetyLicenseStatus}
-                                          </Badge>
-                                        )}
-                                        {application.foodEstablishmentCertUrl && (
-                                          <Badge variant="secondary" className={
-                                            application.foodEstablishmentCertStatus === "approved" 
-                                              ? "bg-green-100 text-green-800 border-green-300"
-                                              : application.foodEstablishmentCertStatus === "rejected"
-                                              ? "bg-red-100 text-red-800 border-red-300"
-                                              : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                                          }>
-                                            {application.foodEstablishmentCertStatus === "approved" && <CheckCircle className="h-3 w-3 mr-1" />}
-                                            {application.foodEstablishmentCertStatus === "rejected" && <XCircle className="h-3 w-3 mr-1" />}
-                                            {application.foodEstablishmentCertStatus === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                                            FEC: {application.foodEstablishmentCertStatus}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }
-                      })()}
-                    </motion.div>
-                  )}
-
-                  <div className="mt-4 md:mt-6 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                    <h3 className="text-sm font-medium mb-3 text-gray-700">Application Details</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Full Name</h4>
-                        <p className="font-medium text-gray-900">{application.fullName || "N/A"}</p>
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Email</h4>
-                        <p className="font-medium text-gray-900">{application.email || "N/A"}</p>
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Phone</h4>
-                        <p className="font-medium text-gray-900">{application.phone || "N/A"}</p>
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Application ID</h4>
-                        <p className="font-medium text-gray-900">#{application.id}</p>
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><FileText className="h-4 w-4 text-blue-400" /> Food Safety License</h4>
-                        {application.foodSafetyLicenseUrl ? (
-                          <a href={application.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium">
-                            <FileText className="h-4 w-4" /> View Document
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">Not uploaded</span>
-                        )}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><FileText className="h-4 w-4 text-blue-400" /> Food Establishment Cert</h4>
-                        {application.foodEstablishmentCertUrl ? (
-                          <a href={application.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded shadow hover:bg-blue-200 transition font-medium">
-                            <FileText className="h-4 w-4" /> View Document
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">Not uploaded</span>
-                        )}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Kitchen Preference</h4>
-                        <p className="font-medium text-gray-900">{formatKitchenPreference(application.kitchenPreference)}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Your Feedback/Questions</h4>
-                        <p className="font-medium text-gray-900 bg-gray-50 p-3 rounded-md border border-gray-200">
-                          {application.feedback || "No feedback or questions provided"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 md:gap-4">
-                    <div className="flex items-center text-sm text-muted-foreground">
-                      <CalendarDays className="h-4 w-4 mr-2" />
-                      Submitted on {application.createdAt ? new Date(application.createdAt).toLocaleDateString() : "N/A"}
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
-                      {isApplicationActive(application) && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 hover-standard">
-                              Cancel Application
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Cancel Application</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to cancel this application? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>No, keep it</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => cancelMutation.mutate(application.id)}
-                                className="bg-red-500 hover:bg-red-600 hover-standard"
-                              >
-                                {cancelMutation.isPending ? (
-                                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelling...</>
-                                ) : (
-                                  "Yes, cancel it"
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-
-                      {canApply && (
-                        <Button asChild variant="default" size="sm">
-                          <Link href="/apply">Apply Again</Link>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        ) : (
-          <motion.div
-            className="text-center py-12 px-6 border rounded-xl bg-gradient-to-b from-white to-gray-50 shadow-sm"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-              {user?.role === "admin" ? (
-                <Shield className="h-8 w-8 text-primary" />
-              ) : (
-                <FileText className="h-8 w-8 text-primary" />
-              )}
-            </div>
-            {user?.role === "admin" ? (
-              <>
-                <h2 className="text-2xl font-semibold mb-2">Administrator Dashboard</h2>
-                <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                  Welcome! As an administrator, you have access to manage applications, review documents, and oversee the Local Cooks community.
-                </p>
-                <Button
-                  asChild
-                  size="lg"
-                  className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
-                >
-                  <Link href="/admin">
-                    <Shield className="mr-2 h-5 w-5" />
-                    Go to Admin Dashboard
-                  </Link>
-                </Button>
-              </>
-            ) : (
-              <>
-                <h2 className="text-2xl font-semibold mb-2">No applications yet</h2>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  You haven't submitted any applications to Local Cooks yet. Start your application now to join our growing community of talented chefs!
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="bg-primary hover:bg-primary/90 rounded-full px-6 md:px-8 hover-standard w-full sm:w-auto"
-                  >
+              </div>
+              <div className="mt-4 flex gap-2">
+                {canApplyAgain(applications) && (
+                  <Button asChild size="sm" className="rounded-full">
                     <Link href="/apply">
-                      <ChefHat className="mr-2 h-5 w-5" />
-                      Start Your Application
+                      <ChefHat className="mr-2 h-4 w-4" />
+                      Start Application
                     </Link>
                   </Button>
-                  <Button
-                    onClick={handleSyncAccount}
-                    disabled={isSyncing}
-                    variant="outline"
-                    size="lg"
-                    className="rounded-full px-6 md:px-8 w-full sm:w-auto"
-                  >
-                    {isSyncing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Sync Account
-                      </>
-                    )}
+                )}
+                {applications && applications.length > 0 && (
+                  <Button asChild size="sm" variant="outline" className="rounded-full">
+                    <Link href="/application-details">
+                      <FileText className="mr-2 h-4 w-4" />
+                      View Details
+                    </Link>
                   </Button>
-                </div>
-                <p className="text-sm text-gray-500 mt-4">
-                  Can't see your applications? Try syncing your account first.
-                </p>
-              </>
-            )}
-
-            <div className="mt-10 pt-6 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 text-left">
-              <div className="flex items-start gap-3">
-                <div className="bg-green-100 p-2 rounded-full mt-1">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm text-gray-900">Simple Application</h3>
-                  <p className="text-xs text-gray-600">Our application process is quick and straightforward</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="bg-blue-100 p-2 rounded-full mt-1">
-                  <Info className="h-4 w-4 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm text-gray-900">Guided Process</h3>
-                  <p className="text-xs text-gray-600">We'll help you every step of the way</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="bg-yellow-100 p-2 rounded-full mt-1">
-                  <Clock className="h-4 w-4 text-yellow-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm text-gray-900">Quick Response</h3>
-                  <p className="text-xs text-gray-600">Get notified about your application status</p>
-                </div>
+                )}
               </div>
             </div>
-          </motion.div>
-        )}
+            {/* Training Progress Card */}
+            <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
+              <div className="flex items-center gap-3 mb-2">
+                <GraduationCap className="h-6 w-6 text-blue-500" />
+                <h2 className="font-semibold text-lg text-gray-900">Training Progress</h2>
+              </div>
+              <div className="flex-1 flex flex-col gap-2">
+                {trainingAccess?.accessLevel === 'full' ? (
+                  <div className="text-sm text-gray-700">You have full access to all training materials.</div>
+                ) : (
+                  <div className="text-sm text-gray-700">You have limited access to training materials.</div>
+                )}
+              </div>
+              <div className="mt-4 flex gap-2">
+                {trainingAccess?.accessLevel === 'full' ? (
+                  <Button asChild size="sm" className="rounded-full">
+                    <Link href="/microlearning/overview">
+                      <GraduationCap className="mr-2 h-4 w-4" />
+                      Complete Training
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button asChild size="sm" className="rounded-full">
+                    <Link href="/microlearning/overview">
+                      <GraduationCap className="mr-2 h-4 w-4" />
+                      Start Training
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+            {/* Document Management Card */}
+            <div className="bg-white rounded-2xl shadow border border-slate-200 p-6 flex flex-col justify-between min-h-[220px]">
+              <div className="flex items-center gap-3 mb-2">
+                <FileText className="h-6 w-6 text-blue-500" />
+                <h2 className="font-semibold text-lg text-gray-900">Documents</h2>
+              </div>
+              <div className="flex-1 flex flex-col gap-2">
+                {applications && applications.length > 0 ? (
+                  (() => {
+                    const app = applications[0];
+                    const isVerified = app.foodSafetyLicenseStatus === 'approved' && (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === 'approved');
+                    return (
+                      <>
+                        <div className="text-sm text-gray-700">
+                          {isVerified ? 'Documents are verified and ready to use.' : 'Documents are pending verification.'}
+                        </div>
+                        <div className="mt-4 flex gap-2">
+                          {isVerified ? (
+                            <Button asChild size="sm" className="rounded-full">
+                              <Link href="/document-verification">
+                                <BadgeCheck className="mr-2 h-4 w-4" />
+                                Manage Documents
+                              </Link>
+                            </Button>
+                          ) : (
+                            <Button asChild size="sm" className="rounded-full">
+                              <Link href="/document-verification">
+                                <BadgeCheck className="mr-2 h-4 w-4" />
+                                Verify Documents
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <div className="text-sm text-gray-700">You haven't uploaded any documents yet.</div>
+                )}
+              </div>
+              <div className="mt-4 flex gap-2">
+                {applications && applications.length > 0 && (
+                  <Button asChild size="sm" variant="outline" className="rounded-full">
+                    <Link href="/document-verification">
+                      <FileText className="mr-2 h-4 w-4" />
+                      View Documents
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
       <Footer />
     </div>
