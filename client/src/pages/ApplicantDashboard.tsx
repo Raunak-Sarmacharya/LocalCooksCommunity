@@ -621,22 +621,20 @@ export default function ApplicantDashboard() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-emerald-50">
       <Header />
-      <main className="flex-grow pt-8 pb-12">
-        {/* Summary Bar */}
+      <main className="flex-grow pt-20 pb-12">
+        {/* Summary/Status Bar (Applicant Status) */}
         <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/80 border border-slate-200 rounded-xl shadow-sm py-4 px-6">
-            {/* User Info */}
-            <div className="flex items-center gap-3 min-w-0">
-              {/* Avatar/Initials */}
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-400 flex items-center justify-center text-white font-bold text-lg">
-                {user?.displayName ? user.displayName[0].toUpperCase() : 'U'}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/80 border border-slate-200 rounded-xl shadow-sm p-4">
+            <div className="flex items-center gap-3">
+              {/* User Avatar/Initials */}
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-700 text-lg">
+                {user?.displayName ? user.displayName[0] : user?.email?.[0] || "U"}
               </div>
-              <div className="min-w-0">
-                <div className="font-semibold text-gray-900 truncate">{user?.displayName || 'User'}</div>
-                <div className="text-xs text-gray-500 truncate">{user?.email}</div>
+              <div>
+                <div className="font-semibold text-gray-900 text-base">{user?.displayName || user?.email || "Applicant"}</div>
+                <div className="text-xs text-gray-500">Applicant Dashboard</div>
               </div>
             </div>
-            {/* Status Badges */}
             <div className="flex flex-wrap gap-2 justify-center sm:justify-end">
               {/* Application Status */}
               {(() => {
