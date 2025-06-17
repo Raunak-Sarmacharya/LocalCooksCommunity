@@ -233,7 +233,7 @@ function Router() {
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />
-        <ProtectedRoute path="/microlearning" component={Microlearning} />
+        <ProtectedRoute path="/microlearning" component={MicrolearningOverview} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin">
           <AdminProtectedRoute>
