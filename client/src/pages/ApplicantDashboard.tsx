@@ -6,6 +6,13 @@ import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import {
   formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -60,6 +67,7 @@ const itemVariants = {
 export default function ApplicantDashboard() {
   const { user, logout } = useFirebaseAuth();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
 
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
@@ -779,76 +787,177 @@ export default function ApplicantDashboard() {
                 <h4 className="font-semibold text-gray-900">Current Status</h4>
                 {applications && applications.length > 0 ? (
                   (() => {
-                    const latestApp = applications[0];
-                    const hasActiveApplication = latestApp.status !== 'cancelled' && latestApp.status !== 'rejected';
+                    // Set default selected application to the latest one
+                    const defaultApp = selectedApplicationId 
+                      ? applications.find(app => app.id === selectedApplicationId) || applications[0]
+                      : applications[0];
+                    
+                    const hasActiveApplication = defaultApp.status !== 'cancelled' && defaultApp.status !== 'rejected';
                     return (
                       <div className="space-y-5">
+                        {/* Application Selector Dropdown */}
+                        <div className="space-y-2">
+                          <label className="text-sm text-gray-600">Select Application:</label>
+                          <Select
+                            value={selectedApplicationId?.toString() || applications[0]?.id?.toString()}
+                            onValueChange={(value) => setSelectedApplicationId(parseInt(value))}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select an application" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {applications.map((app) => (
+                                <SelectItem key={app.id} value={app.id.toString()}>
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="font-medium">#{app.id} - {app.fullName}</span>
+                                    <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium ${
+                                      app.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                      app.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
+                                      app.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                      app.status === 'cancelled' ? 'bg-gray-100 text-gray-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {formatApplicationStatus(app.status)}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Selected Application Details */}
                         <div className="flex items-center gap-3">
                           <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                            latestApp.status === 'approved' ? 'bg-green-100 text-green-800' :
-                            latestApp.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
-                            latestApp.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                            latestApp.status === 'cancelled' ? 'bg-gray-100 text-gray-800' :
+                            defaultApp.status === 'approved' ? 'bg-green-100 text-green-800' :
+                            defaultApp.status === 'inReview' ? 'bg-blue-100 text-blue-800' :
+                            defaultApp.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                            defaultApp.status === 'cancelled' ? 'bg-gray-100 text-gray-800' :
                             'bg-yellow-100 text-yellow-800'
                           }`}>
-                            {formatApplicationStatus(latestApp.status)}
+                            {formatApplicationStatus(defaultApp.status)}
                           </span>
-                          {latestApp.status === 'approved' && <CheckCircle className="h-5 w-5 text-green-600" />}
-                          {latestApp.status === 'inReview' && <Clock className="h-5 w-5 text-blue-600" />}
-                          {latestApp.status === 'rejected' && <XCircle className="h-5 w-5 text-red-600" />}
+                          {defaultApp.status === 'approved' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                          {defaultApp.status === 'inReview' && <Clock className="h-5 w-5 text-blue-600" />}
+                          {defaultApp.status === 'rejected' && <XCircle className="h-5 w-5 text-red-600" />}
                         </div>
                         
                         <p className="text-gray-600">
-                          {latestApp.status === 'approved' && 'Congratulations! Your application has been approved.'}
-                          {latestApp.status === 'inReview' && 'Your application is being reviewed by our team.'}
-                          {latestApp.status === 'rejected' && 'Your application needs attention. Please review feedback.'}
-                          {latestApp.status === 'cancelled' && 'This application was cancelled.'}
+                          {defaultApp.status === 'approved' && 'Congratulations! Your application has been approved.'}
+                          {defaultApp.status === 'inReview' && 'Your application is being reviewed by our team.'}
+                          {defaultApp.status === 'rejected' && 'Your application needs attention. Please review feedback.'}
+                          {defaultApp.status === 'cancelled' && 'This application was cancelled.'}
                         </p>
 
-                        {/* Application Details Card */}
-                        <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                          <h5 className="font-medium text-gray-900 mb-3">Application Details</h5>
-                          <div className="grid grid-cols-1 gap-3 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Applicant:</span>
-                              <span className="font-medium text-gray-900">{latestApp.fullName}</span>
+                        {/* Comprehensive Application Details Card */}
+                        <div className="p-6 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50 space-y-4">
+                          <h5 className="font-medium text-gray-900 mb-4">Complete Application Details</h5>
+                          
+                          {/* Personal Information */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-3">
+                              <h6 className="font-medium text-gray-800 text-sm">Personal Information</h6>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Full Name:</span>
+                                  <span className="font-medium text-gray-900">{defaultApp.fullName}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Email:</span>
+                                  <span className="font-medium text-gray-900">{defaultApp.email}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Phone:</span>
+                                  <span className="font-medium text-gray-900">{defaultApp.phone || 'Not provided'}</span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Email:</span>
-                              <span className="font-medium text-gray-900">{latestApp.email}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Phone:</span>
-                              <span className="font-medium text-gray-900">{latestApp.phone || 'Not provided'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Kitchen Preference:</span>
-                              <span className="font-medium text-gray-900 capitalize">{latestApp.kitchenPreference?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Food Safety License:</span>
-                              <span className="font-medium text-gray-900 capitalize">{latestApp.foodSafetyLicense?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Submitted:</span>
-                              <span className="font-medium text-gray-900">{latestApp.createdAt ? new Date(latestApp.createdAt).toLocaleDateString() : 'N/A'}</span>
+                            
+                            <div className="space-y-3">
+                              <h6 className="font-medium text-gray-800 text-sm">Application Details</h6>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Kitchen Preference:</span>
+                                  <span className="font-medium text-gray-900 capitalize">{defaultApp.kitchenPreference?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Food Safety License:</span>
+                                  <span className="font-medium text-gray-900 capitalize">{defaultApp.foodSafetyLicense?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Submitted:</span>
+                                  <span className="font-medium text-gray-900">{defaultApp.createdAt ? new Date(defaultApp.createdAt).toLocaleDateString() : 'N/A'}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
+
+                          {/* Document Status */}
+                          {(defaultApp.foodSafetyLicenseStatus || defaultApp.foodEstablishmentCertStatus) && (
+                            <div className="pt-4 border-t border-gray-200">
+                              <h6 className="font-medium text-gray-800 text-sm mb-3">Document Verification Status</h6>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {defaultApp.foodSafetyLicenseStatus && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-600 text-sm">Food Safety License:</span>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      defaultApp.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                                      defaultApp.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
+                                    }`}>
+                                      {defaultApp.foodSafetyLicenseStatus.charAt(0).toUpperCase() + defaultApp.foodSafetyLicenseStatus.slice(1)}
+                                    </span>
+                                  </div>
+                                )}
+                                {defaultApp.foodEstablishmentCertStatus && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-600 text-sm">Establishment Cert:</span>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      defaultApp.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                                      defaultApp.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
+                                    }`}>
+                                      {defaultApp.foodEstablishmentCertStatus.charAt(0).toUpperCase() + defaultApp.foodEstablishmentCertStatus.slice(1)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                         
-                        {latestApp.feedback && (
+                        {defaultApp.feedback && (
                           <div className="p-4 bg-gradient-to-br from-red-50 to-red-100/50 rounded-xl border border-red-200">
                             <p className="text-sm text-red-800 font-medium">Feedback:</p>
-                            <p className="text-sm text-red-700 mt-1">{latestApp.feedback}</p>
+                            <p className="text-sm text-red-700 mt-1">{defaultApp.feedback}</p>
                           </div>
                         )}
                         
+                        {/* Action Buttons */}
                         <div className="flex gap-3 pt-2">
                           {hasActiveApplication ? (
-                            <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
-                              <FileText className="mr-2 h-4 w-4" />
-                              Application Submitted
-                            </Button>
+                            <>
+                              <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
+                                <FileText className="mr-2 h-4 w-4" />
+                                Application Submitted
+                              </Button>
+                              {/* Cancel Button for non-approved applications */}
+                              {defaultApp.status !== 'approved' && (
+                                <Button 
+                                  variant="outline" 
+                                  className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                                  onClick={() => {
+                                    if (confirm('Are you sure you want to cancel this application? This action cannot be undone.')) {
+                                      cancelMutation.mutate(defaultApp.id);
+                                    }
+                                  }}
+                                  disabled={cancelMutation.isPending}
+                                >
+                                  <XCircle className="mr-2 h-4 w-4" />
+                                  {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
+                                </Button>
+                              )}
+                            </>
                           ) : (
                             <Button asChild className="flex-1 rounded-xl">
                               <Link href="/apply">
@@ -934,7 +1043,7 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.6 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm"
+              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
             >
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
@@ -1028,8 +1137,8 @@ export default function ApplicantDashboard() {
                         )}
                       </div>
                       
-                      {/* Action Buttons - Moved to bottom */}
-                      <div className="space-y-3 pt-4 mt-auto">
+                      {/* Action Buttons - Fixed spacing */}
+                      <div className="space-y-3 pt-4 border-t border-gray-200">
                         <Button asChild className="w-full rounded-xl">
                           <Link href="/document-verification">
                             <Upload className="mr-2 h-4 w-4" />
@@ -1037,10 +1146,18 @@ export default function ApplicantDashboard() {
                           </Link>
                         </Button>
                         {isFullyVerified && (
-                          <Button variant="outline" className="w-full rounded-xl">
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            All Documents Verified
-                          </Button>
+                          <>
+                            <Button variant="outline" className="w-full rounded-xl">
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              All Documents Verified
+                            </Button>
+                            <Button asChild className="w-full rounded-xl bg-green-600 hover:bg-green-700">
+                              <a href="https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer">
+                                <Shield className="mr-2 h-4 w-4" />
+                                Manage Stripe Setup
+                              </a>
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -1068,7 +1185,7 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.7 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm"
+              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
             >
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
@@ -1120,10 +1237,6 @@ export default function ApplicantDashboard() {
                         <span className="font-medium">22 Videos</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Duration:</span>
-                        <span className="font-medium">~2 Hours</span>
-                      </div>
-                      <div className="flex justify-between">
                         <span>Certificate:</span>
                         <span className="font-medium">{microlearningCompletion?.confirmed ? 'Earned' : 'Pending'}</span>
                       </div>
@@ -1133,21 +1246,10 @@ export default function ApplicantDashboard() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Training Benefits */}
-                  <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-green-50 to-green-100/50">
-                    <h4 className="font-medium text-gray-900 mb-2">What You'll Learn</h4>
-                    <ul className="text-sm text-gray-600 space-y-1">
-                      <li>• Food safety fundamentals</li>
-                      <li>• Kitchen hygiene practices</li>
-                      <li>• Temperature control methods</li>
-                      <li>• Allergen management</li>
-                    </ul>
-                  </div>
                 </div>
 
-                {/* Action Buttons - Moved to bottom to match Document Verification */}
-                <div className="space-y-3 pt-4 mt-auto">
+                {/* Action Buttons - Fixed spacing to match Document Verification */}
+                <div className="space-y-3 pt-4 border-t border-gray-200">
                   <Button asChild className="w-full rounded-xl" variant={microlearningCompletion?.confirmed ? "outline" : "default"}>
                     <Link href="/microlearning/overview">
                       <BookOpen className="mr-2 h-4 w-4" />
@@ -1156,11 +1258,72 @@ export default function ApplicantDashboard() {
                   </Button>
                   
                   {microlearningCompletion?.confirmed && (
-                    <Button asChild variant="outline" className="w-full rounded-xl">
-                      <Link href="/certificate">
-                        <Shield className="mr-2 h-4 w-4" />
-                        Download Certificate
-                      </Link>
+                    <Button 
+                      variant="outline" 
+                      className="w-full rounded-xl"
+                      onClick={async () => {
+                        if (!user?.uid) return;
+                        
+                        try {
+                          const currentUser = auth.currentUser;
+                          if (!currentUser) {
+                            console.error('No authenticated user found');
+                            toast({
+                              title: "Authentication Error",
+                              description: "Please log in again to download your certificate.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          
+                          const token = await currentUser.getIdToken();
+                          
+                          const response = await fetch(`/api/firebase/microlearning/certificate/${user.uid}`, {
+                            method: 'GET',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${token}`
+                            }
+                          });
+
+                          if (response.ok) {
+                            // Handle PDF download
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.display = 'none';
+                            a.href = url;
+                            a.download = `LocalCooks-Certificate-${user.displayName || user.email || 'user'}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                            
+                            toast({
+                              title: "Certificate Downloaded",
+                              description: "Your certificate has been downloaded successfully!",
+                            });
+                          } else {
+                            const error = await response.json();
+                            console.error('Certificate download failed:', error);
+                            toast({
+                              title: "Download Failed",
+                              description: "Failed to download certificate. Please try again.",
+                              variant: "destructive",
+                            });
+                          }
+                        } catch (error) {
+                          console.error('Error downloading certificate:', error);
+                          toast({
+                            title: "Download Error", 
+                            description: "Failed to download certificate. Please try again.",
+                            variant: "destructive",
+                          });
+                        }
+                      }}
+                    >
+                      <Shield className="mr-2 h-4 w-4" />
+                      Download Certificate
                     </Button>
                   )}
                 </div>
