@@ -837,6 +837,34 @@ export default function ApplicantDashboard() {
           </div>
         </div>
       </main>
+      {/* My Applications Section */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">My Applications</h2>
+        {applications && applications.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {applications.map((app) => (
+              <div key={app.id} className="bg-white rounded-xl shadow border border-slate-200 p-4 flex flex-col gap-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusBadgeColor(app.status)} border-opacity-60`}>{formatApplicationStatus(app.status)}</span>
+                  <span className="text-xs text-gray-400 ml-auto">#{app.id}</span>
+                </div>
+                <div className="text-xs text-gray-500 mb-1">Submitted: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}</div>
+                {app.feedback && (
+                  <div className="text-xs text-red-600 bg-red-50 rounded p-2 border border-red-100">{app.feedback}</div>
+                )}
+                <Button asChild size="sm" variant="outline" className="rounded-full mt-2">
+                  <Link href="/apply">
+                    <FileText className="mr-2 h-4 w-4" />
+                    View Details
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">You have not submitted any applications yet.</div>
+        )}
+      </div>
       <Footer />
     </div>
   );
