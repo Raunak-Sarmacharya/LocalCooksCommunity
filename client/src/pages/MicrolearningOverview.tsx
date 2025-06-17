@@ -459,7 +459,7 @@ export default function MicrolearningOverview() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-semibold text-emerald-800">Certificate Available</p>
-                          <p className="text-sm text-emerald-600">Download your official certification</p>
+                          <p className="text-sm text-emerald-600">Download your Local Cooks certification</p>
                         </div>
                         <Button 
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
