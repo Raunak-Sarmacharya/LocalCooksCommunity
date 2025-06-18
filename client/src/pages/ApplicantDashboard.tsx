@@ -95,40 +95,55 @@ export default function ApplicantDashboard() {
     localStorageUserId: localStorage.getItem('userId')
   });
 
-  // Helper functions for status management
-  const getApplicationStatus = () => {
+  // Helper function to get the most recent application
+  const getMostRecentApplication = () => {
     if (!applications || applications.length === 0) return null;
-    // Use selected application if available, otherwise default to first application
-    const targetApp = selectedApplicationId 
-      ? applications.find(app => app.id === selectedApplicationId) || applications[0]
-      : applications[0];
-    return formatApplicationStatus(targetApp.status);
+    
+    // Find the application with the latest createdAt timestamp
+    return applications.reduce((latest, current) => {
+      const latestDate = new Date(latest.createdAt || 0);
+      const currentDate = new Date(current.createdAt || 0);
+      return currentDate > latestDate ? current : latest;
+    });
   };
 
-  // Helper function to get document verification status for selected application
+  // Helper functions for status management based on most recent application
+  const getApplicationStatus = () => {
+    const mostRecentApp = getMostRecentApplication();
+    if (!mostRecentApp) return null;
+    return formatApplicationStatus(mostRecentApp.status);
+  };
+
+  // Helper function to get document verification status for most recent application
   const getDocumentStatus = () => {
-    if (!applications || applications.length === 0) return "No Documents Uploaded";
-    
-    // Use selected application if available, otherwise default to first application
-    const targetApp = selectedApplicationId 
-      ? applications.find(app => app.id === selectedApplicationId) || applications[0]
-      : applications[0];
+    const mostRecentApp = getMostRecentApplication();
+    if (!mostRecentApp) return "No Documents Uploaded";
     
     // Check if application is approved and has document verification
-    if (targetApp.status === "approved") {
-      const hasValidFoodSafety = targetApp.foodSafetyLicenseStatus === "approved";
-      const hasValidEstablishment = !targetApp.foodEstablishmentCertUrl || targetApp.foodEstablishmentCertStatus === "approved";
+    if (mostRecentApp.status === "approved") {
+      const hasValidFoodSafety = mostRecentApp.foodSafetyLicenseStatus === "approved";
+      const hasValidEstablishment = !mostRecentApp.foodEstablishmentCertUrl || mostRecentApp.foodEstablishmentCertStatus === "approved";
       
       if (hasValidFoodSafety && hasValidEstablishment) {
         return "Verified";
-      } else if (targetApp.foodSafetyLicenseStatus === "rejected" || targetApp.foodEstablishmentCertStatus === "rejected") {
+      } else if (mostRecentApp.foodSafetyLicenseStatus === "rejected" || mostRecentApp.foodEstablishmentCertStatus === "rejected") {
         return "Rejected";
       } else {
-        return "Pending";
+        return "Pending Review";
+      }
+    } else if (mostRecentApp.status === "inReview") {
+      // Application is in review - check document upload status
+      const hasFoodSafetyDoc = mostRecentApp.foodSafetyLicenseUrl;
+      const hasEstablishmentDoc = mostRecentApp.foodEstablishmentCertUrl;
+      
+      if (hasFoodSafetyDoc && (hasEstablishmentDoc || !mostRecentApp.foodEstablishmentCert)) {
+        return "Documents Uploaded";
+      } else {
+        return "Documents Needed";
       }
     } else {
-      // For non-approved applications, documents are not relevant for verification
-      return "Pending Application";
+      // For pending, rejected, or cancelled applications
+      return "Upload Required";
     }
   };
 
