@@ -40,6 +40,7 @@
     "test:certificate-db": "node scripts/test-certificate-db-update.js",
     "test:firebase": "node scripts/test-firebase-setup.js",
     "test:all": "npm run test:db && npm run test:oauth && npm run test:certificate && npm run test:certificate-db && npm run test:firebase",
+    "test:dkim": "node scripts/test-dkim-setup.js",
     "verify:production": "node scripts/verify-production.js"
   },
   "dependencies": {
