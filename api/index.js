@@ -1021,19 +1021,49 @@ app.post('/api/firebase/forgot-password', async (req, res) => {
         });
       }
 
-              // Use Firebase's built-in password reset email (automatic sending)
-        console.log(`📧 Sending Firebase password reset email to: ${email}`);
-        
-        // Configure the password reset email settings
-        const actionCodeSettings = {
-          url: `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/password-reset`,
+              // Generate password reset link using Firebase Admin SDK
+        const resetUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/password-reset`;
+        const resetLink = await auth.generatePasswordResetLink(email, {
+          url: resetUrl,
           handleCodeInApp: true,
-        };
+        });
 
-        // Send password reset email directly (Firebase handles the sending)
-        await auth.sendPasswordResetEmail(email, actionCodeSettings);
+        console.log(`✅ Firebase password reset link generated for: ${email}`);
 
-        console.log(`✅ Firebase password reset email sent successfully to: ${email}`);
+        // Send the reset link via custom email service
+        console.log(`📧 Sending password reset email via custom email service to: ${email}`);
+        
+        try {
+          // Import email functions
+          const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
+          
+          // Generate email content with the reset link
+          const emailContent = generatePasswordResetEmail({
+            fullName: neonUser.username || email.split('@')[0],
+            email: email,
+            resetToken: '', // Not needed for Firebase link
+            resetUrl: resetLink
+          });
+
+          // Send the email
+          const emailSent = await sendEmail(emailContent, {
+            trackingId: `password_reset_${email}_${Date.now()}`
+          });
+
+          if (emailSent) {
+            console.log(`✅ Password reset email sent successfully to: ${email}`);
+          } else {
+            console.error(`❌ Failed to send password reset email to: ${email}`);
+            return res.status(500).json({ 
+              message: "Error sending password reset email. Please try again later." 
+            });
+          }
+        } catch (emailError) {
+          console.error(`❌ Error sending password reset email:`, emailError);
+          return res.status(500).json({ 
+            message: "Error sending password reset email. Please try again later." 
+          });
+        }
       
               return res.status(200).json({ 
           message: "If an account with this email exists, you will receive a password reset link."
