@@ -74,6 +74,13 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
         ? { oobCode, newPassword: data.password }
         : { token, newPassword: data.password };
 
+      console.log('🔄 Password reset attempt:', { 
+        endpoint, 
+        isFirebaseReset, 
+        hasOobCode: !!oobCode, 
+        hasToken: !!token 
+      });
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -82,16 +89,20 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
         body: JSON.stringify(body),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to reset password');
+        console.error('❌ Password reset failed:', responseData);
+        throw new Error(responseData.message || 'Failed to reset password');
       }
 
+      console.log('✅ Password reset successful');
       setFormState('success');
       if (onSuccess) {
         setTimeout(onSuccess, 2000);
       }
     } catch (error: any) {
+      console.error('❌ Password reset error:', error);
       setFormState('error');
       setErrorMessage(error.message || 'An unexpected error occurred');
     }

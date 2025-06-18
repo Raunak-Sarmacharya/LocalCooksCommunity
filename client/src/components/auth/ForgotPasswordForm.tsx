@@ -49,6 +49,8 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
     setErrorMessage(null);
 
     try {
+      console.log('🔄 Submitting forgot password request for:', data.email);
+      
       const response = await fetch('/api/firebase/forgot-password', {
         method: 'POST',
         headers: {
@@ -57,16 +59,23 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
         body: JSON.stringify(data),
       });
 
+      console.log('📡 Forgot password response status:', response.status);
+      
+      const responseData = await response.json();
+      console.log('📡 Forgot password response:', responseData);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to send reset email');
+        console.error('❌ Forgot password failed:', responseData);
+        throw new Error(responseData.message || 'Failed to send reset email');
       }
 
+      console.log('✅ Forgot password request successful');
       setFormState('success');
       if (onSuccess) {
         setTimeout(onSuccess, 2000);
       }
     } catch (error: any) {
+      console.error('❌ Forgot password error:', error);
       setFormState('error');
       setErrorMessage(error.message || 'An unexpected error occurred');
     }
