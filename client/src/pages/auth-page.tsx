@@ -241,8 +241,14 @@ export default function AuthPage() {
           setVerifyEmailError(null);
           setVerifyEmailLoading(true);
           try {
-            // Use Firebase's built-in verification email instead of custom API
-            await resendFirebaseVerification();
+            await fetch("/api/auth/send-verification-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                email: verifyEmailAddress, 
+                fullName: user?.displayName || "" 
+              })
+            });
           } catch (e: any) {
             setVerifyEmailError("Failed to resend verification email. Please try again later.");
           } finally {

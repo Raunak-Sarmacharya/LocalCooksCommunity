@@ -483,30 +483,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user && user.is_verified === true;
   };
 
-  // Send verification email to a user (now uses Firebase's built-in system)
+  // Send verification email to a user (Firebase + fallback to custom API)
   const sendVerificationEmail = async (email: string, fullName: string) => {
     try {
-      // Use Firebase's built-in verification email instead of custom nodemailer
+      // Primary: Use Firebase's built-in verification email
       const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error('No user is currently signed in');
+      if (firebaseUser && !firebaseUser.emailVerified) {
+        console.log('📧 Sending Firebase verification email to:', email);
+        try {
+          await sendEmailVerification(firebaseUser, {
+            url: `${window.location.origin}/auth?verified=true`,
+            handleCodeInApp: true,
+          });
+          console.log('✅ Firebase verification email sent successfully');
+          return true;
+        } catch (firebaseError) {
+          console.error('❌ Firebase verification failed, trying custom API:', firebaseError);
+        }
       }
-
-      if (firebaseUser.emailVerified) {
-        console.log('User is already verified');
-        return true;
-      }
-
-      console.log('📧 Sending Firebase verification email to:', email);
-      await sendEmailVerification(firebaseUser, {
-        url: `${window.location.origin}/auth?verified=true`,
-        handleCodeInApp: true,
+      
+      // Fallback: Use custom API for compatibility
+      console.log('📧 Sending custom verification email to:', email);
+      const response = await fetch("/api/auth/send-verification-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          email: email, 
+          fullName: fullName 
+        })
       });
       
-      console.log('✅ Firebase verification email sent successfully');
+      if (!response.ok) {
+        throw new Error('Failed to send verification email');
+      }
+      
+      console.log('✅ Custom verification email sent successfully');
       return true;
     } catch (error) {
-      console.error('❌ Error sending Firebase verification email:', error);
+      console.error('❌ Error sending verification email:', error);
       throw error;
     }
   };
