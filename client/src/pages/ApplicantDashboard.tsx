@@ -98,7 +98,38 @@ export default function ApplicantDashboard() {
   // Helper functions for status management
   const getApplicationStatus = () => {
     if (!applications || applications.length === 0) return null;
-    return formatApplicationStatus(applications[0].status);
+    // Use selected application if available, otherwise default to first application
+    const targetApp = selectedApplicationId 
+      ? applications.find(app => app.id === selectedApplicationId) || applications[0]
+      : applications[0];
+    return formatApplicationStatus(targetApp.status);
+  };
+
+  // Helper function to get document verification status for selected application
+  const getDocumentStatus = () => {
+    if (!applications || applications.length === 0) return "No Documents Uploaded";
+    
+    // Use selected application if available, otherwise default to first application
+    const targetApp = selectedApplicationId 
+      ? applications.find(app => app.id === selectedApplicationId) || applications[0]
+      : applications[0];
+    
+    // Check if application is approved and has document verification
+    if (targetApp.status === "approved") {
+      const hasValidFoodSafety = targetApp.foodSafetyLicenseStatus === "approved";
+      const hasValidEstablishment = !targetApp.foodEstablishmentCertUrl || targetApp.foodEstablishmentCertStatus === "approved";
+      
+      if (hasValidFoodSafety && hasValidEstablishment) {
+        return "Verified";
+      } else if (targetApp.foodSafetyLicenseStatus === "rejected" || targetApp.foodEstablishmentCertStatus === "rejected") {
+        return "Rejected";
+      } else {
+        return "Pending";
+      }
+    } else {
+      // For non-approved applications, documents are not relevant for verification
+      return "Pending Application";
+    }
   };
 
   const getStatusVariant = (status: string) => {
@@ -811,7 +842,14 @@ export default function ApplicantDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Training</p>
-                  <p className="text-sm font-semibold text-gray-900">{microlearningCompletion?.confirmed ? "Complete" : "In Progress"}</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {microlearningCompletion?.confirmed 
+                      ? "Completed" 
+                      : trainingAccess?.progress && trainingAccess.progress.length > 0
+                        ? "In Progress"
+                        : "Not Started"
+                    }
+                  </p>
                 </div>
               </div>
             </motion.div>
@@ -829,14 +867,7 @@ export default function ApplicantDashboard() {
                 <div>
                   <p className="text-sm text-gray-500">Documents</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {applications && applications.length > 0 ? (
-                      applications.some(app => app.status === "approved") && 
-                      applications.every(app => 
-                        app.status !== "approved" || 
-                        (app.foodSafetyLicenseStatus === "approved" && 
-                         (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved"))
-                      ) ? "Verified" : "Pending"
-                    ) : "No Documents Uploaded"}
+                    {getDocumentStatus()}
                   </p>
                 </div>
               </div>
@@ -1256,11 +1287,18 @@ export default function ApplicantDashboard() {
                           Completed
                         </span>
                       </div>
-                    ) : (
+                    ) : trainingAccess?.progress && trainingAccess.progress.length > 0 ? (
                       <div className="flex items-center gap-3">
                         <Clock className="h-5 w-5 text-yellow-600" />
                         <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
                           In Progress
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <BookOpen className="h-5 w-5 text-blue-600" />
+                        <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                          Not Started
                         </span>
                       </div>
                     )}
@@ -1268,9 +1306,13 @@ export default function ApplicantDashboard() {
                     <p className="text-gray-600">
                       {microlearningCompletion?.confirmed 
                         ? 'Congratulations! You\'ve completed the comprehensive food safety training program.'
+                        : trainingAccess?.progress && trainingAccess.progress.length > 0
+                        ? trainingAccess?.accessLevel === 'full'
+                          ? 'Complete your food safety training to get certified and unlock additional features.'
+                          : 'Continue your training progress. Submit an approved application to unlock full training access.'
                         : trainingAccess?.accessLevel === 'full'
-                        ? 'Complete your food safety training to get certified and unlock additional features.'
-                        : 'Submit an approved application to unlock full training access and certification.'
+                        ? 'Start your food safety training to get certified and unlock additional features.'
+                        : 'Submit an approved application to unlock full training access, then start your certification.'
                       }
                     </p>
                   </div>
@@ -1300,7 +1342,12 @@ export default function ApplicantDashboard() {
                   <Button asChild className="w-full rounded-xl" variant={microlearningCompletion?.confirmed ? "outline" : "default"}>
                     <Link href="/microlearning/overview">
                       <BookOpen className="mr-2 h-4 w-4" />
-                      {microlearningCompletion?.confirmed ? 'Review Training' : 'Start Training'}
+                      {microlearningCompletion?.confirmed 
+                        ? 'Review Training' 
+                        : trainingAccess?.progress && trainingAccess.progress.length > 0
+                          ? 'Continue Training'
+                          : 'Start Training'
+                      }
                     </Link>
                   </Button>
                   
