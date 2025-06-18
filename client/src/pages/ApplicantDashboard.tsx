@@ -75,7 +75,15 @@ export default function ApplicantDashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
-  const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(false);
+  
+  // Use localStorage to track if vendor popup has been shown for this user
+  const getVendorPopupKey = () => `vendorPopupShown_${user?.uid}`;
+  const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(() => {
+    if (typeof window !== 'undefined' && user?.uid) {
+      return localStorage.getItem(getVendorPopupKey()) === 'true';
+    }
+    return false;
+  });
 
   const prevApplicationsRef = useRef<Application[] | null>(null);
 
@@ -663,7 +671,15 @@ export default function ApplicantDashboard() {
       (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
   })();
 
-  // Show vendor portal popup for fully verified users (only once per session)
+  // Sync localStorage state when user changes
+  useEffect(() => {
+    if (user?.uid) {
+      const hasShownPopup = localStorage.getItem(getVendorPopupKey()) === 'true';
+      setHasClosedVendorPopup(hasShownPopup);
+    }
+  }, [user?.uid]);
+
+  // Show vendor portal popup for fully verified users (only once per user)
   useEffect(() => {
     if (isUserFullyVerified && !hasClosedVendorPopup) {
       // Small delay to let the page load first
@@ -677,6 +693,10 @@ export default function ApplicantDashboard() {
   const handleCloseVendorPopup = () => {
     setShowVendorPortalPopup(false);
     setHasClosedVendorPopup(true);
+    // Save to localStorage that this user has seen the popup
+    if (user?.uid) {
+      localStorage.setItem(getVendorPopupKey(), 'true');
+    }
   };
 
   return (
@@ -809,12 +829,14 @@ export default function ApplicantDashboard() {
                 <div>
                   <p className="text-sm text-gray-500">Documents</p>
                   <p className="text-sm font-semibold text-gray-900">
-                    {applications && applications.some(app => app.status === "approved") && 
-                     applications.every(app => 
-                       app.status !== "approved" || 
-                       (app.foodSafetyLicenseStatus === "approved" && 
-                        (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved"))
-                     ) ? "Verified" : "Pending"}
+                    {applications && applications.length > 0 ? (
+                      applications.some(app => app.status === "approved") && 
+                      applications.every(app => 
+                        app.status !== "approved" || 
+                        (app.foodSafetyLicenseStatus === "approved" && 
+                         (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved"))
+                      ) ? "Verified" : "Pending"
+                    ) : "Ready"}
                   </p>
                 </div>
               </div>
@@ -832,7 +854,7 @@ export default function ApplicantDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Status</p>
-                  <p className="text-sm font-semibold text-gray-900">{getApplicationStatus() || "New"}</p>
+                  <p className="text-sm font-semibold text-gray-900">{getApplicationStatus() || "Getting Started"}</p>
                 </div>
               </div>
             </motion.div>
@@ -1191,13 +1213,16 @@ export default function ApplicantDashboard() {
                     <Shield className="h-8 w-8 text-purple-600" />
                   </div>
                   <h4 className="text-lg font-medium text-gray-900 mb-2">Document Verification</h4>
-                  <p className="text-gray-600 mb-6">Upload your certificates once you submit an application.</p>
-                  <Button asChild variant="outline" className="rounded-xl">
-                    <Link href="/document-verification">
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Documents
-                    </Link>
-                  </Button>
+                  <p className="text-gray-600 mb-6">Track your document verification status and manage your certificates here once you submit an application.</p>
+                  <div className="space-y-3 w-full">
+                    <Button asChild variant="outline" className="rounded-xl w-full">
+                      <Link href="/apply">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Submit Application First
+                      </Link>
+                    </Button>
+                    <p className="text-xs text-gray-500">You'll be able to upload documents after submitting your application</p>
+                  </div>
                 </div>
               )}
             </motion.div>
