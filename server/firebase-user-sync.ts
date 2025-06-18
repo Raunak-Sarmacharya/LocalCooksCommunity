@@ -71,45 +71,9 @@ export async function syncFirebaseUserToNeon(params: {
 
     // Handle email notifications based on user type
     if (!isGoogleUser && email) {
-      console.log(`📧 SENDING VERIFICATION EMAIL to ${email}`);
-      try {
-        const crypto = await import('crypto');
-        const verificationToken = crypto.randomBytes(32).toString('hex');
-        const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
-        
-        // Store verification token in database
-        const { pool } = await import('./db.js');
-        await pool.query(`
-          INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
-          VALUES ($1, $2, $3, NOW()) 
-          ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
-        `, [email, verificationToken, verificationTokenExpiry]);
-
-        // Generate verification URL
-        const verificationUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/verify-email?token=${verificationToken}`;
-
-        // Send verification email
-        const { sendEmail, generateEmailVerificationEmail } = await import('./email.js');
-        const emailContent = generateEmailVerificationEmail({
-          fullName: displayName || email.split('@')[0],
-          email,
-          verificationToken,
-          verificationUrl
-        });
-
-        const emailSent = await sendEmail(emailContent, {
-          trackingId: `email_verification_${email}_${Date.now()}`
-        });
-
-        if (emailSent) {
-          console.log(`✅ Verification email sent to ${email}`);
-        } else {
-          console.error(`❌ Failed to send verification email to ${email}`);
-        }
-      } catch (emailError) {
-        console.error('❌ Error sending verification email:', emailError);
-        // Don't fail user creation if email fails
-      }
+      console.log(`📧 Email/password user - Firebase will handle verification email for ${email}`);
+      // Firebase's sendEmailVerification() will be called from the frontend
+      // No custom nodemailer email needed for email/password users
     } else if (isGoogleUser && email) {
       console.log(`📧 SENDING WELCOME EMAIL for Google user: ${email}`);
       try {

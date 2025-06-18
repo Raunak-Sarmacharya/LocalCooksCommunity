@@ -1965,7 +1965,9 @@ app.get('/api/applications/my-applications', async (req, res) => {
     
     try {
       // Check if we can get Firebase user info first
-      const firebaseUser = await verifyFirebaseToken(req.headers.authorization?.substring(7));
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+      const firebaseUser = token ? await verifyFirebaseToken(token) : null;
       
       if (firebaseUser) {
         console.log('Firebase user info available for sync:', { 
@@ -4920,13 +4922,19 @@ try {
 // Enhanced Firebase token verification
 async function verifyFirebaseToken(token) {
   try {
+    // Validate token input
+    if (!token || typeof token !== 'string' || token.trim() === '') {
+      console.log('Invalid token provided to verifyFirebaseToken:', typeof token, token ? 'token present' : 'no token');
+      return null;
+    }
+
     if (!firebaseAdmin) {
       throw new Error('Enhanced Firebase Admin SDK not initialized');
     }
     
     const { getAuth } = await import('firebase-admin/auth');
     const auth = getAuth(firebaseAdmin);
-    const decodedToken = await auth.verifyIdToken(token);
+    const decodedToken = await auth.verifyIdToken(token.trim());
     return decodedToken;
   } catch (error) {
     console.error('Enhanced token verification error:', error);
