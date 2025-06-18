@@ -13,7 +13,7 @@ import { useLocation } from "wouter";
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, updateUserVerification } = useFirebaseAuth();
+  const { user, loading, logout, updateUserVerification, resendFirebaseVerification } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -241,14 +241,8 @@ export default function AuthPage() {
           setVerifyEmailError(null);
           setVerifyEmailLoading(true);
           try {
-            await fetch("/api/auth/send-verification-email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                email: verifyEmailAddress, 
-                fullName: user?.displayName || "" 
-              })
-            });
+            // Use Firebase's built-in verification email instead of custom API
+            await resendFirebaseVerification();
           } catch (e: any) {
             setVerifyEmailError("Failed to resend verification email. Please try again later.");
           } finally {

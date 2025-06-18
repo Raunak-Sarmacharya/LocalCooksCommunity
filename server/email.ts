@@ -167,8 +167,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       // DKIM-compatible message ID with proper domain
       messageId: `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
       date: new Date(),
-      // Enable DKIM signing (handled by Hostinger SMTP)
-      dkim: false // Let Hostinger handle DKIM signing
+      // DKIM signing is handled by Hostinger SMTP server
     };
 
     // Send the email

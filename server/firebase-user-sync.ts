@@ -69,50 +69,32 @@ export async function syncFirebaseUserToNeon(params: {
     console.log(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
     console.log(`   - is_verified in DB: ${(newUser as any).isVerified}`);
 
-    // For email/password users (not Google), send verification email
+    // Handle email notifications based on user type
     if (!isGoogleUser && email) {
-      console.log(`📧 SENDING VERIFICATION EMAIL to ${email}`);
+      console.log(`📧 Firebase will handle email verification for ${email} - no custom email needed`);
+    } else if (isGoogleUser && email) {
+      console.log(`📧 SENDING WELCOME EMAIL for Google user: ${email}`);
       try {
-        const crypto = await import('crypto');
-        const verificationToken = crypto.randomBytes(32).toString('hex');
-        const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
-        
-        // Store verification token in database
-        const { pool } = await import('./db.js');
-        await pool.query(`
-          INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
-          VALUES ($1, $2, $3, NOW()) 
-          ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
-        `, [email, verificationToken, verificationTokenExpiry]);
-
-        // Generate verification URL
-        const verificationUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/auth/verify-email?token=${verificationToken}`;
-
-        // Send verification email
-        const { sendEmail, generateEmailVerificationEmail } = await import('./email.js');
-        const emailContent = generateEmailVerificationEmail({
+        // Send welcome email for Google users since they don't get verification emails
+        const { sendEmail, generateWelcomeEmail } = await import('./email.js');
+        const emailContent = generateWelcomeEmail({
           fullName: displayName || email.split('@')[0],
-          email,
-          verificationToken,
-          verificationUrl
+          email
         });
 
         const emailSent = await sendEmail(emailContent, {
-          trackingId: `email_verification_${email}_${Date.now()}`
+          trackingId: `google_welcome_${email}_${Date.now()}`
         });
 
         if (emailSent) {
-          console.log(`✅ Verification email sent to ${email}`);
+          console.log(`✅ Welcome email sent to Google user: ${email}`);
         } else {
-          console.error(`❌ Failed to send verification email to ${email}`);
+          console.error(`❌ Failed to send welcome email to Google user: ${email}`);
         }
       } catch (emailError) {
-        console.error('❌ Error sending verification email:', emailError);
+        console.error('❌ Error sending welcome email to Google user:', emailError);
         // Don't fail user creation if email fails
       }
-    } else if (isGoogleUser) {
-      console.log(`✅ Google user - no verification email needed`);
-      console.log(`🎯 Welcome email will be sent by production API - skipping here to avoid duplicates`);
     }
 
     return newUser;
