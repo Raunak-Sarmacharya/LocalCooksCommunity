@@ -1021,22 +1021,23 @@ app.post('/api/firebase/forgot-password', async (req, res) => {
         });
       }
 
-      // Generate password reset link using Firebase
-      const resetUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/password-reset`;
-      const resetLink = await auth.generatePasswordResetLink(email, {
-        url: resetUrl,
-        handleCodeInApp: true,
-      });
+              // Use Firebase's built-in password reset email (automatic sending)
+        console.log(`📧 Sending Firebase password reset email to: ${email}`);
+        
+        // Configure the password reset email settings
+        const actionCodeSettings = {
+          url: `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/password-reset`,
+          handleCodeInApp: true,
+        };
 
-      console.log(`✅ Firebase password reset link generated for: ${email}`);
+        // Send password reset email directly (Firebase handles the sending)
+        await auth.sendPasswordResetEmail(email, actionCodeSettings);
 
-      // Optionally send custom email here or let Firebase handle it
-      // For now, let Firebase send the default email
+        console.log(`✅ Firebase password reset email sent successfully to: ${email}`);
       
-      return res.status(200).json({ 
-        message: "If an account with this email exists, you will receive a password reset link.",
-        resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined // Only show in dev
-      });
+              return res.status(200).json({ 
+          message: "If an account with this email exists, you will receive a password reset link."
+        });
 
     } catch (firebaseError) {
       if (firebaseError.code === 'auth/user-not-found') {
