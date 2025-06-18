@@ -134,29 +134,41 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const unsubscribeEmail = getUnsubscribeEmail();
     const organizationName = getOrganizationName();
 
-    // Simplified email options to prevent encoding issues
+    // Enhanced email options with DKIM-compatible headers
     const mailOptions = {
       from: fromEmail,
       to: content.to,
       subject: content.subject,
       text: content.text,
       html: content.html,
-      // Minimal headers to avoid spam filters
+      // Enhanced headers for better deliverability and DKIM compatibility
       headers: {
         'Organization': organizationName,
+        'X-Mailer': 'Local Cooks Community',
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal',
+        'Importance': 'Normal',
+        // DKIM-friendly sender identification
+        'Sender': config.auth.user,
+        'Return-Path': config.auth.user,
+        // Anti-spam headers
+        'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         // Merge any additional headers from content
         ...(content.headers || {})
       },
-      // Proper encoding settings
+      // Proper encoding settings for DKIM
       encoding: 'utf8' as const,
-      // Enhanced delivery options
+      // Enhanced delivery options for DKIM compatibility
       envelope: {
         from: config.auth.user,
         to: content.to
       },
-      // Tracking and analytics
+      // DKIM-compatible message ID with proper domain
       messageId: `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
-      date: new Date()
+      date: new Date(),
+      // Enable DKIM signing (handled by Hostinger SMTP)
+      dkim: false // Let Hostinger handle DKIM signing
     };
 
     // Send the email

@@ -40,14 +40,69 @@ Name: @
 Value: v=spf1 include:_spf.hostinger.com ~all
 ```
 
-#### DKIM Record
-Contact your email provider (Hostinger) to set up DKIM signing.
+#### DKIM Record ✅ **UPDATED WITH YOUR HOSTINGER CONFIGURATION**
+**DKIM Host**: `hostingermail1._domainkey`
+**DKIM Value**: `v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzksTUDJ5tnkVYzHujmQ4pUZ9lHlJxh0UnmTJXH8rcn1j74lZClgxgAIn+aNxULISVLYLwsXDXxJxP3mYn1OOJAMXaOYEle0+liMxIShHw3u5IyxDh0IqcvQ5tGEUIVbTU84naUsadWlLUrwHNRvm3tLuxWrBzP+1AKOzX21+XykAn1y0bAX8/5eWu865CTjFI8mFKq7H06rPbUiPJP1jwSp+tsW3/UvK99ZuVspDEnKPA8ZswqUbeO23ZCX2LMI0QLvWoUc57DSLDaSSJ/+kCuQM2Xr5H2OnBdJf5goo3EuAP/uWmTGc+EUa7/vo5WoolWE6tG+vB5OSXnPSP3lnuQIDAQAB`
+
+**DNS Configuration Steps**:
+1. **Login to your domain registrar** (where you bought your domain)
+2. **Navigate to DNS Management** (may be called "DNS Zone Editor" or "DNS Records")
+3. **Add the DKIM TXT Record**:
+   - **Type**: `TXT`
+   - **Name/Host**: `hostingermail1._domainkey`
+   - **Value**: `v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzksTUDJ5tnkVYzHujmQ4pUZ9lHlJxh0UnmTJXH8rcn1j74lZClgxgAIn+aNxULISVLYLwsXDXxJxP3mYn1OOJAMXaOYEle0+liMxIShHw3u5IyxDh0IqcvQ5tGEUIVbTU84naUsadWlLUrwHNRvm3tLuxWrBzP+1AKOzX21+XykAn1y0bAX8/5eWu865CTjFI8mFKq7H06rPbUiPJP1jwSp+tsW3/UvK99ZuVspDEnKPA8ZswqUbeO23ZCX2LMI0QLvWoUc57DSLDaSSJ/+kCuQM2Xr5H2OnBdJf5goo3EuAP/uWmTGc+EUa7/vo5WoolWE6tG+vB5OSXnPSP3lnuQIDAQAB`
+   - **TTL**: `3600` (1 hour) or use default
+
+**Important Notes**:
+- The DKIM record can take up to 24-48 hours to propagate worldwide
+- Hostinger will automatically sign your emails with this DKIM key when you send through their SMTP server
+- Make sure your EMAIL_USER matches the domain in the DKIM record
 
 #### DMARC Record
 ```
 Type: TXT
 Name: _dmarc
 Value: v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com
+```
+
+## DKIM Verification Steps
+
+### 1. Verify DKIM Record is Active
+After adding the DKIM record to your DNS, verify it's working:
+
+```bash
+# Use nslookup to check your DKIM record
+nslookup -type=TXT hostingermail1._domainkey.yourdomain.com
+
+# Or use dig command
+dig TXT hostingermail1._domainkey.yourdomain.com
+```
+
+### 2. Test Email Authentication
+Use these tools to verify your DKIM is working:
+- [MXToolbox DKIM Lookup](https://mxtoolbox.com/dkim.aspx)
+- [Mail-Tester.com](https://www.mail-tester.com) - Send a test email and check the authentication score
+- [Google Admin Toolbox](https://toolbox.googleapps.com/apps/checkmx/)
+
+### 3. Application Configuration
+Ensure your application is configured to use the domain properly:
+
+**Environment Variables to Set**:
+```bash
+# Your domain (replace with your actual domain)
+EMAIL_DOMAIN=yourdomain.com
+
+# SMTP configuration for Hostinger
+EMAIL_HOST=smtp.hostinger.com
+EMAIL_PORT=587
+EMAIL_SECURE=false
+
+# Your domain-based email address
+EMAIL_USER=noreply@yourdomain.com
+EMAIL_PASS=your-hostinger-email-password
+
+# Consistent sender formatting
+EMAIL_FROM=Local Cooks Community <noreply@yourdomain.com>
 ```
 
 ## Technical Improvements Implemented
