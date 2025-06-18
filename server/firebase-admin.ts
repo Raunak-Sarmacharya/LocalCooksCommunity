@@ -8,9 +8,30 @@ export function initializeFirebaseAdmin() {
   }
 
   try {
-    // Check if Firebase Admin is configured using VITE variables
+    // Check if Firebase Admin is configured using service account credentials (preferred for production)
+    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      console.log('🔥 Initializing Firebase Admin with service account credentials...');
+      
+      try {
+        firebaseAdmin = admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+          }),
+          projectId: process.env.FIREBASE_PROJECT_ID,
+        });
+        console.log('✅ Firebase Admin initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
+        return firebaseAdmin;
+      } catch (error: any) {
+        console.error('❌ Failed to initialize Firebase Admin with service account:', error.message);
+        // Fall through to try basic initialization
+      }
+    }
+
+    // Fallback: Check if Firebase Admin is configured using VITE variables (development/basic mode)
     if (!process.env.VITE_FIREBASE_PROJECT_ID) {
-      console.warn('Firebase Admin not configured - Firebase auth verification will be disabled (missing VITE_FIREBASE_PROJECT_ID)');
+      console.warn('Firebase Admin not configured - Firebase auth verification will be disabled (missing both service account and VITE_FIREBASE_PROJECT_ID)');
       return null;
     }
 
@@ -20,6 +41,7 @@ export function initializeFirebaseAdmin() {
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
       console.log('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
+      console.warn('⚠️ Using default credentials - this may not work in production. Consider setting up service account credentials.');
     } catch (error: any) {
       console.log('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message || 'Unknown error');
       return null;
@@ -52,7 +74,7 @@ export async function verifyFirebaseToken(token: string): Promise<admin.auth.Dec
  * Check if Firebase Admin is properly configured
  */
 export function isFirebaseAdminConfigured(): boolean {
-  return !!process.env.VITE_FIREBASE_PROJECT_ID;
+  return !!(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID);
 }
 
 export { firebaseAdmin };

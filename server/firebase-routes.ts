@@ -1,6 +1,7 @@
 import { insertApplicationSchema } from '@shared/schema';
 import { Express, Request, Response } from 'express';
 import { fromZodError } from 'zod-validation-error';
+import { initializeFirebaseAdmin } from './firebase-admin';
 import {
     requireAdmin,
     requireFirebaseAuthWithUser,
@@ -75,10 +76,10 @@ export function registerFirebaseRoutes(app: Express) {
 
       console.log(`🔥 Firebase password reset requested for: ${email}`);
 
-      // Import Firebase Admin
-      const { admin } = await import('./firebase-admin');
+      // Get Firebase Admin instance
+      const firebaseApp = initializeFirebaseAdmin();
       
-      if (!admin) {
+      if (!firebaseApp) {
         console.error('Firebase Admin not initialized');
         return res.status(500).json({ 
           message: "Password reset service unavailable. Please try again later." 
@@ -86,8 +87,12 @@ export function registerFirebaseRoutes(app: Express) {
       }
 
       try {
+        // Get auth instance using modular SDK
+        const { getAuth } = await import('firebase-admin/auth');
+        const auth = getAuth(firebaseApp);
+        
         // Check if user exists in Firebase
-        const userRecord = await admin.auth().getUserByEmail(email);
+        const userRecord = await auth.getUserByEmail(email);
         console.log(`✅ Firebase user found: ${userRecord.uid}`);
 
         // Check if this user exists in our Neon database and is email/password user
@@ -112,7 +117,7 @@ export function registerFirebaseRoutes(app: Express) {
 
         // Generate password reset link using Firebase
         const resetUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/auth/reset-password`;
-        const resetLink = await admin.auth().generatePasswordResetLink(email, {
+        const resetLink = await auth.generatePasswordResetLink(email, {
           url: resetUrl,
           handleCodeInApp: true,
         });
@@ -166,10 +171,10 @@ export function registerFirebaseRoutes(app: Express) {
 
       console.log(`🔥 Firebase password reset confirmation with code: ${oobCode.substring(0, 8)}...`);
 
-      // Import Firebase Admin
-      const { admin } = await import('./firebase-admin');
+      // Get Firebase Admin instance
+      const firebaseApp = initializeFirebaseAdmin();
       
-      if (!admin) {
+      if (!firebaseApp) {
         console.error('Firebase Admin not initialized');
         return res.status(500).json({ 
           message: "Password reset service unavailable. Please try again later." 
@@ -177,21 +182,25 @@ export function registerFirebaseRoutes(app: Express) {
       }
 
       try {
+        // Get auth instance using modular SDK
+        const { getAuth } = await import('firebase-admin/auth');
+        const auth = getAuth(firebaseApp);
+        
         // Verify the reset code and get the email
-        const email = await admin.auth().verifyPasswordResetCode(oobCode);
+        const email = await (auth as any).verifyPasswordResetCode(oobCode);
         console.log(`✅ Password reset code verified for: ${email}`);
 
         // Confirm the password reset
-        await admin.auth().confirmPasswordReset(oobCode, newPassword);
+        await (auth as any).confirmPasswordReset(oobCode, newPassword);
         console.log(`✅ Password reset confirmed for: ${email}`);
 
         // Update the password hash in our Neon database for consistency
-        const userRecord = await admin.auth().getUserByEmail(email);
+        const userRecord = await auth.getUserByEmail(email);
         const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
         
         if (neonUser) {
           // Hash the new password and update in Neon DB
-          const bcrypt = await import('bcryptjs');
+          const bcrypt = require('bcryptjs');
           const hashedPassword = await bcrypt.hash(newPassword, 12);
           
           // Update using raw query since password might not be in schema
