@@ -57,7 +57,7 @@ export function getStatusBadgeColor(status: string): string {
 // Helper function to format application status for display
 export function formatApplicationStatus(status: string): string {
   switch (status) {
-    case "new": return "New";
+    case "new": return "Getting Started";
     case "inReview": return "In Review";
     case "approved": return "Approved";
     case "rejected": return "Rejected";
