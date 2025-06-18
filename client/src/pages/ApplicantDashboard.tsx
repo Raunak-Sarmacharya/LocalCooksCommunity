@@ -836,7 +836,7 @@ export default function ApplicantDashboard() {
                         (app.foodSafetyLicenseStatus === "approved" && 
                          (!app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved"))
                       ) ? "Verified" : "Pending"
-                    ) : "Ready"}
+                    ) : "No Documents Uploaded"}
                   </p>
                 </div>
               </div>
