@@ -5090,10 +5090,35 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
   }
 }
 
-// Initialize Firebase Admin SDK for enhanced auth using VITE variables
+// Initialize Firebase Admin SDK for enhanced auth with service account credentials
 let firebaseAdmin;
 try {
-  if (process.env.VITE_FIREBASE_PROJECT_ID) {
+  // Prefer service account credentials (production)
+  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    console.log('🔥 Initializing Firebase Admin with service account credentials...');
+    
+    const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+    
+    if (getApps().length === 0) {
+      firebaseAdmin = initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        }),
+        projectId: process.env.FIREBASE_PROJECT_ID,
+      });
+      
+      console.log('✅ Firebase Admin SDK initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
+    } else {
+      firebaseAdmin = getApps()[0];
+      console.log('✅ Using existing Firebase Admin app');
+    }
+  }
+  // Fallback to VITE variables (development/basic mode)
+  else if (process.env.VITE_FIREBASE_PROJECT_ID) {
+    console.log('🔄 Falling back to basic Firebase Admin initialization...');
+    
     const { initializeApp, getApps } = await import('firebase-admin/app');
     
     if (getApps().length === 0) {
@@ -5101,16 +5126,17 @@ try {
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
       
-      console.log('✅ Enhanced Firebase Admin SDK initialized with project:', process.env.VITE_FIREBASE_PROJECT_ID);
+      console.log('✅ Firebase Admin SDK initialized with basic config for project:', process.env.VITE_FIREBASE_PROJECT_ID);
+      console.warn('⚠️ Using basic credentials - password reset may not work. Consider setting up service account credentials.');
     } else {
       firebaseAdmin = getApps()[0];
       console.log('✅ Using existing Firebase Admin app');
     }
   } else {
-    console.log('⚠️ Enhanced Firebase Admin SDK configuration missing - no VITE_FIREBASE_PROJECT_ID');
+    console.log('❌ Firebase Admin SDK configuration missing - no service account or VITE variables found');
   }
 } catch (error) {
-  console.error('❌ Enhanced Firebase Admin SDK initialization failed:', error);
+  console.error('❌ Firebase Admin SDK initialization failed:', error);
 }
 
 // Enhanced Firebase token verification
