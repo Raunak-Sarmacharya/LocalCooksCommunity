@@ -49,7 +49,7 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
     setErrorMessage(null);
 
     try {
-      const response = await fetch('/api/auth/forgot-password', {
+      const response = await fetch('/api/firebase/forgot-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

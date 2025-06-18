@@ -64,6 +64,173 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
+  // 🔥 Firebase Password Reset Request - Uses Firebase's built-in password reset
+  app.post('/api/firebase/forgot-password', async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      console.log(`🔥 Firebase password reset requested for: ${email}`);
+
+      // Import Firebase Admin
+      const { admin } = await import('./firebase-admin');
+      
+      if (!admin) {
+        console.error('Firebase Admin not initialized');
+        return res.status(500).json({ 
+          message: "Password reset service unavailable. Please try again later." 
+        });
+      }
+
+      try {
+        // Check if user exists in Firebase
+        const userRecord = await admin.auth().getUserByEmail(email);
+        console.log(`✅ Firebase user found: ${userRecord.uid}`);
+
+        // Check if this user exists in our Neon database and is email/password user
+        const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
+        
+        if (!neonUser) {
+          console.log(`❌ User not found in Neon DB for Firebase UID: ${userRecord.uid}`);
+          // Don't reveal if user exists or not for security
+          return res.status(200).json({ 
+            message: "If an account with this email exists, you will receive a password reset link." 
+          });
+        }
+
+        // Only allow password reset for email/password users (those with hashed passwords in Neon)
+        // Firebase OAuth users (Google, etc.) should use their OAuth provider's password reset
+        if (!neonUser.password || neonUser.password === '') {
+          console.log(`❌ User ${userRecord.uid} is OAuth user, no password reset needed`);
+          return res.status(400).json({ 
+            message: "This account uses Google/OAuth sign-in. Please use 'Sign in with Google' or contact your OAuth provider to reset your password." 
+          });
+        }
+
+        // Generate password reset link using Firebase
+        const resetUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/auth/reset-password`;
+        const resetLink = await admin.auth().generatePasswordResetLink(email, {
+          url: resetUrl,
+          handleCodeInApp: true,
+        });
+
+        console.log(`✅ Firebase password reset link generated for: ${email}`);
+
+        // Optionally send custom email here or let Firebase handle it
+        // For now, let Firebase send the default email
+        
+        return res.status(200).json({ 
+          message: "If an account with this email exists, you will receive a password reset link.",
+          resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined // Only show in dev
+        });
+
+      } catch (firebaseError: any) {
+        if (firebaseError.code === 'auth/user-not-found') {
+          console.log(`❌ Firebase user not found: ${email}`);
+          // Don't reveal if user exists or not for security
+          return res.status(200).json({ 
+            message: "If an account with this email exists, you will receive a password reset link." 
+          });
+        } else {
+          console.error(`❌ Firebase error:`, firebaseError);
+          return res.status(500).json({ 
+            message: "Error processing password reset request. Please try again later." 
+          });
+        }
+      }
+
+    } catch (error) {
+      console.error("Error in Firebase forgot password:", error);
+      return res.status(500).json({ 
+        message: "Internal server error. Please try again later." 
+      });
+    }
+  });
+
+  // 🔥 Firebase Password Reset Confirmation - Uses Firebase's built-in password reset
+  app.post('/api/firebase/reset-password', async (req: Request, res: Response) => {
+    try {
+      const { oobCode, newPassword } = req.body;
+
+      if (!oobCode || !newPassword) {
+        return res.status(400).json({ message: "Reset code and new password are required" });
+      }
+
+      // Validate password strength
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters long" });
+      }
+
+      console.log(`🔥 Firebase password reset confirmation with code: ${oobCode.substring(0, 8)}...`);
+
+      // Import Firebase Admin
+      const { admin } = await import('./firebase-admin');
+      
+      if (!admin) {
+        console.error('Firebase Admin not initialized');
+        return res.status(500).json({ 
+          message: "Password reset service unavailable. Please try again later." 
+        });
+      }
+
+      try {
+        // Verify the reset code and get the email
+        const email = await admin.auth().verifyPasswordResetCode(oobCode);
+        console.log(`✅ Password reset code verified for: ${email}`);
+
+        // Confirm the password reset
+        await admin.auth().confirmPasswordReset(oobCode, newPassword);
+        console.log(`✅ Password reset confirmed for: ${email}`);
+
+        // Update the password hash in our Neon database for consistency
+        const userRecord = await admin.auth().getUserByEmail(email);
+        const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
+        
+        if (neonUser) {
+          // Hash the new password and update in Neon DB
+          const bcrypt = await import('bcryptjs');
+          const hashedPassword = await bcrypt.hash(newPassword, 12);
+          
+          // Update using raw query since password might not be in schema
+          const { pool } = await import('./db');
+          if (pool) {
+            await pool.query(
+              'UPDATE users SET password = $1 WHERE firebase_uid = $2',
+              [hashedPassword, userRecord.uid]
+            );
+            console.log(`✅ Password hash updated in Neon DB for user: ${neonUser.id}`);
+          }
+        }
+
+        return res.status(200).json({ 
+          message: "Password reset successfully. You can now log in with your new password." 
+        });
+
+      } catch (firebaseError: any) {
+        console.error(`❌ Firebase password reset error:`, firebaseError);
+        
+        if (firebaseError.code === 'auth/invalid-action-code') {
+          return res.status(400).json({ message: "Invalid or expired reset code" });
+        } else if (firebaseError.code === 'auth/weak-password') {
+          return res.status(400).json({ message: "Password is too weak. Please choose a stronger password." });
+        } else {
+          return res.status(500).json({ 
+            message: "Error resetting password. Please try again later." 
+          });
+        }
+      }
+
+    } catch (error) {
+      console.error("Error in Firebase reset password:", error);
+      return res.status(500).json({ 
+        message: "Internal server error. Please try again later." 
+      });
+    }
+  });
+
   // 🔥 Firebase User Sync Endpoint (Legacy - for existing flows)
   // This is called by the frontend when a user logs in/registers
   app.post('/api/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res: Response) => {

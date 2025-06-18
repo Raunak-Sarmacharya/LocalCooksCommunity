@@ -16,6 +16,7 @@ import AuthTest from "@/pages/AuthTest";
 import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/not-found";
+import PasswordReset from "@/pages/PasswordReset";
 import Success from "@/pages/Success";
 import WelcomeScreen from "@/pages/welcome-screen";
 
@@ -47,6 +48,7 @@ function Router() {
         <Route path="/auth" component={EnhancedAuthPage} />
         <Route path="/auth-test" component={AuthTest} />
         <Route path="/admin-test" component={AdminLoginTest} />
+        <Route path="/password-reset" component={PasswordReset} />
         <Route path="/welcome-test">
           <WelcomeScreen onComplete={() => console.log('Welcome test completed')} />
         </Route>
