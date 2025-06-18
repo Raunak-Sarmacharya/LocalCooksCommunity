@@ -6876,7 +6876,7 @@ app.get('/api/verify-auth-methods', async (req, res) => {
   }
 });
 
-// Password reset request endpoint
+// Password reset request endpoint - DEPRECATED: Use Firebase-based password reset instead
 app.post("/api/auth/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -6885,61 +6885,21 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       return res.status(400).json({ message: "Email is required" });
     }
 
-    // Check if user exists
-    const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    
-    if (userResult.rows.length === 0) {
-      // Don't reveal if user exists or not for security
-      return res.status(200).json({ 
-        message: "If an account with this email exists, you will receive a password reset link." 
-      });
-    }
+    console.log(`🚨 DEPRECATED ENDPOINT CALLED: /api/auth/forgot-password for email: ${email}`);
+    console.log(`🔄 Redirecting to Firebase-based password reset system`);
 
-    const user = userResult.rows[0];
-
-    // Generate reset token (expires in 1 hour)
-    const crypto = await import('crypto');
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
-    
-    // Store reset token in database
-    await pool.query(`
-      INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
-      VALUES ($1, $2, $3, NOW()) 
-      ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
-    `, [user.id, resetToken, resetTokenExpiry]);
-
-    // Generate reset URL
-    const resetUrl = `${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth/reset-password?token=${resetToken}`;
-
-    // Send password reset email
-    const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
-    const emailContent = generatePasswordResetEmail({
-      fullName: user.display_name || user.username,
-      email: user.email,
-      resetToken,
-      resetUrl
+    // This endpoint is deprecated in favor of Firebase-based password reset
+    // Return a helpful message directing users to the new system
+    return res.status(400).json({ 
+      message: "This password reset method is no longer supported. Please use the 'Forgot Password' button on the login page which uses our secure Firebase authentication system.",
+      deprecated: true,
+      redirectTo: "/auth"
     });
 
-    const emailSent = await sendEmail(emailContent, {
-      trackingId: `password_reset_${user.id}_${Date.now()}`
-    });
-
-    if (emailSent) {
-      console.log(`Password reset email sent to ${email}`);
-      return res.status(200).json({ 
-        message: "If an account with this email exists, you will receive a password reset link." 
-      });
-    } else {
-      console.error(`Failed to send password reset email to ${email}`);
-      return res.status(500).json({ 
-        message: "Error sending password reset email. Please try again later." 
-      });
-    }
   } catch (error) {
-    console.error("Error in forgot password:", error);
+    console.error("Error in deprecated forgot password:", error);
     return res.status(500).json({ 
-      message: "Internal server error. Please try again later." 
+      message: "This password reset method is no longer supported. Please use the login page to reset your password."
     });
   }
 });

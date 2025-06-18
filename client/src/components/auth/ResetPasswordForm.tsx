@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, Lock } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import AnimatedButton from "./AnimatedButton";
@@ -22,7 +22,8 @@ const resetPasswordSchema = z.object({
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
 interface ResetPasswordFormProps {
-  token: string;
+  oobCode?: string; // Firebase reset code from URL
+  token?: string; // Legacy token support
   onSuccess?: () => void;
   onGoBack?: () => void;
 }
@@ -44,29 +45,41 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function ResetPasswordForm({ token, onSuccess, onGoBack }: ResetPasswordFormProps) {
+export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack }: ResetPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isFirebaseReset, setIsFirebaseReset] = useState(false);
 
   const form = useForm<ResetPasswordFormData>({
     resolver: zodResolver(resetPasswordSchema),
     defaultValues: { password: "", confirmPassword: "" },
   });
 
+  useEffect(() => {
+    // Determine if this is a Firebase reset (oobCode) or legacy reset (token)
+    setIsFirebaseReset(!!oobCode);
+    
+    if (!oobCode && !token) {
+      setErrorMessage("No reset code provided. Please request a new password reset link.");
+    }
+  }, [oobCode, token]);
+
   const handleSubmit = async (data: ResetPasswordFormData) => {
     setFormState('loading');
     setErrorMessage(null);
 
     try {
-      const response = await fetch('/api/auth/reset-password', {
+      const endpoint = isFirebaseReset ? '/api/firebase/reset-password' : '/api/auth/reset-password';
+      const body = isFirebaseReset 
+        ? { oobCode, newPassword: data.password }
+        : { token, newPassword: data.password };
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          token,
-          newPassword: data.password,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -83,6 +96,34 @@ export default function ResetPasswordForm({ token, onSuccess, onGoBack }: ResetP
       setErrorMessage(error.message || 'An unexpected error occurred');
     }
   };
+
+  if (!oobCode && !token) {
+    return (
+      <motion.div
+        className="w-full max-w-md mx-auto"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={itemVariants} className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">
+            Invalid Reset Link
+          </h2>
+          <p className="text-gray-600 mb-6">
+            This password reset link is invalid or has expired. Please request a new one.
+          </p>
+          {onGoBack && (
+            <button
+              onClick={onGoBack}
+              className="text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+            >
+              Back to login
+            </button>
+          )}
+        </motion.div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -111,6 +152,11 @@ export default function ResetPasswordForm({ token, onSuccess, onGoBack }: ResetP
         <p className="text-gray-600">
           Please enter your new password below.
         </p>
+        {isFirebaseReset && (
+          <p className="text-xs text-blue-600 mt-2">
+            Using Firebase secure password reset
+          </p>
+        )}
       </motion.div>
 
       {/* Form */}

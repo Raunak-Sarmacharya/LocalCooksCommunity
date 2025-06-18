@@ -241,7 +241,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                 }
                 
                 try {
-                  const response = await fetch('/api/auth/forgot-password', {
+                  const response = await fetch('/api/firebase/forgot-password', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
