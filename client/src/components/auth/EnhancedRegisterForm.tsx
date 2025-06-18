@@ -140,9 +140,28 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
         new Promise(resolve => setTimeout(resolve, 1200)) // Minimum loading time for UX
       ]);
 
-      // Firebase automatically sends verification email via sendEmailVerification() in useFirebaseAuth
-      // No custom nodemailer email needed - Firebase handles email verification natively
-      console.log('✅ Registration successful - Firebase email verification sent automatically');
+      // Send verification email (Firebase primary + custom fallback for compatibility)
+      try {
+        console.log('📧 Sending verification email...');
+        const response = await fetch('/api/auth/send-verification-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: data.email,
+            fullName: data.displayName,
+          }),
+        });
+
+        if (response.ok) {
+          console.log('✅ Verification email sent successfully');
+        } else {
+          console.warn('⚠️ Custom email API failed, Firebase should handle verification');
+        }
+      } catch (emailError) {
+        console.warn('⚠️ Custom email failed, Firebase should handle verification:', emailError);
+      }
 
       // Step 3: Show email verification screen
       console.log('✅ Registration successful, showing verification screen');
@@ -193,11 +212,27 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
   };
 
   const handleResendVerification = async () => {
-    // This function is called from EmailVerificationScreen
-    // Firebase handles resending verification emails through its own system
-    // The actual resend functionality is implemented in useFirebaseAuth.resendFirebaseVerification()
-    console.log('Resend verification requested - Firebase will handle this');
-    return Promise.resolve();
+    try {
+      const response = await fetch('/api/auth/send-verification-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: emailForVerification,
+          fullName: form.getValues('displayName'),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resend verification email');
+      }
+
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Failed to resend verification email:', error);
+      throw error;
+    }
   };
 
   const getButtonState = () => {
