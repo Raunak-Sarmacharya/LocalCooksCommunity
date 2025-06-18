@@ -1,4 +1,5 @@
 import { auth, db } from "@/lib/firebase";
+import { queryClient } from "@/lib/queryClient";
 import {
     createUserWithEmailAndPassword,
     GoogleAuthProvider,
@@ -12,7 +13,6 @@ import {
     signOut,
     updateProfile
 } from "firebase/auth";
-import { queryClient } from "@/lib/queryClient";
 import {
     doc,
     getDoc,
@@ -483,25 +483,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user && user.is_verified === true;
   };
 
-  // Send verification email to a user
+  // Send verification email to a user (now uses Firebase's built-in system)
   const sendVerificationEmail = async (email: string, fullName: string) => {
     try {
-      const response = await fetch("/api/auth/send-verification-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          email: email, 
-          fullName: fullName 
-        })
+      // Use Firebase's built-in verification email instead of custom nodemailer
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error('No user is currently signed in');
+      }
+
+      if (firebaseUser.emailVerified) {
+        console.log('User is already verified');
+        return true;
+      }
+
+      console.log('📧 Sending Firebase verification email to:', email);
+      await sendEmailVerification(firebaseUser, {
+        url: `${window.location.origin}/auth?verified=true`,
+        handleCodeInApp: true,
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to send verification email');
-      }
-      
+      console.log('✅ Firebase verification email sent successfully');
       return true;
     } catch (error) {
-      console.error('Error sending verification email:', error);
+      console.error('❌ Error sending Firebase verification email:', error);
       throw error;
     }
   };
