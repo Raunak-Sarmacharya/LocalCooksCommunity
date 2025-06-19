@@ -1332,24 +1332,49 @@ function AdminDashboard() {
                                     </div>
                                   )}
                                   
-                                  {/* Show review completion message for finalized documents */}
+                                  {/* Admin Override - Subtle option to change status for already processed documents */}
                                   {(app.foodSafetyLicenseStatus === "approved" || app.foodSafetyLicenseStatus === "rejected") && (
-                                    <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
-                                      <p className="text-xs text-gray-600">
-                                        <strong>Status:</strong> Review completed
-                                        {app.documentsReviewedAt && (
-                                          <span className="block mt-1">
-                                            <strong>Reviewed:</strong> {new Date(app.documentsReviewedAt).toLocaleDateString('en-US', {
-                                              year: 'numeric',
-                                              month: 'short',
-                                              day: 'numeric',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            })}
-                                          </span>
-                                        )}
-                                      </p>
-                                    </div>
+                                    <details className="mt-2">
+                                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 transition-colors">
+                                        🔧 Admin Override
+                                      </summary>
+                                      <div className="flex gap-1 pt-2">
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
+                                            app.foodSafetyLicenseStatus === 'approved' 
+                                              ? 'bg-emerald-100 text-emerald-700 cursor-default' 
+                                              : 'text-emerald-600 hover:bg-emerald-50'
+                                          }`}
+                                          disabled={app.foodSafetyLicenseStatus === 'approved'}
+                                        >
+                                          ✓ Approve
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
+                                            app.foodSafetyLicenseStatus === 'rejected' 
+                                              ? 'bg-red-100 text-red-700 cursor-default' 
+                                              : 'text-red-600 hover:bg-red-50'
+                                          }`}
+                                          disabled={app.foodSafetyLicenseStatus === 'rejected'}
+                                        >
+                                          ✗ Reject
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'pending')}
+                                          className="text-xs px-2 py-1 h-auto text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
+                                        >
+                                          ⏳ Reset to Pending
+                                        </Button>
+                                      </div>
+                                    </details>
                                   )}
                                 </div>
                               ) : (
@@ -1409,24 +1434,49 @@ function AdminDashboard() {
                                     </div>
                                   )}
                                   
-                                  {/* Show review completion message for finalized documents */}
+                                  {/* Admin Override - Subtle option to change status for already processed documents */}
                                   {(app.foodEstablishmentCertStatus === "approved" || app.foodEstablishmentCertStatus === "rejected") && (
-                                    <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
-                                      <p className="text-xs text-gray-600">
-                                        <strong>Status:</strong> Review completed
-                                        {app.documentsReviewedAt && (
-                                          <span className="block mt-1">
-                                            <strong>Reviewed:</strong> {new Date(app.documentsReviewedAt).toLocaleDateString('en-US', {
-                                              year: 'numeric',
-                                              month: 'short',
-                                              day: 'numeric',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            })}
-                                          </span>
-                                        )}
-                                      </p>
-                                    </div>
+                                    <details className="mt-2">
+                                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 transition-colors">
+                                        🔧 Admin Override
+                                      </summary>
+                                      <div className="flex gap-1 pt-2">
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
+                                            app.foodEstablishmentCertStatus === 'approved' 
+                                              ? 'bg-emerald-100 text-emerald-700 cursor-default' 
+                                              : 'text-emerald-600 hover:bg-emerald-50'
+                                          }`}
+                                          disabled={app.foodEstablishmentCertStatus === 'approved'}
+                                        >
+                                          ✓ Approve
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
+                                            app.foodEstablishmentCertStatus === 'rejected' 
+                                              ? 'bg-red-100 text-red-700 cursor-default' 
+                                              : 'text-red-600 hover:bg-red-50'
+                                          }`}
+                                          disabled={app.foodEstablishmentCertStatus === 'rejected'}
+                                        >
+                                          ✗ Reject
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'pending')}
+                                          className="text-xs px-2 py-1 h-auto text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
+                                        >
+                                          ⏳ Reset to Pending
+                                        </Button>
+                                      </div>
+                                    </details>
                                   )}
                                 </div>
                               ) : (
