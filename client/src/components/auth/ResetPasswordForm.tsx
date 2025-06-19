@@ -107,7 +107,7 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
       console.log('✅ Password reset successful');
       setFormState('success');
       if (onSuccess) {
-        setTimeout(onSuccess, 2000);
+        setTimeout(onSuccess, 1500); // Shorter delay for better UX
       }
     } catch (error: any) {
       console.error('❌ Password reset error:', error);
@@ -232,20 +232,29 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
       </form>
 
       {/* Success Message */}
-      <AnimatePresence>
-        {formState === 'success' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="mt-6 p-4 bg-green-50 rounded-lg border border-green-100"
-          >
-            <p className="text-sm text-green-800">
-              <strong>Success!</strong> Your password has been reset. You can now log in with your new password.
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {formState === 'success' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-6 p-4 bg-green-50 rounded-lg border border-green-100"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-800">
+                <strong>Password reset successful!</strong>
+              </p>
+              <p className="text-xs text-green-600 mt-1">
+                Redirecting you to the login page...
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   );
 } 

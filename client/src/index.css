@@ -110,6 +110,24 @@
     animation-fill-mode: both;
     animation-duration: 0.001s;
   }
+
+  /* Enhanced Input Text Centering */
+  input[type="text"],
+  input[type="email"], 
+  input[type="password"] {
+    display: flex;
+    align-items: center;
+    line-height: 1.4;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  /* Ensure input text is properly centered when typing */
+  input[type="text"]:not(:placeholder-shown),
+  input[type="email"]:not(:placeholder-shown),
+  input[type="password"]:not(:placeholder-shown) {
+    line-height: 1.2;
+  }
 }
 
 /* Enhanced Authentication Animations */

@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Mail } from "lucide-react";
+import { AlertCircle, Mail } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -88,18 +88,6 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
       initial="hidden"
       animate="visible"
     >
-      {/* Back Button */}
-      {onGoBack && (
-        <motion.button
-          variants={itemVariants}
-          onClick={onGoBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8 transition-colors group"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          <span>Back to login</span>
-        </motion.button>
-      )}
-
       {/* Title */}
       <motion.div variants={itemVariants} className="text-center mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-3">
