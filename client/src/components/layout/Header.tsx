@@ -231,7 +231,7 @@ export default function Header() {
                 About Us
               </a>
             </li>
-            {user && (
+            {user && user.role !== 'admin' && (
               <li>
                 <Link 
                   href="/microlearning/overview" 
@@ -358,16 +358,18 @@ export default function Header() {
             </li>
             {user && (
               <>
-                <li>
-                  <Link 
-                    href="/microlearning" 
-                    className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
-                    onClick={closeMenu}
-                  >
-                    <GraduationCap className="h-4 w-4" />
-                    Food Safety Training
-                  </Link>
-                </li>
+                {user.role !== 'admin' && (
+                  <li>
+                    <Link 
+                      href="/microlearning" 
+                      className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                      onClick={closeMenu}
+                    >
+                      <GraduationCap className="h-4 w-4" />
+                      Food Safety Training
+                    </Link>
+                  </li>
+                )}
                 <li>
                   <Link 
                     href={getDashboardInfo().href}

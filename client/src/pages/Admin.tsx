@@ -1,9 +1,9 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import {
-    formatApplicationStatus,
-    formatCertificationStatus,
-    formatKitchenPreference,
-    getStatusBadgeColor
+  formatApplicationStatus,
+  formatCertificationStatus,
+  formatKitchenPreference,
+  getStatusBadgeColor
 } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,19 +63,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
-    AlertCircle,
-    AlertTriangle,
-    CalendarDays,
-    CheckCircle,
-    ChevronDown,
-    ChevronRight,
-    Clock,
-    ExternalLink,
-    RefreshCw,
-    Search,
-    Shield,
-    User as UserIcon,
-    XCircle
+  AlertCircle,
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  ExternalLink,
+  RefreshCw,
+  Search,
+  Shield,
+  User as UserIcon,
+  XCircle
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -345,7 +345,7 @@ function AdminDashboard() {
       
       toast({
         title: "Document status updated",
-        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. User will be notified automatically.`,
+        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`,
       });
       
       console.log('Admin: Document status updated', {
@@ -685,13 +685,6 @@ function AdminDashboard() {
                   <p className="text-xs text-gray-500 sm:hidden">Manage applications</p>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                onClick={handleLogout}
-                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-xl text-sm sm:text-base px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
-              >
-                Logout
-              </Button>
             </div>
           </motion.div>
 

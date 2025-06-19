@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateStatusChangeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generateStatusChangeEmail, sendEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -614,6 +614,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint for sending document status change emails
+  app.post("/api/test-document-status-email", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated and is an admin
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const { fullName, email, documentType, status, adminFeedback } = req.body;
+
+      // Generate and send a test document status change email
+      const emailContent = generateDocumentStatusChangeEmail({
+        fullName: fullName || "Test User",
+        email: email || "test@example.com",
+        documentType: documentType || "foodSafetyLicenseStatus",
+        status: status || "approved",
+        adminFeedback: adminFeedback || undefined
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `test_doc_status_${email}_${documentType}_${status}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        console.log(`Test document status email sent to: ${email} for ${documentType}: ${status}`);
+        return res.status(200).json({ message: "Test document status email sent successfully" });
+      } else {
+        return res.status(500).json({ message: "Failed to send test document status email" });
+      }
+    } catch (error) {
+      console.error("Error sending test document status email:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Authentication routes
   app.post("/api/register", async (req, res) => {
     try {
@@ -1091,6 +1130,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // NOTE: Full verification email is handled by api/index.js in production
         // Removed duplicate email logic to prevent double emails
+      }
+
+      // Send email notification for document status changes
+      try {
+        if (updatedApplication.email) {
+          // Send email for each document that was updated
+          if (req.body.foodSafetyLicenseStatus) {
+            const emailContent = generateDocumentStatusChangeEmail({
+              fullName: updatedApplication.fullName || "Applicant",
+              email: updatedApplication.email,
+              documentType: "foodSafetyLicenseStatus",
+              status: req.body.foodSafetyLicenseStatus,
+              adminFeedback: req.body.documentsAdminFeedback
+            });
+
+            await sendEmail(emailContent, {
+              trackingId: `doc_status_fsl_${updatedApplication.id}_${req.body.foodSafetyLicenseStatus}_${Date.now()}`
+            });
+            
+            console.log(`Food Safety License status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodSafetyLicenseStatus}`);
+          }
+
+          if (req.body.foodEstablishmentCertStatus) {
+            const emailContent = generateDocumentStatusChangeEmail({
+              fullName: updatedApplication.fullName || "Applicant",
+              email: updatedApplication.email,
+              documentType: "foodEstablishmentCertStatus",
+              status: req.body.foodEstablishmentCertStatus,
+              adminFeedback: req.body.documentsAdminFeedback
+            });
+
+            await sendEmail(emailContent, {
+              trackingId: `doc_status_fec_${updatedApplication.id}_${req.body.foodEstablishmentCertStatus}_${Date.now()}`
+            });
+            
+            console.log(`Food Establishment Certificate status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodEstablishmentCertStatus}`);
+          }
+        } else {
+          console.warn(`Cannot send document status change email for application ${updatedApplication.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending document status change email:", emailError);
       }
 
       return res.status(200).json(updatedApplication);
