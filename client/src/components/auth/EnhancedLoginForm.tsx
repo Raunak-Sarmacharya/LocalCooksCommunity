@@ -233,33 +233,9 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
           <motion.div variants={itemVariants} className="text-center">
             <motion.button
               type="button"
-              onClick={async () => {
-                const email = form.getValues('email');
-                if (!email) {
-                  setFormError('Please enter your email address first');
-                  return;
-                }
-                
-                try {
-                  const response = await fetch('/api/firebase/forgot-password', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email }),
-                  });
-                  
-                  const data = await response.json();
-                  
-                  if (response.ok) {
-                    setFormError(null);
-                    alert('Password reset link sent! Check your email.');
-                  } else {
-                    setFormError(data.message || 'Failed to send password reset email');
-                  }
-                } catch (error) {
-                  setFormError('Network error. Please try again.');
-                }
+              onClick={() => {
+                // Redirect to dedicated forgot password page
+                window.location.href = '/forgot-password';
               }}
               className="text-sm text-blue-600 hover:text-blue-700 hover:underline transition-colors"
               whileHover={{ scale: 1.02 }}

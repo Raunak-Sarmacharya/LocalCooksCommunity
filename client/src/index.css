@@ -88,6 +88,28 @@
   p, span, h1, h2, h3, h4, h5, h6, div {
     cursor: default;
   }
+
+  /* Enhanced Autofill Support */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px white inset !important;
+    -webkit-text-fill-color: #1f2937 !important;
+    transition: background-color 5000s ease-in-out 0s !important;
+  }
+
+  /* Custom animation to detect autofill */
+  @keyframes onAutoFillStart {
+    from { background-color: transparent; }
+    to { background-color: transparent; }
+  }
+
+  input:-webkit-autofill {
+    animation-name: onAutoFillStart;
+    animation-fill-mode: both;
+    animation-duration: 0.001s;
+  }
 }
 
 /* Enhanced Authentication Animations */
@@ -120,162 +142,117 @@
     left: 100%;
   }
 
-  /* Enhanced input animations */
+  /* Input field animations */
   .auth-input {
-    @apply transition-all duration-300 ease-out;
-    transform-origin: center;
+    @apply relative transition-all duration-300 ease-out;
   }
 
-  .auth-input:focus {
-    transform: scale(1.01);
-    box-shadow: 0 0 0 3px var(--auth-primary-blue-light);
+  .auth-input:focus-within {
+    @apply transform scale-[1.02];
   }
 
-  /* Loading spinner with premium feel */
-  .auth-spinner {
-    animation: auth-spin 1s linear infinite;
-    filter: drop-shadow(0 2px 4px rgba(66, 133, 244, 0.3));
+  /* Floating label animations */
+  .auth-label {
+    @apply transition-all duration-200 ease-out pointer-events-none;
+    transform-origin: left center;
   }
 
-  @keyframes auth-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+  .auth-label.floating {
+    @apply -translate-y-7 scale-75;
   }
 
-  /* Floating animation for elements */
-  .auth-float {
-    animation: auth-float 3s ease-in-out infinite;
+  /* Loading states */
+  .auth-loading {
+    @apply relative overflow-hidden;
   }
 
-  @keyframes auth-float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
+  .auth-loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
+    animation: auth-loading-shimmer 1.5s infinite;
   }
 
-  /* Pulse animation for loading states */
-  .auth-pulse {
-    animation: auth-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  @keyframes auth-loading-shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
   }
 
-  @keyframes auth-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+  /* Error state animations */
+  .auth-error {
+    animation: auth-error-shake 0.5s ease-in-out;
   }
 
-  /* Elegant slide-in animation */
-  .auth-slide-in {
-    animation: auth-slide-in 0.6s ease-out forwards;
-  }
-
-  @keyframes auth-slide-in {
-    from {
-      opacity: 0;
-      transform: translateY(30px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* Success checkmark animation */
-  .auth-checkmark {
-    animation: auth-checkmark 0.6s ease-in-out forwards;
-  }
-
-  @keyframes auth-checkmark {
-    0% {
-      transform: scale(0);
-      opacity: 0;
-    }
-    50% {
-      transform: scale(1.2);
-      opacity: 1;
-    }
-    100% {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  /* Error shake animation */
-  .auth-shake {
-    animation: auth-shake 0.5s ease-in-out;
-  }
-
-  @keyframes auth-shake {
+  @keyframes auth-error-shake {
     0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
   }
 
-  /* Gradient background animation */
-  .auth-gradient-bg {
-    background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-    background-size: 400% 400%;
-    animation: auth-gradient 15s ease infinite;
+  /* Success state animations */
+  .auth-success {
+    animation: auth-success-pulse 0.6s ease-out;
   }
 
-  @keyframes auth-gradient {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+  @keyframes auth-success-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
   }
 
-  /* Tab switching animation */
-  .auth-tab-indicator {
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* Form field focus ring */
+  /* Focus ring with brand colors */
   .auth-focus-ring {
-    box-shadow: 0 0 0 3px var(--auth-primary-blue-light);
-    border-color: var(--auth-primary-blue);
+    @apply ring-2 ring-blue-500 ring-opacity-50;
   }
 
-  /* Button states */
-  .auth-button-primary {
-    background: linear-gradient(135deg, var(--auth-primary-blue), var(--auth-primary-blue-hover));
-    box-shadow: 0 4px 14px 0 rgba(66, 133, 244, 0.39);
-    transition: all 0.3s ease;
+  /* Gradient backgrounds */
+  .auth-gradient-primary {
+    background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
   }
 
-  .auth-button-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px 0 rgba(66, 133, 244, 0.5);
+  .auth-gradient-secondary {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   }
 
-  .auth-button-primary:active {
-    transform: translateY(0);
-    box-shadow: 0 4px 14px 0 rgba(66, 133, 244, 0.39);
+  /* Text selection styling */
+  .auth-text-select {
+    @apply selection:bg-blue-100 selection:text-blue-900;
   }
 
-  /* Loading dots animation */
-  .auth-loading-dots {
-    display: flex;
-    gap: 4px;
+  /* Hover effects */
+  .auth-hover-lift {
+    @apply transition-transform duration-200 ease-out hover:-translate-y-1;
   }
 
-  .auth-loading-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--auth-primary-blue);
-    animation: auth-dot-bounce 1.4s ease-in-out infinite both;
+  .auth-hover-shadow {
+    @apply transition-shadow duration-200 ease-out hover:shadow-lg;
   }
 
-  .auth-loading-dot:nth-child(1) { animation-delay: -0.32s; }
-  .auth-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+  /* Smooth transitions for all interactive elements */
+  .auth-transition {
+    @apply transition-all duration-200 ease-out;
+  }
 
-  @keyframes auth-dot-bounce {
-    0%, 80%, 100% {
-      transform: scale(0);
-      opacity: 0.5;
-    }
-    40% {
-      transform: scale(1);
-      opacity: 1;
-    }
+  /* Glass card effect */
+  .auth-glass-card {
+    backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Modern button styles */
+  .auth-modern-button {
+    @apply relative overflow-hidden bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition-all duration-300 hover:from-blue-700 hover:to-blue-800 hover:shadow-xl hover:-translate-y-0.5;
+  }
+
+  /* Input field enhancements */
+  .auth-enhanced-input {
+    @apply w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400;
   }
 
   /* Password strength indicator */
