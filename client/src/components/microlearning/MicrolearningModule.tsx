@@ -361,7 +361,7 @@ export default function MicrolearningModule({
         });
         
         setUserProgress(filteredProgress);
-        setCompletionConfirmed(data.completionConfirmed || false);
+        setCompletionConfirmed(data.confirmed || false);
         setAccessLevel(data.accessLevel || 'limited');
         setHasApprovedApplication(data.hasApprovedApplication || false);
         setApplicationInfo(data.applicationInfo || null);
