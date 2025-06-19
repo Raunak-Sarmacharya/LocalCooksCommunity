@@ -4,29 +4,24 @@ import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import {
-    AlertCircle,
     ArrowRight,
     Award,
+    BookOpen,
     CheckCircle,
     ChevronLeft,
     ChevronRight,
+    Circle,
     Clock,
     Download,
     FileText,
     Lock,
-    RotateCcw,
-    Shield,
     Play,
-    BookOpen,
+    Shield,
     TrendingUp,
-    Users,
-    Sparkles,
-    Circle,
     XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
-import CompletionTracker from './CompletionTracker';
 import UnlockProgress from './UnlockProgress';
 import VideoPlayer from './VideoPlayer';
 
@@ -506,12 +501,13 @@ export default function MicrolearningModule({
       const currentUser = auth.currentUser;
       if (!currentUser) {
         console.error('No authenticated user found');
+        alert('Authentication error. Please refresh the page and try again.');
         return;
       }
       
       const token = await currentUser.getIdToken();
       
-      // Submit completion to Always Food Safe API
+      // Submit completion to Firebase microlearning completion API
       const response = await fetch('/api/firebase/microlearning/complete', {
         method: 'POST',
         headers: {
@@ -526,11 +522,29 @@ export default function MicrolearningModule({
       });
 
       if (response.ok) {
+        const result = await response.json();
+        console.log('Completion confirmed successfully:', result);
         setCompletionConfirmed(true);
         onComplete?.();
+      } else {
+        // Handle non-200 responses
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to confirm completion:', errorData);
+        
+        if (response.status === 403 && errorData.requiresApproval) {
+          // User doesn't have approved application
+          alert(errorData.message || 'You need an approved application to complete certification. Please check your application status.');
+        } else if (response.status === 401) {
+          // Authentication error
+          alert('Authentication error. Please refresh the page and try again.');
+        } else {
+          // Generic error
+          alert(errorData.message || 'Failed to confirm completion. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Failed to confirm completion:', error);
+      alert('Network error. Please check your connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -1086,7 +1100,7 @@ export default function MicrolearningModule({
               )}
 
               {/* Full Access Status for Approved Users */}
-              {accessLevel === 'full' && !completionConfirmed && (
+              {accessLevel === 'full' && !completionConfirmed && !allVideosCompleted && (
                 <div className="bg-white rounded-2xl p-6 shadow-lg border border-emerald-200">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center">
@@ -1122,6 +1136,72 @@ export default function MicrolearningModule({
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Completion Confirmation Section - Shows when all videos are completed but not yet confirmed */}
+              {accessLevel === 'full' && allVideosCompleted && !completionConfirmed && (
+                <div className="bg-white rounded-2xl p-6 shadow-lg border border-yellow-200">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                      <Award className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-yellow-900">Ready for Certification! 🎉</h3>
+                      <p className="text-sm text-yellow-700">All training videos completed</p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+                    <h4 className="font-medium text-yellow-900 mb-3 flex items-center gap-2">
+                      <span className="text-yellow-600">🏆</span>
+                      Training Complete - Ready for Certificate:
+                    </h4>
+                    <div className="space-y-2.5 mb-4">
+                      <div className="flex items-center gap-3 text-yellow-700">
+                        <CheckCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                        <span className="text-sm">Food Safety Basics Module (14 videos) ✓</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-yellow-700">
+                        <CheckCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                        <span className="text-sm">Safety & Hygiene How-To's Module (8 videos) ✓</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-yellow-700">
+                        <CheckCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
+                        <span className="text-sm">All 22 training videos completed ✓</span>
+                      </div>
+                    </div>
+                    <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3">
+                      <p className="text-yellow-800 text-sm">
+                        Congratulations! You've completed all food safety training modules. 
+                        Click below to confirm your completion and generate your official certificate.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    onClick={confirmCompletion}
+                    disabled={isSubmitting}
+                    className="w-full font-semibold bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="h-4 w-4 mr-2"
+                        >
+                          <Circle className="h-4 w-4" />
+                        </motion.div>
+                        Confirming Completion...
+                      </>
+                    ) : (
+                      <>
+                        <Award className="h-4 w-4 mr-2" />
+                        Confirm Completion & Generate Certificate
+                      </>
+                    )}
+                  </Button>
                 </div>
               )}
 
