@@ -314,7 +314,11 @@ export default function MicrolearningModule({
     applicationInfo,
     hasApprovedApplication,
     accessLevel,
-    userProgress: userProgress.length
+    userProgress: userProgress.length,
+    allVideosCompleted,
+    completionConfirmed,
+    isSubmitting,
+    shouldShowCompletionCard: accessLevel === 'full' && allVideosCompleted && !completionConfirmed && !isSubmitting
   });
 
   useEffect(() => {
@@ -525,6 +529,12 @@ export default function MicrolearningModule({
         const result = await response.json();
         console.log('Completion confirmed successfully:', result);
         setCompletionConfirmed(true);
+        
+        // Reload user progress to ensure state is synchronized with server
+        setTimeout(() => {
+          loadUserProgress();
+        }, 1000);
+        
         onComplete?.();
       } else {
         // Handle non-200 responses
@@ -703,6 +713,81 @@ export default function MicrolearningModule({
       </motion.div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Completion Confirmation Section - Shows when all videos are completed but not yet confirmed */}
+        {accessLevel === 'full' && allVideosCompleted && !completionConfirmed && !isSubmitting && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 mb-6"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center">
+                <Award className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">Training Complete! 🎉</h3>
+                <p className="text-sm text-slate-600">Ready for certification</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <h4 className="font-semibold text-slate-900">Food Safety Basics</h4>
+                </div>
+                <p className="text-sm text-slate-600">14 training videos</p>
+                <div className="mt-2 text-xs text-emerald-600 font-medium">
+                  ✓ Complete
+                </div>
+              </div>
+              
+              <div className="p-4 rounded-xl border-2 border-blue-200 bg-blue-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500" />
+                  <h4 className="font-semibold text-slate-900">Safety & Hygiene How-To's</h4>
+                </div>
+                <p className="text-sm text-slate-600">8 training videos</p>
+                <div className="mt-2 text-xs text-blue-600 font-medium">
+                  ✓ Complete
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+              <p className="text-emerald-800 text-sm">
+                Congratulations! You've completed all 22 training videos. 
+                Click below to confirm your completion and generate your official certificate.
+              </p>
+            </div>
+            
+            <Button 
+              onClick={confirmCompletion}
+              disabled={isSubmitting}
+              className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 text-white"
+            >
+              {isSubmitting ? (
+                <>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="h-4 w-4 mr-2"
+                  >
+                    <Circle className="h-4 w-4" />
+                  </motion.div>
+                  Confirming Completion...
+                </>
+              ) : (
+                <>
+                  <Award className="h-4 w-4 mr-2" />
+                  Confirm Completion & Generate Certificate
+                </>
+              )}
+            </Button>
+          </motion.div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           {/* Main Content Area */}
@@ -740,81 +825,6 @@ export default function MicrolearningModule({
                   </div>
                 </div>
               </div>
-
-              {/* Completion Confirmation Section - Shows when all videos are completed but not yet confirmed */}
-              {accessLevel === 'full' && allVideosCompleted && !completionConfirmed && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 mb-6"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center">
-                      <Award className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900">Training Complete! 🎉</h3>
-                      <p className="text-sm text-slate-600">Ready for certification</p>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                        <h4 className="font-semibold text-slate-900">Food Safety Basics</h4>
-                      </div>
-                      <p className="text-sm text-slate-600">14 training videos</p>
-                      <div className="mt-2 text-xs text-emerald-600 font-medium">
-                        ✓ Complete
-                      </div>
-                    </div>
-                    
-                    <div className="p-4 rounded-xl border-2 border-blue-200 bg-blue-50">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-3 h-3 rounded-full bg-blue-500" />
-                        <h4 className="font-semibold text-slate-900">Safety & Hygiene How-To's</h4>
-                      </div>
-                      <p className="text-sm text-slate-600">8 training videos</p>
-                      <div className="mt-2 text-xs text-blue-600 font-medium">
-                        ✓ Complete
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
-                    <p className="text-emerald-800 text-sm">
-                      Congratulations! You've completed all 22 training videos. 
-                      Click below to confirm your completion and generate your official certificate.
-                    </p>
-                  </div>
-                  
-                  <Button 
-                    onClick={confirmCompletion}
-                    disabled={isSubmitting}
-                    className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 text-white"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          className="h-4 w-4 mr-2"
-                        >
-                          <Circle className="h-4 w-4" />
-                        </motion.div>
-                        Confirming Completion...
-                      </>
-                    ) : (
-                      <>
-                        <Award className="h-4 w-4 mr-2" />
-                        Confirm Completion & Generate Certificate
-                      </>
-                    )}
-                  </Button>
-                </motion.div>
-              )}
 
               {/* Video Player */}
               <div className="aspect-video bg-black">
