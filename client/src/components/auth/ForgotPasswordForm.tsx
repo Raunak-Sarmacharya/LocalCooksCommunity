@@ -103,6 +103,7 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
         <motion.div variants={itemVariants}>
           <AnimatedInput
             type="email"
+            label="Email Address"
             placeholder="Enter your email"
             icon={<Mail className="w-5 h-5" />}
             error={form.formState.errors.email?.message}
