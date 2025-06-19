@@ -15,12 +15,26 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, ChevronDown, ChevronRight, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle } from "lucide-react";
+import {
+    AlertCircle,
+    AlertTriangle,
+    CalendarDays,
+    CheckCircle,
+    ChevronDown,
+    ChevronRight,
+    Clock,
+    ExternalLink,
+    RefreshCw,
+    Search,
+    Shield,
+    User as UserIcon,
+    XCircle
+} from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -29,6 +43,11 @@ function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  const [quickFilters, setQuickFilters] = useState({
+    needsDocumentReview: false,
+    recentApplications: false,
+    hasDocuments: false
+  });
 
   // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
@@ -336,15 +355,16 @@ function AdminDashboard() {
     }
   };
 
-  // Filter applications based on status and search term
+  // Enhanced filter applications based on status, search term, and quick filters
   const filteredApplications = applications ? applications.filter((app) => {
     const matchesStatus = filterStatus === "all" || app.status === filterStatus;
     
-    // Enhanced search to include name, email, application ID, and submission date
+    // Enhanced search to include name, email, phone, application ID, and submission date
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = searchTerm === "" ||
       app.fullName.toLowerCase().includes(searchLower) ||
       app.email.toLowerCase().includes(searchLower) ||
+      (app.phone && app.phone.toLowerCase().includes(searchLower)) ||
       app.id.toString().includes(searchLower) ||
       new Date(app.createdAt).toLocaleDateString().includes(searchLower) ||
       new Date(app.createdAt).toLocaleDateString('en-US', { 
@@ -353,7 +373,29 @@ function AdminDashboard() {
         day: 'numeric' 
       }).toLowerCase().includes(searchLower);
 
-    return matchesStatus && matchesSearch;
+    // Quick filters
+    let matchesQuickFilters = true;
+    
+    if (quickFilters.needsDocumentReview) {
+      matchesQuickFilters = matchesQuickFilters && app.status === "approved" && (
+        app.foodSafetyLicenseStatus === "pending" ||
+        app.foodEstablishmentCertStatus === "pending"
+      );
+    }
+    
+    if (quickFilters.recentApplications) {
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      matchesQuickFilters = matchesQuickFilters && new Date(app.createdAt) > threeDaysAgo;
+    }
+    
+    if (quickFilters.hasDocuments) {
+      matchesQuickFilters = matchesQuickFilters && (
+        app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl
+      );
+    }
+
+    return matchesStatus && matchesSearch && matchesQuickFilters;
   }) : [];
 
   // Handle status change
@@ -559,133 +601,280 @@ function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-light-gray">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
+      {/* Subtle background pattern */}
+      <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
+        <div 
+          className="w-full h-full" 
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundSize: '60px 60px'
+          }}
+        />
+      </div>
+      
       <Header />
-      <main className="flex-grow pt-28 pb-16">
-        <div className="container mx-auto px-4">
-          <motion.div
-            className="max-w-6xl mx-auto"
+      <main className="flex-grow pt-20 pb-16 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
+          {/* Welcome Header Section */}
+          <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            className="mb-8 mt-4"
           >
-            <Card className="bg-white shadow-lg mb-8">
-              <CardHeader className="pb-2">
-                <div className="flex flex-col md:flex-row justify-between items-center">
-                  <div>
-                    <CardTitle className="text-2xl md:text-3xl font-bold">Admin Dashboard</CardTitle>
-                    <CardDescription className="text-lg mt-1">
-                      Review and manage cook applications
-                    </CardDescription>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={handleLogout}
-                    className="mt-4 md:mt-0 border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                  >
-                    Logout
-                  </Button>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
+                  <Users className="h-6 w-6" />
                 </div>
-              </CardHeader>
-
-              <CardContent className="pt-6">
-                {/* Application Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                  <Card className="bg-white shadow-sm border-2 border-green-100">
-                    <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-green-500">{statusCounts.approved}</div>
-                      <div className="text-sm mt-1 text-gray-600">Approved</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white shadow-sm border-2 border-yellow-100">
-                    <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-yellow-500">{statusCounts.inReview}</div>
-                      <div className="text-sm mt-1 text-gray-600">In Review</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white shadow-sm border-2 border-blue-100">
-                    <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-blue-500">{statusCounts.approved}</div>
-                      <div className="text-sm mt-1 text-gray-600">Approved</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white shadow-sm border-2 border-red-100">
-                    <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-red-500">{statusCounts.rejected}</div>
-                      <div className="text-sm mt-1 text-gray-600">Rejected</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-white shadow-sm border-2 border-gray-200">
-                    <CardContent className="p-4 text-center">
-                      <div className="text-4xl font-bold text-gray-700">{statusCounts.total}</div>
-                      <div className="text-sm mt-1 text-gray-600">Total</div>
-                    </CardContent>
-                  </Card>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+                  <p className="text-gray-500">Manage applications and review documents</p>
                 </div>
-
-                <Tabs defaultValue="all" className="w-full mb-6">
-                  <div className="flex flex-col md:flex-row justify-between items-center mb-4">
-                    <TabsList>
-                      <TabsTrigger value="all" className="flex items-center gap-1">
-                        All
-                      </TabsTrigger>
-                      <TabsTrigger value="inReview" className="flex items-center gap-1">
-                        <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
-                        In Review
-                      </TabsTrigger>
-                      <TabsTrigger value="approved" className="flex items-center gap-1">
-                        <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                        Approved
-                      </TabsTrigger>
-                      <TabsTrigger value="rejected" className="flex items-center gap-1">
-                        <XCircle className="h-3.5 w-3.5 text-red-500" />
-                        Rejected
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <div className="mt-4 md:mt-0 w-full md:w-auto flex items-center">
-                      <div className="relative w-full md:w-64">
-                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                          type="text"
-                          placeholder="Search by name, email, ID, or date..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-8 pr-4 py-2"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <TabsContent value="all" className="mt-0">
-                    {renderApplicationList(filteredApplications)}
-                  </TabsContent>
-                  <TabsContent value="inReview" className="mt-0">
-                    {renderApplicationList(applications.filter(app => app.status === "inReview"))}
-                  </TabsContent>
-                  <TabsContent value="approved" className="mt-0">
-                    {renderApplicationList(applications.filter(app => app.status === "approved"))}
-                  </TabsContent>
-                  <TabsContent value="rejected" className="mt-0">
-                    {renderApplicationList(applications.filter(app => app.status === "rejected"))}
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-
-            <div className="text-center">
+              </div>
               <Button
-                onClick={() => navigate("/")}
-                className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg transform transition hover:-translate-y-1"
+                variant="outline"
+                onClick={handleLogout}
+                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-xl"
               >
-                Return to Website
+                Logout
               </Button>
             </div>
           </motion.div>
+
+          {/* Enhanced Stats Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Approved</p>
+                  <p className="text-2xl font-bold text-gray-900">{statusCounts.approved}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">In Review</p>
+                  <p className="text-2xl font-bold text-gray-900">{statusCounts.inReview}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                  <XCircle className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Rejected</p>
+                  <p className="text-2xl font-bold text-gray-900">{statusCounts.rejected}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Needs Review</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {applications.filter(app => 
+                      app.status === "approved" && (
+                        app.foodSafetyLicenseStatus === "pending" ||
+                        app.foodEstablishmentCertStatus === "pending"
+                      )
+                    ).length}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Total</p>
+                  <p className="text-2xl font-bold text-gray-900">{statusCounts.total}</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Enhanced Search and Filter Section */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-6 backdrop-blur-sm"
+          >
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
+                <Search className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Search & Filter Applications</h3>
+                <p className="text-sm text-gray-500">Find and manage applications efficiently</p>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="mb-6">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Search by name, email, phone, or ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-3 rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200"
+                />
+              </div>
+            </div>
+
+            {/* Quick Filter Buttons */}
+            <div className="mb-6">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Quick Filters</h4>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={quickFilters.needsDocumentReview ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
+                  className="rounded-xl"
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  Needs Doc Review
+                  {applications.filter(app => 
+                    app.status === "approved" && (
+                      app.foodSafetyLicenseStatus === "pending" ||
+                      app.foodEstablishmentCertStatus === "pending"
+                    )
+                  ).length > 0 && (
+                    <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                      {applications.filter(app => 
+                        app.status === "approved" && (
+                          app.foodSafetyLicenseStatus === "pending" ||
+                          app.foodEstablishmentCertStatus === "pending"
+                        )
+                      ).length}
+                    </span>
+                  )}
+                </Button>
+                
+                <Button
+                  variant={quickFilters.recentApplications ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
+                  className="rounded-xl"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Recent (3 days)
+                </Button>
+                
+                <Button
+                  variant={quickFilters.hasDocuments ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
+                  className="rounded-xl"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Has Documents
+                </Button>
+                
+                {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
+                    className="rounded-xl text-gray-500 hover:text-gray-700"
+                  >
+                    Clear All
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Status Tabs */}
+            <Tabs defaultValue="all" className="w-full">
+              <TabsList className="rounded-xl bg-gray-100 p-1">
+                <TabsTrigger value="all" className="flex items-center gap-2 rounded-lg">
+                  <Hash className="h-3.5 w-3.5" />
+                  All ({statusCounts.total})
+                </TabsTrigger>
+                <TabsTrigger value="inReview" className="flex items-center gap-2 rounded-lg">
+                  <Clock className="h-3.5 w-3.5 text-yellow-500" />
+                  In Review ({statusCounts.inReview})
+                </TabsTrigger>
+                <TabsTrigger value="approved" className="flex items-center gap-2 rounded-lg">
+                  <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                  Approved ({statusCounts.approved})
+                </TabsTrigger>
+                <TabsTrigger value="rejected" className="flex items-center gap-2 rounded-lg">
+                  <XCircle className="h-3.5 w-3.5 text-red-500" />
+                  Rejected ({statusCounts.rejected})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="all" className="mt-6">
+                {renderApplicationList(filteredApplications)}
+              </TabsContent>
+              <TabsContent value="inReview" className="mt-6">
+                {renderApplicationList(applications.filter(app => app.status === "inReview"))}
+              </TabsContent>
+              <TabsContent value="approved" className="mt-6">
+                {renderApplicationList(applications.filter(app => app.status === "approved"))}
+              </TabsContent>
+              <TabsContent value="rejected" className="mt-6">
+                {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+              </TabsContent>
+            </Tabs>
+          </motion.div>
+
+          <div className="text-center">
+            <Button
+              onClick={() => navigate("/")}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
+            >
+              Return to Website
+            </Button>
+          </div>
         </div>
       </main>
       <Footer />
@@ -752,108 +941,159 @@ function AdminDashboard() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="space-y-2"
+        className="space-y-4"
       >
         {apps.map((app: Application) => {
           const isExpanded = expandedCards.has(app.id);
           
           return (
             <motion.div key={app.id} variants={itemVariants} className="w-full">
-              <Card className="overflow-hidden hover:shadow-md transition-all duration-300">
+              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm">
                 
                 {/* COMPACT VIEW - Always Visible */}
                 <CardContent className="p-0">
-                  <div className={`p-4 border-l-4 ${getStatusBadgeColor(app.status)}`}>
-                    <div className="flex items-center justify-between">
+                  <div className={`p-6 border-l-4 ${getStatusBadgeColor(app.status)}`}>
+                    <div className="flex items-start justify-between gap-4">
                       
-                      {/* Left side: Name and Certifications */}
-                      <div className="flex items-center space-x-4 flex-1">
-                        <div className="flex items-center space-x-2">
-                          <UserIcon className="h-4 w-4 text-gray-500" />
-                          <div>
-                            <h3 className="font-semibold text-lg">{app.fullName}</h3>
-                            <div className="flex items-center space-x-3 text-xs text-gray-500">
-                              <span>ID: #{app.id}</span>
-                              <span>•</span>
-                              <span>Submitted: {new Date(app.createdAt).toLocaleDateString()}</span>
+                      {/* Left side: Main Info */}
+                      <div className="flex-1 space-y-4">
+                        {/* Header with name and status */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                              <UserIcon className="h-5 w-5 text-gray-600" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-lg text-gray-900">{app.fullName}</h3>
+                              <div className="flex items-center gap-2 text-sm text-gray-500">
+                                <Hash className="h-3 w-3" />
+                                <span>#{app.id}</span>
+                                <span>•</span>
+                                <Calendar className="h-3 w-3" />
+                                <span>{new Date(app.createdAt).toLocaleDateString()}</span>
+                              </div>
                             </div>
                           </div>
+                          
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(app.status)}
+                            <Badge className={`px-3 py-1 ${getStatusBadgeColor(app.status).replace('border-l-4', '').replace('border-', 'bg-').replace('-500', '-100 text-').replace('-600', '-800')}`}>
+                              {formatApplicationStatus(app.status)}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Contact Information Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="h-4 w-4 text-gray-400" />
+                            <span className="truncate">{app.email}</span>
+                          </div>
+                          {app.phone && (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <Phone className="h-4 w-4 text-gray-400" />
+                              <span>{app.phone}</span>
+                            </div>
+                          )}
                         </div>
                         
                         {/* Certification Status Indicators */}
-                        <div className="flex items-center space-x-3">
-                          <div className="flex items-center space-x-1" title="Food Safety License">
+                        <div className="flex flex-wrap gap-3">
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border">
                             {getCertificationIcon(app.foodSafetyLicense)}
-                            <span className="text-xs text-gray-600">FSL</span>
+                            <span className="text-sm font-medium">Food Safety: {formatCertificationStatus(app.foodSafetyLicense)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border">
+                            {getCertificationIcon(app.foodEstablishmentCert)}
+                            <span className="text-sm font-medium">Establishment: {formatCertificationStatus(app.foodEstablishmentCert)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border">
+                            <span className="text-sm font-medium">Kitchen: {formatKitchenPreference(app.kitchenPreference)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right side: Action buttons */}
+                      <div className="flex flex-col items-end gap-3">
+                        <div className="flex items-center gap-2">
+                          {getCtaButton(app)}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleCardExpansion(app.id)}
+                            className="h-9 w-9 rounded-xl hover:bg-gray-100"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                        
+                        {/* Document Status Indicators (for approved applications) */}
+                        {app.status === "approved" && (
+                          <div className="flex flex-col gap-1 text-right">
+                            {app.foodSafetyLicenseUrl && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-500">FSL:</span>
+                                {getDocumentStatusBadge(app.foodSafetyLicenseStatus)}
+                              </div>
+                            )}
+                            {app.foodEstablishmentCertUrl && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-500">FEC:</span>
+                                {getDocumentStatusBadge(app.foodEstablishmentCertStatus)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Quick Document Links */}
+                        {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && (
+                          <div className="flex gap-1">
                             {app.foodSafetyLicenseUrl && (
                               <a 
                                 href={app.foodSafetyLicenseUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="text-blue-500 hover:text-blue-700 transition-colors"
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                                 title="View Food Safety License Document"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <ExternalLink className="h-3 w-3" />
+                                FSL
                               </a>
                             )}
-                          </div>
-                          
-                          <div className="flex items-center space-x-1" title="Food Establishment Certificate">
-                            {getCertificationIcon(app.foodEstablishmentCert)}
-                            <span className="text-xs text-gray-600">FEC</span>
                             {app.foodEstablishmentCertUrl && (
                               <a 
                                 href={app.foodEstablishmentCertUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="text-blue-500 hover:text-blue-700 transition-colors"
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
                                 title="View Food Establishment Certificate Document"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <ExternalLink className="h-3 w-3" />
+                                FEC
                               </a>
                             )}
                           </div>
-                        </div>
-                      </div>
-
-                      {/* Center: Status Badge */}
-                      <div className="flex items-center space-x-3">
-                        <Badge className={`${getStatusBadgeColor(app.status)} flex items-center gap-1.5 px-2 py-1`}>
-                          {getStatusIcon(app.status)}
-                          {formatApplicationStatus(app.status)}
-                        </Badge>
-                      </div>
-
-                      {/* Right side: CTA Button and Expand Arrow */}
-                      <div className="flex items-center space-x-2">
-                        {getCtaButton(app)}
-                        
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleCardExpansion(app.id)}
-                          className="h-8 w-8 p-0"
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </Button>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* EXPANDED VIEW - Only visible when expanded */}
                   {isExpanded && (
-                    <div className="p-6 bg-gray-50 border-t">
-                      {/* Cancelled Application Notice */}
+                    <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100/50 border-t">
+                      {/* Status Notices */}
                       {app.status === "cancelled" && (
-                        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <XCircle className="h-5 w-5 text-red-600" />
+                        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+                              <XCircle className="h-4 w-4 text-red-600" />
+                            </div>
                             <div>
                               <h4 className="text-sm font-semibold text-red-800">Application Cancelled</h4>
                               <p className="text-xs text-red-700 mt-1">
@@ -864,44 +1104,62 @@ function AdminDashboard() {
                         </div>
                       )}
 
-                      {/* Contact Information */}
-                      <div className="mb-4">
-                        <h4 className="text-sm font-semibold mb-2">Contact Information</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-600">Email:</span> {app.email}
+                      {/* Contact Information Card */}
+                      <div className="mb-6 p-5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                            <Mail className="h-4 w-4 text-blue-600" />
                           </div>
-                          <div>
-                            <span className="text-gray-600">Phone:</span> {app.phone}
+                          <h4 className="text-sm font-semibold text-gray-900">Contact Information</h4>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                            <Mail className="h-4 w-4 text-gray-400" />
+                            <div>
+                              <span className="text-xs text-gray-500 block">Email Address</span>
+                              <span className="text-sm font-medium text-gray-900">{app.email}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                            <Phone className="h-4 w-4 text-gray-400" />
+                            <div>
+                              <span className="text-xs text-gray-500 block">Phone Number</span>
+                              <span className="text-sm font-medium text-gray-900">{app.phone || 'Not provided'}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Detailed Certification Status */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div className="bg-white p-3 rounded-md border">
-                          <h4 className="text-xs font-medium text-gray-600 mb-1">
-                            Food Safety License
-                          </h4>
-                          <div className="flex items-center space-x-2">
-                            {getCertificationIcon(app.foodSafetyLicense)}
-                            <span className="font-medium text-sm">{formatCertificationStatus(app.foodSafetyLicense)}</span>
+                      {/* Detailed Certification Status Card */}
+                      <div className="mb-6 p-5 bg-white rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                            <Shield className="h-4 w-4 text-green-600" />
                           </div>
+                          <h4 className="text-sm font-semibold text-gray-900">Certifications & Preferences</h4>
                         </div>
-                        <div className="bg-white p-3 rounded-md border">
-                          <h4 className="text-xs font-medium text-gray-600 mb-1">
-                            Food Establishment Certificate
-                          </h4>
-                          <div className="flex items-center space-x-2">
-                            {getCertificationIcon(app.foodEstablishmentCert)}
-                            <span className="font-medium text-sm">{formatCertificationStatus(app.foodEstablishmentCert)}</span>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              {getCertificationIcon(app.foodSafetyLicense)}
+                              <h5 className="text-xs font-medium text-blue-800">Food Safety License</h5>
+                            </div>
+                            <p className="font-semibold text-sm text-blue-900">{formatCertificationStatus(app.foodSafetyLicense)}</p>
                           </div>
-                        </div>
-                        <div className="bg-white p-3 rounded-md border">
-                          <h4 className="text-xs font-medium text-gray-600 mb-1">
-                            Kitchen Preference
-                          </h4>
-                          <p className="font-medium text-sm">{formatKitchenPreference(app.kitchenPreference)}</p>
+                          <div className="p-4 bg-gradient-to-br from-green-50 to-green-100/50 rounded-xl border border-green-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              {getCertificationIcon(app.foodEstablishmentCert)}
+                              <h5 className="text-xs font-medium text-green-800">Food Establishment Cert</h5>
+                            </div>
+                            <p className="font-semibold text-sm text-green-900">{formatCertificationStatus(app.foodEstablishmentCert)}</p>
+                          </div>
+                          <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl border border-purple-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <UserIcon className="h-4 w-4 text-purple-600" />
+                              <h5 className="text-xs font-medium text-purple-800">Kitchen Preference</h5>
+                            </div>
+                            <p className="font-semibold text-sm text-purple-900">{formatKitchenPreference(app.kitchenPreference)}</p>
+                          </div>
                         </div>
                       </div>
 
