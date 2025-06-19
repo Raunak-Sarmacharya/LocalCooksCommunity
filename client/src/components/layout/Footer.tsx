@@ -1,10 +1,26 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
+import { useApplicationStatus } from "@/hooks/use-application-status";
 import { ChefHat, Heart, Mail, MapPin, Phone } from "lucide-react";
 import { FaFacebook, FaLinkedin } from "react-icons/fa";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 export default function Footer() {
+  const [, navigate] = useLocation();
+  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
+
+  const handleCTAClick = () => {
+    navigate(getNavigationPath());
+  };
+
+  const getCTAButtonText = () => {
+    return getButtonText("Join as a Cook");
+  };
+
+  const getApplyLinkText = () => {
+    return getButtonText("Apply Now");
+  };
+
   return (
     <footer className="bg-gradient-to-t from-slate-900 to-slate-800 text-white pt-12 pb-6 px-4">
       <div className="container mx-auto">
@@ -17,14 +33,13 @@ export default function Footer() {
               Connecting talented home chefs with hungry customers. We're building more than a platform – we're creating a community where cooks and customers connect directly.
             </p>
             <Button
-              asChild
+              onClick={handleCTAClick}
+              disabled={isLoading}
               variant="outline"
               className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white"
             >
-              <Link href="/apply">
-                <ChefHat className="mr-2 h-4 w-4" />
-                Join as a Cook
-              </Link>
+              <ChefHat className="mr-2 h-4 w-4" />
+              {isLoading ? "Loading..." : getCTAButtonText()}
             </Button>
           </div>
 
@@ -66,9 +81,13 @@ export default function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/apply" className="text-gray-300 hover:text-white hover-text">
-                    Apply Now
-                  </Link>
+                  <button 
+                    onClick={handleCTAClick}
+                    disabled={isLoading}
+                    className="text-gray-300 hover:text-white hover-text cursor-pointer bg-transparent border-none p-0 text-left"
+                  >
+                    {isLoading ? "Loading..." : getApplyLinkText()}
+                  </button>
                 </li>
               </ul>
             </div>
