@@ -423,11 +423,76 @@ export default function DocumentVerification() {
           </Button>
         </motion.div>
 
-        {/* Priority Card: Requirements & Process */}
+        {/* Document Status Panel - Document-specific only */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
+          className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 mb-8 backdrop-blur-sm"
+        >
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+              <Shield className="h-6 w-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h1 className="text-2xl font-semibold text-gray-900">Document Verification</h1>
+              <p className="text-gray-500">Upload and manage your certificates</p>
+            </div>
+            {isFullyVerified && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-xl">
+                <CheckCircle className="h-5 w-5" />
+                <span className="font-medium">Fully Verified</span>
+              </div>
+            )}
+          </div>
+
+          {/* Status overview */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-600">Documents</p>
+                  <p className="font-medium text-gray-900">
+                    {documentsCount} {documentsCount === 1 ? 'Uploaded' : 'Uploaded'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
+                  <Clock className="h-4 w-4 text-yellow-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-600">Status</p>
+                  <p className="font-medium text-gray-900">{getDocumentStatus()}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                  <Shield className="h-4 w-4 text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-600">Verified</p>
+                  <p className="font-medium text-gray-900">{getVerificationStatus()}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Priority Card: Requirements & Process with Horizontal Layout */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
           className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 backdrop-blur-sm mb-8"
         >
           <div className="flex items-center gap-4 mb-6">
@@ -435,8 +500,8 @@ export default function DocumentVerification() {
               <Info className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Document Verification</h1>
-              <p className="text-gray-500">Upload your certificates to get verified</p>
+              <h2 className="text-xl font-semibold text-gray-900">Requirements & Process</h2>
+              <p className="text-gray-500">What we need and how verification works</p>
             </div>
           </div>
           
@@ -481,110 +546,52 @@ export default function DocumentVerification() {
               </div>
             </div>
 
-            {/* Process Steps */}
+            {/* Process Steps - Horizontal Layout */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Verification Process</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-medium text-blue-600">1</span>
+              <div className="space-y-6">
+                {/* Horizontal Process Flow */}
+                <div className="flex items-center justify-between relative">
+                  <div className="flex flex-col items-center flex-1">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mb-2">
+                      <span className="text-sm font-medium text-blue-600">1</span>
+                    </div>
+                    <h4 className="font-medium text-gray-900 text-center">Upload</h4>
+                    <p className="text-xs text-gray-600 text-center mt-1">Submit documents</p>
                   </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Upload Documents</h4>
-                    <p className="text-sm text-gray-600">Provide your certifications via file upload or URL</p>
+                  
+                  <div className="flex-1 h-1 bg-gradient-to-r from-blue-200 to-yellow-200 mx-2 rounded-full" />
+                  
+                  <div className="flex flex-col items-center flex-1">
+                    <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center mb-2">
+                      <span className="text-sm font-medium text-yellow-600">2</span>
+                    </div>
+                    <h4 className="font-medium text-gray-900 text-center">Review</h4>
+                    <p className="text-xs text-gray-600 text-center mt-1">Admin verification</p>
+                  </div>
+                  
+                  <div className="flex-1 h-1 bg-gradient-to-r from-yellow-200 to-green-200 mx-2 rounded-full" />
+                  
+                  <div className="flex flex-col items-center flex-1">
+                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mb-2">
+                      <span className="text-sm font-medium text-green-600">3</span>
+                    </div>
+                    <h4 className="font-medium text-gray-900 text-center">Verified</h4>
+                    <p className="text-xs text-gray-600 text-center mt-1">Join community</p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-medium text-yellow-600">2</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Admin Review</h4>
-                    <p className="text-sm text-gray-600">Our team verifies authenticity and compliance (1-3 days)</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-medium text-green-600">3</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900">Get Verified</h4>
-                    <p className="text-sm text-gray-600">Join the trusted Local Cooks community</p>
-                  </div>
+                {/* Process Details */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Timeline:</span> Verification typically takes 1-3 business days. 
+                    You'll receive email notifications at each step and can track progress here.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         </motion.div>
-
-        {/* Status Overview - Only show if documents exist */}
-        {hasDocuments && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 mb-8 backdrop-blur-sm"
-          >
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                <Shield className="h-6 w-6 text-white" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-xl font-semibold text-gray-900">Document Status</h2>
-                <p className="text-gray-500">Your verification progress</p>
-              </div>
-              {isFullyVerified && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-xl">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">Fully Verified</span>
-                </div>
-              )}
-            </div>
-
-            {/* Status overview */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <FileText className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-600">Documents</p>
-                    <p className="font-medium text-gray-900">
-                      {documentsCount} {documentsCount === 1 ? 'Uploaded' : 'Uploaded'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
-                    <Clock className="h-4 w-4 text-yellow-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-600">Status</p>
-                    <p className="font-medium text-gray-900">{getDocumentStatus()}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                    <Shield className="h-4 w-4 text-green-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-600">Verified</p>
-                    <p className="font-medium text-gray-900">{getVerificationStatus()}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
 
         {/* Main Document Management Card */}
         <motion.div
@@ -607,10 +614,11 @@ export default function DocumentVerification() {
             </div>
           </div>
 
-          {/* Current Documents Section - Only show if documents exist */}
-          {hasDocuments && (
-            <div className="mb-8">
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">Current Documents</h4>
+          {/* Current Documents Section - Always show */}
+          <div className="mb-8">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">Current Documents</h4>
+            
+            {hasDocuments ? (
               <div className="space-y-4">
                 {/* Food Safety License */}
                 <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
@@ -676,8 +684,16 @@ export default function DocumentVerification() {
                   </Alert>
                 )}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-xl">
+                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                  <FileText className="h-8 w-8 text-gray-400" />
+                </div>
+                <h5 className="font-medium text-gray-900 mb-2">No Documents Uploaded</h5>
+                <p className="text-sm text-gray-600">Upload your first document to get started with verification.</p>
+              </div>
+            )}
+          </div>
 
           {/* Warning for existing users */}
           {hasDocuments && (
