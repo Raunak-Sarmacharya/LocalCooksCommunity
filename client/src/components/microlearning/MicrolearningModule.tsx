@@ -741,6 +741,81 @@ export default function MicrolearningModule({
                 </div>
               </div>
 
+              {/* Completion Confirmation Section - Shows when all videos are completed but not yet confirmed */}
+              {accessLevel === 'full' && allVideosCompleted && !completionConfirmed && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200 mb-6"
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-xl flex items-center justify-center">
+                      <Award className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-900">Training Complete! 🎉</h3>
+                      <p className="text-sm text-slate-600">Ready for certification</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                        <h4 className="font-semibold text-slate-900">Food Safety Basics</h4>
+                      </div>
+                      <p className="text-sm text-slate-600">14 training videos</p>
+                      <div className="mt-2 text-xs text-emerald-600 font-medium">
+                        ✓ Complete
+                      </div>
+                    </div>
+                    
+                    <div className="p-4 rounded-xl border-2 border-blue-200 bg-blue-50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 rounded-full bg-blue-500" />
+                        <h4 className="font-semibold text-slate-900">Safety & Hygiene How-To's</h4>
+                      </div>
+                      <p className="text-sm text-slate-600">8 training videos</p>
+                      <div className="mt-2 text-xs text-blue-600 font-medium">
+                        ✓ Complete
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+                    <p className="text-emerald-800 text-sm">
+                      Congratulations! You've completed all 22 training videos. 
+                      Click below to confirm your completion and generate your official certificate.
+                    </p>
+                  </div>
+                  
+                  <Button 
+                    onClick={confirmCompletion}
+                    disabled={isSubmitting}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 text-white"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="h-4 w-4 mr-2"
+                        >
+                          <Circle className="h-4 w-4" />
+                        </motion.div>
+                        Confirming Completion...
+                      </>
+                    ) : (
+                      <>
+                        <Award className="h-4 w-4 mr-2" />
+                        Confirm Completion & Generate Certificate
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
+              )}
+
               {/* Video Player */}
               <div className="aspect-video bg-black">
                 {currentVideo.url ? (
@@ -1139,71 +1214,7 @@ export default function MicrolearningModule({
                 </div>
               )}
 
-              {/* Completion Confirmation Section - Shows when all videos are completed but not yet confirmed */}
-              {accessLevel === 'full' && allVideosCompleted && !completionConfirmed && (
-                <div className="bg-white rounded-2xl p-6 shadow-lg border border-yellow-200">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
-                      <Award className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-yellow-900">Ready for Certification! 🎉</h3>
-                      <p className="text-sm text-yellow-700">All training videos completed</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
-                    <h4 className="font-medium text-yellow-900 mb-3 flex items-center gap-2">
-                      <span className="text-yellow-600">🏆</span>
-                      Training Complete - Ready for Certificate:
-                    </h4>
-                    <div className="space-y-2.5 mb-4">
-                      <div className="flex items-center gap-3 text-yellow-700">
-                        <CheckCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-                        <span className="text-sm">Food Safety Basics Module (14 videos) ✓</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-yellow-700">
-                        <CheckCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-                        <span className="text-sm">Safety & Hygiene How-To's Module (8 videos) ✓</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-yellow-700">
-                        <CheckCircle className="h-4 w-4 text-yellow-600 flex-shrink-0" />
-                        <span className="text-sm">All 22 training videos completed ✓</span>
-                      </div>
-                    </div>
-                    <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3">
-                      <p className="text-yellow-800 text-sm">
-                        Congratulations! You've completed all food safety training modules. 
-                        Click below to confirm your completion and generate your official certificate.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    onClick={confirmCompletion}
-                    disabled={isSubmitting}
-                    className="w-full font-semibold bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          className="h-4 w-4 mr-2"
-                        >
-                          <Circle className="h-4 w-4" />
-                        </motion.div>
-                        Confirming Completion...
-                      </>
-                    ) : (
-                      <>
-                        <Award className="h-4 w-4 mr-2" />
-                        Confirm Completion & Generate Certificate
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
+
 
               {/* Completion Status for Completed Users */}
               {completionConfirmed && (
