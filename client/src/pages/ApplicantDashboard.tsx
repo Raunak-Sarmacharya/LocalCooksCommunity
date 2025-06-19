@@ -860,7 +860,7 @@ export default function ApplicantDashboard() {
                   <p className="text-sm font-semibold text-gray-900">
                     {microlearningCompletion?.confirmed 
                       ? "Completed" 
-                      : trainingAccess?.progress && trainingAccess.progress.length > 0
+                      : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
                         ? "In Progress"
                         : "Not Started"
                     }
@@ -1302,7 +1302,7 @@ export default function ApplicantDashboard() {
                           Completed
                         </span>
                       </div>
-                    ) : trainingAccess?.progress && trainingAccess.progress.length > 0 ? (
+                    ) : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication ? (
                       <div className="flex items-center gap-3">
                         <Clock className="h-5 w-5 text-yellow-600" />
                         <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
@@ -1321,11 +1321,9 @@ export default function ApplicantDashboard() {
                     <p className="text-gray-600">
                       {microlearningCompletion?.confirmed 
                         ? 'Congratulations! You\'ve completed the comprehensive food safety training program.'
-                        : trainingAccess?.progress && trainingAccess.progress.length > 0
-                        ? trainingAccess?.accessLevel === 'full'
-                          ? 'Complete your food safety training to get certified and unlock additional features.'
-                          : 'Continue your training progress. Submit an approved application to unlock full training access.'
-                        : trainingAccess?.accessLevel === 'full'
+                        : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
+                        ? 'Complete your food safety training to get certified and unlock additional features.'
+                        : trainingAccess?.hasApprovedApplication
                         ? 'Start your food safety training to get certified and unlock additional features.'
                         : 'Submit an approved application to unlock full training access, then start your certification.'
                       }
@@ -1359,7 +1357,7 @@ export default function ApplicantDashboard() {
                       <BookOpen className="mr-2 h-4 w-4" />
                       {microlearningCompletion?.confirmed 
                         ? 'Review Training' 
-                        : trainingAccess?.progress && trainingAccess.progress.length > 0
+                        : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
                           ? 'Continue Training'
                           : 'Start Training'
                       }
