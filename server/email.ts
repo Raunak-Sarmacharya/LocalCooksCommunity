@@ -715,20 +715,83 @@ export const generateApplicationWithoutDocumentsEmail = (
   };
 };
 
-// Generate document update email with unified design
-export const generateDocumentUpdateEmail = (
+// Generate document verification status change email with unified design
+export const generateDocumentStatusChangeEmail = (
   userData: {
     fullName: string;
     email: string;
+    documentType: string;
+    status: string;
+    adminFeedback?: string;
   }
 ): EmailContent => {
+  // Create professional, non-promotional subject line
+  const getSubjectLine = (documentType: string, status: string) => {
+    const docName = documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
+    switch (status) {
+      case 'approved':
+        return `${docName} Approved - Local Cooks Community`;
+      case 'rejected':
+        return `${docName} Update Required - Local Cooks Community`;
+      default:
+        return `${docName} Status Update - Local Cooks Community`;
+    }
+  };
+
+  const subject = getSubjectLine(userData.documentType, userData.status);
+
+  // Generate plain text version for better deliverability
+  const generatePlainText = (documentType: string, status: string, fullName: string, adminFeedback?: string) => {
+    const docName = documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
+    const statusMessages = {
+      approved: `Great news! Your ${docName} has been approved.`,
+      rejected: `Your ${docName} requires some updates before it can be approved.`,
+      pending: `Your ${docName} is being reviewed by our team.`
+    };
+
+    return `Hello ${fullName},
+
+${statusMessages[status as keyof typeof statusMessages] || `Your ${docName} status has been updated.`}
+
+Document: ${docName}
+Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
+
+${adminFeedback ? `Admin Feedback: ${adminFeedback}\n\n` : ''}${status === 'approved' ? `Access your dashboard: ${getDashboardUrl()}` : status === 'rejected' ? `Please update your document and resubmit: ${getDashboardUrl()}` : ''}
+
+If you have any questions, please contact us at ${getSupportEmail()}.
+
+Best regards,
+Local Cooks Community Team
+
+Visit: ${getWebsiteUrl()}
+`;
+  };
+
+  const getMessage = (documentType: string, status: string) => {
+    const docName = documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
+    switch (status) {
+      case 'approved':
+        return `Congratulations! Your ${docName} has been approved by our verification team. This brings you one step closer to being fully verified on Local Cooks.`;
+      case 'rejected':
+        return `Your ${docName} could not be approved at this time. Please review the feedback below and upload an updated document.`;
+      case 'pending':
+        return `Your ${docName} is currently being reviewed by our verification team. We will notify you once the review is complete.`;
+      default:
+        return `Your ${docName} status has been updated. Please check your dashboard for more details.`;
+    }
+  };
+
+  const message = getMessage(userData.documentType, userData.status);
+  const docName = userData.documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
+
+  // Use uniform email template with proper styling
   const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document Update Received - Local Cooks</title>
+  <title>${subject}</title>
   ${getUniformEmailStyles()}
 </head>
 <body>
@@ -738,15 +801,16 @@ export const generateDocumentUpdateEmail = (
     </div>
     <div class="content">
       <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.
-      </p>
-      <p class="message">
-        You'll receive another email once your documents have been reviewed.
-      </p>
-      <div class="status-badge">
-        📄 Document Update Received
+      <p class="message">${message}</p>
+      <div class="status-badge${userData.status === 'approved' ? ' approved' : userData.status === 'rejected' ? ' rejected' : ''}">
+        📄 ${docName}: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
       </div>
+      ${userData.adminFeedback ? `
+      <div class="info-box">
+        <strong>💬 Admin Feedback:</strong><br>
+        ${userData.adminFeedback}
+      </div>` : ''}
+      ${userData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === 'rejected' ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Document</a>` : ''}
       <div class="divider"></div>
     </div>
     <div class="footer">
@@ -761,14 +825,9 @@ export const generateDocumentUpdateEmail = (
 
   return {
     to: userData.email,
-    subject: "Document Update Received - Local Cooks",
-    html,
-    headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
-    }
+    subject,
+    text: generatePlainText(userData.documentType, userData.status, userData.fullName, userData.adminFeedback),
+    html
   };
 };
 
@@ -1132,4 +1191,61 @@ const getPrivacyUrl = (): string => {
 // Helper function to get vendor dashboard URL
 const getVendorDashboardUrl = (): string => {
   return process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
+};
+
+// Generate document update email with unified design
+export const generateDocumentUpdateEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+  }
+): EmailContent => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Update Received - Local Cooks</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
+      <p class="message">
+        Thank you for updating your documents. Our team will review them and update your verification status as soon as possible.
+      </p>
+      <p class="message">
+        You'll receive another email once your documents have been reviewed.
+      </p>
+      <div class="status-badge">
+        📄 Document Update Received
+      </div>
+      <div class="divider"></div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: userData.email,
+    subject: "Document Update Received - Local Cooks",
+    html,
+    headers: {
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'Normal',
+      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
+  };
 };

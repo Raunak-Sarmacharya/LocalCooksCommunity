@@ -2948,6 +2948,52 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
+    // Send email notification for document status changes
+    try {
+      if (updatedApplication.email) {
+        // Import the email functions
+        const { sendEmail, generateDocumentStatusChangeEmail } = await import('../server/email.js');
+
+        // Send email for each document that was updated
+        if (req.body.foodSafetyLicenseStatus) {
+          const emailContent = generateDocumentStatusChangeEmail({
+            fullName: updatedApplication.full_name || updatedApplication.applicant_name || "Applicant",
+            email: updatedApplication.email,
+            documentType: "foodSafetyLicenseStatus",
+            status: req.body.foodSafetyLicenseStatus,
+            adminFeedback: req.body.documentsAdminFeedback
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `doc_status_fsl_${updatedApplication.id}_${req.body.foodSafetyLicenseStatus}_${Date.now()}`
+          });
+          
+          console.log(`Food Safety License status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodSafetyLicenseStatus}`);
+        }
+
+        if (req.body.foodEstablishmentCertStatus) {
+          const emailContent = generateDocumentStatusChangeEmail({
+            fullName: updatedApplication.full_name || updatedApplication.applicant_name || "Applicant",
+            email: updatedApplication.email,
+            documentType: "foodEstablishmentCertStatus",
+            status: req.body.foodEstablishmentCertStatus,
+            adminFeedback: req.body.documentsAdminFeedback
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `doc_status_fec_${updatedApplication.id}_${req.body.foodEstablishmentCertStatus}_${Date.now()}`
+          });
+          
+          console.log(`Food Establishment Certificate status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodEstablishmentCertStatus}`);
+        }
+      } else {
+        console.warn(`Cannot send document status change email for application ${updatedApplication.id}: No email address found`);
+      }
+    } catch (emailError) {
+      // Log the error but don't fail the request
+      console.error("Error sending document status change email:", emailError);
+    }
+
     // Check if both documents are approved, then update user verification status
     if (updatedApplication.food_safety_license_status === "approved" && 
         (!updatedApplication.food_establishment_cert_url || updatedApplication.food_establishment_cert_status === "approved")) {
