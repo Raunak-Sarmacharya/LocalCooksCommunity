@@ -12,13 +12,13 @@ import React, { useState } from "react";
 import { useLocation } from "wouter";
 
 // Safe Icon Component to prevent crashes
-// Safe Icon Component to prevent crashes
 function SafeIcon({ IconComponent, fallback = UserIcon, className, ...props }: any) {
   try {
     if (IconComponent) {
       return <IconComponent className={className} {...props} />;
     }
-    return <fallback className={className} {...props} />;
+    const FallbackComponent = fallback;
+    return <FallbackComponent className={className} {...props} />;
   } catch (error) {
     console.warn('Icon render error:', error);
     return <UserIcon className={className} {...props} />;
@@ -432,7 +432,7 @@ function AdminDashboard() {
     }
     
     if (quickFilters.hasDocuments) {
-      matchesQuickFilters = matchesQuickFilters && (
+      matchesQuickFilters = matchesQuickFilters && Boolean(
         app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl
       );
     }
@@ -665,29 +665,30 @@ function AdminDashboard() {
       </div>
       
       <Header />
-      <main className="flex-grow pt-20 pb-16 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="flex-grow pt-16 sm:pt-20 pb-8 sm:pb-16 relative">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
           
           {/* Welcome Header Section */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8 mt-4"
+            className="mb-6 sm:mb-8 mt-2 sm:mt-4"
           >
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
-                  <Shield className="h-6 w-6" />
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg">
+                  <Shield className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-                  <p className="text-gray-500">Manage applications and review documents</p>
+                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+                  <p className="text-sm sm:text-base text-gray-500 hidden sm:block">Manage applications and review documents</p>
+                  <p className="text-xs text-gray-500 sm:hidden">Manage applications</p>
                 </div>
               </div>
               <Button
                 variant="outline"
                 onClick={handleLogout}
-                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-xl"
+                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-xl text-sm sm:text-base px-3 sm:px-4 py-1.5 sm:py-2 w-full sm:w-auto"
               >
                 Logout
               </Button>
@@ -695,20 +696,20 @@ function AdminDashboard() {
           </motion.div>
 
           {/* Enhanced Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Approved</p>
-                  <p className="text-2xl font-bold text-gray-900">{statusCounts.approved}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Approved</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.approved}</p>
                 </div>
               </div>
             </motion.div>
@@ -717,15 +718,15 @@ function AdminDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-yellow-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">In Review</p>
-                  <p className="text-2xl font-bold text-gray-900">{statusCounts.inReview}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">In Review</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.inReview}</p>
                 </div>
               </div>
             </motion.div>
@@ -734,15 +735,15 @@ function AdminDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
-                  <XCircle className="h-5 w-5 text-red-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Rejected</p>
-                  <p className="text-2xl font-bold text-gray-900">{statusCounts.rejected}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Rejected</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.rejected}</p>
                 </div>
               </div>
             </motion.div>
@@ -751,15 +752,15 @@ function AdminDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-purple-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Needs Review</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Doc Review</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">
                     {applications.filter(app => 
                       app.status === "approved" && (
                         app.foodSafetyLicenseStatus === "pending" ||
@@ -775,15 +776,15 @@ function AdminDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <UserIcon className="h-5 w-5 text-blue-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Total</p>
-                  <p className="text-2xl font-bold text-gray-900">{statusCounts.total}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Total</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.total}</p>
                 </div>
               </div>
             </motion.div>
@@ -794,44 +795,44 @@ function AdminDashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-6 backdrop-blur-sm"
+            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm"
           >
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
-                <Search className="h-6 w-6 text-white" />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                <Search className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
               </div>
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900">Search & Filter Applications</h3>
-                <p className="text-sm text-gray-500">Find and manage applications efficiently</p>
+              <div className="min-w-0">
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Search & Filter</h3>
+                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Find and manage applications efficiently</p>
               </div>
             </div>
 
             {/* Search Bar */}
-            <div className="mb-6">
-              <div className="relative max-w-md">
+            <div className="mb-4 sm:mb-6">
+              <div className="relative w-full sm:max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   type="text"
                   placeholder="Search by name, email, phone, or ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-3 rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200"
+                  className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200 text-sm sm:text-base"
                 />
               </div>
             </div>
 
             {/* Quick Filter Buttons */}
-            <div className="mb-6">
-              <h4 className="text-sm font-medium text-gray-700 mb-3">Quick Filters</h4>
-              <div className="flex flex-wrap gap-2">
+            <div className="mb-4 sm:mb-6">
+              <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 <Button
                   variant={quickFilters.needsDocumentReview ? "default" : "outline"}
                   size="sm"
                   onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
-                  className="rounded-xl"
+                  className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
                 >
-                  <Shield className="h-4 w-4 mr-2" />
-                  Needs Doc Review
+                  <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden xs:inline">Needs </span>Doc Review
                   {applications.filter(app => 
                     app.status === "approved" && (
                       app.foodSafetyLicenseStatus === "pending" ||
@@ -1000,85 +1001,97 @@ function AdminDashboard() {
           
           return (
             <motion.div key={app.id} variants={itemVariants} className="w-full">
-              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm">
+              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm">
                 
                 {/* COMPACT VIEW - Always Visible */}
                 <CardContent className="p-0">
-                  <div className={`p-6 border-l-4 ${getStatusBadgeColor(app.status)}`}>
-                    <div className="flex items-start justify-between gap-4">
+                  <div className={`p-3 sm:p-4 lg:p-6 border-l-4 ${getStatusBadgeColor(app.status)}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                       
                       {/* Left side: Main Info */}
-                      <div className="flex-1 space-y-4">
+                      <div className="flex-1 space-y-3 sm:space-y-4 min-w-0">
                         {/* Header with name and status */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                              <UserIcon className="h-5 w-5 text-gray-600" />
+                        <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-2 xs:gap-3">
+                          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0">
+                              <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                             </div>
-                            <div>
-                              <h3 className="font-semibold text-lg text-gray-900">{app.fullName}</h3>
-                              <div className="flex items-center gap-2 text-sm text-gray-500">
-                                <UserIcon className="h-3 w-3" />
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-base sm:text-lg text-gray-900 truncate">{app.fullName}</h3>
+                              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-500">
+                                <UserIcon className="h-3 w-3 flex-shrink-0" />
                                 <span>#{app.id}</span>
-                                <span>•</span>
-                                                                  <CalendarDays className="h-3 w-3" />
-                                <span>{new Date(app.createdAt).toLocaleDateString()}</span>
+                                <span className="hidden xs:inline">•</span>
+                                <CalendarDays className="h-3 w-3 flex-shrink-0 hidden xs:block" />
+                                <span className="hidden xs:inline truncate">{new Date(app.createdAt).toLocaleDateString()}</span>
                               </div>
                             </div>
                           </div>
                           
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                             {getStatusIcon(app.status)}
-                            <Badge className={`px-3 py-1 ${getStatusBadgeColor(app.status).replace('border-l-4', '').replace('border-', 'bg-').replace('-500', '-100 text-').replace('-600', '-800')}`}>
+                            <Badge className={`px-2 sm:px-3 py-1 text-xs sm:text-sm ${getStatusBadgeColor(app.status).replace('border-l-4', '').replace('border-', 'bg-').replace('-500', '-100 text-').replace('-600', '-800')}`}>
                               {formatApplicationStatus(app.status)}
                             </Badge>
                           </div>
                         </div>
 
                         {/* Contact Information Row */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <UserIcon className="h-4 w-4 text-gray-400" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4">
+                          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                            <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 flex-shrink-0" />
                             <span className="truncate">{app.email}</span>
                           </div>
                           {app.phone && (
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <UserIcon className="h-4 w-4 text-gray-400" />
-                              <span>{app.phone}</span>
+                            <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                              <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 flex-shrink-0" />
+                              <span className="truncate">{app.phone}</span>
                             </div>
                           )}
                         </div>
                         
                         {/* Certification Status Indicators */}
-                        <div className="flex flex-wrap gap-3">
-                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border">
+                        <div className="flex flex-wrap gap-1.5 sm:gap-3">
+                          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
                             {getCertificationIcon(app.foodSafetyLicense)}
-                            <span className="text-sm font-medium">Food Safety: {formatCertificationStatus(app.foodSafetyLicense)}</span>
+                            <span className="text-xs sm:text-sm font-medium">
+                              <span className="hidden sm:inline">Food Safety: </span>
+                              <span className="sm:hidden">FSL: </span>
+                              {formatCertificationStatus(app.foodSafetyLicense)}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border">
+                          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
                             {getCertificationIcon(app.foodEstablishmentCert)}
-                            <span className="text-sm font-medium">Establishment: {formatCertificationStatus(app.foodEstablishmentCert)}</span>
+                            <span className="text-xs sm:text-sm font-medium">
+                              <span className="hidden lg:inline">Establishment: </span>
+                              <span className="lg:hidden">Est: </span>
+                              {formatCertificationStatus(app.foodEstablishmentCert)}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border">
-                            <span className="text-sm font-medium">Kitchen: {formatKitchenPreference(app.kitchenPreference)}</span>
+                          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
+                            <span className="text-xs sm:text-sm font-medium">
+                              <span className="hidden sm:inline">Kitchen: </span>
+                              <span className="sm:hidden">Kit: </span>
+                              {formatKitchenPreference(app.kitchenPreference)}
+                            </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Right side: Action buttons */}
-                      <div className="flex flex-col items-end gap-3">
-                        <div className="flex items-center gap-2">
+                      <div className="flex sm:flex-col items-center sm:items-end gap-2 sm:gap-3 w-full sm:w-auto">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-none">
                           {getCtaButton(app)}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => toggleCardExpansion(app.id)}
-                            className="h-9 w-9 rounded-xl hover:bg-gray-100"
+                            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg sm:rounded-xl hover:bg-gray-100 flex-shrink-0"
                           >
                             {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
+                              <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             ) : (
-                              <ChevronRight className="h-4 w-4" />
+                              <ChevronRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             )}
                           </Button>
                         </div>
@@ -1138,18 +1151,18 @@ function AdminDashboard() {
 
                   {/* EXPANDED VIEW - Only visible when expanded */}
                   {isExpanded && (
-                    <div className="p-6 bg-gradient-to-br from-gray-50 to-gray-100/50 border-t">
+                    <div className="p-3 sm:p-4 lg:p-6 bg-gradient-to-br from-gray-50 to-gray-100/50 border-t">
                       {/* Status Notices */}
                       {app.status === "cancelled" && (
-                        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-                              <XCircle className="h-4 w-4 text-red-600" />
+                        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg sm:rounded-xl">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                              <XCircle className="h-3 w-3 sm:h-4 sm:w-4 text-red-600" />
                             </div>
-                            <div>
-                              <h4 className="text-sm font-semibold text-red-800">Application Cancelled</h4>
+                            <div className="min-w-0">
+                              <h4 className="text-xs sm:text-sm font-semibold text-red-800">Application Cancelled</h4>
                               <p className="text-xs text-red-700 mt-1">
-                                This application has been cancelled and cannot be modified. All controls are disabled.
+                                This application has been cancelled and cannot be modified.
                               </p>
                             </div>
                           </div>
@@ -1157,26 +1170,26 @@ function AdminDashboard() {
                       )}
 
                       {/* Contact Information Card */}
-                      <div className="mb-6 p-5 bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <UserIcon className="h-4 w-4 text-blue-600" />
+                      <div className="mb-4 sm:mb-6 p-3 sm:p-5 bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
                           </div>
-                          <h4 className="text-sm font-semibold text-gray-900">Contact Information</h4>
+                          <h4 className="text-xs sm:text-sm font-semibold text-gray-900">Contact Information</h4>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                            <UserIcon className="h-4 w-4 text-gray-400" />
-                            <div>
-                              <span className="text-xs text-gray-500 block">Email Address</span>
-                              <span className="text-sm font-medium text-gray-900">{app.email}</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                          <div className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 bg-gray-50 rounded-md sm:rounded-lg">
+                            <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-xs text-gray-500 block">Email</span>
+                              <span className="text-xs sm:text-sm font-medium text-gray-900 truncate block">{app.email}</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                            <UserIcon className="h-4 w-4 text-gray-400" />
-                            <div>
-                              <span className="text-xs text-gray-500 block">Phone Number</span>
-                              <span className="text-sm font-medium text-gray-900">{app.phone || 'Not provided'}</span>
+                          <div className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 bg-gray-50 rounded-md sm:rounded-lg">
+                            <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-xs text-gray-500 block">Phone</span>
+                              <span className="text-xs sm:text-sm font-medium text-gray-900 truncate block">{app.phone || 'Not provided'}</span>
                             </div>
                           </div>
                         </div>
@@ -1262,110 +1275,213 @@ function AdminDashboard() {
 
                       {/* Document Verification Section */}
                       {app.status === "approved" && (
-                        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                          <h4 className="text-sm font-semibold mb-3 text-blue-800 flex items-center gap-2">
-                            <Shield className="h-4 w-4" />
+                        <div className="mb-4 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl shadow-sm">
+                          <h4 className="text-sm font-semibold mb-4 text-indigo-800 flex items-center gap-2">
+                            <Shield className="h-5 w-5" />
                             Document Verification
                           </h4>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                             {/* Food Safety License Document */}
-                            <div className="space-y-2">
-                              <h5 className="text-xs font-medium text-gray-600">Food Safety License</h5>
+                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-indigo-600" />
+                                Food Safety License
+                              </h5>
                               {app.foodSafetyLicenseUrl ? (
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                   <a 
                                     href={app.foodSafetyLicenseUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
                                   >
-                                    <ExternalLink className="h-3 w-3" />
+                                    <ExternalLink className="h-4 w-4" />
                                     {app.foodSafetyLicenseUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
                                   </a>
-                                  <div>
+                                  <div className="flex items-center justify-between">
                                     {getDocumentStatusBadge(app.foodSafetyLicenseStatus)}
+                                    {app.foodSafetyLicenseStatus === "approved" && (
+                                      <span className="text-xs text-green-600 font-medium">✓ Verified</span>
+                                    )}
+                                    {app.foodSafetyLicenseStatus === "rejected" && (
+                                      <span className="text-xs text-red-600 font-medium">✗ Rejected</span>
+                                    )}
                                   </div>
-                                  {/* FSL Approval Controls */}
-                                  <div className="flex gap-1 pt-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
-                                      className="text-xs px-2 py-1 h-auto text-green-600 border-green-200 hover:bg-green-50"
-                                    >
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
-                                      className="text-xs px-2 py-1 h-auto text-red-600 border-red-200 hover:bg-red-50"
-                                    >
-                                      Reject
-                                    </Button>
-                                  </div>
+                                  
+                                  {/* FSL Approval Controls - Only show if status is pending */}
+                                  {app.foodSafetyLicenseStatus === "pending" && (
+                                    <div className="flex gap-2 pt-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
+                                        className="text-xs px-3 py-2 h-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Approve
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
+                                        className="text-xs px-3 py-2 h-auto text-red-600 border-red-200 hover:bg-red-50 rounded-lg font-medium transition-colors"
+                                      >
+                                        <XCircle className="h-3 w-3 mr-1" />
+                                        Reject
+                                      </Button>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Show review completion message for finalized documents */}
+                                  {(app.foodSafetyLicenseStatus === "approved" || app.foodSafetyLicenseStatus === "rejected") && (
+                                    <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+                                      <p className="text-xs text-gray-600">
+                                        <strong>Status:</strong> Review completed
+                                        {app.documentsReviewedAt && (
+                                          <span className="block mt-1">
+                                            <strong>Reviewed:</strong> {new Date(app.documentsReviewedAt).toLocaleDateString('en-US', {
+                                              year: 'numeric',
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
-                                <span className="text-gray-500 text-sm">No document uploaded</span>
+                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                  No document uploaded
+                                </div>
                               )}
                             </div>
 
                             {/* Food Establishment Certificate Document */}
-                            <div className="space-y-2">
-                              <h5 className="text-xs font-medium text-gray-600">Food Establishment Certificate</h5>
+                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-indigo-600" />
+                                Food Establishment Certificate
+                              </h5>
                               {app.foodEstablishmentCertUrl ? (
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                   <a 
                                     href={app.foodEstablishmentCertUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline text-sm flex items-center gap-1"
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
                                   >
-                                    <ExternalLink className="h-3 w-3" />
+                                    <ExternalLink className="h-4 w-4" />
                                     {app.foodEstablishmentCertUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
                                   </a>
-                                  <div>
+                                  <div className="flex items-center justify-between">
                                     {getDocumentStatusBadge(app.foodEstablishmentCertStatus)}
+                                    {app.foodEstablishmentCertStatus === "approved" && (
+                                      <span className="text-xs text-green-600 font-medium">✓ Verified</span>
+                                    )}
+                                    {app.foodEstablishmentCertStatus === "rejected" && (
+                                      <span className="text-xs text-red-600 font-medium">✗ Rejected</span>
+                                    )}
                                   </div>
-                                  {/* FEC Approval Controls */}
-                                  <div className="flex gap-1 pt-1">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
-                                      className="text-xs px-2 py-1 h-auto text-green-600 border-green-200 hover:bg-green-50"
-                                    >
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
-                                      className="text-xs px-2 py-1 h-auto text-red-600 border-red-200 hover:bg-red-50"
-                                    >
-                                      Reject
-                                    </Button>
-                                  </div>
+                                  
+                                  {/* FEC Approval Controls - Only show if status is pending */}
+                                  {app.foodEstablishmentCertStatus === "pending" && (
+                                    <div className="flex gap-2 pt-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
+                                        className="text-xs px-3 py-2 h-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Approve
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
+                                        className="text-xs px-3 py-2 h-auto text-red-600 border-red-200 hover:bg-red-50 rounded-lg font-medium transition-colors"
+                                      >
+                                        <XCircle className="h-3 w-3 mr-1" />
+                                        Reject
+                                      </Button>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Show review completion message for finalized documents */}
+                                  {(app.foodEstablishmentCertStatus === "approved" || app.foodEstablishmentCertStatus === "rejected") && (
+                                    <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+                                      <p className="text-xs text-gray-600">
+                                        <strong>Status:</strong> Review completed
+                                        {app.documentsReviewedAt && (
+                                          <span className="block mt-1">
+                                            <strong>Reviewed:</strong> {new Date(app.documentsReviewedAt).toLocaleDateString('en-US', {
+                                              year: 'numeric',
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
-                                <span className="text-gray-500 text-sm">No document uploaded</span>
+                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                  No document uploaded
+                                </div>
                               )}
                             </div>
                           </div>
 
                           {/* Admin Feedback */}
                           {app.documentsAdminFeedback && (
-                            <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                              <strong>Admin Feedback:</strong> {app.documentsAdminFeedback}
+                            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                <div>
+                                  <h6 className="text-sm font-medium text-amber-800 mb-1">Admin Feedback</h6>
+                                  <p className="text-sm text-amber-700">{app.documentsAdminFeedback}</p>
+                                </div>
+                              </div>
                             </div>
                           )}
 
-                          {app.documentsReviewedAt && (
-                            <p className="text-xs text-gray-500 mt-2">
-                              Last reviewed: {new Date(app.documentsReviewedAt).toLocaleDateString()}
-                            </p>
-                          )}
+                          {/* Overall verification status summary */}
+                          <div className="mt-4 pt-4 border-t border-indigo-100">
+                            {(() => {
+                              const fslApproved = app.foodSafetyLicenseStatus === "approved";
+                              const fecApproved = !app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved";
+                              const allApproved = fslApproved && fecApproved;
+                              const anyRejected = app.foodSafetyLicenseStatus === "rejected" || app.foodEstablishmentCertStatus === "rejected";
+                              
+                              if (allApproved) {
+                                return (
+                                  <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">
+                                    <CheckCircle className="h-4 w-4" />
+                                    All documents verified - Applicant ready for platform access
+                                  </div>
+                                );
+                              } else if (anyRejected) {
+                                return (
+                                  <div className="flex items-center gap-2 text-sm font-medium text-red-700 bg-red-50 px-3 py-2 rounded-lg">
+                                    <XCircle className="h-4 w-4" />
+                                    Document(s) rejected - Applicant needs to resubmit
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex items-center gap-2 text-sm font-medium text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg">
+                                    <Clock className="h-4 w-4" />
+                                    Pending review - Action required
+                                  </div>
+                                );
+                              }
+                            })()}
+                          </div>
                         </div>
                       )}
 
