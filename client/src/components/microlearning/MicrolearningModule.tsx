@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
-import UnlockProgress from './UnlockProgress';
 import VideoPlayer from './VideoPlayer';
 
 interface VideoData {
@@ -1059,8 +1058,6 @@ export default function MicrolearningModule({
               {/* Limited Access - Application Required (only show if user can apply) */}
               {accessLevel === 'limited' && applicationInfo?.canApply && (
                 <div className="space-y-4">
-                  <UnlockProgress hasApprovedApplication={hasApprovedApplication} />
-                  
                   {/* Detailed Application Status Card */}
                   <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
                     <div className="flex items-center gap-3 mb-4">
