@@ -183,6 +183,7 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
         <motion.div variants={itemVariants}>
           <AnimatedInput
             type="password"
+            label="New Password"
             placeholder="New password"
             icon={<Lock className="w-5 h-5" />}
             error={form.formState.errors.password?.message}
@@ -194,6 +195,7 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
         <motion.div variants={itemVariants}>
           <AnimatedInput
             type="password"
+            label="Confirm Password"
             placeholder="Confirm new password"
             icon={<Lock className="w-5 h-5" />}
             error={form.formState.errors.confirmPassword?.message}
@@ -253,6 +255,16 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
               </p>
             </div>
           </div>
+          {onGoBack && (
+            <div className="mt-4 pt-3 border-t border-green-200">
+              <button
+                onClick={onGoBack}
+                className="text-sm text-green-700 hover:text-green-800 hover:underline transition-colors"
+              >
+                Continue to login →
+              </button>
+            </div>
+          )}
         </motion.div>
       )}
     </motion.div>

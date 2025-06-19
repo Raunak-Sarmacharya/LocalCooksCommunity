@@ -143,8 +143,8 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               // Proper padding to prevent field content cutoff and center text vertically
               icon ? "pl-12 pr-4" : "pl-4 pr-4",
               showPasswordToggle ? "pr-12" : "",
-              // Always center the text vertically, adjust top padding when label is floating
-              hasValue || isFocused || hasAutofill ? "pt-6 pb-2" : "py-4",
+              // Always center the text vertically, adjust padding when label is floating
+              hasValue || isFocused || hasAutofill ? "pt-5 pb-3" : "py-0",
               // Handle autofill styling
               "autofill:bg-blue-50 autofill:text-blue-900",
               className
@@ -175,9 +175,12 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               // Ensure field content doesn't get cut off and text is centered
               clipPath: 'none',
               overflow: 'visible',
-              // Better text vertical alignment
-              verticalAlign: 'middle',
-              textAlign: 'left',
+              // Better text vertical alignment - override all other styles
+              display: 'flex',
+              alignItems: 'center',
+              lineHeight: '1.5',
+              height: '56px',
+              boxSizing: 'border-box',
             }}
           />
 

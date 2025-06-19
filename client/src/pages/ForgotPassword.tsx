@@ -1,45 +1,51 @@
-import ForgotPasswordForm from "@/components/auth/ForgotPasswordForm";
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
+import { useState } from "react";
 import { useLocation } from "wouter";
+import ForgotPasswordForm from "../components/auth/ForgotPasswordForm";
 
-export default function ForgotPasswordPage() {
+export default function ForgotPassword() {
   const [, setLocation] = useLocation();
+  const [emailSent, setEmailSent] = useState(false);
 
   const handleSuccess = () => {
-    // Stay on the page to show success message
-    console.log('✅ Password reset email sent successfully');
+    setEmailSent(true);
   };
 
   const handleGoBack = () => {
-    setLocation('/auth');
+    setLocation("/auth");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        {/* Back Button at Top */}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col">
+      {/* Back Button - Now at the top */}
+      <div className="p-6">
         <motion.button
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           onClick={handleGoBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors group"
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           <span>Back to Login</span>
         </motion.button>
+      </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <ForgotPasswordForm
-            onSuccess={handleSuccess}
-            onGoBack={handleGoBack}
-          />
+      {/* Main Content */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8"
+          >
+            <ForgotPasswordForm
+              onSuccess={handleSuccess}
+              onGoBack={handleGoBack}
+            />
+          </motion.div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 } 
