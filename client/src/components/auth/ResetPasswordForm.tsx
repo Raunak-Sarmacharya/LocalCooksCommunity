@@ -93,7 +93,15 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
 
       if (!response.ok) {
         console.error('❌ Password reset failed:', responseData);
-        throw new Error(responseData.message || 'Failed to reset password');
+        
+        // Handle specific error types more gracefully
+        if (responseData.message?.includes('invalid-action-code') || responseData.message?.includes('Invalid or expired')) {
+          throw new Error('This password reset link has expired. Please request a new password reset from the login page.');
+        } else if (responseData.message?.includes('weak-password')) {
+          throw new Error('Password is too weak. Please choose a stronger password with at least 8 characters, including uppercase, lowercase, and numbers.');
+        } else {
+          throw new Error(responseData.message || 'Failed to reset password');
+        }
       }
 
       console.log('✅ Password reset successful');
@@ -104,7 +112,7 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
     } catch (error: any) {
       console.error('❌ Password reset error:', error);
       setFormState('error');
-      setErrorMessage(error.message || 'An unexpected error occurred');
+      setErrorMessage(error.message || 'An unexpected error occurred. Please try again.');
     }
   };
 

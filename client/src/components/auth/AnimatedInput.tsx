@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Eye, EyeOff } from "lucide-react";
-import { forwardRef, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 
 interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onDrag'> {
   label?: string;
@@ -20,10 +20,10 @@ const inputVariants = {
     transition: { duration: 0.2 }
   },
   focus: {
-    scale: 1.005,
+    scale: 1.002,
     borderColor: "rgb(59, 130, 246)", // blue-500
     backgroundColor: "rgb(255, 255, 255)", // white
-    boxShadow: "0 0 0 4px rgba(59, 130, 246, 0.1)",
+    boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.08)",
     transition: { duration: 0.2 }
   },
   valid: {
@@ -34,7 +34,7 @@ const inputVariants = {
   invalid: {
     borderColor: "rgb(239, 68, 68)", // red-500
     backgroundColor: "rgba(254, 242, 242, 0.5)", // red-50/50
-    x: [-2, 2, -2, 2, 0], // Shake animation
+    x: [-1, 1, -1, 1, 0], // Gentle shake animation
     transition: { duration: 0.5 }
   }
 };
@@ -43,18 +43,18 @@ const labelVariants = {
   idle: {
     y: 0,
     scale: 1,
-    color: "rgb(156, 163, 175)", // gray-400
+    color: "rgb(107, 114, 128)", // gray-500 - better positioning
     transition: { duration: 0.2 }
   },
   focus: {
-    y: -22,
-    scale: 0.85,
+    y: -28, // More space to prevent cutoff
+    scale: 0.82,
     color: "rgb(59, 130, 246)", // blue-500
     transition: { duration: 0.2 }
   },
   filled: {
-    y: -22,
-    scale: 0.85,
+    y: -28, // Consistent positioning
+    scale: 0.82,
     color: "rgb(107, 114, 128)", // gray-500
     transition: { duration: 0.2 }
   }
@@ -65,10 +65,27 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
     const [isFocused, setIsFocused] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [internalValue, setInternalValue] = useState(value || '');
+    const [hasAutofill, setHasAutofill] = useState(false);
 
     const inputType = showPasswordToggle && !showPassword ? 'password' : showPasswordToggle && showPassword ? 'text' : type;
     const hasValue = Boolean(value || internalValue);
     
+    // Handle browser autofill detection
+    useEffect(() => {
+      const checkAutofill = () => {
+        const input = document.querySelector(`input[name="${props.name}"]`) as HTMLInputElement;
+        if (input && input.matches(':-webkit-autofill')) {
+          setHasAutofill(true);
+        }
+      };
+      
+      // Check periodically for autofill
+      const interval = setInterval(checkAutofill, 100);
+      setTimeout(() => clearInterval(interval), 2000);
+      
+      return () => clearInterval(interval);
+    }, [props.name]);
+
     const getInputState = () => {
       if (validationState === 'valid') return 'valid';
       if (validationState === 'invalid') return 'invalid';
@@ -77,12 +94,12 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
     };
 
     const getLabelState = () => {
-      if (isFocused || hasValue) return 'focus';
+      if (isFocused || hasValue || hasAutofill) return 'focus';
       return 'idle';
     };
 
     return (
-      <div className="relative">
+      <div className="relative mb-1">
         <motion.div 
           className="relative"
           variants={inputVariants}
@@ -92,14 +109,16 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           {label && (
             <motion.label
               className={cn(
-                "absolute pointer-events-none origin-left z-10 transition-all duration-200 text-sm font-medium bg-white px-1",
-                icon ? "left-10" : "left-3",
-                "top-1/2 -translate-y-1/2"
+                "absolute pointer-events-none origin-left z-20 text-sm font-medium px-2 bg-white rounded",
+                "select-none", // Prevent text selection
+                icon ? "left-8" : "left-2",
+                "top-3.5" // Better initial positioning - slightly above center
               )}
               variants={labelVariants}
               animate={getLabelState()}
               style={{
-                color: 'inherit'
+                color: 'inherit',
+                transformOrigin: 'left center'
               }}
             >
               {label}
@@ -119,14 +138,18 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
             type={inputType}
             value={value}
             className={cn(
-              "w-full px-4 py-4 border rounded-xl outline-none transition-all duration-200 h-14 text-sm bg-transparent",
-              "placeholder-transparent peer",
-              icon ? "pl-11" : "",
+              "w-full border rounded-xl outline-none transition-all duration-200 h-14 text-sm bg-transparent",
+              "placeholder-transparent peer relative z-10",
+              // Proper padding to prevent field content cutoff
+              icon ? "pl-12 pr-4" : "pl-4 pr-4",
               showPasswordToggle ? "pr-12" : "",
-              hasValue || isFocused ? "pt-6 pb-2" : "",
+              hasValue || isFocused || hasAutofill ? "pt-6 pb-2" : "py-4",
+              // Handle autofill styling
+              "autofill:bg-blue-50 autofill:text-blue-900",
               className
             )}
             placeholder=""
+            autoComplete={props.autoComplete || "off"}
             onFocus={(e) => {
               setIsFocused(true);
               props.onFocus?.(e);
@@ -139,15 +162,28 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               setInternalValue(e.target.value);
               props.onChange?.(e);
             }}
+            onAnimationStart={(e) => {
+              // Detect autofill animation
+              if (e.animationName === 'onAutoFillStart') {
+                setHasAutofill(true);
+              }
+            }}
             {...props}
+            style={{
+              ...props.style,
+              // Ensure field content doesn't get cut off
+              clipPath: 'none',
+              overflow: 'visible'
+            }}
           />
 
           {/* Password Toggle */}
           {showPasswordToggle && (
             <button
               type="button"
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors z-10"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors z-20"
               onClick={() => setShowPassword(!showPassword)}
+              tabIndex={-1} // Don't include in tab order
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>

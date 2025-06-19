@@ -19,6 +19,7 @@ export default function EnhancedAuthPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [userMeta, setUserMeta] = useState<any>(null);
   const [userMetaLoading, setUserMetaLoading] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
 
@@ -27,6 +28,25 @@ export default function EnhancedAuthPage() {
     { value: "login", label: "Login", icon: <LogIn className="w-4 h-4" /> },
     { value: "register", label: "Register", icon: <UserPlus className="w-4 h-4" /> }
   ];
+
+  // Check for success messages from URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const message = urlParams.get('message');
+    
+    if (message === 'password-reset-success') {
+      setShowSuccessMessage(true);
+      setActiveTab('login'); // Switch to login tab
+      
+      // Clear the URL parameter
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Hide success message after 8 seconds
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+      }, 8000);
+    }
+  }, []);
 
   // Get redirect path from URL
   const getRedirectPath = () => {
@@ -339,6 +359,36 @@ export default function EnhancedAuthPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.4 }}
             >
+              {/* Success Message for Password Reset */}
+              {showSuccessMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-800">Password reset successful!</p>
+                      <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
+                    </div>
+                    <button
+                      onClick={() => setShowSuccessMessage(false)}
+                      className="flex-shrink-0 text-green-400 hover:text-green-600 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               <AnimatedTabContent activeTab={activeTab}>
                 {activeTab === "login" ? (
                   <EnhancedLoginForm
@@ -408,7 +458,7 @@ export default function EnhancedAuthPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.5 }}
             >
-              Join Local Cooks
+              Join <span className="font-logo">Local Cooks</span>
             </motion.h2>
             <motion.p
               className="text-white/90 mb-8 text-lg leading-relaxed"
