@@ -1,6 +1,6 @@
 import ForgotPasswordForm from "@/components/auth/ForgotPasswordForm";
-import Logo from "@/components/ui/logo";
 import { motion } from "framer-motion";
+import { ArrowLeft } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function ForgotPasswordPage() {
@@ -22,15 +22,18 @@ export default function ForgotPasswordPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="text-center mb-8">
-            <Logo className="w-16 h-16 mx-auto mb-6" />
-            <h1 className="text-3xl font-bold text-gray-900">
-              <span className="font-logo text-primary">Local Cooks</span>
-            </h1>
-            <p className="text-gray-600 mt-2">Community Application Platform</p>
-          </div>
+        {/* Back Button at Top */}
+        <motion.button
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          onClick={handleGoBack}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors group"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          <span>Back to Login</span>
+        </motion.button>
 
+        <div className="bg-white rounded-2xl shadow-xl p-8">
           <ForgotPasswordForm
             onSuccess={handleSuccess}
             onGoBack={handleGoBack}

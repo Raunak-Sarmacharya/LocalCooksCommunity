@@ -129,7 +129,7 @@ export default function PasswordReset() {
             <h1 className="text-3xl font-bold text-gray-900">
               <span className="font-logo text-primary">Local Cooks</span>
             </h1>
-            <p className="text-gray-600 mt-2">Community Application Platform</p>
+            <p className="text-gray-600 mt-2">Password Reset</p>
           </div>
 
           <ResetPasswordForm
