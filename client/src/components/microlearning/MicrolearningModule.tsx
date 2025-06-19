@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
     ArrowRight,
@@ -288,7 +289,46 @@ export default function MicrolearningModule({
   className = ""
 }: MicrolearningModuleProps) {
   const isPlayerFocused = className.includes('player-focused');
-  const { user } = useFirebaseAuth();
+  const { user: firebaseUser } = useFirebaseAuth();
+  
+  // Check for session-based auth (for admin users)
+  const { data: sessionUser } = useQuery({
+    queryKey: ["/api/user-session"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user-session", {
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null; // Not authenticated via session
+          }
+          throw new Error(`Session auth failed: ${response.status}`);
+        }
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'session'
+        };
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Combine authentication - prioritize session for admin, Firebase for regular users
+  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseUser || sessionUser);
+  
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [currentModule, setCurrentModule] = useState<'basics' | 'hygiene'>('basics');
@@ -326,21 +366,38 @@ export default function MicrolearningModule({
 
   const loadUserProgress = async () => {
     try {
-      // Get Firebase token for authentication
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
+      if (!user) {
         console.error('No authenticated user found');
         return;
       }
-      
-      const token = await currentUser.getIdToken();
-      
-      const response = await fetch(`/api/firebase/microlearning/progress/${userId || user?.uid}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+
+      let response;
+      if (user.authMethod === 'session') {
+        // Admin session-based access
+        const effectiveUserId = userId || user.id;
+        response = await fetch(`/api/microlearning/progress/${effectiveUserId}`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': effectiveUserId.toString()
+          }
+        });
+      } else {
+        // Firebase-based access
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.error('No authenticated Firebase user found');
+          return;
         }
-      });
+        
+        const token = await currentUser.getIdToken();
+        response = await fetch(`/api/firebase/microlearning/progress/${userId || user?.uid}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
       
       if (response.ok) {
         const data = await response.json();
@@ -360,15 +417,27 @@ export default function MicrolearningModule({
         });
         
         setUserProgress(filteredProgress);
-        setCompletionConfirmed(data.confirmed || false);
-        setAccessLevel(data.accessLevel || 'limited');
-        setHasApprovedApplication(data.hasApprovedApplication || false);
+        setCompletionConfirmed(data.confirmed || data.completionConfirmed || false);
+        setAccessLevel(data.accessLevel || (user.role === 'admin' ? 'full' : 'limited'));
+        setHasApprovedApplication(data.hasApprovedApplication || (user.role === 'admin'));
         setApplicationInfo(data.applicationInfo || null);
       } else {
         console.error('Failed to load progress:', response.status, response.statusText);
+        // For admins, provide default full access even if API fails
+        if (user.role === 'admin') {
+          setAccessLevel('full');
+          setHasApprovedApplication(true);
+          setApplicationInfo({ message: 'Admin has full access to all training' });
+        }
       }
     } catch (error) {
       console.error('Failed to load progress:', error);
+      // For admins, provide default full access even if API fails
+      if (user?.role === 'admin') {
+        setAccessLevel('full');
+        setHasApprovedApplication(true);
+        setApplicationInfo({ message: 'Admin has full access to all training' });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -376,30 +445,56 @@ export default function MicrolearningModule({
 
   const updateVideoProgress = async (videoId: string, progress: number, completed: boolean = false, watchedPercentage: number = 0) => {
     try {
-      // Get Firebase token for authentication
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
+      if (!user) {
         console.error('No authenticated user found');
         return;
       }
-      
-      const token = await currentUser.getIdToken();
-      
-      const response = await fetch('/api/firebase/microlearning/progress', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          userId: userId || user?.uid,
-          videoId,
-          progress,
-          completed,
-          watchedPercentage,
-          completedAt: completed ? new Date() : undefined
-        })
-      });
+
+      let response;
+      if (user.authMethod === 'session') {
+        // Admin session-based access
+        const effectiveUserId = userId || user.id;
+        response = await fetch('/api/microlearning/progress', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-ID': effectiveUserId.toString()
+          },
+          body: JSON.stringify({
+            userId: effectiveUserId,
+            videoId,
+            progress,
+            completed,
+            watchedPercentage,
+            completedAt: completed ? new Date() : undefined
+          })
+        });
+      } else {
+        // Firebase-based access
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.error('No authenticated Firebase user found');
+          return;
+        }
+        
+        const token = await currentUser.getIdToken();
+        response = await fetch('/api/firebase/microlearning/progress', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            userId: userId || user?.uid,
+            videoId,
+            progress,
+            completed,
+            watchedPercentage,
+            completedAt: completed ? new Date() : undefined
+          })
+        });
+      }
 
       if (response.ok) {
         // Update local state immediately for better UX

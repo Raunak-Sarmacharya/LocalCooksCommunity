@@ -23,18 +23,11 @@ export default function Header() {
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
   
-  // Check for session-based auth (ONLY for admin routes - disabled for regular users)
-  const isAdminRoute = window.location.pathname.startsWith('/admin');
-  
+  // Always check for session-based auth, not just for admin routes
   const { data: sessionUser } = useQuery({
     queryKey: ["/api/user-session"],
     queryFn: async () => {
       try {
-        // Only check session auth for admin routes and if no Firebase user
-        if (firebaseAuth.user || !isAdminRoute) {
-          return null;
-        }
-        
         const response = await fetch("/api/user-session", {
           credentials: "include",
           headers: {
@@ -63,11 +56,12 @@ export default function Header() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    enabled: !firebaseAuth.user && isAdminRoute // Only enable for admin routes without Firebase user
+    // Always enable session check - admins need to be authenticated everywhere
+    enabled: true
   });
 
-  // Prioritize Firebase auth over session auth
-  const user = firebaseAuth.user || (isAdminRoute ? sessionUser : null);
+  // Properly combine Firebase and session auth - prioritize Firebase for regular users, session for admins
+  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseAuth.user || sessionUser);
   
   const logout = async () => {
     if (sessionUser) {

@@ -27,8 +27,47 @@ import React from 'react';
 import { Link, useLocation } from 'wouter';
 
 export default function MicrolearningOverview() {
-  const { user, loading } = useFirebaseAuth();
+  const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
+
+  // Check for session-based auth (for admin users)
+  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
+    queryKey: ["/api/user-session"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user-session", {
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null; // Not authenticated via session
+          }
+          throw new Error(`Session auth failed: ${response.status}`);
+        }
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'session'
+        };
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Combine authentication - prioritize session for admin, Firebase for regular users
+  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseUser || sessionUser);
+  const loading = firebaseLoading || sessionLoading;
 
   // Redirect to login if not authenticated
   React.useEffect(() => {
@@ -38,104 +77,168 @@ export default function MicrolearningOverview() {
     }
   }, [user, loading, navigate]);
 
-  // Query training access level and progress - Same as dashboard
+  // Query training access level and progress - Support both Firebase and session auth
   const { data: trainingAccess, isLoading: isLoadingTrainingAccess, error: trainingAccessError } = useQuery({
-    queryKey: ["training-access", user?.uid],
+    queryKey: ["training-access", user?.uid || user?.id],
     queryFn: async () => {
-      if (!user?.uid) return null;
+      if (!user) return null;
       
-      console.log('🔄 MicrolearningOverview: Fetching training access for user:', user.uid);
+      console.log('🔄 MicrolearningOverview: Fetching training access for user:', user);
       
       try {
-        // Get Firebase token for authentication
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-          throw new Error("No authenticated user found");
-        }
-        
-        const token = await currentUser.getIdToken();
-        
-        const response = await fetch(`/api/firebase/microlearning/progress/${user.uid}`, {
-          method: "GET",
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-        });
+        // Use different endpoints based on auth method
+        if (user.authMethod === 'session') {
+          // Admin session-based access
+          const userId = user.id;
+          const response = await fetch(`/api/microlearning/progress/${userId}`, {
+            method: "GET",
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-User-ID': userId.toString()
+            },
+          });
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.log('📝 MicrolearningOverview: No training progress found - defaulting to limited access');
-            // No training progress found - default to limited access
-            return {
-              accessLevel: 'limited',
-              hasApprovedApplication: false,
-              applicationInfo: { message: 'Submit application for full training access' }
-            };
+          if (!response.ok) {
+            if (response.status === 404) {
+              console.log('📝 MicrolearningOverview: No training progress found (session) - defaulting to admin access');
+              // Admins get full access by default
+              return {
+                accessLevel: 'full',
+                hasApprovedApplication: true,
+                isAdmin: true,
+                applicationInfo: { message: 'Admin has full access to all training' }
+              };
+            }
+            throw new Error(`Failed to fetch training access (session): ${response.status} ${response.statusText}`);
           }
-          throw new Error(`Failed to fetch training access: ${response.status} ${response.statusText}`);
-        }
 
-        const result = await response.json();
-        console.log('✅ MicrolearningOverview: Training access fetched:', result);
-        return result;
+          const result = await response.json();
+          console.log('✅ MicrolearningOverview: Training access fetched (session):', result);
+          return result;
+        } else {
+          // Firebase-based access
+          const currentUser = auth.currentUser;
+          if (!currentUser) {
+            throw new Error("No authenticated Firebase user found");
+          }
+          
+          const token = await currentUser.getIdToken();
+          
+          const response = await fetch(`/api/firebase/microlearning/progress/${user.uid}`, {
+            method: "GET",
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+          });
+
+          if (!response.ok) {
+            if (response.status === 404) {
+              console.log('📝 MicrolearningOverview: No training progress found (firebase) - defaulting to limited access');
+              return {
+                accessLevel: 'limited',
+                hasApprovedApplication: false,
+                applicationInfo: { message: 'Submit application for full training access' }
+              };
+            }
+            throw new Error(`Failed to fetch training access (firebase): ${response.status} ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          console.log('✅ MicrolearningOverview: Training access fetched (firebase):', result);
+          return result;
+        }
       } catch (error) {
         console.error("❌ MicrolearningOverview: Error fetching training access:", error);
+        // Return admin access if it's a session user, limited for others
+        if (user.authMethod === 'session' && user.role === 'admin') {
+          return {
+            accessLevel: 'full',
+            hasApprovedApplication: true,
+            isAdmin: true,
+            applicationInfo: { message: 'Admin has full access to all training' }
+          };
+        }
         return {
           accessLevel: 'limited',
           hasApprovedApplication: false,
-          applicationInfo: { message: 'Submit application for full training access' }
+          applicationInfo: { message: 'Error loading training access' }
         };
       }
     },
-    enabled: Boolean(user?.uid),
-    staleTime: 30 * 1000, // 30 seconds
+    enabled: Boolean(user),
+    staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
-  // Query microlearning completion status
+  // Query completion status - Support both Firebase and session auth
   const { data: microlearningCompletion, isLoading: isLoadingCompletion, error: completionError } = useQuery({
-    queryKey: ["microlearning-completion", user?.uid],
+    queryKey: ["microlearning-completion", user?.uid || user?.id],
     queryFn: async () => {
-      if (!user?.uid) return null;
-      
-      console.log('🔄 MicrolearningOverview: Fetching completion status for user:', user.uid);
+      if (!user) return null;
       
       try {
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-          throw new Error("No authenticated user found");
-        }
-        
-        const token = await currentUser.getIdToken();
-        
-        const response = await fetch(`/api/firebase/microlearning/completion/${user.uid}`, {
-          method: "GET",
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-        });
+        if (user.authMethod === 'session') {
+          // Admin session-based access
+          const userId = user.id;
+          const response = await fetch(`/api/microlearning/completion/${userId}`, {
+            method: "GET",
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-User-ID': userId.toString()
+            },
+          });
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.log('📝 MicrolearningOverview: No completion found');
-            return null; // No completion found
+          if (!response.ok) {
+            if (response.status === 404) {
+              console.log('📝 MicrolearningOverview: No completion found (session)');
+              return null;
+            }
+            throw new Error(`Failed to fetch completion status (session): ${response.status} ${response.statusText}`);
           }
-          throw new Error(`Failed to fetch completion status: ${response.status} ${response.statusText}`);
-        }
 
-        const result = await response.json();
-        console.log('✅ MicrolearningOverview: Completion status fetched:', result);
-        return result;
+          const result = await response.json();
+          console.log('✅ MicrolearningOverview: Completion status fetched (session):', result);
+          return result;
+        } else {
+          // Firebase-based access
+          const currentUser = auth.currentUser;
+          if (!currentUser) {
+            throw new Error("No authenticated Firebase user found");
+          }
+          
+          const token = await currentUser.getIdToken();
+          
+          const response = await fetch(`/api/firebase/microlearning/completion/${user.uid}`, {
+            method: "GET",
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+          });
+
+          if (!response.ok) {
+            if (response.status === 404) {
+              console.log('📝 MicrolearningOverview: No completion found (firebase)');
+              return null;
+            }
+            throw new Error(`Failed to fetch completion status (firebase): ${response.status} ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          console.log('✅ MicrolearningOverview: Completion status fetched (firebase):', result);
+          return result;
+        }
       } catch (error) {
         console.error("❌ MicrolearningOverview: Error fetching microlearning completion:", error);
         return null;
       }
     },
-    enabled: Boolean(user?.uid),
+    enabled: Boolean(user),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
     retry: 3,
