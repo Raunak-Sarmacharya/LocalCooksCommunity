@@ -125,18 +125,26 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
         animate="visible"
       >
         <motion.div variants={itemVariants} className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-3">
-            Invalid Reset Link
+            Password Reset Successful!
           </h2>
           <p className="text-gray-600 mb-6">
-            This password reset link is invalid or has expired. Please request a new one.
+            Your password has been successfully updated. You can now log in with your new password.
           </p>
           {onGoBack && (
             <button
               onClick={onGoBack}
-              className="text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
-              Back to login
+              <ArrowLeft className="w-4 h-4" />
+              Go to Login Page
             </button>
           )}
         </motion.div>
