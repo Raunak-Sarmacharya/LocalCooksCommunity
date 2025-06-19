@@ -1,8 +1,8 @@
-import { Link } from "wouter";
-import { Phone, Mail, MapPin, Heart, ChefHat } from "lucide-react";
-import { FaFacebook, FaLinkedin } from "react-icons/fa";
-import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
+import Logo from "@/components/ui/logo";
+import { ChefHat, Heart, Mail, MapPin, Phone } from "lucide-react";
+import { FaFacebook, FaLinkedin } from "react-icons/fa";
+import { Link } from "wouter";
 
 export default function Footer() {
   return (
@@ -105,7 +105,14 @@ export default function Footer() {
         <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
           <div className="flex flex-col md:flex-row items-center gap-4">
             <p>&copy; {new Date().getFullYear()} Local Cooks. All rights reserved.</p>
-
+            <div className="flex gap-4">
+              <Link href="/terms" className="text-gray-400 hover:text-white hover-text">
+                Terms & Conditions
+              </Link>
+              <Link href="/privacy" className="text-gray-400 hover:text-white hover-text">
+                Privacy Policy
+              </Link>
+            </div>
           </div>
           <div className="flex mt-4 md:mt-0">
             <span className="flex items-center">

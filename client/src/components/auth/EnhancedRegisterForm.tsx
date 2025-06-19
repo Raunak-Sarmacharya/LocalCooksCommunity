@@ -342,23 +342,27 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
           <motion.div variants={itemVariants} className="text-center">
             <p className="text-xs text-gray-500 leading-relaxed">
               By creating an account, you agree to our{' '}
-              <motion.button
-                type="button"
+              <motion.a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-700 hover:underline"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                Terms of Service
-              </motion.button>
+                Terms & Conditions
+              </motion.a>
               {' '}and{' '}
-              <motion.button
-                type="button"
+              <motion.a
+                href="/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-700 hover:underline"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
                 Privacy Policy
-              </motion.button>
+              </motion.a>
             </p>
           </motion.div>
         </form>

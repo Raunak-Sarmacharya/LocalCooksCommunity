@@ -51,6 +51,8 @@ function Router() {
         <Route path="/admin-test" component={AdminLoginTest} />
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         <Route path="/password-reset" component={PasswordReset} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/privacy" component={Privacy} />
         <Route path="/welcome-test">
           <WelcomeScreen onComplete={() => console.log('Welcome test completed')} />
         </Route>
