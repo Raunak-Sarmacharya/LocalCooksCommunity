@@ -728,7 +728,7 @@ function AdminDashboard() {
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-blue-600" />
+                  <UserIcon className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Total</p>
@@ -814,7 +814,7 @@ function AdminDashboard() {
                   onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
                   className="rounded-xl"
                 >
-                  <FileText className="h-4 w-4 mr-2" />
+                  <UserIcon className="h-4 w-4 mr-2" />
                   Has Documents
                 </Button>
                 
@@ -835,7 +835,7 @@ function AdminDashboard() {
             <Tabs defaultValue="all" className="w-full">
               <TabsList className="rounded-xl bg-gray-100 p-1">
                 <TabsTrigger value="all" className="flex items-center gap-2 rounded-lg">
-                  <Hash className="h-3.5 w-3.5" />
+                  <UserIcon className="h-3.5 w-3.5" />
                   All ({statusCounts.total})
                 </TabsTrigger>
                 <TabsTrigger value="inReview" className="flex items-center gap-2 rounded-lg">
@@ -966,7 +966,7 @@ function AdminDashboard() {
                             <div>
                               <h3 className="font-semibold text-lg text-gray-900">{app.fullName}</h3>
                               <div className="flex items-center gap-2 text-sm text-gray-500">
-                                <Hash className="h-3 w-3" />
+                                <UserIcon className="h-3 w-3" />
                                 <span>#{app.id}</span>
                                 <span>•</span>
                                 <Calendar className="h-3 w-3" />
@@ -986,12 +986,12 @@ function AdminDashboard() {
                         {/* Contact Information Row */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Mail className="h-4 w-4 text-gray-400" />
+                            <UserIcon className="h-4 w-4 text-gray-400" />
                             <span className="truncate">{app.email}</span>
                           </div>
                           {app.phone && (
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Phone className="h-4 w-4 text-gray-400" />
+                              <UserIcon className="h-4 w-4 text-gray-400" />
                               <span>{app.phone}</span>
                             </div>
                           )}
@@ -1108,20 +1108,20 @@ function AdminDashboard() {
                       <div className="mb-6 p-5 bg-white rounded-xl border border-gray-200 shadow-sm">
                         <div className="flex items-center gap-3 mb-4">
                           <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <Mail className="h-4 w-4 text-blue-600" />
+                            <UserIcon className="h-4 w-4 text-blue-600" />
                           </div>
                           <h4 className="text-sm font-semibold text-gray-900">Contact Information</h4>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                            <Mail className="h-4 w-4 text-gray-400" />
+                            <UserIcon className="h-4 w-4 text-gray-400" />
                             <div>
                               <span className="text-xs text-gray-500 block">Email Address</span>
                               <span className="text-sm font-medium text-gray-900">{app.email}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                            <Phone className="h-4 w-4 text-gray-400" />
+                            <UserIcon className="h-4 w-4 text-gray-400" />
                             <div>
                               <span className="text-xs text-gray-500 block">Phone Number</span>
                               <span className="text-sm font-medium text-gray-900">{app.phone || 'Not provided'}</span>
