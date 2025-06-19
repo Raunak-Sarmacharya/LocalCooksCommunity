@@ -8,8 +8,50 @@ import {
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useLocation } from "wouter";
+
+// Safe Icon Component to prevent crashes
+// Safe Icon Component to prevent crashes
+function SafeIcon({ IconComponent, fallback = UserIcon, className, ...props }: any) {
+  try {
+    if (IconComponent) {
+      return <IconComponent className={className} {...props} />;
+    }
+    return <fallback className={className} {...props} />;
+  } catch (error) {
+    console.warn('Icon render error:', error);
+    return <UserIcon className={className} {...props} />;
+  }
+}
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{children: React.ReactNode, fallback?: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error('Component error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-600 text-sm">Something went wrong. Please refresh the page.</p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -601,7 +643,16 @@ function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
+    <ErrorBoundary fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Admin Dashboard Error</h2>
+          <p className="text-gray-600 mb-4">Something went wrong. Please refresh the page.</p>
+          <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+        </div>
+      </div>
+    }>
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
       {/* Subtle background pattern */}
       <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
         <div 
@@ -804,7 +855,7 @@ function AdminDashboard() {
                   onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
                   className="rounded-xl"
                 >
-                  <Calendar className="h-4 w-4 mr-2" />
+                  <CalendarDays className="h-4 w-4 mr-2" />
                   Recent (3 days)
                 </Button>
                 
@@ -879,6 +930,7 @@ function AdminDashboard() {
       </main>
       <Footer />
     </div>
+    </ErrorBoundary>
   );
 
   // Helper function to render application list
@@ -969,7 +1021,7 @@ function AdminDashboard() {
                                 <UserIcon className="h-3 w-3" />
                                 <span>#{app.id}</span>
                                 <span>•</span>
-                                <Calendar className="h-3 w-3" />
+                                                                  <CalendarDays className="h-3 w-3" />
                                 <span>{new Date(app.createdAt).toLocaleDateString()}</span>
                               </div>
                             </div>
