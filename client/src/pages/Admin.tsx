@@ -29,6 +29,10 @@ import {
     ChevronRight,
     Clock,
     ExternalLink,
+    FileText,
+    Hash,
+    Mail,
+    Phone,
     RefreshCw,
     Search,
     Shield,
@@ -626,7 +630,7 @@ function AdminDashboard() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
-                  <Users className="h-6 w-6" />
+                  <Settings className="h-6 w-6" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
