@@ -18,7 +18,9 @@ import ForgotPasswordPage from "@/pages/ForgotPassword";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/not-found";
 import PasswordReset from "@/pages/PasswordReset";
+import Privacy from "@/pages/Privacy";
 import Success from "@/pages/Success";
+import Terms from "@/pages/Terms";
 import WelcomeScreen from "@/pages/welcome-screen";
 
 // Lazy load larger components
