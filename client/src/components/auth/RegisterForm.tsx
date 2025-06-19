@@ -208,13 +208,13 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
           {/* Terms and Privacy */}
           <p className="text-xs text-gray-500 text-center leading-relaxed">
             By creating an account, you agree to our{' '}
-            <button type="button" className="text-blue-600 hover:text-blue-700 hover:underline font-medium">
-              Terms of Service
-            </button>
+            <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline font-medium">
+              Terms & Conditions
+            </a>
             {' '}and{' '}
-            <button type="button" className="text-blue-600 hover:text-blue-700 hover:underline font-medium">
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 hover:underline font-medium">
               Privacy Policy
-            </button>
+            </a>
           </p>
         </form>
       </Form>
