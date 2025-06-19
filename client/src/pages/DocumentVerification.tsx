@@ -3,7 +3,6 @@ import Header from "@/components/layout/Header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +26,133 @@ import {
 import React, { useState } from "react";
 import { Link } from "wouter";
 
+// Custom FileUpload component to fix integration issues
+interface FileUploadProps {
+  fieldName: string;
+  onFileSelect: (file: File | null) => void;
+  accept?: string;
+  maxSize?: number;
+  className?: string;
+}
+
+function SimpleFileUpload({ fieldName, onFileSelect, accept = ".pdf,.jpg,.jpeg,.png,.webp", maxSize = 4.5, className = "" }: FileUploadProps) {
+  const { toast } = useToast();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const validateFile = (file: File): boolean => {
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload PDF, JPG, PNG, or WebP files only.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    if (file.size > maxSize * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: `Please upload files smaller than ${maxSize}MB.`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    return true;
+  };
+
+  const handleFileSelect = (file: File | null) => {
+    if (file && !validateFile(file)) {
+      return;
+    }
+    setSelectedFile(file);
+    onFileSelect(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  return (
+    <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+      isDragOver 
+        ? 'border-primary bg-primary/5' 
+        : 'border-gray-300 hover:border-gray-400'
+    } ${className}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {selectedFile ? (
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center gap-3">
+            <FileText className="h-5 w-5 text-gray-500" />
+            <div className="text-left">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {selectedFile.name}
+              </p>
+              <p className="text-xs text-gray-500">
+                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => handleFileSelect(null)}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            <XCircle className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <>
+          <input
+            id={fieldName}
+            type="file"
+            accept={accept}
+            onChange={(e) => {
+              const file = e.target.files?.[0] || null;
+              handleFileSelect(file);
+            }}
+            className="hidden"
+          />
+          <label htmlFor={fieldName} className="cursor-pointer">
+            <div className="flex flex-col items-center space-y-2">
+              <Upload className="h-8 w-8 text-gray-400" />
+              <div className="text-sm text-gray-600">
+                <span className="font-medium text-primary">Click to upload</span> or drag and drop
+              </div>
+              <p className="text-xs text-gray-500">
+                PDF, JPG, PNG, WebP (max {maxSize}MB)
+              </p>
+            </div>
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DocumentVerification() {
   const { user } = useFirebaseAuth();
   const { verification, loading, createMutation, updateMutation, refetch } = useDocumentVerification();
@@ -36,10 +162,9 @@ export default function DocumentVerification() {
   const [foodSafetyLicenseUrl, setFoodSafetyLicenseUrl] = useState("");
   const [foodEstablishmentCertUrl, setFoodEstablishmentCertUrl] = useState("");
   const [fileUploads, setFileUploads] = useState<Record<string, File>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Initialize file upload hook
-  const { uploadFile, isUploading, uploadProgress, error: uploadError } = useFileUpload({
+  const { uploadFile, isUploading, uploadProgress } = useFileUpload({
     maxSize: 4.5 * 1024 * 1024, // 4.5MB (Vercel limit)
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     onSuccess: (response) => {
@@ -136,12 +261,45 @@ export default function DocumentVerification() {
     );
   }
 
+  // Helper functions for document-specific logic
+  const hasDocuments = verification && (verification.foodSafetyLicenseUrl || verification.foodEstablishmentCertUrl);
+  const documentsCount = verification ? 
+    (verification.foodSafetyLicenseUrl ? 1 : 0) + (verification.foodEstablishmentCertUrl ? 1 : 0) : 0;
+
+  // Document-specific status (not application status)
+  const getDocumentStatus = () => {
+    if (!hasDocuments) return "Not Started";
+    
+    const foodSafetyApproved = verification?.foodSafetyLicenseStatus === "approved";
+    const establishmentApproved = !verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved";
+    
+    if (foodSafetyApproved && establishmentApproved) return "Verified";
+    
+    const anyRejected = verification?.foodSafetyLicenseStatus === "rejected" || 
+                      verification?.foodEstablishmentCertStatus === "rejected";
+    if (anyRejected) return "Needs Attention";
+    
+    return "Under Review";
+  };
+
+  const getVerificationStatus = () => {
+    if (!hasDocuments) return "Pending";
+    
+    const foodSafetyApproved = verification?.foodSafetyLicenseStatus === "approved";
+    const establishmentApproved = !verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved";
+    
+    if (foodSafetyApproved && establishmentApproved) return "Complete";
+    if (foodSafetyApproved && verification?.foodEstablishmentCertUrl) return "Partial";
+    
+    return "Pending";
+  };
+
   // File upload handlers
   const handleFileUpload = (fieldName: string, file: File | null) => {
-    setFileUploads((prev: Record<string, File>) => {
-      const updated: Record<string, File> = { ...prev };
+    setFileUploads((prev) => {
+      const updated = { ...prev };
       if (file) {
-        updated[fieldName] = file as File;
+        updated[fieldName] = file;
       } else {
         delete updated[fieldName];
       }
@@ -151,7 +309,6 @@ export default function DocumentVerification() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setErrors({});
     
     const hasFiles = Object.keys(fileUploads).length > 0;
     const hasUrls = foodSafetyLicenseUrl.trim() || foodEstablishmentCertUrl.trim();
@@ -244,9 +401,9 @@ export default function DocumentVerification() {
     }
   };
 
-  const isFullyVerified = verification && 
-    verification.foodSafetyLicenseStatus === "approved" &&
-    (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
+  const isFullyVerified = hasDocuments && 
+    verification?.foodSafetyLicenseStatus === "approved" &&
+    (!verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved");
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
@@ -266,183 +423,67 @@ export default function DocumentVerification() {
           </Button>
         </motion.div>
 
-        {/* Header Section - Similar to dashboard cards */}
+        {/* Priority Card: Requirements & Process */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 mb-8 backdrop-blur-sm"
+          className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 backdrop-blur-sm mb-8"
         >
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-              <Shield className="h-6 w-6 text-white" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+              <Info className="h-6 w-6 text-white" />
             </div>
-            <div className="flex-1">
+            <div>
               <h1 className="text-2xl font-semibold text-gray-900">Document Verification</h1>
-              <p className="text-gray-500">Upload and manage your certificates</p>
-            </div>
-            {isFullyVerified && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-xl">
-                <CheckCircle className="h-5 w-5" />
-                <span className="font-medium">Fully Verified</span>
-              </div>
-            )}
-          </div>
-
-          {/* Status overview */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <FileText className="h-4 w-4 text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600">Documents</p>
-                  <p className="font-medium text-gray-900">
-                    {verification ? 
-                      (verification.foodEstablishmentCertUrl ? '2 Uploaded' : '1 Uploaded') 
-                      : 'None'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
-                  <Clock className="h-4 w-4 text-yellow-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600">Status</p>
-                  <p className="font-medium text-gray-900">
-                    {isFullyVerified ? 'Verified' : 
-                     verification ? 'Under Review' : 'Not Started'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                  <Shield className="h-4 w-4 text-green-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600">Verified</p>
-                  <p className="font-medium text-gray-900">
-                    {verification && verification.foodSafetyLicenseStatus === 'approved' ? 
-                      (verification.foodEstablishmentCertStatus === 'approved' || !verification.foodEstablishmentCertUrl ? 
-                        'Complete' : 'Partial') 
-                      : 'Pending'}
-                  </p>
-                </div>
-              </div>
+              <p className="text-gray-500">Upload your certificates to get verified</p>
             </div>
           </div>
-        </motion.div>
-
-        {/* Main Content Grid - Similar to dashboard layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          {/* Left Column - Current Documents & Status */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="space-y-6"
-          >
-            {/* Current Documents Card */}
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-white" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Requirements */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Required Documents</h3>
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-red-50 to-red-100/50">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-red-600 font-medium text-sm">*</span>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-2">Food Safety License</h4>
+                      <ul className="space-y-1 text-sm text-gray-600">
+                        <li>• Valid, current certification</li>
+                        <li>• Clear, readable quality</li>
+                        <li>• PDF, JPG, PNG, WebP format</li>
+                        <li>• Maximum 4.5MB file size</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Your Documents</h3>
-                  <p className="text-sm text-gray-500">Current verification status</p>
+                
+                <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-blue-100/50">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-blue-600 font-medium text-sm">+</span>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-2">Food Establishment Certificate</h4>
+                      <ul className="space-y-1 text-sm text-gray-600">
+                        <li>• Optional but recommended</li>
+                        <li>• Enhances credibility</li>
+                        <li>• Shows regulatory compliance</li>
+                        <li>• Same format requirements</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              {verification ? (
-                <div className="space-y-4">
-                  {/* Food Safety License */}
-                  <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-medium text-gray-900">Food Safety License</h4>
-                        <p className="text-sm text-gray-600">Required certification</p>
-                      </div>
-                      {verification.foodSafetyLicenseStatus && 
-                        getStatusBadge(verification.foodSafetyLicenseStatus)}
-                    </div>
-                    
-                    {verification.foodSafetyLicenseUrl ? (
-                      <Button asChild variant="outline" size="sm" className="rounded-lg">
-                        <a 
-                          href={verification.foodSafetyLicenseUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                        >
-                          <FileText className="h-4 w-4 mr-2" />
-                          View Document
-                        </a>
-                      </Button>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic">Not uploaded</p>
-                    )}
-                  </div>
-
-                  {/* Food Establishment Certificate */}
-                  <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h4 className="font-medium text-gray-900">Food Establishment Certificate</h4>
-                        <p className="text-sm text-gray-600">Optional (recommended)</p>
-                      </div>
-                      {verification.foodEstablishmentCertStatus && 
-                        getStatusBadge(verification.foodEstablishmentCertStatus)}
-                    </div>
-                    
-                    {verification.foodEstablishmentCertUrl ? (
-                      <Button asChild variant="outline" size="sm" className="rounded-lg">
-                        <a 
-                          href={verification.foodEstablishmentCertUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                        >
-                          <FileText className="h-4 w-4 mr-2" />
-                          View Document
-                        </a>
-                      </Button>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic">Not uploaded</p>
-                    )}
-                  </div>
-
-                  {/* Admin Feedback */}
-                  {verification.documentsAdminFeedback && (
-                    <Alert className="border-blue-200 bg-blue-50">
-                      <Info className="h-4 w-4 text-blue-600" />
-                      <AlertDescription className="text-blue-800">
-                        <span className="font-medium">Admin Feedback:</span> {verification.documentsAdminFeedback}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                    <Upload className="h-8 w-8 text-gray-400" />
-                  </div>
-                  <h4 className="font-medium text-gray-900 mb-2">No Documents Yet</h4>
-                  <p className="text-sm text-gray-600">Upload your first document to get started with verification.</p>
-                </div>
-              )}
             </div>
 
             {/* Process Steps */}
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 backdrop-blur-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">Verification Process</h3>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Verification Process</h3>
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -450,7 +491,7 @@ export default function DocumentVerification() {
                   </div>
                   <div>
                     <h4 className="font-medium text-gray-900">Upload Documents</h4>
-                    <p className="text-sm text-gray-600">Provide your certifications and licenses</p>
+                    <p className="text-sm text-gray-600">Provide your certifications via file upload or URL</p>
                   </div>
                 </div>
                 
@@ -460,7 +501,7 @@ export default function DocumentVerification() {
                   </div>
                   <div>
                     <h4 className="font-medium text-gray-900">Admin Review</h4>
-                    <p className="text-sm text-gray-600">Our team verifies authenticity and compliance</p>
+                    <p className="text-sm text-gray-600">Our team verifies authenticity and compliance (1-3 days)</p>
                   </div>
                 </div>
                 
@@ -475,198 +516,276 @@ export default function DocumentVerification() {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
+        </motion.div>
 
-          {/* Right Column - Document Management */}
+        {/* Status Overview - Only show if documents exist */}
+        {hasDocuments && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 mb-8 backdrop-blur-sm"
           >
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
-                  <Upload className="h-5 w-5 text-white" />
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                <Shield className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900">Document Status</h2>
+                <p className="text-gray-500">Your verification progress</p>
+              </div>
+              {isFullyVerified && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-xl">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="font-medium">Fully Verified</span>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {verification ? 'Update Documents' : 'Upload Documents'}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {verification ? 'Replace or add new documents' : 'Submit your certificates for verification'}
-                  </p>
+              )}
+            </div>
+
+            {/* Status overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600">Documents</p>
+                    <p className="font-medium text-gray-900">
+                      {documentsCount} {documentsCount === 1 ? 'Uploaded' : 'Uploaded'}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Warning for existing users */}
-              {verification && (
-                <Alert className="mb-6 border-yellow-200 bg-yellow-50">
-                  <Info className="h-4 w-4 text-yellow-600" />
-                  <AlertDescription className="text-yellow-800">
-                    <span className="font-medium">Note:</span> Updating documents will reset your verification status to pending review.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Document Upload Form */}
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <Tabs defaultValue="upload" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 rounded-xl">
-                    <TabsTrigger value="upload" className="rounded-lg">File Upload</TabsTrigger>
-                    <TabsTrigger value="url" className="rounded-lg">URL Links</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="upload" className="space-y-6 mt-6">
-                    {/* Food Safety License Upload */}
-                    <div className="space-y-3">
-                      <Label className="text-sm font-medium text-gray-900">
-                        Food Safety License <span className="text-red-500">*</span>
-                      </Label>
-                      <FileUpload
-                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        onFileSelect={(file) => handleFileUpload('foodSafetyLicense', file)}
-                        maxSize={4.5 * 1024 * 1024}
-                        className="border-dashed border-2 border-gray-300 rounded-xl p-6 text-center hover:border-primary transition-colors"
-                      />
-                    </div>
-
-                    {/* Food Establishment Certificate Upload */}
-                    <div className="space-y-3">
-                      <Label className="text-sm font-medium text-gray-900">
-                        Food Establishment Certificate <span className="text-gray-400">(Optional)</span>
-                      </Label>
-                      <FileUpload
-                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        onFileSelect={(file) => handleFileUpload('foodEstablishmentCert', file)}
-                        maxSize={4.5 * 1024 * 1024}
-                        className="border-dashed border-2 border-gray-300 rounded-xl p-6 text-center hover:border-primary transition-colors"
-                      />
-                    </div>
-                  </TabsContent>
-                  
-                  <TabsContent value="url" className="space-y-6 mt-6">
-                    {/* Food Safety License URL */}
-                    <div className="space-y-3">
-                      <Label htmlFor="foodSafetyUrl" className="text-sm font-medium text-gray-900">
-                        Food Safety License URL <span className="text-red-500">*</span>
-                      </Label>
-                      <div className="relative">
-                        <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                          id="foodSafetyUrl"
-                          type="url"
-                          placeholder="https://example.com/your-license.pdf"
-                          value={foodSafetyLicenseUrl}
-                          onChange={(e) => setFoodSafetyLicenseUrl(e.target.value)}
-                          className="pl-10 rounded-xl"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Food Establishment Certificate URL */}
-                    <div className="space-y-3">
-                      <Label htmlFor="establishmentUrl" className="text-sm font-medium text-gray-900">
-                        Food Establishment Certificate URL <span className="text-gray-400">(Optional)</span>
-                      </Label>
-                      <div className="relative">
-                        <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input
-                          id="establishmentUrl"
-                          type="url"
-                          placeholder="https://example.com/your-certificate.pdf"
-                          value={foodEstablishmentCertUrl}
-                          onChange={(e) => setFoodEstablishmentCertUrl(e.target.value)}
-                          className="pl-10 rounded-xl"
-                        />
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-
-                {/* Submit Button */}
-                <div className="pt-4 border-t border-gray-200">
-                  <Button 
-                    type="submit" 
-                    disabled={isUploading || createMutation.isPending || updateMutation.isPending}
-                    className="w-full rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-medium py-3"
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Uploading... {Math.round(uploadProgress)}%
-                      </>
-                    ) : createMutation.isPending || updateMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        {verification ? 'Updating...' : 'Submitting...'}
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4 mr-2" />
-                        {verification ? 'Update Documents' : 'Submit Documents'}
-                      </>
-                    )}
-                  </Button>
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
+                    <Clock className="h-4 w-4 text-yellow-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600">Status</p>
+                    <p className="font-medium text-gray-900">{getDocumentStatus()}</p>
+                  </div>
                 </div>
-              </form>
+              </div>
+
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                    <Shield className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600">Verified</p>
+                    <p className="font-medium text-gray-900">{getVerificationStatus()}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </motion.div>
-        </div>
+        )}
 
-        {/* Requirements Section - Full Width */}
+        {/* Main Document Management Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="mt-8"
+          transition={{ delay: 0.3 }}
+          className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 backdrop-blur-sm"
         >
-          <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 backdrop-blur-sm">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                <Info className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Document Requirements</h3>
-                <p className="text-sm text-gray-500">What we need for verification</p>
-              </div>
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+              <Upload className="h-6 w-6 text-white" />
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-6 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-red-600 font-medium text-sm">*</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900 mb-2">Food Safety License (Required)</h4>
-                    <ul className="space-y-1 text-sm text-gray-600">
-                      <li>• Valid, current food safety certification</li>
-                      <li>• Clear, readable document quality</li>
-                      <li>• PDF, JPG, PNG, or WebP format</li>
-                      <li>• Maximum file size: 4.5MB</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-6 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-blue-600 font-medium text-sm">+</span>
-                  </div>
-                  <div>
-                    <h4 className="font-medium text-gray-900 mb-2">Food Establishment Certificate (Optional)</h4>
-                    <ul className="space-y-1 text-sm text-gray-600">
-                      <li>• Enhances your credibility</li>
-                      <li>• Shows regulatory compliance</li>
-                      <li>• Same format requirements</li>
-                      <li>• Recommended but not mandatory</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                {hasDocuments ? 'Update Documents' : 'Upload Documents'}
+              </h3>
+              <p className="text-sm text-gray-500">
+                {hasDocuments ? 'Replace or add new documents' : 'Submit your certificates for verification'}
+              </p>
             </div>
           </div>
+
+          {/* Current Documents Section - Only show if documents exist */}
+          {hasDocuments && (
+            <div className="mb-8">
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">Current Documents</h4>
+              <div className="space-y-4">
+                {/* Food Safety License */}
+                <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h5 className="font-medium text-gray-900">Food Safety License</h5>
+                      <p className="text-sm text-gray-600">Required certification</p>
+                    </div>
+                    {verification?.foodSafetyLicenseStatus && 
+                      getStatusBadge(verification.foodSafetyLicenseStatus)}
+                  </div>
+                  
+                  {verification?.foodSafetyLicenseUrl ? (
+                    <Button asChild variant="outline" size="sm" className="rounded-lg">
+                      <a 
+                        href={verification.foodSafetyLicenseUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Document
+                      </a>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">Not uploaded</p>
+                  )}
+                </div>
+
+                {/* Food Establishment Certificate */}
+                <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h5 className="font-medium text-gray-900">Food Establishment Certificate</h5>
+                      <p className="text-sm text-gray-600">Optional (recommended)</p>
+                    </div>
+                    {verification?.foodEstablishmentCertStatus && 
+                      getStatusBadge(verification.foodEstablishmentCertStatus)}
+                  </div>
+                  
+                  {verification?.foodEstablishmentCertUrl ? (
+                    <Button asChild variant="outline" size="sm" className="rounded-lg">
+                      <a 
+                        href={verification.foodEstablishmentCertUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Document
+                      </a>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">Not uploaded</p>
+                  )}
+                </div>
+
+                {/* Admin Feedback */}
+                {verification?.documentsAdminFeedback && (
+                  <Alert className="border-blue-200 bg-blue-50">
+                    <Info className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-blue-800">
+                      <span className="font-medium">Admin Feedback:</span> {verification.documentsAdminFeedback}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Warning for existing users */}
+          {hasDocuments && (
+            <Alert className="mb-6 border-yellow-200 bg-yellow-50">
+              <Info className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-yellow-800">
+                <span className="font-medium">Note:</span> Updating documents will reset your verification status to pending review.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Document Upload Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <Tabs defaultValue="upload" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 rounded-xl">
+                <TabsTrigger value="upload" className="rounded-lg">File Upload</TabsTrigger>
+                <TabsTrigger value="url" className="rounded-lg">URL Links</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="upload" className="space-y-6 mt-6">
+                {/* Food Safety License Upload */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium text-gray-900">
+                    Food Safety License <span className="text-red-500">*</span>
+                  </Label>
+                  <SimpleFileUpload
+                    fieldName="foodSafetyLicense"
+                    onFileSelect={(file) => handleFileUpload('foodSafetyLicense', file)}
+                  />
+                </div>
+
+                {/* Food Establishment Certificate Upload */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium text-gray-900">
+                    Food Establishment Certificate <span className="text-gray-400">(Optional)</span>
+                  </Label>
+                  <SimpleFileUpload
+                    fieldName="foodEstablishmentCert"
+                    onFileSelect={(file) => handleFileUpload('foodEstablishmentCert', file)}
+                  />
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="url" className="space-y-6 mt-6">
+                {/* Food Safety License URL */}
+                <div className="space-y-3">
+                  <Label htmlFor="foodSafetyUrl" className="text-sm font-medium text-gray-900">
+                    Food Safety License URL <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="relative">
+                    <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="foodSafetyUrl"
+                      type="url"
+                      placeholder="https://example.com/your-license.pdf"
+                      value={foodSafetyLicenseUrl}
+                      onChange={(e) => setFoodSafetyLicenseUrl(e.target.value)}
+                      className="pl-10 rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                {/* Food Establishment Certificate URL */}
+                <div className="space-y-3">
+                  <Label htmlFor="establishmentUrl" className="text-sm font-medium text-gray-900">
+                    Food Establishment Certificate URL <span className="text-gray-400">(Optional)</span>
+                  </Label>
+                  <div className="relative">
+                    <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="establishmentUrl"
+                      type="url"
+                      placeholder="https://example.com/your-certificate.pdf"
+                      value={foodEstablishmentCertUrl}
+                      onChange={(e) => setFoodEstablishmentCertUrl(e.target.value)}
+                      className="pl-10 rounded-xl"
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            {/* Submit Button */}
+            <div className="pt-4 border-t border-gray-200">
+              <Button 
+                type="submit" 
+                disabled={isUploading || createMutation.isPending || updateMutation.isPending}
+                className="w-full rounded-xl bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-medium py-3"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading... {Math.round(uploadProgress)}%
+                  </>
+                ) : createMutation.isPending || updateMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {hasDocuments ? 'Updating...' : 'Submitting...'}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {hasDocuments ? 'Update Documents' : 'Upload Documents'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
         </motion.div>
       </main>
       <Footer />
