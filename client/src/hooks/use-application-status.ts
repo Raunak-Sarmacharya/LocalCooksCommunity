@@ -7,7 +7,53 @@ import { useQuery } from "@tanstack/react-query";
  * Returns helper functions and loading state for homepage CTA buttons
  */
 export function useApplicationStatus() {
-  const { user } = useFirebaseAuth();
+  const firebaseAuth = useFirebaseAuth();
+  
+  // Check for session-based auth (for admin users)
+  const { data: sessionUser } = useQuery({
+    queryKey: ["/api/user-session"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user-session", {
+          credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null; // Not authenticated via session
+          }
+          throw new Error(`Session auth failed: ${response.status}`);
+        }
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'session'
+        };
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    enabled: true
+  });
+
+  // Properly combine Firebase and session auth - prioritize session for admins, Firebase for regular users
+  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseAuth.user || sessionUser);
+  
+  // Debug logging for application status hook
+  console.log('useApplicationStatus: Auth state', {
+    sessionUser: sessionUser ? { role: sessionUser.role, id: sessionUser.id } : null,
+    firebaseUser: firebaseAuth.user ? { role: firebaseAuth.user.role, uid: firebaseAuth.user.uid } : null,
+    finalUser: user ? { role: user.role, id: user.id || user.uid } : null
+  });
 
   // Fetch user's applications to determine CTA logic
   const { data: applications = [], isLoading: applicationsLoading } = useQuery<Application[]>({
