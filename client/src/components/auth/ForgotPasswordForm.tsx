@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Mail } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -105,7 +105,6 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
             type="email"
             label="Email Address"
             placeholder="Enter your email"
-            icon={<Mail className="w-5 h-5" />}
             error={form.formState.errors.email?.message}
             {...form.register('email')}
           />
