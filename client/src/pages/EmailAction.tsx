@@ -17,7 +17,13 @@ export default function EmailAction() {
         const oobCode = urlParams.get('oobCode');
         const email = urlParams.get('email');
 
-        console.log('📧 Email action detected:', { mode, oobCode: oobCode?.substring(0, 8) + '...', email, hasEmail: !!email });
+        console.log('📧 Email action detected:', { 
+          mode, 
+          oobCode: oobCode?.substring(0, 8) + '...', 
+          email, 
+          hasEmail: !!email,
+          allParams: Object.fromEntries(urlParams.entries())
+        });
 
         if (!mode || !oobCode) {
           throw new Error('Invalid email action link');
@@ -42,7 +48,11 @@ export default function EmailAction() {
           case 'resetPassword':
             // For password reset, redirect to password reset page with the code and email
             console.log('🔄 Redirecting to password reset page');
+            
+            // Firebase reset links don't always include email in URL params
+            // We'll handle this in the password reset form by extracting email from the oobCode
             const resetUrl = `/password-reset?oobCode=${oobCode}&mode=resetPassword${email ? `&email=${encodeURIComponent(email)}` : ''}`;
+            console.log('🔗 Reset URL:', resetUrl);
             setLocation(resetUrl);
             break;
 

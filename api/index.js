@@ -1127,13 +1127,15 @@ app.post('/api/firebase/reset-password', async (req, res) => {
         throw new Error('Invalid reset code format');
       }
       
-      // Extract email from request body (should be provided by the flow)
+      // Extract email from request body (should be provided by the frontend after verifying oobCode)
       let email = req.body.email;
       
       if (!email) {
         console.log('❌ No email provided in request body.');
-        throw new Error('Email is required for password reset. Please use the reset link directly from your email.');
+        throw new Error('Invalid reset link. Please request a new password reset.');
       }
+      
+      console.log(`📧 Email extracted for password reset: ${email}`);
       
              console.log(`🔍 Processing password reset for email: ${email}`);
       
