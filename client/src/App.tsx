@@ -28,6 +28,7 @@ const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const ApplicantDashboard = lazy(() => import("@/pages/ApplicantDashboard"));
 const DocumentVerification = lazy(() => import("@/pages/DocumentVerification"));
+const EmailAction = lazy(() => import("@/pages/EmailAction"));
 const Microlearning = lazy(() => import("@/pages/Microlearning"));
 const MicrolearningOverview = lazy(() => import("@/pages/MicrolearningOverview"));
 const MicrolearningPlayer = lazy(() => import("@/pages/MicrolearningPlayer"));
