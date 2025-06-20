@@ -1,9 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { verifyPasswordResetCode } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { auth } from "../../lib/firebase";
 import AnimatedButton from "./AnimatedButton";
 import AnimatedInput from "./AnimatedInput";
 
@@ -50,6 +52,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isFirebaseReset, setIsFirebaseReset] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
 
   const form = useForm<ResetPasswordFormData>({
     resolver: zodResolver(resetPasswordSchema),
@@ -62,6 +65,30 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     
     if (!oobCode && !token) {
       setErrorMessage("No reset code provided. Please request a new password reset link.");
+      return;
+    }
+
+    // If this is a Firebase reset, verify the oobCode to extract the email
+    if (oobCode) {
+      const verifyCode = async () => {
+        try {
+          console.log('🔍 Verifying Firebase reset code to extract email...');
+          const emailFromCode = await verifyPasswordResetCode(auth, oobCode);
+          console.log('✅ Successfully verified reset code for email:', emailFromCode);
+          setVerifiedEmail(emailFromCode);
+        } catch (error: any) {
+          console.error('❌ Failed to verify reset code:', error);
+          if (error.code === 'auth/invalid-action-code') {
+            setErrorMessage("This password reset link has expired or is invalid. Please request a new password reset from the login page.");
+          } else if (error.code === 'auth/expired-action-code') {
+            setErrorMessage("This password reset link has expired. Please request a new password reset from the login page.");
+          } else {
+            setErrorMessage("Invalid reset link. Please request a new password reset from the login page.");
+          }
+        }
+      };
+      
+      verifyCode();
     }
   }, [oobCode, token]);
 
@@ -71,8 +98,13 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
 
     try {
       const endpoint = isFirebaseReset ? '/api/firebase/reset-password' : '/api/auth/reset-password';
+      
+      // For Firebase reset, use the verified email from the oobCode
+      // For legacy reset, use the email prop if available
+      const emailToUse = isFirebaseReset ? verifiedEmail : email;
+      
       const body = isFirebaseReset 
-        ? { oobCode, newPassword: data.password, email }
+        ? { oobCode, newPassword: data.password, email: emailToUse }
         : { token, newPassword: data.password };
 
       console.log('🔄 Password reset attempt:', { 
@@ -80,8 +112,8 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
         isFirebaseReset, 
         hasOobCode: !!oobCode, 
         hasToken: !!token,
-        hasEmail: !!email,
-        email: email
+        hasEmail: !!emailToUse,
+        email: emailToUse
       });
 
       const response = await fetch(endpoint, {
@@ -118,6 +150,32 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
       setErrorMessage(error.message || 'An unexpected error occurred. Please try again.');
     }
   };
+
+  // Don't render the form if we have a Firebase reset code but haven't verified the email yet
+  if (isFirebaseReset && !verifiedEmail && !errorMessage) {
+    return (
+      <motion.div
+        className="w-full max-w-md mx-auto"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={itemVariants} className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">
+            Verifying Reset Link
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Please wait while we verify your password reset link...
+          </p>
+        </motion.div>
+      </motion.div>
+    );
+  }
 
   if (!oobCode && !token) {
     return (
