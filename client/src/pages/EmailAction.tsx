@@ -1,13 +1,16 @@
+import { applyActionCode } from "firebase/auth";
 import { motion } from "framer-motion";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { auth } from "../lib/firebase";
 
 export default function EmailAction() {
   const [, setLocation] = useLocation();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [actionType, setActionType] = useState<string | null>(null);
+  const { updateUserVerification } = useFirebaseAuth();
 
   useEffect(() => {
     const handleEmailAction = async () => {
@@ -33,16 +36,34 @@ export default function EmailAction() {
 
         switch (mode) {
           case 'verifyEmail':
-            // For email verification, we don't need to call an API
-            // Firebase automatically verifies the email when this link is accessed
-            console.log('✅ Email verification link accessed');
-            setStatus('success');
-            setMessage('Your email has been verified successfully! You can now log in to your account.');
-            
-            // Redirect to auth page after 3 seconds
-            setTimeout(() => {
-              setLocation('/auth?verified=true');
-            }, 3000);
+            // Actually verify the email using Firebase
+            try {
+              console.log('🔍 Applying email verification action code...');
+              await applyActionCode(auth, oobCode);
+              console.log('✅ Email verification successful');
+              
+              // Update the user verification status in the auth context
+              console.log('🔄 Updating user verification status in auth context...');
+              await updateUserVerification();
+              console.log('✅ User verification status updated');
+              
+              setStatus('success');
+              setMessage('Your email has been verified successfully! You can now log in to your account.');
+              
+              // Redirect to auth page after 3 seconds
+              setTimeout(() => {
+                setLocation('/auth?verified=true');
+              }, 3000);
+            } catch (verifyError: any) {
+              console.error('❌ Email verification failed:', verifyError);
+              throw new Error(
+                verifyError.code === 'auth/invalid-action-code' 
+                  ? 'This verification link has expired or is invalid.'
+                  : verifyError.code === 'auth/expired-action-code'
+                  ? 'This verification link has expired. Please request a new verification email.'
+                  : 'Failed to verify email. Please try again or request a new verification link.'
+              );
+            }
             break;
 
           case 'resetPassword':
