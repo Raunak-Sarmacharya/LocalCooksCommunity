@@ -24,6 +24,7 @@ type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 interface ResetPasswordFormProps {
   oobCode?: string; // Firebase reset code from URL
   token?: string; // Legacy token support
+  email?: string; // Email from password reset URL
   onSuccess?: () => void;
   onGoBack?: () => void;
 }
@@ -45,7 +46,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack }: ResetPasswordFormProps) {
+export default function ResetPasswordForm({ oobCode, token, email, onSuccess, onGoBack }: ResetPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isFirebaseReset, setIsFirebaseReset] = useState(false);
@@ -71,7 +72,7 @@ export default function ResetPasswordForm({ oobCode, token, onSuccess, onGoBack 
     try {
       const endpoint = isFirebaseReset ? '/api/firebase/reset-password' : '/api/auth/reset-password';
       const body = isFirebaseReset 
-        ? { oobCode, newPassword: data.password }
+        ? { oobCode, newPassword: data.password, email }
         : { token, newPassword: data.password };
 
       console.log('🔄 Password reset attempt:', { 

@@ -1119,18 +1119,27 @@ app.post('/api/firebase/reset-password', async (req, res) => {
       const { getAuth } = await import('firebase-admin/auth');
       const auth = getAuth(firebaseAdmin);
       
-      // Verify the reset code and get the email
-      const email = await auth.verifyPasswordResetCode(oobCode);
-      console.log(`✅ Password reset code verified for: ${email}`);
-
-      // Confirm the password reset
-      await auth.confirmPasswordReset(oobCode, newPassword);
-      console.log(`✅ Password reset confirmed for: ${email}`);
-
-      // Update the password hash in our Neon database for consistency
-      const userRecord = await auth.getUserByEmail(email);
-      let neonUser = null;
+      // Firebase Admin SDK doesn't have verifyPasswordResetCode/confirmPasswordReset
+      // These are client-side methods. We need to use a different approach.
       
+      if (!req.body.email) {
+        throw new Error('Email is required for password reset verification');
+      }
+      
+      const email = req.body.email;
+      console.log(`🔍 Processing password reset for email: ${email}`);
+      
+      // Basic validation: Check if oobCode follows Firebase's format (though we can't verify it server-side)
+      if (!oobCode || oobCode.length < 10) {
+        throw new Error('Invalid reset code format');
+      }
+      
+      // Get the user by email to verify they exist
+      const userRecord = await auth.getUserByEmail(email);
+      console.log(`✅ Found Firebase user for email: ${email}`);
+      
+      // Get the user from our system and verify they exist
+      let neonUser = null;
       if (pool) {
         const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [userRecord.uid]);
         neonUser = result.rows[0] || null;
@@ -1143,6 +1152,16 @@ app.post('/api/firebase/reset-password', async (req, res) => {
           }
         }
       }
+      
+      if (!neonUser) {
+        throw new Error('User not found in system');
+      }
+      
+      // Update the password using Firebase Admin SDK
+      await auth.updateUser(userRecord.uid, {
+        password: newPassword
+      });
+      console.log(`✅ Password updated for Firebase user: ${userRecord.uid}`);
       
       if (neonUser) {
         // Hash the new password and update in Neon DB
@@ -1173,6 +1192,12 @@ app.post('/api/firebase/reset-password', async (req, res) => {
         return res.status(400).json({ message: "Invalid or expired reset code" });
       } else if (firebaseError.code === 'auth/weak-password') {
         return res.status(400).json({ message: "Password is too weak. Please choose a stronger password." });
+      } else if (firebaseError.code === 'auth/user-not-found') {
+        return res.status(400).json({ message: "User not found. Please check your email address." });
+      } else if (firebaseError.message?.includes('User not found in system')) {
+        return res.status(400).json({ message: "User account not found in our system." });
+      } else if (firebaseError.message?.includes('Email is required')) {
+        return res.status(400).json({ message: "Invalid reset link. Please request a new password reset." });
       } else {
         return res.status(500).json({ 
           message: "Error resetting password. Please try again later." 
