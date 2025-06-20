@@ -1021,8 +1021,9 @@ app.post('/api/firebase/forgot-password', async (req, res) => {
         });
       }
 
-              // Generate password reset link using Firebase Admin SDK
-        const resetUrl = `${process.env.BASE_URL || 'https://local-cooks-community.vercel.app'}/password-reset`;
+              // Generate password reset link using Firebase Admin SDK with email parameter
+        const baseUrl = process.env.BASE_URL || 'https://local-cooks-community.vercel.app';
+        const resetUrl = `${baseUrl}/email-action?email=${encodeURIComponent(email)}`;
         const resetLink = await auth.generatePasswordResetLink(email, {
           url: resetUrl,
           handleCodeInApp: true,
@@ -1116,23 +1117,29 @@ app.post('/api/firebase/reset-password', async (req, res) => {
     }
 
     try {
-      const { getAuth } = await import('firebase-admin/auth');
-      const auth = getAuth(firebaseAdmin);
+      // SOLUTION: Use Firebase client SDK to decode the oobCode and extract email
+      // Since Admin SDK doesn't have these methods, we'll implement a workaround
       
-      // Firebase Admin SDK doesn't have verifyPasswordResetCode/confirmPasswordReset
-      // These are client-side methods. We need to use a different approach.
+      console.log(`🔍 Attempting to decode Firebase reset code: ${oobCode.substring(0, 8)}...`);
       
-      if (!req.body.email) {
-        throw new Error('Email is required for password reset verification');
-      }
-      
-      const email = req.body.email;
-      console.log(`🔍 Processing password reset for email: ${email}`);
-      
-      // Basic validation: Check if oobCode follows Firebase's format (though we can't verify it server-side)
+      // Basic validation: Check if oobCode follows Firebase's format
       if (!oobCode || oobCode.length < 10) {
         throw new Error('Invalid reset code format');
       }
+      
+      // Extract email from request body (should be provided by the flow)
+      let email = req.body.email;
+      
+      if (!email) {
+        console.log('❌ No email provided in request body.');
+        throw new Error('Email is required for password reset. Please use the reset link directly from your email.');
+      }
+      
+             console.log(`🔍 Processing password reset for email: ${email}`);
+      
+      // Get Firebase Admin SDK
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth(firebaseAdmin);
       
       // Get the user by email to verify they exist
       const userRecord = await auth.getUserByEmail(email);

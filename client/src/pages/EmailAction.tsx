@@ -17,7 +17,7 @@ export default function EmailAction() {
         const oobCode = urlParams.get('oobCode');
         const email = urlParams.get('email');
 
-        console.log('📧 Email action detected:', { mode, oobCode: oobCode?.substring(0, 8) + '...', email });
+        console.log('📧 Email action detected:', { mode, oobCode: oobCode?.substring(0, 8) + '...', email, hasEmail: !!email });
 
         if (!mode || !oobCode) {
           throw new Error('Invalid email action link');
