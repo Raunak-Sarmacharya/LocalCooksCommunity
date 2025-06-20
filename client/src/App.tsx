@@ -51,6 +51,7 @@ function Router() {
         <Route path="/auth" component={EnhancedAuthPage} />
         <Route path="/auth-test" component={AuthTest} />
         <Route path="/admin-test" component={AdminLoginTest} />
+        <Route path="/email-action" component={EmailAction} />
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         <Route path="/password-reset" component={PasswordReset} />
         <Route path="/terms" component={Terms} />
