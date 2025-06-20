@@ -40,9 +40,10 @@ export default function EmailAction() {
             break;
 
           case 'resetPassword':
-            // For password reset, redirect to password reset page with the code
+            // For password reset, redirect to password reset page with the code and email
             console.log('🔄 Redirecting to password reset page');
-            setLocation(`/password-reset?oobCode=${oobCode}&mode=resetPassword`);
+            const resetUrl = `/password-reset?oobCode=${oobCode}&mode=resetPassword${email ? `&email=${encodeURIComponent(email)}` : ''}`;
+            setLocation(resetUrl);
             break;
 
           default:

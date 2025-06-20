@@ -9,6 +9,7 @@ export default function PasswordReset() {
   const [oobCode, setOobCode] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     // Get reset parameters from URL
@@ -16,10 +17,12 @@ export default function PasswordReset() {
     const codeParam = urlParams.get('oobCode');
     const tokenParam = urlParams.get('token');
     const modeParam = urlParams.get('mode');
+    const emailParam = urlParams.get('email');
     
     setOobCode(codeParam);
     setToken(tokenParam);
     setMode(modeParam);
+    setEmail(emailParam);
 
     // Check if this is a valid password reset request
     if (modeParam && modeParam !== 'resetPassword') {
@@ -90,6 +93,7 @@ export default function PasswordReset() {
         <ResetPasswordForm
           oobCode={oobCode || undefined}
           token={token || undefined}
+          email={email || undefined}
           onSuccess={handleSuccess}
           onGoBack={handleGoBack}
         />
