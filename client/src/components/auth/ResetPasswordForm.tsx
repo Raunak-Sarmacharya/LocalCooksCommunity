@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { verifyPasswordResetCode } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Lock } from "lucide-react";
+import { AlertCircle, ArrowLeft, Lock, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -177,6 +177,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     );
   }
 
+  // Show error if no reset code provided
   if (!oobCode && !token) {
     return (
       <motion.div
@@ -187,17 +188,15 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
       >
         <motion.div variants={itemVariants} className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+              <XCircle className="w-8 h-8 text-red-600" />
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">
-            Password Reset Successful!
+          <h2 className="text-2xl font-bold text-red-600 mb-3">
+            Invalid Reset Link
           </h2>
           <p className="text-gray-600 mb-6">
-            Your password has been successfully updated. You can now log in with your new password.
+            No reset code provided. Please request a new password reset link.
           </p>
           {onGoBack && (
             <button
@@ -206,6 +205,41 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
             >
               <ArrowLeft className="w-4 h-4" />
               Go to Login Page
+            </button>
+          )}
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // Show error if Firebase code verification failed
+  if (isFirebaseReset && errorMessage) {
+    return (
+      <motion.div
+        className="w-full max-w-md mx-auto"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={itemVariants} className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+              <XCircle className="w-8 h-8 text-red-600" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-red-600 mb-3">
+            Reset Link Error
+          </h2>
+          <p className="text-gray-600 mb-6">
+            {errorMessage}
+          </p>
+          {onGoBack && (
+            <button
+              onClick={onGoBack}
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Request New Reset Link
             </button>
           )}
         </motion.div>
