@@ -63,9 +63,19 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     // Determine if this is a Firebase reset (oobCode) or legacy reset (token)
     setIsFirebaseReset(!!oobCode);
     
+    console.log('🔧 ResetPasswordForm useEffect:', { oobCode: !!oobCode, token: !!token, email });
+    
+    // Don't show error immediately - give time for props to be set
     if (!oobCode && !token) {
-      setErrorMessage("No reset code provided. Please request a new password reset link.");
-      return;
+      // Add a small delay to ensure props are properly set from URL params
+      const timeoutId = setTimeout(() => {
+        if (!oobCode && !token) {
+          console.log('❌ No reset codes found after timeout');
+          setErrorMessage("No reset code provided. Please request a new password reset link.");
+        }
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
     }
 
     // If this is a Firebase reset, verify the oobCode to extract the email
@@ -76,6 +86,8 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
           const emailFromCode = await verifyPasswordResetCode(auth, oobCode);
           console.log('✅ Successfully verified reset code for email:', emailFromCode);
           setVerifiedEmail(emailFromCode);
+          // Clear any previous error messages
+          setErrorMessage(null);
         } catch (error: any) {
           console.error('❌ Failed to verify reset code:', error);
           if (error.code === 'auth/invalid-action-code') {
@@ -90,7 +102,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
       
       verifyCode();
     }
-  }, [oobCode, token]);
+  }, [oobCode, token, email]);
 
   const handleSubmit = async (data: ResetPasswordFormData) => {
     setFormState('loading');
