@@ -79,7 +79,9 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
         endpoint, 
         isFirebaseReset, 
         hasOobCode: !!oobCode, 
-        hasToken: !!token 
+        hasToken: !!token,
+        hasEmail: !!email,
+        email: email
       });
 
       const response = await fetch(endpoint, {
