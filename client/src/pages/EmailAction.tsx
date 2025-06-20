@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { useFirebaseAuth } from "../hooks/use-auth";
 import { auth } from "../lib/firebase";
 
 export default function EmailAction() {
