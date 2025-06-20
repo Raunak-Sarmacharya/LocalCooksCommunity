@@ -319,10 +319,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // CRITICAL: Send Firebase's built-in email verification
       console.log('📧 Sending Firebase email verification...');
       try {
-        await sendEmailVerification(updatedUser, {
-          url: `${window.location.origin}/auth?verified=true`,
-          handleCodeInApp: true,
-        });
+              await sendEmailVerification(updatedUser, {
+        url: `${window.location.origin}/email-action`,
+        handleCodeInApp: true,
+      });
         console.log('✅ Firebase email verification sent successfully');
       } catch (emailError) {
         console.error('❌ Failed to send Firebase verification email:', emailError);
@@ -499,7 +499,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log('📧 Sending Firebase verification email to:', email);
       await sendEmailVerification(firebaseUser, {
-        url: `${window.location.origin}/auth?verified=true`,
+        url: `${window.location.origin}/email-action`,
         handleCodeInApp: true,
       });
       
@@ -608,7 +608,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log('📧 Resending Firebase verification email...');
       await sendEmailVerification(firebaseUser, {
-        url: `${window.location.origin}/auth?verified=true`,
+        url: `${window.location.origin}/email-action`,
         handleCodeInApp: true,
       });
       
