@@ -15,12 +15,12 @@ const personalInfoSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Please enter a valid email address"),
   phone: z.string()
-    .min(13, "Phone number must include +1 and exactly 10 digits")
-    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone number must start with +1 followed by exactly 10 digits")
+    .min(13, "Phone numbers must be 10 digits")
+    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone numbers must be 10 digits")
     .refine((val) => {
       const digitsOnly = val.replace(/\D/g, '');
       return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Canadian phone number must be exactly 10 digits"),
+    }, "Phone numbers must be 10 digits"),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
@@ -292,7 +292,7 @@ export default function PersonalInfoForm() {
             )}
             <div className="flex justify-between items-center mt-1">
               <p className="text-xs text-gray-500">
-                Canadian phone number: Must be exactly 10 digits after +1
+                phone number: Must be 10 digits
               </p>
               <p className={`text-xs font-medium ${getCurrentDigitCount() === 10 ? 'text-green-600' : 'text-gray-400'}`}>
                 {getCurrentDigitCount()}/10 digits
