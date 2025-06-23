@@ -95,16 +95,16 @@ export default function VideoPlayer({
     }
   }, [isCompleted]);
 
-  // Timer to detect when video should have ended but didn't
+  // Timer to show completion prompt at appropriate moments
   useEffect(() => {
     if (!hasReachedNearEnd || videoCompleted || shouldShowCompletePrompt) return;
 
-    // Show completion prompt after 1.5 seconds of being at near end without natural completion
+    // Show completion prompt after 3 seconds to give users time to decide
     const timer = setTimeout(() => {
-      if (!videoCompleted && hasReachedNearEnd) {
+      if (!videoCompleted && hasReachedNearEnd && !shouldShowCompletePrompt) {
         setShouldShowCompletePrompt(true);
       }
-    }, 1500);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [hasReachedNearEnd, videoCompleted, shouldShowCompletePrompt]);
@@ -187,13 +187,17 @@ export default function VideoPlayer({
         
         onProgress?.(progressPercent, actualWatchPercentage);
 
-        // RELAXED COMPLETION LOGIC: Allow completion at any point after 10% to prevent accidental completions
-        // Users can skip to any point and complete the video - no strict watching requirement
-        if (progressPercent >= 10 && !videoCompleted) {
+        // IMPROVED COMPLETION LOGIC: Show completion prompt when user has engaged sufficiently
+        if (progressPercent >= 15 && !videoCompleted) {
           // Check if user has interacted significantly with the video (either watched some or skipped forward)
-          const hasWatchedSome = actualWatchPercentage > 5 || progressPercent > 20;
+          const hasWatchedSome = actualWatchPercentage > 8 || progressPercent > 30;
           
-          // Track when video reaches near end for completion prompt
+          // Show completion prompt earlier to give users more control
+          if (progressPercent >= 70 && hasWatchedSome) {
+            setHasReachedNearEnd(true);
+          }
+          
+          // Also track when video reaches actual end for automatic completion prompt
           if (progressPercent >= 95) {
             setHasReachedNearEnd(true);
           }
@@ -468,12 +472,12 @@ export default function VideoPlayer({
           </div>
         )}
 
-        {/* Completion Badge - Top right corner to avoid control conflicts */}
+        {/* Completion Badge - More prominent and less confusing */}
         {videoCompleted && !loading && !hasError && (
-          <div className="absolute top-4 right-4 z-10">
-            <div className="bg-green-600 text-white px-3 py-2 rounded-full shadow-lg border border-green-500 flex items-center gap-2">
+          <div className="absolute top-4 left-4 z-10">
+            <div className="bg-green-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg border border-green-500/50 flex items-center gap-2">
               <CheckCircle className="h-4 w-4" />
-              <span className="text-sm font-medium">✓ Complete</span>
+              <span className="text-sm font-medium">Video Completed ✓</span>
             </div>
           </div>
         )}
@@ -530,9 +534,9 @@ export default function VideoPlayer({
                 <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
                   <CheckCircle className="h-6 w-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2">Ready to complete?</h3>
+                <h3 className="font-semibold text-lg mb-2">Mark Video as Complete?</h3>
                 <p className="text-sm text-gray-300 mb-4">
-                  You've watched most of this video. Click below to mark it as complete and continue your training.
+                  You've engaged with this video sufficiently. Mark it as complete to unlock the next video in your training sequence.
                 </p>
                 <div className="flex gap-3 justify-center">
                   <Button
