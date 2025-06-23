@@ -4,7 +4,14 @@ import { z } from "zod";
 export const applicationSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string().regex(/^\+?[0-9\s\(\)-]{10,15}$/, "Please enter a valid phone number"),
+  phone: z.string()
+    .min(10, "Phone number must be at least 10 characters")
+    .max(20, "Phone number is too long")
+    .regex(/^[\+]?[0-9\s\(\)\-\.]+$/, "Phone number can only contain numbers, spaces, parentheses, hyphens, and plus sign")
+    .refine((val) => {
+      const digitsOnly = val.replace(/\D/g, '');
+      return digitsOnly.length >= 10;
+    }, "Phone number must contain at least 10 digits"),
   foodSafetyLicense: z.enum(["yes", "no"], {
     required_error: "Please select an option",
   }),
