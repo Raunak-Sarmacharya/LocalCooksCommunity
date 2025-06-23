@@ -24,8 +24,10 @@ interface EmailContent {
 const recentEmails = new Map<string, number>();
 const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
 
-// Create a transporter with enhanced configuration for spam prevention
+// Create a transporter with enhanced configuration for Vercel serverless
 const createTransporter = (config: EmailConfig) => {
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
   return nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -34,20 +36,25 @@ const createTransporter = (config: EmailConfig) => {
       user: config.auth.user,
       pass: config.auth.pass,
     },
-    // Enhanced configuration for better deliverability
+    // Enhanced configuration for Vercel serverless functions
     tls: {
       rejectUnauthorized: false, // Allow self-signed certificates
       ciphers: 'SSLv3'
     },
-    connectionTimeout: 60000, // 60 seconds
-    greetingTimeout: 30000, // 30 seconds
-    socketTimeout: 60000, // 60 seconds
+    // Reduced timeouts for serverless functions (max 10s execution time)
+    connectionTimeout: isProduction ? 15000 : 60000, // 15s production, 60s development
+    greetingTimeout: isProduction ? 10000 : 30000, // 10s production, 30s development
+    socketTimeout: isProduction ? 15000 : 60000, // 15s production, 60s development
     // Add authentication method
     authMethod: 'PLAIN',
-    // Enable debug for troubleshooting
+    // Enable debug for troubleshooting in development only
     debug: process.env.NODE_ENV === 'development',
-    logger: process.env.NODE_ENV === 'development'
-  });
+    logger: process.env.NODE_ENV === 'development',
+    // Pool configuration for better performance
+    pool: isProduction ? true : false,
+    maxConnections: 1, // Single connection for serverless
+    maxMessages: 1, // Single message per connection for serverless
+  } as any);
 };
 
 // Get email configuration from environment variables
@@ -63,8 +70,11 @@ const getEmailConfig = (): EmailConfig => {
   };
 };
 
-// Enhanced send email function with spam prevention
+// Enhanced send email function with Vercel serverless optimizations
 export const sendEmail = async (content: EmailContent, options?: { trackingId?: string }): Promise<boolean> => {
+  const startTime = Date.now();
+  let transporter: any = null;
+  
   try {
     // Check for duplicate emails if trackingId is provided
     if (options?.trackingId) {
@@ -95,6 +105,8 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     }
 
     const config = getEmailConfig();
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+    
     console.log('Using email configuration:', {
       host: config.host,
       port: config.port,
@@ -102,31 +114,40 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       user: config.auth.user ? '****' : 'not set', // Don't log actual credentials
       domain: getDomainFromEmail(config.auth.user),
       organization: getOrganizationName(),
-      hasEmailFrom: !!process.env.EMAIL_FROM
+      hasEmailFrom: !!process.env.EMAIL_FROM,
+      isProduction,
+      environment: process.env.VERCEL_ENV || process.env.NODE_ENV
     });
 
-    const transporter = createTransporter(config);
+    transporter = createTransporter(config);
 
     // Enhanced from address with proper formatting using Vercel environment variables
     const fromName = getOrganizationName();
     const fromEmail = process.env.EMAIL_FROM || `${fromName} <${config.auth.user}>`;
 
-    // Verify SMTP connection
-    try {
-      await new Promise((resolve, reject) => {
-        transporter.verify((error: any, success: any) => {
-          if (error) {
-            console.error('SMTP connection verification failed:', error);
-            reject(error);
-          } else {
-            console.log('SMTP connection verified successfully');
-            resolve(success);
-          }
+    // Verify SMTP connection (skip in production for faster execution)
+    if (!isProduction) {
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('SMTP verification timeout'));
+          }, 10000); // 10s timeout
+          
+          transporter.verify((error: any, success: any) => {
+            clearTimeout(timeout);
+            if (error) {
+              console.error('SMTP connection verification failed:', error);
+              reject(error);
+            } else {
+              console.log('SMTP connection verified successfully');
+              resolve(success);
+            }
+          });
         });
-      });
-    } catch (verifyError) {
-      console.error('Failed to verify SMTP connection:', verifyError);
-      // Continue anyway, as some providers might not support verification
+      } catch (verifyError) {
+        console.error('Failed to verify SMTP connection:', verifyError);
+        // Continue anyway, as some providers might not support verification
+      }
     }
 
     // Get domain and other configuration from Vercel environment variables
@@ -134,32 +155,35 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const unsubscribeEmail = getUnsubscribeEmail();
     const organizationName = getOrganizationName();
 
-    // Enhanced email options with DKIM-compatible headers
+    // Enhanced email options with better headers for MailChannels compatibility
     const mailOptions = {
       from: fromEmail,
       to: content.to,
       subject: content.subject,
       text: content.text,
       html: content.html,
-      // Enhanced headers for better deliverability and DKIM compatibility
+      // Enhanced headers for better deliverability and MailChannels compatibility
       headers: {
         'Organization': organizationName,
         'X-Mailer': 'Local Cooks Community',
         'X-Priority': '3',
         'X-MSMail-Priority': 'Normal',
         'Importance': 'Normal',
-        // DKIM-friendly sender identification
+        // MailChannels and DKIM-friendly sender identification
         'Sender': config.auth.user,
         'Return-Path': config.auth.user,
         // Anti-spam headers
         'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        // Add DMARC-friendly headers
+        'X-Vercel-Deployment': process.env.VERCEL_DEPLOYMENT_ID || 'local',
+        'X-Vercel-URL': process.env.VERCEL_URL || 'localhost',
         // Merge any additional headers from content
         ...(content.headers || {})
       },
-      // Proper encoding settings for DKIM
+      // Proper encoding settings for DKIM and MailChannels
       encoding: 'utf8' as const,
-      // Enhanced delivery options for DKIM compatibility
+      // Enhanced delivery options for MailChannels compatibility
       envelope: {
         from: config.auth.user,
         to: content.to
@@ -167,12 +191,18 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       // DKIM-compatible message ID with proper domain
       messageId: `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
       date: new Date(),
-      // DKIM signing is handled by Hostinger SMTP server
+      // DKIM signing is handled by Hostinger SMTP server or MailChannels
     };
 
-    // Send the email
-    const info = await transporter.sendMail(mailOptions);
+    // Send the email with timeout protection (critical for serverless)
+    const emailPromise = transporter.sendMail(mailOptions);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Email sending timeout - exceeded 20 seconds')), 20000);
+    });
 
+    const info = await Promise.race([emailPromise, timeoutPromise]);
+
+    const executionTime = Date.now() - startTime;
     console.log('Email sent successfully:', {
       messageId: (info as any).messageId,
       accepted: (info as any).accepted,
@@ -180,11 +210,28 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       response: (info as any).response,
       domain: domain,
       organization: organizationName,
-      fromEmail: fromEmail
+      fromEmail: fromEmail,
+      executionTime: `${executionTime}ms`,
+      isProduction
     });
+
+    // Close the transporter connection (important for serverless)
+    if (transporter && typeof transporter.close === 'function') {
+      transporter.close();
+    }
+
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    const executionTime = Date.now() - startTime;
+    console.error('Error sending email:', {
+      error: error instanceof Error ? error.message : error,
+      executionTime: `${executionTime}ms`,
+      to: content.to,
+      subject: content.subject,
+      trackingId: options?.trackingId,
+      isProduction: process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
+    });
+    
     if (error instanceof Error) {
       console.error('Error details:', error.message);
       if ('code' in error) {
@@ -194,6 +241,16 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         console.error('SMTP Response code:', (error as any).responseCode);
       }
     }
+
+    // Close the transporter connection on error (important for serverless)
+    if (transporter && typeof transporter.close === 'function') {
+      try {
+        transporter.close();
+      } catch (closeError) {
+        console.error('Error closing transporter:', closeError);
+      }
+    }
+
     return false;
   }
 };
@@ -433,7 +490,7 @@ export const generateStatusChangeEmail = (
       approved: `Congratulations! Your application has been approved.`,
       rejected: `Thank you for your application. After careful review, we are unable to move forward at this time.`,
       cancelled: `Your application has been cancelled.`,
-      under_review: `Your application is currently under review by our team.`,
+      under_review: `Your application is currently under review.`,
       pending: `Your application has been received and is pending review.`
     };
 
