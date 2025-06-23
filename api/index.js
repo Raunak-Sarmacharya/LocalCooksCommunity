@@ -2498,6 +2498,30 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
         ]);
       }
 
+      // Send email notification about application cancellation
+      try {
+        // Import the email functions
+        const { sendEmail, generateStatusChangeEmail } = await import('../server/email.js');
+
+        if (cancelledApp.email) {
+          const emailContent = generateStatusChangeEmail({
+            fullName: cancelledApp.full_name || cancelledApp.applicant_name || "Applicant",
+            email: cancelledApp.email,
+            status: 'cancelled'
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `cancel_${cancelledApp.id}_${Date.now()}`
+          });
+          console.log(`Cancellation email sent to ${cancelledApp.email} for application ${cancelledApp.id}`);
+        } else {
+          console.warn(`Cannot send cancellation email for application ${cancelledApp.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending cancellation email:", emailError);
+      }
+
       // due to CASCADE DELETE foreign key constraint
 
       return res.status(200).json(cancelledApp);

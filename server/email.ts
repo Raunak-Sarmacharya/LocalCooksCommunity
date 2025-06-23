@@ -316,6 +316,11 @@ const getUniformEmailStyles = () => `
     color: #dc2626;
     border-color: #fecaca;
   }
+  .status-badge.cancelled {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    color: #64748b;
+    border-color: #cbd5e1;
+  }
   .cta-button { 
     display: inline-block; 
     padding: 14px 28px; 
@@ -411,6 +416,8 @@ export const generateStatusChangeEmail = (
         return 'Application Approved - Local Cooks Community';
       case 'rejected':
         return 'Application Update - Local Cooks Community';
+      case 'cancelled':
+        return 'Application Status Update - Local Cooks Community';
       case 'under_review':
         return 'Application Under Review - Local Cooks Community';
       default:
@@ -425,6 +432,7 @@ export const generateStatusChangeEmail = (
     const statusMessages = {
       approved: `Congratulations! Your application has been approved.`,
       rejected: `Thank you for your application. After careful review, we are unable to move forward at this time.`,
+      cancelled: `Your application has been cancelled.`,
       under_review: `Your application is currently under review by our team.`,
       pending: `Your application has been received and is pending review.`
     };
@@ -435,7 +443,11 @@ ${statusMessages[status as keyof typeof statusMessages] || 'Your application sta
 
 Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
 
-${status === 'approved' ? `Access your dashboard: ${getDashboardUrl()}` : ''}
+${status === 'approved' ? `Access your dashboard: ${getDashboardUrl()}
+
+🎓 NEXT STEP: Complete your food safety training to unlock all features and get certified!` : ''}${status === 'cancelled' ? `
+
+You can submit a new application anytime: ${getWebsiteUrl()}/apply` : ''}
 
 If you have any questions, please contact us at ${getSupportEmail()}.
 
@@ -449,9 +461,11 @@ Visit: ${getWebsiteUrl()}
   const getMessage = (status: string) => {
     switch (status) {
       case 'approved':
-        return 'Congratulations! Your application has been approved. You can now proceed to the next steps in your Local Cooks journey.';
+        return 'Congratulations! Your application has been approved. You now have full access to the Local Cooks platform, including our comprehensive food safety training program.';
       case 'rejected':
         return 'Thank you for your application. After careful review, we are unable to move forward with your application at this time. We appreciate your interest in Local Cooks.';
+      case 'cancelled':
+        return 'Your application has been cancelled. You can submit a new application anytime when you\'re ready to join the Local Cooks community.';
       case 'under_review':
         return 'Your application is currently under review by our team. We will notify you once the review is complete.';
       case 'pending':
@@ -481,10 +495,26 @@ Visit: ${getWebsiteUrl()}
     <div class="content">
       <h2 class="greeting">Hello ${applicationData.fullName},</h2>
       <p class="message">${message}</p>
-      <div class="status-badge${applicationData.status === 'approved' ? ' approved' : applicationData.status === 'rejected' ? ' rejected' : ''}">
+      <div class="status-badge${applicationData.status === 'approved' ? ' approved' : applicationData.status === 'rejected' ? ' rejected' : applicationData.status === 'cancelled' ? ' cancelled' : ''}">
         Status: ${applicationData.status.charAt(0).toUpperCase() + applicationData.status.slice(1)}
       </div>
-      ${applicationData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : ''}
+      ${applicationData.status === 'approved' ? `
+      <div class="info-box">
+        <strong>🎓 Your Next Step: Food Safety Training</strong>
+        <p>You now have full access to our comprehensive food safety training program. Complete all 22 training videos to:</p>
+        <ul style="margin: 8px 0; padding-left: 20px;">
+          <li>Earn your official Local Cooks certification</li>
+          <li>Learn essential HACCP principles</li>
+          <li>Access advanced platform features</li>
+          <li>Build customer trust with verified status</li>
+        </ul>
+      </div>
+      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Start Food Safety Training</a>` : ''}${applicationData.status === 'cancelled' ? `
+      <div class="info-box">
+        <strong>Ready to Apply Again?</strong>
+        <p>You can submit a new application anytime when you're ready to join the Local Cooks community. We look forward to welcoming you to our platform!</p>
+      </div>
+      <a href="${getWebsiteUrl()}/apply" class="cta-button" style="color: white !important; text-decoration: none !important;">Submit New Application</a>` : ''}
       <div class="divider"></div>
     </div>
     <div class="footer">
