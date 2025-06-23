@@ -532,6 +532,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Application not found" });
       }
 
+      // Send email notification about application cancellation
+      try {
+        if (updatedApplication.email) {
+          const emailContent = generateStatusChangeEmail({
+            fullName: updatedApplication.fullName || "Applicant",
+            email: updatedApplication.email,
+            status: 'cancelled'
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `cancel_${updatedApplication.id}_${Date.now()}`
+          });
+          
+          console.log(`Cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+        } else {
+          console.warn(`Cannot send cancellation email for application ${updatedApplication.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending cancellation email:", emailError);
+      }
+
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error cancelling application:", error);

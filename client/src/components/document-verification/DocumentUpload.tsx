@@ -3,10 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { useToast } from "@/hooks/use-toast";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -510,7 +508,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
             </Alert>
           )}
           
-          <Alert className="mb-4">
+          <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
               <strong>Two Ways to Submit Documents:</strong> 
@@ -519,233 +517,255 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
             </AlertDescription>
           </Alert>
 
-          <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="upload" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                {verification ? "Upload New Files" : "Upload Files"}
-              </TabsTrigger>
-              <TabsTrigger value="url" className="flex items-center gap-2">
-                <LinkIcon className="h-4 w-4" />
-                {verification ? "Update URLs" : "Provide URLs"}
-              </TabsTrigger>
-            </TabsList>
-
-            <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-              {/* File Upload Tab - Always available */}
-              <TabsContent value="upload" className="space-y-6 mt-0">
-                {/* Food Safety License File Upload */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">
-                      Food Safety License * {verification && "(Upload new file)"}
-                    </Label>
-                    {verification?.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
-                  </div>
-                  
-                  {/* Show current document if exists */}
-                  {verification?.foodSafetyLicenseUrl && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Current document:</p>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">View Document</a>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-1">Upload a new file below to replace this document</p>
-                    </div>
-                  )}
-                  
-                  <FileUpload
-                    fieldName="foodSafetyLicense"
-                    label=""
-                    required={true}
-                    currentFile={fileUploads.foodSafetyLicense}
-                    onFileChange={(file) => handleFileUpload("foodSafetyLicense", file)}
-                    className="mt-0"
-                  />
-                  
-                  <p className="text-xs text-gray-500">
-                    Upload a clear photo or scan of your Food Safety License certificate.
-                  </p>
-                </div>
-
-                {/* Food Establishment Certificate File Upload */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">
-                      Food Establishment Certificate (Optional) {verification && verification.foodEstablishmentCertUrl && "(Upload new file)"}
-                    </Label>
-                    {verification?.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                  </div>
-                  
-                  {/* Show current document if exists */}
-                  {verification?.foodEstablishmentCertUrl && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Current document:</p>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-blue-600" />
-                        <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">View Document</a>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-1">Upload a new file below to replace this document</p>
-                    </div>
-                  )}
-                  
-                  <FileUpload
-                    fieldName="foodEstablishmentCert"
-                    label=""
-                    required={false}
-                    currentFile={fileUploads.foodEstablishmentCert}
-                    onFileChange={(file) => handleFileUpload("foodEstablishmentCert", file)}
-                    className="mt-0"
-                  />
-                  
-                  <p className="text-xs text-gray-500">
-                    Upload your Food Establishment Certificate (optional but recommended).
-                  </p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="url" className="space-y-6 mt-0">
-                {/* Food Safety License URL */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="foodSafetyLicenseUrl" className="text-sm font-medium">
-                      Food Safety License URL * {verification && "(Update current URL)"}
-                    </Label>
-                    {verification?.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
-                  </div>
-                  
-                  {/* Show current URL if exists */}
-                  {verification?.foodSafetyLicenseUrl && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Current URL:</p>
-                      <a 
-                        href={verification.foodSafetyLicenseUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-blue-600 underline font-medium"
-                      >
-                        View Document
-                      </a>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Enter a new URL below to replace this link
-                      </p>
-                    </div>
-                  )}
-                  
-                  <Input
-                    id="foodSafetyLicenseUrl"
-                    type="url"
-                    placeholder="https://example.com/your-food-safety-license.pdf"
-                    value={foodSafetyLicenseUrl}
-                    onChange={(e) => setFoodSafetyLicenseUrl(e.target.value)}
-                    className={errors.foodSafetyUrl ? "border-red-500" : ""}
-                  />
-                  {errors.foodSafetyUrl && (
-                    <p className="text-sm text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {errors.foodSafetyUrl}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Provide a direct link to your Food Safety License document.
-                  </p>
-                </div>
-
-                {/* Food Establishment Certificate URL */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="foodEstablishmentCertUrl" className="text-sm font-medium">
-                      Food Establishment Certificate URL (Optional) {verification && verification.foodEstablishmentCertUrl && "(Update current URL)"}
-                    </Label>
-                    {verification?.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                  </div>
-                  
-                  {/* Show current URL if exists */}
-                  {verification?.foodEstablishmentCertUrl && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                      <p className="text-sm font-medium text-blue-800 mb-1">Current URL:</p>
-                      <a 
-                        href={verification.foodEstablishmentCertUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="text-blue-600 underline font-medium"
-                      >
-                        View Document
-                      </a>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Enter a new URL below to replace this link
-                      </p>
-                    </div>
-                  )}
-                  
-                  <Input
-                    id="foodEstablishmentCertUrl"
-                    type="url"
-                    placeholder="https://example.com/your-food-establishment-cert.pdf"
-                    value={foodEstablishmentCertUrl}
-                    onChange={(e) => setFoodEstablishmentCertUrl(e.target.value)}
-                    className={errors.foodEstablishmentUrl ? "border-red-500" : ""}
-                  />
-                  {errors.foodEstablishmentUrl && (
-                    <p className="text-sm text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {errors.foodEstablishmentUrl}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    Provide a direct link to your Food Establishment Certificate document.
-                  </p>
-                </div>
-              </TabsContent>
-
-              {/* Admin Feedback */}
-              {verification?.documentsAdminFeedback && (
-                <Alert>
-                  <Award className="h-4 w-4" />
-                  <AlertDescription>
-                    <strong>Admin Feedback:</strong> {verification.documentsAdminFeedback}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Submit Button */}
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={createMutation.isPending || updateMutation.isPending || isUploading}
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading files... {uploadProgress > 0 && `${Math.round(uploadProgress)}%`}
-                  </>
-                ) : (createMutation.isPending || updateMutation.isPending) ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {verification ? "Updating..." : "Submitting..."}
-                  </>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    {verification ? "Update Documents" : "Upload Documents"}
-                  </>
-                )}
-              </Button>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Food Safety License Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold text-gray-900">
+                  Food Safety License * {verification && "(Update document)"}
+                </Label>
+                {verification?.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
+              </div>
               
-              {/* Upload Error Display */}
-              {uploadError && (
-                <Alert className="mt-2">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription className="text-red-600">
-                    <strong>Upload Error:</strong> {uploadError}
-                  </AlertDescription>
-                </Alert>
+              {/* Show current document if exists */}
+              {verification?.foodSafetyLicenseUrl && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-medium text-blue-800 mb-2">Current document:</p>
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">View Document</a>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">Choose a new document below to replace this one</p>
+                </div>
               )}
-            </form>
-          </Tabs>
+              
+              {/* Upload Options - Side by side buttons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* File Upload Option */}
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-gray-400 transition-colors">
+                  <div className="text-center">
+                    <Upload className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                    <h4 className="font-medium text-gray-900 mb-2">Upload File</h4>
+                    <p className="text-sm text-gray-600 mb-4">Select from your device</p>
+                    
+                    {fileUploads.foodSafetyLicense ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-800">{fileUploads.foodSafetyLicense.name}</span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleFileUpload("foodSafetyLicense", null)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          id="foodSafetyLicense"
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            handleFileUpload("foodSafetyLicense", file);
+                          }}
+                          className="hidden"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => document.getElementById('foodSafetyLicense')?.click()}
+                          className="w-full"
+                        >
+                          Choose File
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
 
+                {/* URL Option */}
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-gray-400 transition-colors">
+                  <div className="text-center">
+                    <LinkIcon className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                    <h4 className="font-medium text-gray-900 mb-2">Provide URL</h4>
+                    <p className="text-sm text-gray-600 mb-4">Link from cloud storage</p>
+                    
+                    <Input
+                      type="url"
+                      placeholder="https://example.com/document.pdf"
+                      value={foodSafetyLicenseUrl}
+                      onChange={(e) => setFoodSafetyLicenseUrl(e.target.value)}
+                      className={errors.foodSafetyUrl ? "border-red-500" : ""}
+                    />
+                    {errors.foodSafetyUrl && (
+                      <p className="text-sm text-red-500 flex items-center gap-1 mt-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {errors.foodSafetyUrl}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-xs text-gray-500">
+                Upload a clear photo or scan of your Food Safety License certificate.
+              </p>
+            </div>
 
+            {/* Food Establishment Certificate Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold text-gray-900">
+                  Food Establishment Certificate (Optional) {verification && verification.foodEstablishmentCertUrl && "(Update document)"}
+                </Label>
+                {verification?.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
+              </div>
+              
+              {/* Show current document if exists */}
+              {verification?.foodEstablishmentCertUrl && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-medium text-blue-800 mb-2">Current document:</p>
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-medium">View Document</a>
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">Choose a new document below to replace this one</p>
+                </div>
+              )}
+              
+              {/* Upload Options - Side by side buttons */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* File Upload Option */}
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-gray-400 transition-colors">
+                  <div className="text-center">
+                    <Upload className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                    <h4 className="font-medium text-gray-900 mb-2">Upload File</h4>
+                    <p className="text-sm text-gray-600 mb-4">Select from your device</p>
+                    
+                    {fileUploads.foodEstablishmentCert ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-800">{fileUploads.foodEstablishmentCert.name}</span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleFileUpload("foodEstablishmentCert", null)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          id="foodEstablishmentCert"
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            handleFileUpload("foodEstablishmentCert", file);
+                          }}
+                          className="hidden"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => document.getElementById('foodEstablishmentCert')?.click()}
+                          className="w-full"
+                        >
+                          Choose File
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* URL Option */}
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 hover:border-gray-400 transition-colors">
+                  <div className="text-center">
+                    <LinkIcon className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                    <h4 className="font-medium text-gray-900 mb-2">Provide URL</h4>
+                    <p className="text-sm text-gray-600 mb-4">Link from cloud storage</p>
+                    
+                    <Input
+                      type="url"
+                      placeholder="https://example.com/document.pdf"
+                      value={foodEstablishmentCertUrl}
+                      onChange={(e) => setFoodEstablishmentCertUrl(e.target.value)}
+                      className={errors.foodEstablishmentUrl ? "border-red-500" : ""}
+                    />
+                    {errors.foodEstablishmentUrl && (
+                      <p className="text-sm text-red-500 flex items-center gap-1 mt-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {errors.foodEstablishmentUrl}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-xs text-gray-500">
+                Upload your Food Establishment Certificate (optional but recommended).
+              </p>
+            </div>
+
+            {/* Admin Feedback */}
+            {verification?.documentsAdminFeedback && (
+              <Alert>
+                <Award className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Admin Feedback:</strong> {verification.documentsAdminFeedback}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Submit Button */}
+            <Button 
+              type="submit" 
+              className="w-full"
+              disabled={createMutation.isPending || updateMutation.isPending || isUploading}
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading files... {uploadProgress > 0 && `${Math.round(uploadProgress)}%`}
+                </>
+              ) : (createMutation.isPending || updateMutation.isPending) ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {verification ? "Updating..." : "Submitting..."}
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  {verification ? "Update Documents" : "Upload Documents"}
+                </>
+              )}
+            </Button>
+            
+            {/* Upload Error Display */}
+            {uploadError && (
+              <Alert className="mt-2">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-red-600">
+                  <strong>Upload Error:</strong> {uploadError}
+                </AlertDescription>
+              </Alert>
+            )}
+          </form>
         </CardContent>
       </Card>
     </motion.div>
