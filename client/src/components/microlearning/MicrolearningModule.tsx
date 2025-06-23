@@ -5,21 +5,21 @@ import { auth } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-    ArrowRight,
-    Award,
-    BookOpen,
-    CheckCircle,
-    ChevronLeft,
-    ChevronRight,
-    Circle,
-    Clock,
-    Download,
-    FileText,
-    Lock,
-    Play,
-    Shield,
-    TrendingUp,
-    XCircle
+  ArrowRight,
+  Award,
+  BookOpen,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  Clock,
+  Download,
+  FileText,
+  Lock,
+  Play,
+  Shield,
+  TrendingUp,
+  XCircle
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
@@ -1140,7 +1140,7 @@ export default function MicrolearningModule({
                       </h4>
                       {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
                         <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 text-xs">
-                          Requires Application
+                          Locked
                         </Badge>
                       )}
                     </div>

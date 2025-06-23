@@ -58,6 +58,8 @@ export default function VideoPlayer({
   const [shouldShowCompletePrompt, setShouldShowCompletePrompt] = useState(false);
   const [hasReachedNearEnd, setHasReachedNearEnd] = useState(false);
   const [showCompletionBanner, setShowCompletionBanner] = useState(false);
+  const [lastActivity, setLastActivity] = useState(Date.now());
+  const [isUserActive, setIsUserActive] = useState(true);
 
   // Reset video state when video URL changes or completion status changes
   useEffect(() => {
@@ -75,6 +77,8 @@ export default function VideoPlayer({
     setShouldShowCompletePrompt(false);
     setHasReachedNearEnd(false);
     setShowCompletionBanner(false);
+    setLastActivity(Date.now());
+    setIsUserActive(true);
     
     // Set completion state based on props, but only after a small delay to prevent flickering
     setTimeout(() => {
@@ -95,19 +99,63 @@ export default function VideoPlayer({
     }
   }, [isCompleted]);
 
-  // Timer to show completion prompt at appropriate moments
+  // Track user activity (mouse movement, keyboard, clicks)
   useEffect(() => {
-    if (!hasReachedNearEnd || videoCompleted || shouldShowCompletePrompt) return;
+    const updateActivity = () => {
+      setLastActivity(Date.now());
+      setIsUserActive(true);
+      
+      // Hide completion prompt if user becomes active again
+      if (shouldShowCompletePrompt) {
+        setShouldShowCompletePrompt(false);
+      }
+    };
 
-    // Show completion prompt after 3 seconds to give users time to decide
+    // Add event listeners for user activity
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    
+    events.forEach(event => {
+      document.addEventListener(event, updateActivity, true);
+    });
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, updateActivity, true);
+      });
+    };
+  }, [shouldShowCompletePrompt]);
+
+  // Monitor user inactivity
+  useEffect(() => {
+    const checkInactivity = () => {
+      const now = Date.now();
+      const timeSinceLastActivity = now - lastActivity;
+      
+      if (timeSinceLastActivity >= 45000) { // 45 seconds
+        setIsUserActive(false);
+      } else {
+        setIsUserActive(true);
+      }
+    };
+
+    const inactivityTimer = setInterval(checkInactivity, 1000); // Check every second
+
+    return () => clearInterval(inactivityTimer);
+  }, [lastActivity]);
+
+  // Timer to show completion prompt - only after inactivity
+  useEffect(() => {
+    if (!hasReachedNearEnd || videoCompleted || shouldShowCompletePrompt || isUserActive) return;
+
+    // Only show completion prompt after user has been inactive for 45+ seconds
     const timer = setTimeout(() => {
-      if (!videoCompleted && hasReachedNearEnd && !shouldShowCompletePrompt) {
+      if (!videoCompleted && hasReachedNearEnd && !shouldShowCompletePrompt && !isUserActive) {
         setShouldShowCompletePrompt(true);
       }
-    }, 3000);
+    }, 1000); // Small delay to ensure inactivity check has run
 
     return () => clearTimeout(timer);
-  }, [hasReachedNearEnd, videoCompleted, shouldShowCompletePrompt]);
+  }, [hasReachedNearEnd, videoCompleted, shouldShowCompletePrompt, isUserActive]);
 
   // Calculate actual watch percentage based on watched segments
   const calculateWatchPercentage = () => {
@@ -367,13 +415,13 @@ export default function VideoPlayer({
                   setHasStarted(true);
                   onStart?.();
                   
-                  // For Streamable videos, show completion prompt after reasonable time
-                  // since we can't track progress reliably
+                  // For Streamable videos, mark as reached near end after reasonable time
+                  // The inactivity system will handle showing the actual prompt
                   setTimeout(() => {
                     if (!videoCompleted) {
-                      setShouldShowCompletePrompt(true);
+                      setHasReachedNearEnd(true);
                     }
-                  }, 30000); // Show prompt after 30 seconds for Streamable videos
+                  }, 30000); // Mark as near end after 30 seconds for Streamable videos
                 }
               }}
               onError={() => {
@@ -523,6 +571,13 @@ export default function VideoPlayer({
                 </Button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Activity Debug Info - Remove in production */}
+        {process.env.NODE_ENV === 'development' && hasReachedNearEnd && !videoCompleted && (
+          <div className="absolute top-16 right-4 z-10 bg-black/70 text-white px-2 py-1 rounded text-xs">
+            Activity: {isUserActive ? 'Active' : `Inactive ${Math.floor((Date.now() - lastActivity) / 1000)}s`}
           </div>
         )}
 
