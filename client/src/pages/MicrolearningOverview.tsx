@@ -294,26 +294,30 @@ export default function MicrolearningOverview() {
         return;
       }
 
+      setIsDownloading(true);
       const token = await firebaseUser.getIdToken();
 
-      const response = await fetch('/api/microlearning/download-certificate', {
-        method: 'POST',
+      const response = await fetch(`/api/firebase/microlearning/certificate/${firebaseUser.uid}`, {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         }
       });
 
       if (!response.ok) {
+        const error = await response.json();
+        console.error('Certificate download failed:', error);
         throw new Error('Failed to download certificate');
       }
 
+      // Handle PDF download
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = 'food-safety-certificate.pdf';
+      a.download = `LocalCooks-Certificate-${firebaseUser.displayName || firebaseUser.email || 'user'}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -331,6 +335,8 @@ export default function MicrolearningOverview() {
         description: "Failed to download certificate. Please try again.",
         type: "error"
       });
+    } finally {
+      setIsDownloading(false);
     }
   };
 
