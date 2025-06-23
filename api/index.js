@@ -2773,9 +2773,16 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
 
     console.log("✅ Access check passed");
 
-    // ✅ OVERRIDE: Allow document uploads for any application status
-    // Previously restricted to only approved applications, but now allowing all statuses
-    // This enables users to upload documents during form submission
+    // Check if application status allows document uploads
+    if (application.status === 'cancelled' || application.status === 'rejected') {
+      console.log("❌ Document upload blocked - application status:", application.status);
+      return res.status(400).json({ 
+        message: "Document uploads are not permitted for cancelled or rejected applications",
+        applicationStatus: application.status
+      });
+    }
+
+    // Allow document uploads for active application statuses
     console.log("✅ Document upload allowed for application status:", application.status);
 
     const updateData = {};

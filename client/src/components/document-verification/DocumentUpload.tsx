@@ -15,6 +15,7 @@ import {
     AlertTriangle,
     Award,
     CheckCircle,
+    ChefHat,
     Clock,
     FileText,
     Info,
@@ -92,6 +93,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     }
   });
 
+  // Check if application is in a state that allows document uploads
+  const isApplicationActive = () => {
+    if (!verification) return false;
+    return verification.status !== 'cancelled' && verification.status !== 'rejected';
+  };
+
   const validateUrl = (url: string): boolean => {
     try {
       new URL(url);
@@ -117,6 +124,16 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrors({});
+    
+    // Check if application allows document uploads
+    if (!isApplicationActive()) {
+      toast({
+        title: "Upload not allowed",
+        description: "Document uploads are not permitted for cancelled or rejected applications.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Check if we have files to upload
     const hasFiles = Object.keys(fileUploads).length > 0;
@@ -249,11 +266,51 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     refetch();
   };
 
+  // Show loading state
   if (loading) {
     return (
-      <div className="flex justify-center py-8">
+      <div className="flex items-center justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
+    );
+  }
+
+  // Show message for cancelled/rejected applications
+  if (verification && !isApplicationActive()) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center py-12 px-6"
+      >
+        <div className="w-16 h-16 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
+          <XCircle className="h-8 w-8 text-gray-600" />
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-4">
+          {verification.status === 'cancelled' ? 'Application Cancelled' : 'Application Not Active'}
+        </h3>
+        <p className="text-gray-600 mb-6 max-w-md mx-auto">
+          {verification.status === 'cancelled' 
+            ? 'This application has been cancelled. Document uploads are no longer available for this application.'
+            : 'Document uploads are only available for active applications.'}
+        </p>
+        <div className="space-y-3">
+          <Button asChild className="rounded-xl">
+            <Link href="/apply">
+              <ChefHat className="mr-2 h-4 w-4" />
+              Submit New Application
+            </Link>
+          </Button>
+          <div>
+            <Button variant="outline" asChild className="rounded-xl">
+              <Link href="/dashboard">
+                <FileText className="mr-2 h-4 w-4" />
+                Back to Dashboard
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </motion.div>
     );
   }
 

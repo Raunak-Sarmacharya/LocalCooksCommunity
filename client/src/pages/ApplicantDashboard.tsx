@@ -6,34 +6,34 @@ import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from "@/components/ui/select";
 import {
-  formatApplicationStatus
+    formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  BookOpen,
-  CheckCircle,
-  ChefHat,
-  Clock,
-  FileText,
-  Shield,
-  Upload,
-  XCircle
+    BookOpen,
+    CheckCircle,
+    ChefHat,
+    Clock,
+    FileText,
+    Shield,
+    Upload,
+    XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -1151,12 +1151,41 @@ export default function ApplicantDashboard() {
                 </div>
               </div>
               
-{applications && applications.length > 0 ? (
+              {applications && applications.length > 0 ? (
                 (() => {
                   const latestApp = applications[0];
                   const hasDocuments = latestApp.foodSafetyLicenseUrl || latestApp.foodEstablishmentCertUrl;
                   const isFullyVerified = latestApp.foodSafetyLicenseStatus === 'approved' && 
                     (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
+                  const isApplicationActive = latestApp.status !== 'cancelled' && latestApp.status !== 'rejected';
+                  
+                  // Show different UI for cancelled/rejected applications
+                  if (!isApplicationActive) {
+                    return (
+                      <div className="flex flex-col items-center justify-center h-full text-center py-8">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center mx-auto mb-4">
+                          <XCircle className="h-8 w-8 text-gray-600" />
+                        </div>
+                        <h4 className="text-lg font-medium text-gray-900 mb-2">
+                          {latestApp.status === 'cancelled' ? 'Application Cancelled' : 'Application Not Active'}
+                        </h4>
+                        <p className="text-gray-600 mb-6">
+                          {latestApp.status === 'cancelled' 
+                            ? 'This application has been cancelled. Document uploads are no longer available.'
+                            : 'Document uploads are only available for active applications.'}
+                        </p>
+                        <div className="space-y-3 w-full">
+                          <Button asChild className="rounded-xl w-full">
+                            <Link href="/apply">
+                              <ChefHat className="mr-2 h-4 w-4" />
+                              Submit New Application
+                            </Link>
+                          </Button>
+                          <p className="text-xs text-gray-500">Start fresh with a new application to upload documents</p>
+                        </div>
+                      </div>
+                    );
+                  }
                   
                   return (
                     <div className="flex flex-col h-full">

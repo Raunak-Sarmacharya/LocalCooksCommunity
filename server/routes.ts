@@ -978,6 +978,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ message: "Access denied" });
         }
 
+        // Check if application status allows document uploads
+        if (application.status === 'cancelled' || application.status === 'rejected') {
+          // Clean up uploaded files
+          if (req.files) {
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+            Object.values(files).flat().forEach(file => {
+              try {
+                fs.unlinkSync(file.path);
+              } catch (e) {
+                console.error('Error cleaning up file:', e);
+              }
+            });
+          }
+          return res.status(400).json({ 
+            message: "Document uploads are not permitted for cancelled or rejected applications",
+            applicationStatus: application.status
+          });
+        }
+
         const updateData: any = {
           id: applicationId,
         };
