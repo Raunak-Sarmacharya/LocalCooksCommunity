@@ -1,3 +1,4 @@
+import { CustomAlertsProvider, useCustomAlerts } from "@/components/ui/custom-alerts";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
@@ -64,39 +65,7 @@ function Router() {
         <Route path="/reset-welcome">
           <div style={{ padding: '20px', textAlign: 'center' }}>
             <h2>Reset Welcome Screen (Debug)</h2>
-            <button 
-              onClick={async () => {
-                try {
-                  const firebaseUser = auth.currentUser;
-                  if (firebaseUser) {
-                    const token = await firebaseUser.getIdToken();
-                    const response = await fetch('/api/debug/reset-welcome', {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                      }
-                    });
-                    const result = await response.json();
-                    alert(JSON.stringify(result, null, 2));
-                  } else {
-                    alert('No Firebase user logged in');
-                  }
-                } catch (error: any) {
-                  alert('Error: ' + (error.message || 'Unknown error'));
-                }
-              }}
-              style={{ 
-                padding: '10px 20px', 
-                backgroundColor: '#007bff', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '5px',
-                cursor: 'pointer'
-              }}
-            >
-              Reset Welcome Screen
-            </button>
+            <ResetWelcomeButton />
             <p>This will reset has_seen_welcome to false for the current user</p>
           </div>
         </Route>
@@ -105,99 +74,8 @@ function Router() {
             <h2>Welcome Screen Debug Dashboard</h2>
             
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button 
-                onClick={async () => {
-                  try {
-                    const firebaseUser = auth.currentUser;
-                    if (!firebaseUser) {
-                      alert('No Firebase user logged in');
-                      return;
-                    }
-                    
-                    const token = await firebaseUser.getIdToken();
-                    
-                    // Get comprehensive debug info
-                    const response = await fetch('/api/debug/welcome-status', {
-                      headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                      }
-                    });
-                    
-                    if (response.ok) {
-                      const debugData = await response.json();
-                      
-                      const display = {
-                        'Firebase UID': debugData.firebase_user.uid,
-                        'Database User ID': debugData.user_id,
-                        'Username': debugData.username,
-                        'Email': debugData.firebase_user.email,
-                        'Is Verified': debugData.is_verified,
-                        'Has Seen Welcome': debugData.has_seen_welcome,
-                        'Should Show Welcome': debugData.should_show_welcome_screen ? 'YES ✅' : 'NO ❌',
-                        'User Role': debugData.role,
-                        'Data Types': {
-                          'is_verified': debugData.is_verified_type,
-                          'has_seen_welcome': debugData.has_seen_welcome_type
-                        }
-                      };
-                      
-                      console.log('🔍 WELCOME DEBUG DATA:', debugData);
-                      alert('Welcome Screen Debug Info:\n\n' + JSON.stringify(display, null, 2));
-                    } else {
-                      const errorText = await response.text();
-                      alert('Error fetching debug data: ' + errorText);
-                    }
-                  } catch (error: any) {
-                    alert('Error: ' + (error.message || 'Unknown error'));
-                  }
-                }}
-                style={{ 
-                  padding: '10px 20px', 
-                  backgroundColor: '#28a745', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '5px',
-                  cursor: 'pointer'
-                }}
-              >
-                Check Welcome Status
-              </button>
-              
-              <button 
-                onClick={async () => {
-                  try {
-                    const firebaseUser = auth.currentUser;
-                    if (firebaseUser) {
-                      const token = await firebaseUser.getIdToken();
-                      const response = await fetch('/api/user/reset-welcome', {
-                        method: 'POST',
-                        headers: {
-                          'Authorization': `Bearer ${token}`,
-                          'Content-Type': 'application/json'
-                        }
-                      });
-                      const result = await response.json();
-                      alert('Reset result: ' + JSON.stringify(result, null, 2));
-                    } else {
-                      alert('No Firebase user logged in');
-                    }
-                  } catch (error: any) {
-                    alert('Error: ' + (error.message || 'Unknown error'));
-                  }
-                }}
-                style={{ 
-                  padding: '10px 20px', 
-                  backgroundColor: '#dc3545', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '5px',
-                  cursor: 'pointer'
-                }}
-              >
-                Reset Welcome Flag
-              </button>
-              
+              <WelcomeStatusButton />
+              <ResetWelcomeFlagButton />
               <button 
                 onClick={() => {
                   window.location.href = '/auth';
@@ -256,14 +134,201 @@ function Router() {
   );
 }
 
+function ResetWelcomeButton() {
+  const { showAlert } = useCustomAlerts();
+  
+  return (
+    <button 
+      onClick={async () => {
+        try {
+          const firebaseUser = auth.currentUser;
+          if (firebaseUser) {
+            const token = await firebaseUser.getIdToken();
+            const response = await fetch('/api/debug/reset-welcome', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            const result = await response.json();
+            showAlert({
+              title: "Reset Complete",
+              description: JSON.stringify(result, null, 2),
+              type: "success"
+            });
+          } else {
+            showAlert({
+              title: "Authentication Error",
+              description: "No Firebase user logged in",
+              type: "error"
+            });
+          }
+        } catch (error: any) {
+          showAlert({
+            title: "Error",
+            description: error.message || 'Unknown error',
+            type: "error"
+          });
+        }
+      }}
+      style={{ 
+        padding: '10px 20px', 
+        backgroundColor: '#007bff', 
+        color: 'white', 
+        border: 'none', 
+        borderRadius: '5px',
+        cursor: 'pointer'
+      }}
+    >
+      Reset Welcome Screen
+    </button>
+  );
+}
+
+function WelcomeStatusButton() {
+  const { showAlert } = useCustomAlerts();
+  
+  return (
+    <button 
+      onClick={async () => {
+        try {
+          const firebaseUser = auth.currentUser;
+          if (!firebaseUser) {
+            showAlert({
+              title: "Authentication Error",
+              description: "No Firebase user logged in",
+              type: "error"
+            });
+            return;
+          }
+          
+          const token = await firebaseUser.getIdToken();
+          
+          // Get comprehensive debug info
+          const response = await fetch('/api/debug/welcome-status', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const debugData = await response.json();
+            
+            const display = {
+              'Firebase UID': debugData.firebase_user.uid,
+              'Database User ID': debugData.user_id,
+              'Username': debugData.username,
+              'Email': debugData.firebase_user.email,
+              'Is Verified': debugData.is_verified,
+              'Has Seen Welcome': debugData.has_seen_welcome,
+              'Should Show Welcome': debugData.should_show_welcome_screen ? 'YES ✅' : 'NO ❌',
+              'User Role': debugData.role,
+              'Data Types': {
+                'is_verified': debugData.is_verified_type,
+                'has_seen_welcome': debugData.has_seen_welcome_type
+              }
+            };
+            
+            console.log('🔍 WELCOME DEBUG DATA:', debugData);
+            showAlert({
+              title: "Welcome Screen Debug Info",
+              description: JSON.stringify(display, null, 2),
+              type: "info"
+            });
+          } else {
+            const errorText = await response.text();
+            showAlert({
+              title: "Error",
+              description: 'Error fetching debug data: ' + errorText,
+              type: "error"
+            });
+          }
+        } catch (error: any) {
+          showAlert({
+            title: "Error",
+            description: error.message || 'Unknown error',
+            type: "error"
+          });
+        }
+      }}
+      style={{ 
+        padding: '10px 20px', 
+        backgroundColor: '#28a745', 
+        color: 'white', 
+        border: 'none', 
+        borderRadius: '5px',
+        cursor: 'pointer'
+      }}
+    >
+      Check Welcome Status
+    </button>
+  );
+}
+
+function ResetWelcomeFlagButton() {
+  const { showAlert } = useCustomAlerts();
+  
+  return (
+    <button 
+      onClick={async () => {
+        try {
+          const firebaseUser = auth.currentUser;
+          if (firebaseUser) {
+            const token = await firebaseUser.getIdToken();
+            const response = await fetch('/api/user/reset-welcome', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            const result = await response.json();
+            showAlert({
+              title: "Reset Result",
+              description: JSON.stringify(result, null, 2),
+              type: "success"
+            });
+          } else {
+            showAlert({
+              title: "Authentication Error",
+              description: "No Firebase user logged in",
+              type: "error"
+            });
+          }
+        } catch (error: any) {
+          showAlert({
+            title: "Error",
+            description: error.message || 'Unknown error',
+            type: "error"
+          });
+        }
+      }}
+      style={{ 
+        padding: '10px 20px', 
+        backgroundColor: '#dc3545', 
+        color: 'white', 
+        border: 'none', 
+        borderRadius: '5px',
+        cursor: 'pointer'
+      }}
+    >
+      Reset Welcome Flag
+    </button>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <CustomAlertsProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </CustomAlertsProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

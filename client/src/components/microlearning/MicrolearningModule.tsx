@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
@@ -288,6 +289,7 @@ export default function MicrolearningModule({
   onComplete,
   className = ""
 }: MicrolearningModuleProps) {
+  const { showAlert } = useCustomAlerts();
   const isPlayerFocused = className.includes('player-focused');
   const { user: firebaseUser } = useFirebaseAuth();
   
@@ -599,7 +601,11 @@ export default function MicrolearningModule({
       const currentUser = auth.currentUser;
       if (!currentUser) {
         console.error('No authenticated user found');
-        alert('Authentication error. Please refresh the page and try again.');
+        showAlert({
+          title: "Authentication Error",
+          description: "Authentication error. Please refresh the page and try again.",
+          type: "error"
+        });
         return;
       }
       
@@ -637,18 +643,34 @@ export default function MicrolearningModule({
         
         if (response.status === 403 && errorData.requiresApproval) {
           // User doesn't have approved application
-          alert(errorData.message || 'You need an approved application to complete certification. Please check your application status.');
+          showAlert({
+            title: "Application Required",
+            description: errorData.message || 'You need an approved application to complete certification. Please check your application status.',
+            type: "warning"
+          });
         } else if (response.status === 401) {
           // Authentication error
-          alert('Authentication error. Please refresh the page and try again.');
+          showAlert({
+            title: "Authentication Error",
+            description: "Authentication error. Please refresh the page and try again.",
+            type: "error"
+          });
         } else {
           // Generic error
-          alert(errorData.message || 'Failed to confirm completion. Please try again.');
+          showAlert({
+            title: "Completion Error",
+            description: errorData.message || 'Failed to confirm completion. Please try again.',
+            type: "error"
+          });
         }
       }
     } catch (error) {
       console.error('Failed to confirm completion:', error);
-      alert('Network error. Please check your connection and try again.');
+      showAlert({
+        title: "Network Error",
+        description: "Network error. Please check your connection and try again.",
+        type: "error"
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1027,7 +1049,11 @@ export default function MicrolearningModule({
                           
                           if (!canAccessNext && accessLevel === 'full') {
                             // Show a message that they need to complete current video first
-                            alert('Please complete the current video before proceeding to the next one.');
+                            showAlert({
+                              title: "Access Restricted",
+                              description: "Please complete the current video before proceeding to the next one.",
+                              type: "warning"
+                            });
                             return;
                           }
                           
@@ -1476,7 +1502,12 @@ export default function MicrolearningModule({
                             if (canAccess) {
                               handleVideoClick(video.id, index);
                             } else if (accessLevel === 'full' && !canAccess) {
-                              alert('Please complete the previous video before accessing this one.');
+                              showAlert({
+                                title: "Access Restricted",
+                                description: "Please complete the previous video before accessing this one.",
+                                type: "warning"
+                              });
+                              return;
                             } else {
                               handleVideoClick(video.id, index); // Will trigger application prompt
                             }

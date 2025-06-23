@@ -2,6 +2,7 @@ import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
@@ -29,6 +30,7 @@ import { Link, useLocation } from 'wouter';
 export default function MicrolearningOverview() {
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
+  const { showAlert } = useCustomAlerts();
 
   // Check for session-based auth (for admin users)
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
@@ -279,6 +281,58 @@ export default function MicrolearningOverview() {
     trainingAccess: !!trainingAccess,
     microlearningCompletion: !!microlearningCompletion
   });
+
+  const downloadCertificate = async () => {
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        showAlert({
+          title: "Authentication Required",
+          description: "Authentication required. Please log in again.",
+          type: "error"
+        });
+        return;
+      }
+
+      const token = await firebaseUser.getIdToken();
+
+      const response = await fetch('/api/microlearning/download-certificate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download certificate');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'food-safety-certificate.pdf';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      showAlert({
+        title: "Success",
+        description: "Certificate downloaded successfully!",
+        type: "success"
+      });
+    } catch (error) {
+      console.error('Error downloading certificate:', error);
+      showAlert({
+        title: "Download Failed",
+        description: "Failed to download certificate. Please try again.",
+        type: "error"
+      });
+    }
+  };
 
   if (isInitialLoading) {
     return (
@@ -566,48 +620,7 @@ export default function MicrolearningOverview() {
                         </div>
                         <Button 
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                          onClick={async () => {
-                            try {
-                              // Get Firebase token for authentication
-                              const currentUser = auth.currentUser;
-                              if (!currentUser) {
-                                console.error('No authenticated user found');
-                                alert('Authentication required. Please log in again.');
-                                return;
-                              }
-                              
-                              const token = await currentUser.getIdToken();
-                              
-                              const response = await fetch(`/api/firebase/microlearning/certificate/${user.uid}`, {
-                                method: 'GET',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${token}`
-                                }
-                              });
-
-                              if (response.ok) {
-                                // Handle PDF download
-                                const blob = await response.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.style.display = 'none';
-                                a.href = url;
-                                a.download = `LocalCooks-Certificate-${user.displayName || user.email || 'user'}.pdf`;
-                                document.body.appendChild(a);
-                                a.click();
-                                window.URL.revokeObjectURL(url);
-                                document.body.removeChild(a);
-                              } else {
-                                const error = await response.json();
-                                console.error('Certificate download failed:', error);
-                                alert('Failed to download certificate. Please try again.');
-                              }
-                            } catch (error) {
-                              console.error('Error downloading certificate:', error);
-                              alert('Failed to download certificate. Please try again.');
-                            }
-                          }}
+                          onClick={downloadCertificate}
                         >
                           <Download className="h-4 w-4 mr-2" />
                           Download
