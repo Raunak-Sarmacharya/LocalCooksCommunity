@@ -10,7 +10,7 @@ export const applicationSchema = z.object({
     .refine((val) => {
       const digitsOnly = val.replace(/\D/g, '');
       return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Phone number must be +1 followed by exactly 10 digits - no more, no less"),
+    }, "Canadian phone number must be exactly 10 digits"),
   foodSafetyLicense: z.enum(["yes", "no"], {
     required_error: "Please select an option",
   }),

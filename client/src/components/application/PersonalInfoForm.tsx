@@ -20,7 +20,7 @@ const personalInfoSchema = z.object({
     .refine((val) => {
       const digitsOnly = val.replace(/\D/g, '');
       return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Phone number must be +1 followed by exactly 10 digits - no more, no less"),
+    }, "Canadian phone number must be exactly 10 digits"),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
@@ -102,12 +102,66 @@ export default function PersonalInfoForm() {
   const handlePhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const input = e.currentTarget;
     const cursorPosition = input.selectionStart || 0;
+    const currentValue = input.value;
     
     // Prevent editing the "+1 " prefix
     if (cursorPosition < 3 && ![37, 38, 39, 40, 9].includes(e.keyCode)) {
       if (e.keyCode === 8 || e.keyCode === 46) { // Backspace or Delete
         e.preventDefault();
         return;
+      }
+    }
+
+    // Handle backspace to allow deletion through formatting characters
+    if (e.keyCode === 8) { // Backspace
+      const beforeCursor = currentValue.substring(0, cursorPosition);
+      const afterCursor = currentValue.substring(cursorPosition);
+      
+      if (cursorPosition > 3) { // Allow backspace only after "+1 "
+        // Find the last digit before cursor
+        let newBeforeCursor = beforeCursor;
+        let deletedChar = false;
+        
+        // Work backwards from cursor to find and remove the last digit
+        for (let i = beforeCursor.length - 1; i >= 3; i--) {
+          if (/\d/.test(beforeCursor[i])) {
+            newBeforeCursor = beforeCursor.substring(0, i) + beforeCursor.substring(i + 1);
+            deletedChar = true;
+            break;
+          }
+        }
+        
+        if (deletedChar) {
+          e.preventDefault();
+          const newValue = newBeforeCursor + afterCursor;
+          
+          // Extract digits and reformat
+          const digitsOnly = newValue.substring(3).replace(/\D/g, '');
+          
+          let formattedPhone;
+          if (digitsOnly.length >= 6) {
+            formattedPhone = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+          } else if (digitsOnly.length >= 3) {
+            formattedPhone = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3)}`;
+          } else {
+            formattedPhone = digitsOnly;
+          }
+          
+          const newFormattedValue = "+1 " + formattedPhone;
+          setPhoneValue(newFormattedValue);
+          
+          // Set cursor position after the last digit
+          setTimeout(() => {
+            const lastDigitPos = newFormattedValue.search(/\d(?=[^\d]*$)/);
+            if (lastDigitPos !== -1) {
+              input.setSelectionRange(lastDigitPos + 1, lastDigitPos + 1);
+            } else {
+              input.setSelectionRange(3, 3);
+            }
+          }, 0);
+          
+          return;
+        }
       }
     }
     
@@ -119,11 +173,10 @@ export default function PersonalInfoForm() {
     }
     
     // Check if adding this digit would exceed 10 digits in the phone number part
-    const currentValue = input.value.substring(3); // Remove "+1 " prefix
-    const currentDigits = currentValue.replace(/\D/g, '');
+    const phoneDigits = currentValue.substring(3).replace(/\D/g, '');
     
     // If it's a number and we already have 10 digits, prevent input
-    if (/[0-9]/.test(e.key) && currentDigits.length >= 10) {
+    if (/[0-9]/.test(e.key) && phoneDigits.length >= 10) {
       e.preventDefault();
       return;
     }
