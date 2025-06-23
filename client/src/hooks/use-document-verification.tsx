@@ -241,6 +241,7 @@ export function useDocumentVerification() {
   });
 
   // Find the most recent application for document verification (any status)
+  // This will be used to show appropriate UI based on status
   const verification = applications && applications.length > 0 ? applications[0] : null;
 
   // Check for status changes and show subtle notifications
@@ -339,6 +340,11 @@ export function useDocumentVerification() {
     mutationFn: async (data: FormData | Record<string, string>) => {
       if (!verification) {
         throw new Error("No application found for document upload");
+      }
+      
+      // Check if application status allows document uploads
+      if (verification.status === 'cancelled' || verification.status === 'rejected') {
+        throw new Error("Document uploads are not permitted for cancelled or rejected applications");
       }
       
       // Check if data is FormData (file upload) or JSON object (URL submission)

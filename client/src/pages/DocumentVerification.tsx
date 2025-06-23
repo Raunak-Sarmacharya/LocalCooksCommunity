@@ -310,6 +310,16 @@ export default function DocumentVerification() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
+    // Check if application allows document uploads
+    if (verification && (verification.status === 'cancelled' || verification.status === 'rejected')) {
+      toast({
+        title: "Upload not allowed",
+        description: "Document uploads are not permitted for cancelled or rejected applications.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const hasFiles = Object.keys(fileUploads).length > 0;
     const hasUrls = foodSafetyLicenseUrl.trim() || foodEstablishmentCertUrl.trim();
     
