@@ -24,13 +24,14 @@ import {
     Trophy,
     Users
 } from 'lucide-react';
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 
 export default function MicrolearningOverview() {
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const { showAlert } = useCustomAlerts();
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Check for session-based auth (for admin users)
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
