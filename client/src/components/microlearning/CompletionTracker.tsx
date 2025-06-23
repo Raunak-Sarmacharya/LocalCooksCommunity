@@ -97,16 +97,23 @@ export default function CompletionTracker({
               const isCurrent = currentVideoId === video.id;
               const isClickable = !!onVideoClick;
               
-              // Access control logic - same as bottom panel
+              // Access control logic - enforce sequential completion
               let canAccess = false;
               let isAccessLocked = false;
               
               if (completionConfirmed || userRole === 'admin') {
                 canAccess = true;
               } else if (accessLevel === 'full') {
-                const previousCompleted = index === 0 || userProgress.find(p => p.videoId === currentModuleVideos[index - 1]?.id)?.completed || false;
-                canAccess = index === 0 || previousCompleted;
+                // For full access, require sequential completion
+                if (index === 0) {
+                  canAccess = true;
+                } else {
+                  const previousVideo = currentModuleVideos[index - 1];
+                  const previousCompleted = userProgress.find(p => p.videoId === previousVideo?.id)?.completed || false;
+                  canAccess = previousCompleted;
+                }
               } else {
+                // Limited access only gets first video
                 canAccess = index === 0;
               }
               
@@ -121,6 +128,9 @@ export default function CompletionTracker({
                     } else if (isClickable && accessLevel === 'limited') {
                       // Will be handled by the parent component
                       onVideoClick?.(video.id, index);
+                    } else if (isClickable && accessLevel === 'full' && !canAccess) {
+                      // Show message for sequential completion requirement
+                      alert('Please complete the previous video before accessing this one.');
                     }
                   }}
                   className={cn(
@@ -140,7 +150,7 @@ export default function CompletionTracker({
                   {/* Video Number & Status Icon */}
                   <div className="flex items-center gap-3 flex-shrink-0 mr-3">
                     <div 
-                      className={cn(
+                                              className={cn(
                         "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium transition-colors",
                         video.completed 
                           ? "bg-green-500 text-white"
@@ -148,6 +158,8 @@ export default function CompletionTracker({
                             ? "bg-blue-500 text-white"
                             : isCurrent && !isAccessLocked
                               ? "bg-primary text-white"
+                              : isAccessLocked && accessLevel === 'full'
+                                ? "bg-orange-400 text-white"
                               : isAccessLocked
                                 ? "bg-gray-300 text-gray-500"
                                 : "bg-gray-300 text-gray-600"
@@ -157,6 +169,8 @@ export default function CompletionTracker({
                     </div>
                     {video.completed ? (
                       <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0" />
+                    ) : isAccessLocked && accessLevel === 'full' ? (
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500 flex-shrink-0" />
                     ) : isAccessLocked ? (
                       <Lock className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0" />
                     ) : video.progress > 0 ? (

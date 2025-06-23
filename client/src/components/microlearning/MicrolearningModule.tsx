@@ -1008,14 +1008,34 @@ export default function MicrolearningModule({
                     if (completionConfirmed || user?.role === 'admin') {
                       canAccessNext = true;
                     } else if (accessLevel === 'full') {
-                      canAccessNext = true;
+                      // For full access users, require previous video completion for sequential access
+                      const currentVideoProgress = getVideoProgress(currentVideo.id);
+                      const currentVideoCompleted = (currentVideoProgress as any)?.completed || false;
+                      
+                      if (currentVideoCompleted || isLastVideo) {
+                        canAccessNext = true;
+                      } else {
+                        canAccessNext = false;
+                      }
                     }
 
                     return (
                       <Button
                         size="sm"
-                        onClick={() => !isLastVideo && canAccessNext && setCurrentVideoIndex(nextIndex)}
-                        disabled={isLastVideo || !canAccessNext}
+                        onClick={() => {
+                          if (isLastVideo) return;
+                          
+                          if (!canAccessNext && accessLevel === 'full') {
+                            // Show a message that they need to complete current video first
+                            alert('Please complete the current video before proceeding to the next one.');
+                            return;
+                          }
+                          
+                          if (canAccessNext) {
+                            setCurrentVideoIndex(nextIndex);
+                          }
+                        }}
+                        disabled={isLastVideo || (!canAccessNext && accessLevel !== 'full')}
                         className={`flex items-center gap-1.5 px-3 sm:px-4 ${canAccessNext && !isLastVideo ? "bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600" : ""}`}
                         variant={canAccessNext && !isLastVideo ? "default" : "outline"}
                       >
@@ -1024,6 +1044,12 @@ export default function MicrolearningModule({
                             <span className="hidden xs:inline">Module Complete</span>
                             <span className="xs:hidden">Complete</span>
                             <CheckCircle className="h-4 w-4" />
+                          </>
+                        ) : !canAccessNext && accessLevel === 'full' ? (
+                          <>
+                            <span className="hidden xs:inline">Complete Current Video</span>
+                            <span className="xs:hidden">Complete Current</span>
+                            <Clock className="h-4 w-4 hidden xs:inline" />
                           </>
                         ) : !canAccessNext ? (
                           <>
@@ -1076,20 +1102,60 @@ export default function MicrolearningModule({
                 </button>
 
                 <button
-                  onClick={() => setCurrentModule('hygiene')}
-                  className={`p-4 rounded-xl border-2 transition-all ${
+                  onClick={() => {
+                    // Only allow module switching if user has full access or is admin/completed
+                    if (completionConfirmed || user?.role === 'admin' || accessLevel === 'full') {
+                      setCurrentModule('hygiene');
+                    } else {
+                      // Show application prompt for limited users
+                      setShowApplicationPrompt(true);
+                    }
+                  }}
+                  className={`p-4 rounded-xl border-2 transition-all relative ${
                     currentModule === 'hygiene'
                       ? 'border-blue-500 bg-blue-50'
+                      : accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin'
+                      ? 'border-slate-200 hover:border-yellow-300 opacity-75'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
+                  {/* Lock indicator for limited access users */}
+                  {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
+                    <div className="absolute top-2 right-2">
+                      <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                        <Lock className="h-3 w-3 text-white" />
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="text-left">
                     <div className="flex items-center gap-2 mb-2">
                       <div className={`w-3 h-3 rounded-full ${currentModule === 'hygiene' ? 'bg-blue-500' : 'bg-slate-300'}`} />
-                      <h4 className="font-semibold text-slate-900">Safety & Hygiene How-To's</h4>
+                      <h4 className={`font-semibold ${
+                        accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' 
+                          ? 'text-slate-600' 
+                          : 'text-slate-900'
+                      }`}>
+                        Safety & Hygiene How-To's
+                      </h4>
+                      {accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' && (
+                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 text-xs">
+                          Requires Application
+                        </Badge>
+                      )}
                     </div>
-                    <p className="text-sm text-slate-600">8 practical demonstration videos</p>
-                    <div className="mt-2 text-xs text-slate-500">
+                    <p className={`text-sm ${
+                      accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' 
+                        ? 'text-slate-500' 
+                        : 'text-slate-600'
+                    }`}>
+                      8 practical demonstration videos
+                    </p>
+                    <div className={`mt-2 text-xs ${
+                      accessLevel === 'limited' && !completionConfirmed && user?.role !== 'admin' 
+                        ? 'text-slate-400' 
+                        : 'text-slate-500'
+                    }`}>
                       {userProgress.filter(p => p.completed && safetyHygieneVideos.some(v => v.id === p.videoId)).length} of 8 completed
                     </div>
                   </div>
@@ -1385,28 +1451,45 @@ export default function MicrolearningModule({
                       const isCompleted = (progress as any)?.completed || false;
                       const isCurrent = currentVideoIndex === index;
                       
-                      // Access control
+                      // Access control - enforce sequential completion for full access users
                       let canAccess = false;
                       if (completionConfirmed || user?.role === 'admin') {
                         canAccess = true;
                       } else if (accessLevel === 'full') {
-                        canAccess = true;
+                        // For full access, allow access to first video or if previous video is completed
+                        if (index === 0) {
+                          canAccess = true;
+                        } else {
+                          const previousVideo = currentModuleVideos[index - 1];
+                          const previousProgress = getVideoProgress(previousVideo.id);
+                          canAccess = (previousProgress as any)?.completed || false;
+                        }
                       } else {
+                        // Limited access only gets first video
                         canAccess = index === 0;
                       }
 
                       return (
                         <button
                           key={video.id}
-                          onClick={() => handleVideoClick(video.id, index)}
+                          onClick={() => {
+                            if (canAccess) {
+                              handleVideoClick(video.id, index);
+                            } else if (accessLevel === 'full' && !canAccess) {
+                              alert('Please complete the previous video before accessing this one.');
+                            } else {
+                              handleVideoClick(video.id, index); // Will trigger application prompt
+                            }
+                          }}
                           className={`w-full p-3 rounded-xl text-left transition-all ${
                             isCurrent
                               ? 'bg-gradient-to-r from-emerald-50 to-blue-50 border-2 border-emerald-200'
                               : canAccess
                               ? 'hover:bg-slate-50 border border-transparent hover:border-slate-200'
-                              : 'opacity-60 cursor-not-allowed border border-slate-100'
+                              : accessLevel === 'full'
+                              ? 'hover:bg-orange-50 border border-orange-200 cursor-pointer'
+                              : 'opacity-60 cursor-pointer border border-slate-100 hover:opacity-80'
                           }`}
-                          disabled={!canAccess}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
