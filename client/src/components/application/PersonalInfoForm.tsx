@@ -1,19 +1,26 @@
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
 
-import { Form } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { User, Mail, Phone, ArrowRight } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { ArrowRight, Mail, Phone, User } from "lucide-react";
 
-// Create a schema for just the personal info fields
+// Create a schema for just the personal info fields - matching main schema validation
 const personalInfoSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string().min(10, "Please enter a valid phone number"),
+  phone: z.string()
+    .min(10, "Phone number must be at least 10 characters")
+    .max(20, "Phone number is too long")
+    .regex(/^[\+]?[0-9\s\(\)\-\.]+$/, "Phone number can only contain numbers, spaces, parentheses, hyphens, and plus sign")
+    .refine((val) => {
+      const digitsOnly = val.replace(/\D/g, '');
+      return digitsOnly.length >= 10;
+    }, "Phone number must contain at least 10 digits"),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
@@ -29,6 +36,36 @@ export default function PersonalInfoForm() {
       phone: formData.phone || "",
     },
   });
+
+  // Function to handle phone input and filter out non-numeric characters
+  const handlePhoneInput = (e: React.FormEvent<HTMLInputElement>) => {
+    const input = e.currentTarget.value;
+    // Only allow numbers, spaces, parentheses, hyphens, periods, and plus sign
+    const filtered = input.replace(/[^0-9\s\(\)\-\.\+]/g, '');
+    
+    // Update the input value to the filtered version
+    e.currentTarget.value = filtered;
+    
+    // Update form state
+    form.setValue("phone", filtered);
+    form.trigger("phone"); // Trigger validation
+  };
+
+  // Prevent non-numeric keys from being typed (except allowed formatting characters)
+  const handlePhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Allow backspace, delete, tab, escape, enter, and arrow keys
+    if ([8, 9, 27, 13, 46, 37, 38, 39, 40].includes(e.keyCode) ||
+        // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+        (e.ctrlKey === true && [65, 67, 86, 88].includes(e.keyCode))) {
+      return;
+    }
+    
+    // Allow numbers (0-9), space, parentheses, hyphens, periods, and plus sign
+    const allowedChars = /[0-9\s\(\)\-\.\+]/;
+    if (!allowedChars.test(e.key)) {
+      e.preventDefault();
+    }
+  };
 
   const onSubmit = (data: PersonalInfoFormData) => {
     updateFormData(data);
@@ -110,8 +147,11 @@ export default function PersonalInfoForm() {
             <div className="relative">
               <Input
                 id="phone"
+                type="tel"
                 placeholder="(555) 123-4567"
                 {...form.register("phone")}
+                onInput={handlePhoneInput}
+                onKeyDown={handlePhoneKeyDown}
                 className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 rounded-xl"
               />
               <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
@@ -122,6 +162,9 @@ export default function PersonalInfoForm() {
                 {form.formState.errors.phone.message}
               </p>
             )}
+            <p className="text-xs text-gray-500 mt-1">
+              Numbers only: (555) 123-4567 or +1 555 123 4567
+            </p>
           </div>
         </div>
         
