@@ -5,12 +5,12 @@ export const applicationSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
   phone: z.string()
-    .min(13, "Phone number must include +1 and exactly 10 digits")
-    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone number must start with +1 followed by exactly 10 digits")
+    .min(13, "Phone numbers must be 10 digits")
+    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone numbers must be 10 digits")
     .refine((val) => {
       const digitsOnly = val.replace(/\D/g, '');
       return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Canadian phone number must be exactly 10 digits"),
+    }, "Phone numbers must be 10 digits"),
   foodSafetyLicense: z.enum(["yes", "no"], {
     required_error: "Please select an option",
   }),
