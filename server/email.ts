@@ -115,16 +115,26 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     const config = getEmailConfig();
     const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
     
-    console.log('Using email configuration:', {
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      user: config.auth.user ? '****' : 'not set', // Don't log actual credentials
-      domain: getDomainFromEmail(config.auth.user),
-      organization: getOrganizationName(),
-      hasEmailFrom: !!process.env.EMAIL_FROM,
-      isProduction,
-      environment: process.env.VERCEL_ENV || process.env.NODE_ENV
+    console.log('📧 COMPREHENSIVE EMAIL SEND INITIATED:', {
+      to: content.to,
+      subject: content.subject,
+      emailType: content.subject.includes('Application') ? '🎯 APPLICATION_EMAIL' : '📝 SYSTEM_EMAIL',
+      trackingId: options?.trackingId || `auto_${Date.now()}`,
+      hasText: !!content.text,
+      hasHtml: !!content.html,
+      timestamp: new Date().toISOString(),
+      config: {
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        user: config.auth.user ? config.auth.user.replace(/(.{3}).*@/, '$1***@') : 'not set',
+        domain: getDomainFromEmail(config.auth.user),
+        organization: getOrganizationName(),
+        hasEmailFrom: !!process.env.EMAIL_FROM,
+        isProduction,
+        environment: process.env.VERCEL_ENV || process.env.NODE_ENV,
+        vercelRegion: process.env.VERCEL_REGION || 'unknown'
+      }
     });
 
     transporter = createTransporter(config);
@@ -173,19 +183,31 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       // Enhanced headers for better deliverability and MailChannels compatibility
       headers: {
         'Organization': organizationName,
-        'X-Mailer': 'Local Cooks Community',
+        'X-Mailer': 'Local Cooks Community v2.0',
         'X-Priority': '3',
         'X-MSMail-Priority': 'Normal',
         'Importance': 'Normal',
-        // MailChannels and DKIM-friendly sender identification
+        // Enhanced MailChannels and DKIM-friendly sender identification
         'Sender': config.auth.user,
         'Return-Path': config.auth.user,
-        // Anti-spam headers
+        'Reply-To': config.auth.user,
+        // Enhanced MailChannels headers for better routing
+        'X-MC-PreserveRecipients': 'false',
+        'X-MC-Track': 'opens,clicks',
+        'X-MC-Tags': 'application,local-cooks',
+        'X-MC-Subaccount': process.env.EMAIL_SUBACCOUNT || 'main',
+        // Anti-spam and deliverability headers
         'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'List-Id': `<local-cooks.${domain}>`,
+        // Enhanced authentication and tracking headers
+        'X-Local-Cooks-Version': '2.0',
+        'X-Local-Cooks-Type': content.subject.includes('Application') ? 'application' : 'system',
+        'X-Local-Cooks-Tracking': options?.trackingId || `auto_${Date.now()}`,
         // Add DMARC-friendly headers
         'X-Vercel-Deployment': process.env.VERCEL_DEPLOYMENT_ID || 'local',
         'X-Vercel-URL': process.env.VERCEL_URL || 'localhost',
+        'X-Vercel-Region': process.env.VERCEL_REGION || 'unknown',
         // Merge any additional headers from content
         ...(content.headers || {})
       },
@@ -202,13 +224,37 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       // DKIM signing is handled by Hostinger SMTP server or MailChannels
     };
 
-    // Send the email with timeout protection (critical for serverless)
-    const emailPromise = transporter.sendMail(mailOptions);
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Email sending timeout - exceeded 20 seconds')), 20000);
-    });
+    // Send the email with enhanced timeout protection and retry logic (critical for serverless)
+    let info;
+    let attempts = 0;
+    const maxAttempts = 2; // Allow one retry for better reliability
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      console.log(`📧 Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
+      
+      try {
+        const emailPromise = transporter.sendMail(mailOptions);
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Email sending timeout - exceeded 25 seconds')), 25000); // Increased timeout
+        });
 
-    const info = await Promise.race([emailPromise, timeoutPromise]);
+        info = await Promise.race([emailPromise, timeoutPromise]);
+        
+        // If successful, break out of retry loop
+        console.log(`✅ Email sent successfully on attempt ${attempts}`);
+        break;
+      } catch (attemptError) {
+        console.warn(`⚠️ Attempt ${attempts} failed for ${content.to}:`, attemptError instanceof Error ? attemptError.message : String(attemptError));
+        
+        if (attempts >= maxAttempts) {
+          throw attemptError; // Re-throw on final attempt
+        }
+        
+        // Wait briefly before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+      }
+    }
 
     const executionTime = Date.now() - startTime;
     console.log('Email sent successfully:', {
