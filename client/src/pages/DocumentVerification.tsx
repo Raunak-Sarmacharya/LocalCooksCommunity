@@ -232,15 +232,16 @@ export default function DocumentVerification() {
           </div>
         </motion.div>
 
-        {/* Verification Process Steps */}
+        {/* Combined Verification Process and Document Upload Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 mb-8 backdrop-blur-sm"
         >
+          {/* Verification Process Steps */}
           <div className="mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Verification Process</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Verification Process & Document Upload</h3>
             <div className="space-y-6">
               {/* Horizontal Process Flow */}
               <div className="flex items-center justify-between relative">
@@ -283,16 +284,10 @@ export default function DocumentVerification() {
             </div>
           </div>
 
-
-        </motion.div>
-
-        {/* Document Management Section - Streamlined */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <DocumentUpload forceShowForm={true} />
+          {/* Document Upload Section */}
+          <div className="pt-6 border-t border-gray-200">
+            <DocumentUpload forceShowForm={true} />
+          </div>
         </motion.div>
       </main>
       <Footer />
