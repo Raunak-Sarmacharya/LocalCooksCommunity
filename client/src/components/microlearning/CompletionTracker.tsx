@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -46,6 +47,7 @@ export default function CompletionTracker({
   userProgress = []
 }: CompletionTrackerProps) {
   const allCompleted = completedCount === totalCount;
+  const { showAlert } = useCustomAlerts();
 
   return (
     <div className={cn("bg-white rounded-2xl border shadow-sm", className)}>
@@ -129,8 +131,12 @@ export default function CompletionTracker({
                       // Will be handled by the parent component
                       onVideoClick?.(video.id, index);
                     } else if (isClickable && accessLevel === 'full' && !canAccess) {
-                      // Show message for sequential completion requirement
-                      alert('Please complete the previous video before accessing this one.');
+                      showAlert({
+                        title: "Access Restricted",
+                        description: "Please complete the previous video before accessing this one.",
+                        type: "warning"
+                      });
+                      return;
                     }
                   }}
                   className={cn(

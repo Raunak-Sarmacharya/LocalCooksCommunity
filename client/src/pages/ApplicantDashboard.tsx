@@ -5,6 +5,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import {
     Dialog,
     DialogContent,
@@ -86,6 +87,7 @@ export default function ApplicantDashboard() {
   });
 
   const prevApplicationsRef = useRef<Application[] | null>(null);
+  const { showConfirm } = useCustomAlerts();
 
   // Debug authentication state
   console.log('ApplicantDashboard - Authentication state:', {
@@ -745,6 +747,56 @@ export default function ApplicantDashboard() {
     }
   };
 
+  const handleCancelApplication = () => {
+    showConfirm({
+      title: "Cancel Application",
+      description: "Are you sure you want to cancel this application? This action cannot be undone.",
+      confirmText: "Yes, Cancel",
+      cancelText: "Keep Application",
+      type: "warning",
+      onConfirm: async () => {
+        try {
+          setIsSyncing(true);
+          const token = await auth.currentUser?.getIdToken();
+          
+          const response = await fetch('/api/firebase/application/cancel', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (response.ok) {
+            // Refresh the application data to show the updated status
+            queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
+            toast({
+              title: "Application cancelled",
+              description: "Your application has been cancelled successfully.",
+              variant: "destructive",
+            });
+          } else {
+            const error = await response.json();
+            toast({
+              title: "Error",
+              description: error.message || "Failed to cancel application. Please try again.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          console.error('Error cancelling application:', error);
+          toast({
+            title: "Error",
+            description: "An unexpected error occurred. Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsSyncing(false);
+        }
+      }
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50">
       {/* Vendor Portal Popup for Fully Verified Users */}
@@ -1088,15 +1140,11 @@ export default function ApplicantDashboard() {
                                 <Button 
                                   variant="outline" 
                                   className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
-                                  onClick={() => {
-                                    if (confirm('Are you sure you want to cancel this application? This action cannot be undone.')) {
-                                      cancelMutation.mutate(defaultApp.id);
-                                    }
-                                  }}
-                                  disabled={cancelMutation.isPending}
+                                  onClick={handleCancelApplication}
+                                  disabled={isSyncing}
                                 >
                                   <XCircle className="mr-2 h-4 w-4" />
-                                  {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
+                                  {isSyncing ? 'Cancelling...' : 'Cancel'}
                                 </Button>
                               )}
                             </>
