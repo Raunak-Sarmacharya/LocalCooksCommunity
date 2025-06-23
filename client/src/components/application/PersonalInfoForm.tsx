@@ -8,51 +8,109 @@ import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight, Mail, Phone, User } from "lucide-react";
+import { useEffect, useState } from "react";
 
 // Create a schema for just the personal info fields - matching main schema validation
 const personalInfoSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Please enter a valid email address"),
   phone: z.string()
-    .min(10, "Phone number must be at least 10 characters")
-    .max(20, "Phone number is too long")
-    .regex(/^[\+]?[0-9\s\(\)\-\.]+$/, "Phone number can only contain numbers, spaces, parentheses, hyphens, and plus sign")
+    .min(13, "Phone number must include +1 and exactly 10 digits")
+    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone number must start with +1 followed by exactly 10 digits")
     .refine((val) => {
       const digitsOnly = val.replace(/\D/g, '');
-      return digitsOnly.length >= 10;
-    }, "Phone number must contain at least 10 digits"),
+      return digitsOnly.length === 11 && digitsOnly.startsWith('1');
+    }, "Phone number must be +1 followed by exactly 10 digits - no more, no less"),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
 
 export default function PersonalInfoForm() {
   const { formData, updateFormData, goToNextStep } = useApplicationForm();
+  const [phoneValue, setPhoneValue] = useState(() => {
+    // Initialize with +1 prefix if not already present
+    const existing = formData.phone || "";
+    return existing.startsWith("+1") ? existing : "+1 ";
+  });
   
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(personalInfoSchema),
     defaultValues: {
       fullName: formData.fullName || "",
       email: formData.email || "",
-      phone: formData.phone || "",
+      phone: phoneValue,
     },
   });
 
-  // Function to handle phone input and filter out non-numeric characters
+  // Update form value when phoneValue changes
+  useEffect(() => {
+    form.setValue("phone", phoneValue);
+  }, [phoneValue, form]);
+
+  // Function to handle phone input with fixed +1 prefix and exactly 10 digits
   const handlePhoneInput = (e: React.FormEvent<HTMLInputElement>) => {
     const input = e.currentTarget.value;
-    // Only allow numbers, spaces, parentheses, hyphens, periods, and plus sign
-    const filtered = input.replace(/[^0-9\s\(\)\-\.\+]/g, '');
     
-    // Update the input value to the filtered version
-    e.currentTarget.value = filtered;
+    // Always ensure it starts with "+1 "
+    if (!input.startsWith("+1 ")) {
+      setPhoneValue("+1 ");
+      return;
+    }
     
-    // Update form state
-    form.setValue("phone", filtered);
-    form.trigger("phone"); // Trigger validation
+    // Extract the part after "+1 "
+    const afterPrefix = input.substring(3);
+    
+    // Only allow numbers, spaces, parentheses, hyphens, and periods for the phone number part
+    const filtered = afterPrefix.replace(/[^0-9\s\(\)\-\.]/g, '');
+    
+    // Count only the digits (excluding formatting characters)
+    const digitsOnly = filtered.replace(/\D/g, '');
+    
+    // Limit to exactly 10 digits - truncate if more
+    if (digitsOnly.length > 10) {
+      const truncatedDigits = digitsOnly.substring(0, 10);
+      // Auto-format to (XXX) XXX-XXXX when exactly 10 digits
+      const formattedPhone = `(${truncatedDigits.slice(0, 3)}) ${truncatedDigits.slice(3, 6)}-${truncatedDigits.slice(6, 10)}`;
+      setPhoneValue("+1 " + formattedPhone);
+    } else {
+      // Auto-format as user types
+      if (digitsOnly.length >= 6) {
+        const formattedPhone = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`;
+        setPhoneValue("+1 " + formattedPhone);
+      } else if (digitsOnly.length >= 3) {
+        const formattedPhone = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3)}`;
+        setPhoneValue("+1 " + formattedPhone);
+      } else {
+        setPhoneValue("+1 " + digitsOnly);
+      }
+    }
+    
+    // Trigger validation
+    form.trigger("phone");
   };
 
-  // Prevent non-numeric keys from being typed (except allowed formatting characters)
+  // Handle cursor position to prevent editing the "+1 " prefix
+  const handlePhoneClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    if (input.selectionStart !== null && input.selectionStart < 3) {
+      setTimeout(() => {
+        input.setSelectionRange(3, 3);
+      }, 0);
+    }
+  };
+
   const handlePhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const cursorPosition = input.selectionStart || 0;
+    
+    // Prevent editing the "+1 " prefix
+    if (cursorPosition < 3 && ![37, 38, 39, 40, 9].includes(e.keyCode)) {
+      if (e.keyCode === 8 || e.keyCode === 46) { // Backspace or Delete
+        e.preventDefault();
+        return;
+      }
+    }
+    
     // Allow backspace, delete, tab, escape, enter, and arrow keys
     if ([8, 9, 27, 13, 46, 37, 38, 39, 40].includes(e.keyCode) ||
         // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
@@ -60,11 +118,27 @@ export default function PersonalInfoForm() {
       return;
     }
     
-    // Allow numbers (0-9), space, parentheses, hyphens, periods, and plus sign
-    const allowedChars = /[0-9\s\(\)\-\.\+]/;
+    // Check if adding this digit would exceed 10 digits in the phone number part
+    const currentValue = input.value.substring(3); // Remove "+1 " prefix
+    const currentDigits = currentValue.replace(/\D/g, '');
+    
+    // If it's a number and we already have 10 digits, prevent input
+    if (/[0-9]/.test(e.key) && currentDigits.length >= 10) {
+      e.preventDefault();
+      return;
+    }
+    
+    // Allow numbers (0-9), space, parentheses, hyphens, and periods
+    const allowedChars = /[0-9\s\(\)\-\.]/;
     if (!allowedChars.test(e.key)) {
       e.preventDefault();
     }
+  };
+
+  // Get current digit count for display
+  const getCurrentDigitCount = () => {
+    const digits = phoneValue.substring(3).replace(/\D/g, '');
+    return digits.length;
   };
 
   const onSubmit = (data: PersonalInfoFormData) => {
@@ -148,9 +222,10 @@ export default function PersonalInfoForm() {
               <Input
                 id="phone"
                 type="tel"
-                placeholder="(555) 123-4567"
-                {...form.register("phone")}
+                placeholder="+1 (555) 123-4567"
+                value={phoneValue}
                 onInput={handlePhoneInput}
+                onClick={handlePhoneClick}
                 onKeyDown={handlePhoneKeyDown}
                 className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 rounded-xl"
               />
@@ -162,9 +237,14 @@ export default function PersonalInfoForm() {
                 {form.formState.errors.phone.message}
               </p>
             )}
-            <p className="text-xs text-gray-500 mt-1">
-              Numbers only: (555) 123-4567 or +1 555 123 4567
-            </p>
+            <div className="flex justify-between items-center mt-1">
+              <p className="text-xs text-gray-500">
+                Canadian phone number: Must be exactly 10 digits after +1
+              </p>
+              <p className={`text-xs font-medium ${getCurrentDigitCount() === 10 ? 'text-green-600' : 'text-gray-400'}`}>
+                {getCurrentDigitCount()}/10 digits
+              </p>
+            </div>
           </div>
         </div>
         
