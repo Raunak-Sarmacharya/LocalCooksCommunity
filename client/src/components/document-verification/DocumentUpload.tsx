@@ -603,7 +603,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
             return null;
           })()}
 
-          {verification && (
+          {verification && (verification.foodSafetyLicenseUrl || verification.foodEstablishmentCertUrl) && (
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
