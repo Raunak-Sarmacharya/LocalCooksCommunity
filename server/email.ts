@@ -59,6 +59,14 @@ const createTransporter = (config: EmailConfig) => {
 
 // Get email configuration from environment variables
 const getEmailConfig = (): EmailConfig => {
+  // Force direct SMTP if environment variable is set (bypasses MailChannels)
+  const forceDirectSMTP = process.env.FORCE_DIRECT_SMTP === 'true';
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
+  if (forceDirectSMTP && isProduction) {
+    console.log('🔄 Forcing direct SMTP connection (bypassing MailChannels)');
+  }
+  
   return {
     host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
     port: parseInt(process.env.EMAIL_PORT || '587'),
