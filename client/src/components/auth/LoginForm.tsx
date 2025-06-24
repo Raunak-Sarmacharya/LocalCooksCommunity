@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { checkUserExistsByEmail } from "@/utils/user-existence-check";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Lock, Mail } from "lucide-react";
 import { useState } from "react";
@@ -30,10 +31,32 @@ interface LoginFormProps {
 export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginFormProps) {
   const { login, signInWithGoogle, loading, error } = useFirebaseAuth();
   const [formError, setFormError] = useState<string | null>(null);
+  const [userExists, setUserExists] = useState<boolean | null>(null);
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
+  
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+
+  // Check user existence when email changes
+  const checkUserExistence = async (email: string) => {
+    if (!email || !email.includes('@')) {
+      setUserExists(null);
+      return;
+    }
+
+    setIsCheckingUser(true);
+    try {
+      const result = await checkUserExistsByEmail(email);
+      setUserExists(result.exists && result.canSignIn);
+    } catch (error) {
+      console.error('Error checking user existence:', error);
+      setUserExists(null);
+    } finally {
+      setIsCheckingUser(false);
+    }
+  };
 
   const onSubmit = async (data: LoginFormData) => {
     setHasAttemptedLogin?.(true);
@@ -47,6 +70,14 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       console.log('❌ REGULAR LOGIN ERROR:', e.message);
       // Show user-friendly error message instead of technical details
       setFormError("Email/password sign-in is not available with the current email address. Please check your credentials or register for a new account.");
+    }
+  };
+
+  const getButtonText = () => {
+    if (userExists === true) {
+      return "Welcome back!";
+    } else {
+      return "Sign in to your account";
     }
   };
 
@@ -108,10 +139,29 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
                       placeholder="you@company.com"
                       autoComplete="email"
                       {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        const email = e.target.value;
+                        if (email && email.includes('@')) {
+                          checkUserExistence(email);
+                        }
+                      }}
                     />
                   </div>
                 </FormControl>
                 <FormMessage className="text-xs" />
+                {/* User existence status */}
+                {(isCheckingUser || userExists !== null) && form.watch('email') && form.watch('email').includes('@') && (
+                  <div className="mt-2 text-xs">
+                    {isCheckingUser ? (
+                      <span className="text-gray-500">Checking account...</span>
+                    ) : userExists === true ? (
+                      <span className="text-green-600">✓ Account found - welcome back!</span>
+                    ) : userExists === false ? (
+                      <span className="text-amber-600">⚠ No account found - you may need to register first</span>
+                    ) : null}
+                  </div>
+                )}
               </FormItem>
             )}
           />
@@ -150,7 +200,7 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
                 <span>Signing in...</span>
               </div>
             ) : (
-              "Sign in to your account"
+              getButtonText()
             )}
           </Button>
         </form>
