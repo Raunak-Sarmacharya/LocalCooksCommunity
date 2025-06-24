@@ -71,6 +71,8 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
     } catch (e: any) {
       // Immediately set error state when any error occurs
+      console.log('🔥 ENHANCED LOGIN ERROR CAUGHT:', e.message);
+      console.log('🔥 Setting authState to error');
       setAuthState('error');
       
       if (e.message.includes('EMAIL_NOT_VERIFIED')) {
@@ -78,11 +80,13 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         setShowEmailVerification(true);
       } else {
         // Show user-friendly error message instead of technical details
+        console.log('🔥 Setting formError to custom message');
         setFormError("Email/password sign-in is not available with the current email address. Please check your credentials or register for a new account.");
       }
       
       // Reset to idle state after showing error for a moment to allow retry
       setTimeout(() => {
+        console.log('🔥 Resetting authState to idle');
         setAuthState('idle');
       }, 2000);
     }
