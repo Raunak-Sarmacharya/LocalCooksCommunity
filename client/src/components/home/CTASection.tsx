@@ -32,7 +32,7 @@ export default function CTASection() {
     if (user?.role === "admin") {
       return "Review applications, manage documents, and oversee the Local Cooks community platform.";
     } else {
-      return "Join our growing community of local cooks and share your culinary creations with St. John's.";
+      return "Join our growing community of local cooks and share your culinary creations with food lovers in St. John's.";
     }
   };
 

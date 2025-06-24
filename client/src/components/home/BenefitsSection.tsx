@@ -1,9 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { useApplicationStatus } from "@/hooks/use-application-status";
-import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { Calendar, Camera, CreditCard, Medal, Megaphone, Settings, TrendingUp, Wallet } from "lucide-react";
-import { useLocation } from "wouter";
 import foodDeliveryImage from "../../assets/food-delivery.png";
 
 const pilotBenefits = [
@@ -53,17 +49,7 @@ const mainBenefits = [
 ];
 
 export default function BenefitsSection() {
-  const [, navigate] = useLocation();
-  const { user } = useFirebaseAuth();
-  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
-
-  const handleApplicationClick = () => {
-    navigate(getNavigationPath());
-  };
-
-  const getCtaButtonText = () => {
-    return getButtonText("Apply Now");
-  };
+  // Removed button functionality as requested
   
   return (
     <section id="benefits" className="py-16 md:py-24 px-4 bg-gradient-to-b from-blue-50 to-white scroll-mt-24">
@@ -111,14 +97,14 @@ export default function BenefitsSection() {
               <div className="mb-3 md:mb-4 bg-gray-50 w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center">
                 {benefit.icon}
               </div>
-              <h3 className="text-base md:text-lg font-bold mb-1 md:mb-2 group-hover:text-primary hover-text">{benefit.title}</h3>
-              <p className="text-xs md:text-sm text-gray-600 group-hover:text-gray-800 hover-text">{benefit.description}</p>
+              <h3 className="text-base md:text-lg font-bold mb-1 md:mb-2 text-gray-900">{benefit.title}</h3>
+              <p className="text-xs md:text-sm text-gray-600">{benefit.description}</p>
             </motion.div>
           ))}
         </div>
         
         <motion.div 
-          className="relative bg-gradient-to-br from-[#3e5d8c] via-[#2c4f7c] to-[#1a3a6c] rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.4)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105"
+          className="relative bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.4)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -166,14 +152,7 @@ export default function BenefitsSection() {
                 ))}
               </ul>
               
-              <Button 
-                onClick={handleApplicationClick}
-                disabled={isLoading}
-                size="lg"
-                className="bg-white/95 text-primary hover:bg-white font-bold py-3 md:py-4 px-6 md:px-10 rounded-full shadow-lg hover:-translate-y-2 hover-transform hover:shadow-xl hover-shadow text-base md:text-lg w-full sm:w-auto"
-              >
-                {isLoading ? "Loading..." : getCtaButtonText()}
-              </Button>
+
             </div>
           </div>
         </motion.div>

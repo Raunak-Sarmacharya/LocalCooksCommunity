@@ -49,7 +49,7 @@ export default function Footer() {
               <ul className="space-y-3">
                 <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <Mail className="h-4 w-4 text-primary" />
-                  <span>admin@localcook.shop</span>
+                  <span>support@localcook.shop</span>
                 </li>
                 <li className="flex items-center gap-2 text-gray-300 hover:text-white hover-text">
                   <Phone className="h-4 w-4 text-primary" />

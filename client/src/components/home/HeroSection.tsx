@@ -3,6 +3,7 @@ import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import chefCookingImage from "../../assets/chef-cooking.png";
 
@@ -10,6 +11,40 @@ export default function HeroSection() {
   const [, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
+
+  // Typewriter effect state
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [currentText, setCurrentText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  const words = ["Cooks", "Company", "Community"];
+  
+  useEffect(() => {
+    const word = words[currentWordIndex];
+    const shouldDelete = isDeleting;
+    
+    const timeout = setTimeout(() => {
+      if (!shouldDelete) {
+        // Typing
+        if (currentText.length < word.length) {
+          setCurrentText(word.slice(0, currentText.length + 1));
+        } else {
+          // Wait before deleting
+          setTimeout(() => setIsDeleting(true), 1500);
+        }
+      } else {
+        // Deleting
+        if (currentText.length > 0) {
+          setCurrentText(currentText.slice(0, -1));
+        } else {
+          setIsDeleting(false);
+          setCurrentWordIndex((prev: number) => (prev + 1) % words.length);
+        }
+      }
+    }, shouldDelete ? 100 : 150); // Faster deleting, slower typing
+    
+    return () => clearTimeout(timeout);
+  }, [currentText, isDeleting, currentWordIndex]);
 
   const handlePrimaryClick = () => {
     if (!user) {
@@ -33,14 +68,15 @@ export default function HeroSection() {
           className="space-y-4 md:space-y-6"
         >
           <h1 className="text-3xl md:text-5xl font-bold mb-1 md:mb-2">
-            Join <span className="font-logo text-primary">Local Cooks</span>
+            Join <span className="font-logo text-primary">
+              Local <span className="inline-block min-w-[140px] md:min-w-[200px]">{currentText}<span className="animate-pulse">|</span></span>
+            </span>
           </h1>
           <h2 className="text-lg md:text-2xl font-semibold mb-3 md:mb-4 text-gray-700">
             Bringing Communities Together Through Homemade Meals
           </h2>
           <p className="text-base md:text-lg mb-4 md:mb-6 text-gray-600 leading-relaxed">
-            Focus on what you do best—cooking—while we handle orders, delivery, 
-            marketing, and customer service. Join our growing community of talented chefs!
+            Local Cooks is where your culinary passion meets limitless possibility. Whether you're a professional chef ready to break free from the line or a home cook with treasured family recipes, we provide the platform, resources, and community you need to transform your kitchen into a thriving business.
           </p>
           
           <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
