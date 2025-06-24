@@ -630,7 +630,7 @@ Visit: ${getWebsiteUrl()}
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -648,9 +648,15 @@ Visit: ${getWebsiteUrl()}
 
 // Generate vendor login credentials
 const generateVendorCredentials = (fullName: string, phone: string) => {
-  const username = phone.replace(/[^0-9]/g, ''); // Clean phone number
+  // Clean phone number and remove country code (1) if present
+  let cleanPhone = phone.replace(/[^0-9]/g, ''); // Remove all non-digits
+  // If phone starts with '1' and has 11 digits, remove the leading '1' (US/Canada country code)
+  if (cleanPhone.length === 11 && cleanPhone.startsWith('1')) {
+    cleanPhone = cleanPhone.substring(1);
+  }
+  const username = cleanPhone;
   const namePrefix = fullName.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 3) || 'usr';
-  const phoneSuffix = phone.replace(/[^0-9]/g, '').slice(-4) || '0000';
+  const phoneSuffix = cleanPhone.slice(-4) || '0000';
   const password = namePrefix + phoneSuffix;
   return { username, password };
 };
@@ -735,7 +741,7 @@ export const generateFullVerificationEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Welcome to the <strong>Local Cooks Community</strong>!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -791,7 +797,7 @@ export const generateApplicationWithDocumentsEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -841,7 +847,7 @@ export const generateApplicationWithoutDocumentsEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -956,7 +962,7 @@ Visit: ${getWebsiteUrl()}
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -1171,7 +1177,7 @@ export const generatePasswordResetEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Keep your account secure with <strong>Local Cooks</strong></p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -1228,7 +1234,7 @@ export const generateEmailVerificationEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Welcome to the <strong>Local Cooks</strong> community!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -1283,7 +1289,7 @@ export const generateWelcomeEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for joining <strong>Local Cooks</strong> Community!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>
@@ -1370,7 +1376,7 @@ export const generateDocumentUpdateEmail = (
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, just reply to this email or contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
     </div>

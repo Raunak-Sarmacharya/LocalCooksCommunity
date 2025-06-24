@@ -69,11 +69,15 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       }, 1000);
 
     } catch (e: any) {
+      setAuthState('error');
       if (e.message.includes('EMAIL_NOT_VERIFIED')) {
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
       } else {
         setFormError(e.message);
+        setTimeout(() => {
+          setAuthState('idle');
+        }, 2000);
       }
     }
   };
@@ -101,6 +105,9 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       setShowLoadingOverlay(false);
       setGoogleAuthState('error');
       setFormError(e.message);
+      setTimeout(() => {
+        setGoogleAuthState('idle');
+      }, 2000);
     }
   };
 
