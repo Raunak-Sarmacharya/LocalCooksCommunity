@@ -4545,8 +4545,29 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Generate professional PDF certificate
-    const { generateCertificatePDF } = await import('./certificateGenerator.js');
+    // Get user's actual name from their most recent application
+    let userDisplayName = user.username; // Fallback to username
+    
+    try {
+      if (pool) {
+        const appResult = await pool.query(
+          'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [userId]
+        );
+        if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+          userDisplayName = appResult.rows[0].full_name;
+          console.log(`📋 Using application full name: "${userDisplayName}" for certificate`);
+        } else {
+          console.log(`⚠️ No application full_name found for user ${userId}, using username as fallback`);
+        }
+      }
+    } catch (error) {
+      console.error('Error getting user full name from applications:', error);
+      console.log(`⚠️ Using username "${user.username}" as fallback for certificate`);
+    }
+
+    // Generate professional PDF certificate using React PDF
+    const { generateCertificate } = await import('./certificateGenerator.js');
     
     const certificateId = `LC-${userId}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
     
@@ -4558,8 +4579,8 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     }
     
     const certificateData = {
-      userName: user.full_name || user.username,
-      completionDate: completionDate,
+      userName: userDisplayName,
+      completionDate: completionDate.toISOString(),
       certificateId: certificateId,
       userId: userId
     };
@@ -4567,7 +4588,13 @@ app.get("/api/microlearning/certificate/:userId", async (req, res) => {
     console.log('Generating PDF certificate with data:', certificateData);
     
     try {
-      const pdfBuffer = await generateCertificatePDF(certificateData);
+      // Generate PDF stream and convert to buffer
+      const pdfStream = await generateCertificate(certificateData);
+      const chunks = [];
+      for await (const chunk of pdfStream) {
+        chunks.push(chunk);
+      }
+      const pdfBuffer = Buffer.concat(chunks);
       
       // Update database to mark certificate as generated
       await updateCertificateGenerated(userId, true);
@@ -5878,8 +5905,29 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
       isFirstTime: isFirstTimeGeneration
     });
 
-    // Generate professional PDF certificate directly (same as session-based endpoint)
-    const { generateCertificatePDF } = await import('./certificateGenerator.js');
+    // Get user's actual name from their most recent application
+    let userDisplayName = targetUser.username; // Fallback to username
+    
+    try {
+      if (pool) {
+        const appResult = await pool.query(
+          'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [targetUser.id]
+        );
+        if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+          userDisplayName = appResult.rows[0].full_name;
+          console.log(`📋 Firebase certificate: Using application full name: "${userDisplayName}" for user ${targetUser.id}`);
+        } else {
+          console.log(`⚠️ Firebase certificate: No application full_name found for user ${targetUser.id}, using username as fallback`);
+        }
+      }
+    } catch (error) {
+      console.error('Error getting user full name from applications for Firebase certificate:', error);
+      console.log(`⚠️ Firebase certificate: Using username "${targetUser.username}" as fallback`);
+    }
+
+    // Generate professional PDF certificate using React PDF (same as session-based endpoint)
+    const { generateCertificate } = await import('./certificateGenerator.js');
     
     const certificateId = `LC-${targetUser.id}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
     
@@ -5891,8 +5939,8 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
     }
     
     const certificateData = {
-      userName: targetUser.full_name || targetUser.username,
-      completionDate: completionDate,
+      userName: userDisplayName,
+      completionDate: completionDate.toISOString(),
       certificateId: certificateId,
       userId: targetUser.id
     };
@@ -5900,7 +5948,13 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
     console.log('Generating Firebase PDF certificate with data:', certificateData);
     
     try {
-      const pdfBuffer = await generateCertificatePDF(certificateData);
+      // Generate PDF stream and convert to buffer
+      const pdfStream = await generateCertificate(certificateData);
+      const chunks = [];
+      for await (const chunk of pdfStream) {
+        chunks.push(chunk);
+      }
+      const pdfBuffer = Buffer.concat(chunks);
       
       // Update database to mark certificate as generated
       await updateCertificateGenerated(targetUser.id, true);
