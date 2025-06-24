@@ -131,6 +131,7 @@ export default function AnimatedButton({
             initial="initial"
             animate="animate"
             exit="exit"
+            className="flex items-center gap-2"
           >
             {children}
           </motion.div>
