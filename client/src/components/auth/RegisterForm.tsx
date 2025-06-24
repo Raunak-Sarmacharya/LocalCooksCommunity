@@ -52,7 +52,18 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
       setRegisteredName(data.displayName);
       setShowEmailVerification(true);
     } catch (e: any) {
-      setFormError(e.message);
+      // Handle different Firebase error types with user-friendly messages
+      if (e.message.includes('email-already-in-use') || e.message.includes('EMAIL_EXISTS')) {
+        setFormError("This email is already registered. Please try signing in instead.");
+      } else if (e.message.includes('weak-password')) {
+        setFormError("Password is too weak. Please choose a stronger password with at least 8 characters.");
+      } else if (e.message.includes('invalid-email')) {
+        setFormError("Please enter a valid email address.");
+      } else if (e.message.includes('operation-not-allowed')) {
+        setFormError("Email registration is currently disabled. Please contact support.");
+      } else {
+        setFormError("Registration failed. Please check your information and try again.");
+      }
     }
   };
 
@@ -88,7 +99,28 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
       <Button
         type="button"
         className="w-full h-12 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 rounded-xl"
-        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(true); }}
+        onClick={async () => { 
+          setHasAttemptedLogin?.(true); 
+          setFormError(null); // Clear any previous errors
+          try {
+            await signInWithGoogle(true);
+          } catch (e: any) {
+            console.log('❌ GOOGLE REGISTER ERROR:', e.message);
+            
+            // Handle Google registration errors with user-friendly messages
+            if (e.message.includes('popup-closed-by-user')) {
+              setFormError("Registration was cancelled. Please try again.");
+            } else if (e.message.includes('popup-blocked')) {
+              setFormError("Pop-up blocked. Please allow pop-ups for this site and try again.");
+            } else if (e.message.includes('network-request-failed')) {
+              setFormError("Network error. Please check your connection and try again.");
+            } else if (e.message.includes('email-already-in-use')) {
+              setFormError("This Google account is already registered. Please try signing in instead.");
+            } else {
+              setFormError("Google registration failed. Please try again or use email/password.");
+            }
+          }
+        }}
         disabled={loading}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48" className="flex-shrink-0">
@@ -112,14 +144,14 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-          {(formError || error) && (
+          {formError && (
             <div className="rounded-xl bg-red-50 border border-red-100 p-4 flex items-start gap-3">
               <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-100 flex items-center justify-center mt-0.5">
                 <Lock className="w-3 h-3 text-red-600" />
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-red-800">Registration failed</p>
-                <p className="text-xs text-red-600 mt-1">{formError || error}</p>
+                <p className="text-xs text-red-600 mt-1">{formError}</p>
               </div>
             </div>
           )}
@@ -136,7 +168,14 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
                     <Input 
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="John Doe" 
-                      {...field} 
+                      {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Clear errors when user starts typing
+                        if (formError) {
+                          setFormError(null);
+                        }
+                      }}
                     />
                   </div>
                 </FormControl>
@@ -158,7 +197,14 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="you@company.com" 
                       autoComplete="email"
-                      {...field} 
+                      {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Clear errors when user starts typing
+                        if (formError) {
+                          setFormError(null);
+                        }
+                      }}
                     />
                   </div>
                 </FormControl>
@@ -181,7 +227,14 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin }: Regist
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="Create a secure password" 
                       autoComplete="new-password"
-                      {...field} 
+                      {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Clear errors when user starts typing
+                        if (formError) {
+                          setFormError(null);
+                        }
+                      }}
                     />
                   </div>
                 </FormControl>

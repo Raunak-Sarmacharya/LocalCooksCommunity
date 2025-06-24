@@ -68,8 +68,19 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       if (onSuccess) onSuccess(); // Auth page will handle verification and redirect
     } catch (e: any) {
       console.log('❌ REGULAR LOGIN ERROR:', e.message);
-      // Show user-friendly error message instead of technical details
-      setFormError("Email/password sign-in is not available with the current email address. Please check your credentials or register for a new account.");
+      
+      // Handle different Firebase error types with user-friendly messages
+      if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
+        setFormError("Invalid email or password. Please check your credentials and try again.");
+      } else if (e.message.includes('user-disabled')) {
+        setFormError("This account has been disabled. Please contact support.");
+      } else if (e.message.includes('too-many-requests')) {
+        setFormError("Too many failed attempts. Please wait a moment before trying again.");
+      } else if (e.message.includes('EMAIL_NOT_VERIFIED') || e.message.includes('email')) {
+        setFormError("Please verify your email address before signing in. Check your inbox for a verification link.");
+      } else {
+        setFormError("Sign-in failed. Please check your credentials or register for a new account.");
+      }
     }
   };
 
@@ -87,7 +98,28 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       <Button
         type="button"
         className="w-full h-12 flex items-center justify-center gap-3 bg-white border border-gray-200 text-gray-700 font-medium shadow-sm hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 rounded-xl"
-        onClick={() => { setHasAttemptedLogin?.(true); signInWithGoogle(false); }}
+        onClick={async () => { 
+          setHasAttemptedLogin?.(true); 
+          setFormError(null); // Clear any previous errors
+          try {
+            await signInWithGoogle(false);
+          } catch (e: any) {
+            console.log('❌ GOOGLE SIGN-IN ERROR:', e.message);
+            
+            // Handle Google sign-in errors with user-friendly messages
+            if (e.message.includes('popup-closed-by-user')) {
+              setFormError("Sign-in was cancelled. Please try again.");
+            } else if (e.message.includes('popup-blocked')) {
+              setFormError("Pop-up blocked. Please allow pop-ups for this site and try again.");
+            } else if (e.message.includes('network-request-failed')) {
+              setFormError("Network error. Please check your connection and try again.");
+            } else if (e.message.includes('not registered')) {
+              setFormError("This Google account is not registered. Please create an account first.");
+            } else {
+              setFormError("Google sign-in failed. Please try again or use email/password.");
+            }
+          }
+        }}
         disabled={loading}
         aria-label="Continue with Google"
       >
@@ -113,14 +145,14 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       {/* Login Form */}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-          {(formError || error) && (
+          {formError && (
             <div className="rounded-xl bg-red-50 border border-red-100 p-4 flex items-start gap-3">
               <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-100 flex items-center justify-center mt-0.5">
                 <Lock className="w-3 h-3 text-red-600" />
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-red-800">Authentication failed</p>
-                <p className="text-xs text-red-600 mt-1">{formError || error}</p>
+                <p className="text-xs text-red-600 mt-1">{formError}</p>
               </div>
             </div>
           )}
@@ -142,6 +174,10 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
                       onChange={(e) => {
                         field.onChange(e);
                         const email = e.target.value;
+                        // Clear errors when user starts typing
+                        if (formError) {
+                          setFormError(null);
+                        }
                         if (email && email.includes('@')) {
                           checkUserExistence(email);
                         }
@@ -181,6 +217,13 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
                       placeholder="Enter your password"
                       autoComplete="current-password"
                       {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        // Clear errors when user starts typing
+                        if (formError) {
+                          setFormError(null);
+                        }
+                      }}
                     />
                   </div>
                 </FormControl>

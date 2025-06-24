@@ -260,8 +260,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
     } catch (firebaseError: any) {
       console.error('Login failed:', firebaseError.message);
-      setError(firebaseError.message);
+      // Don't set raw Firebase error - let the components handle user-friendly messages
+      // setError(firebaseError.message);
       setPendingSync(false);
+      
+      // Re-throw the error so components can handle it with user-friendly messages
+      throw firebaseError;
     } finally {
       setLoading(false);
     }
@@ -339,9 +343,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingRegistration(false);
       
     } catch (e: any) {
-      setError(e.message);
+      // Don't set raw Firebase error - let the components handle user-friendly messages
+      // setError(e.message);
       setPendingSync(false);
       setPendingRegistration(false);
+      
+      // Re-throw the error so components can handle it with user-friendly messages
+      throw e;
     } finally {
       setLoading(false);
     }
@@ -433,9 +441,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (e: any) {
-      setError(e.message);
+      // Don't set raw Firebase error - let the components handle user-friendly messages
+      // setError(e.message);
       setPendingSync(false);
       setPendingRegistration(false);
+      
+      // Re-throw the error so components can handle it with user-friendly messages
+      throw e;
     } finally {
       setLoading(false);
     }
