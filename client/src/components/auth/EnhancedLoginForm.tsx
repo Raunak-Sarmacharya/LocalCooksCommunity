@@ -1,7 +1,8 @@
+import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Lock, Mail } from "lucide-react";
+import { Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -51,6 +52,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   const [emailForVerification, setEmailForVerification] = useState<string>('');
   const [userExists, setUserExists] = useState<boolean | null>(null);
   const [isCheckingUser, setIsCheckingUser] = useState(false);
+  const { showAlert } = useCustomAlerts();
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -91,33 +93,32 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       }, 1000);
 
     } catch (e: any) {
-      // Immediately set error state when any error occurs
-      console.log('🔥 ENHANCED LOGIN ERROR CAUGHT:', e.message);
-      console.log('🔥 Setting authState to error');
+      setShowLoadingOverlay(false);
       setAuthState('error');
       
-      if (e.message.includes('EMAIL_NOT_VERIFIED') || e.message.includes('email')) {
-        setEmailForVerification(data.email);
-        setShowEmailVerification(true);
+      // Handle different Firebase error types with user-friendly messages via custom alerts
+      let errorTitle = "Sign In Failed";
+      let errorMessage = "";
+      
+      if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+      } else if (e.message.includes('too-many-requests')) {
+        errorMessage = "Too many failed attempts. Please wait a few minutes before trying again.";
+      } else if (e.message.includes('network-request-failed')) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (e.message.includes('user-disabled')) {
+        errorMessage = "This account has been disabled. Please contact support.";
       } else {
-        // Show user-friendly error message based on the error type
-        console.log('🔥 Setting formError to custom message');
-        if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
-          setFormError("Invalid email or password. Please check your credentials and try again.");
-        } else if (e.message.includes('user-disabled')) {
-          setFormError("This account has been disabled. Please contact support.");
-        } else if (e.message.includes('too-many-requests')) {
-          setFormError("Too many failed attempts. Please wait a moment before trying again.");
-        } else {
-          setFormError("Sign-in failed. Please check your credentials or register for a new account.");
-        }
+        errorMessage = "Unable to sign in at this time. Please try again later.";
       }
       
-      // Reset to idle state after showing error for a longer period to ensure user sees the error
-      setTimeout(() => {
-        console.log('🔥 Resetting authState to idle');
-        setAuthState('idle');
-      }, 3000); // Increased to 3 seconds so user sees the error
+      showAlert({
+        title: errorTitle,
+        description: errorMessage,
+        type: "error"
+      });
+      
+      setTimeout(() => setAuthState('idle'), 2000);
     }
   };
 
@@ -143,7 +144,29 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     } catch (e: any) {
       setShowLoadingOverlay(false);
       setGoogleAuthState('error');
-      setFormError(e.message);
+      
+      // Handle Google sign-in errors with user-friendly messages via custom alerts
+      let errorTitle = "Google Sign In Failed";
+      let errorMessage = "";
+      
+      if (e.message.includes('popup-closed-by-user')) {
+        errorMessage = "Sign-in was cancelled. Please try again.";
+      } else if (e.message.includes('popup-blocked')) {
+        errorMessage = "Pop-up blocked. Please allow pop-ups for this site and try again.";
+      } else if (e.message.includes('network-request-failed')) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (e.message.includes('not registered')) {
+        errorMessage = "This Google account is not registered. Please register first or try signing in with email and password.";
+      } else {
+        errorMessage = "Unable to sign in with Google at this time. Please try again later.";
+      }
+      
+      showAlert({
+        title: errorTitle,
+        description: errorMessage,
+        type: "error"
+      });
+      
       setTimeout(() => {
         setGoogleAuthState('idle');
       }, 2000);
@@ -159,8 +182,6 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   };
 
   const getButtonState = () => {
-    // If there's a form error, always show error state regardless of authState
-    if (formError || error) return 'error';
     if (authState === 'loading') return 'loading';
     if (authState === 'success') return 'success';
     if (authState === 'error') return 'error';
@@ -240,19 +261,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
         </motion.div>
 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
-          <AnimatePresence>
-            {(formError || error) && (
-              <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className="rounded-lg bg-red-50 border border-red-200 p-4 flex items-center gap-3"
-              >
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                <span className="text-red-700 text-sm">{formError || error}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Error messages now handled by custom alert dialogs */}
 
           <motion.div variants={itemVariants}>
             <AnimatedInput
@@ -267,9 +276,8 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
               {...form.register('email', {
                 onChange: (e) => {
                   const email = e.target.value;
-                  // Clear errors and reset state when user starts typing
-                  if (formError || authState === 'error') {
-                    setFormError(null);
+                  // Reset state when user starts typing
+                  if (authState === 'error') {
                     setAuthState('idle');
                   }
                   if (email && email.includes('@')) {
@@ -312,9 +320,8 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
               error={form.formState.errors.password?.message}
               {...form.register('password', {
                 onChange: () => {
-                  // Clear errors and reset state when user starts typing in password
-                  if (formError || authState === 'error') {
-                    setFormError(null);
+                  // Reset state when user starts typing in password
+                  if (authState === 'error') {
                     setAuthState('idle');
                   }
                 }

@@ -1,8 +1,9 @@
+import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { checkEmailExistsInFirebase } from "@/utils/firebase-check";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Lock, Mail, User } from "lucide-react";
+import { motion } from "framer-motion";
+import { Lock, Mail, User } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -54,6 +55,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState("");
   const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const { showAlert } = useCustomAlerts();
 
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -154,14 +156,31 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       setShowLoadingOverlay(false);
       setAuthState('error');
       
-      // Handle Firebase-specific errors
+      // Handle Firebase-specific errors with user-friendly messages via custom alerts
+      let errorTitle = "Registration Failed";
+      let errorMessage = "";
+      
       if (e.message.includes('EMAIL_EXISTS') || e.message.includes('email-already-in-use')) {
-        setFormError('This email is already registered. Please try logging in instead.');
+        errorMessage = 'This email is already registered. Please try signing in instead.';
+      } else if (e.message.includes('weak-password')) {
+        errorMessage = 'Password is too weak. Please choose a stronger password with at least 8 characters.';
+      } else if (e.message.includes('invalid-email')) {
+        errorMessage = 'Please enter a valid email address.';
+      } else if (e.message.includes('operation-not-allowed')) {
+        errorMessage = 'Email registration is currently disabled. Please contact support.';
+      } else if (e.message.includes('network-request-failed')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
       } else {
-        setFormError(e.message);
+        errorMessage = 'Registration failed. Please try again later.';
       }
       
-      console.error('❌ Registration failed:', e);
+      showAlert({
+        title: errorTitle,
+        description: errorMessage,
+        type: "error"
+      });
+      
+      setTimeout(() => setAuthState('idle'), 2000);
     }
   };
 
@@ -187,7 +206,28 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
     } catch (e: any) {
       setShowLoadingOverlay(false);
       setAuthState('error');
-      setFormError(e.message);
+      
+      // Handle Google registration errors with user-friendly messages via custom alerts
+      let errorTitle = "Google Registration Failed";
+      let errorMessage = "";
+      
+      if (e.message.includes('popup-closed-by-user')) {
+        errorMessage = 'Registration was cancelled. Please try again.';
+      } else if (e.message.includes('popup-blocked')) {
+        errorMessage = 'Pop-up blocked. Please allow pop-ups for this site and try again.';
+      } else if (e.message.includes('network-request-failed')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (e.message.includes('email-already-in-use')) {
+        errorMessage = 'This Google account is already registered. Please try signing in instead.';
+      } else {
+        errorMessage = 'Unable to register with Google at this time. Please try again later.';
+      }
+      
+      showAlert({
+        title: errorTitle,
+        description: errorMessage,
+        type: "error"
+      });
     }
   };
 
@@ -272,20 +312,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
 
         {/* Form */}
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
-          {/* Error Message */}
-          <AnimatePresence>
-            {(formError || error) && (
-              <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                className="rounded-lg bg-red-50 border border-red-200 p-4 flex items-center gap-3"
-              >
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                <span className="text-red-700 text-sm">{formError || error}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Error messages now handled by custom alert dialogs */}
 
           {/* Name Field */}
           <motion.div variants={itemVariants}>
@@ -295,7 +322,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
               icon={<User className="w-4 h-4" />}
               validationState={getFieldValidationState('displayName')}
               error={form.formState.errors.displayName?.message}
-              {...form.register('displayName')}
+              {...form.register('displayName', {
+                onChange: () => {
+                  // Reset state when user starts typing
+                  if (authState === 'error') {
+                    setAuthState('idle');
+                  }
+                }
+              })}
             />
           </motion.div>
 
@@ -307,7 +341,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
               icon={<Mail className="w-4 h-4" />}
               validationState={getFieldValidationState('email')}
               error={form.formState.errors.email?.message}
-              {...form.register('email')}
+              {...form.register('email', {
+                onChange: () => {
+                  // Reset state when user starts typing
+                  if (authState === 'error') {
+                    setAuthState('idle');
+                  }
+                }
+              })}
             />
           </motion.div>
 
@@ -320,7 +361,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
               showPasswordToggle
               validationState={getFieldValidationState('password')}
               error={form.formState.errors.password?.message}
-              {...form.register('password')}
+              {...form.register('password', {
+                onChange: () => {
+                  // Reset state when user starts typing
+                  if (authState === 'error') {
+                    setAuthState('idle');
+                  }
+                }
+              })}
             />
           </motion.div>
 
