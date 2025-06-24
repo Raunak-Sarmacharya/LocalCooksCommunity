@@ -801,13 +801,13 @@ export default function ApplicantDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50">
       {/* Vendor Portal Popup for Fully Verified Users */}
       <Dialog open={showVendorPortalPopup} onOpenChange={handleCloseVendorPopup}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-xl font-bold text-gray-900 mb-2">
+        <DialogContent className="sm:max-w-lg w-full mx-4 sm:mx-auto">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="text-center text-xl font-bold text-gray-900 mb-2 pr-2">
               🎉 Congratulations! You're Fully Verified
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-6 p-4">
+          <div className="space-y-6 p-4 pr-6">
             <div className="text-center">
               <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Shield className="h-8 w-8 text-white" />
