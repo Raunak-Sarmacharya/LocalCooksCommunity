@@ -21,224 +21,269 @@ try {
   console.log('Lobster font not found, using default');
 }
 
-// Create modern styles for the certificate
+// Create modern styles for the certificate - optimized for single page
 const styles = StyleSheet.create({
   page: {
     backgroundColor: '#ffffff',
-    padding: 40,
+    padding: 25,
     fontFamily: 'Helvetica',
     position: 'relative',
   },
   
-  // Decorative border frame
+  // Elegant outer border with gradient effect
   decorativeBorder: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    bottom: 12,
+    borderRadius: 20,
+    background: 'linear-gradient(45deg, #f51042, #e91e63, #f51042)',
+    border: '4px solid #f51042',
+  },
+  
+  // Subtle inner frame
+  innerFrame: {
     position: 'absolute',
     top: 20,
     left: 20,
     right: 20,
     bottom: 20,
-    border: '3px solid #f51042',
+    backgroundColor: '#ffffff',
     borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
   
-  innerBorder: {
+  // Elegant background pattern
+  backgroundPattern: {
     position: 'absolute',
-    top: 35,
-    left: 35,
-    right: 35,
-    bottom: 35,
-    border: '1px solid #e2e8f0',
-    borderRadius: 10,
+    top: 30,
+    left: 30,
+    right: 30,
+    bottom: 30,
+    opacity: 0.03,
   },
   
   // Header with centered logo
   header: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 18,
     marginTop: 20,
+    position: 'relative',
+    zIndex: 10,
   },
   
   logo: {
-    width: 80,
-    height: 80,
-    marginBottom: 15,
+    width: 65,
+    height: 65,
+    marginBottom: 8,
+    borderRadius: 32.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   
   // Main content container
   certificateContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 60,
+    marginBottom: 12,
+    paddingHorizontal: 35,
+    position: 'relative',
+    zIndex: 10,
   },
   
-  // Modern certificate title with gradient-like effect
+  // Modern gradient certificate title
   certificateTitle: {
-    backgroundColor: '#f51042',
-    borderRadius: 30,
-    paddingVertical: 20,
-    paddingHorizontal: 40,
-    marginBottom: 25,
-    width: 400,
+    borderRadius: 25,
+    paddingVertical: 16,
+    paddingHorizontal: 35,
+    marginBottom: 18,
+    width: 380,
     alignItems: 'center',
-    shadowColor: '#000',
+    backgroundColor: '#f51042',
+    shadowColor: '#f51042',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
   },
   
   titleText: {
     color: 'white',
-    fontSize: 28,
+    fontSize: 24,
     fontFamily: 'Helvetica-Bold',
     textAlign: 'center',
-    marginBottom: 5,
+    marginBottom: 2,
+    letterSpacing: 1,
   },
   
   subtitleText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: 12,
     textAlign: 'center',
-    opacity: 0.9,
+    opacity: 0.95,
+    fontWeight: '300',
   },
   
-  // Elegant verification section
+  // Elegant verification section with improved typography
   verificationSection: {
     alignItems: 'center',
-    marginBottom: 25,
+    marginBottom: 16,
+    paddingHorizontal: 20,
   },
   
   verificationText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748b',
     textAlign: 'center',
     marginBottom: 8,
     fontStyle: 'italic',
+    letterSpacing: 0.5,
   },
   
-  recipientName: {
-    fontSize: 32,
-    color: '#1e293b',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontFamily: 'Lobster',
-    borderBottom: '2px solid #f51042',
-    paddingBottom: 10,
+  // Enhanced recipient name with elegant styling
+  recipientNameContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
     paddingHorizontal: 20,
   },
   
-  completionText: {
-    fontSize: 13,
-    color: '#475569',
+  recipientName: {
+    fontSize: 30,
+    color: '#1e293b',
     textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 1.5,
-    maxWidth: 500,
+    fontFamily: 'Lobster',
+    marginBottom: 8,
+    paddingHorizontal: 25,
   },
   
-  // Training standards section
+  nameUnderline: {
+    width: 200,
+    height: 3,
+    backgroundColor: '#f51042',
+    borderRadius: 2,
+    marginBottom: 12,
+  },
+  
+  completionText: {
+    fontSize: 11.5,
+    color: '#475569',
+    textAlign: 'center',
+    lineHeight: 1.5,
+    maxWidth: 480,
+    fontWeight: '400',
+  },
+  
+  // Enhanced training standards section
   standardsSection: {
     backgroundColor: '#f8fafc',
     borderRadius: 15,
-    padding: 20,
-    marginBottom: 25,
-    border: '1px solid #e2e8f0',
-    width: 500,
+    padding: 16,
+    marginBottom: 16,
+    border: '2px solid #e2e8f0',
+    width: 480,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
   
   modulesHeader: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#f51042',
     textAlign: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
     fontFamily: 'Helvetica-Bold',
+    letterSpacing: 0.5,
   },
   
   safetyStandards: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#475569',
     textAlign: 'center',
     lineHeight: 1.4,
+    fontWeight: '400',
   },
   
-  // Certificate details
+  // Elegant certificate details section
   detailsSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
-    paddingHorizontal: 60,
+    marginTop: 14,
+    paddingHorizontal: 45,
   },
   
   detailBox: {
     alignItems: 'center',
-    padding: 15,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    border: '1px solid #e2e8f0',
+    padding: 14,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    border: '2px solid #f1f5f9',
     minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
   
   detailLabel: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#64748b',
     marginBottom: 5,
-    fontWeight: 'bold',
+    fontFamily: 'Helvetica-Bold',
+    letterSpacing: 0.8,
   },
   
   detailValue: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#1e293b',
     fontFamily: 'Helvetica-Bold',
     textAlign: 'center',
   },
   
-  // Decorative elements
-  leftDecoration: {
-    position: 'absolute',
-    left: 50,
-    top: 200,
-    opacity: 0.1,
-  },
-  
-  rightDecoration: {
-    position: 'absolute',
-    right: 50,
-    top: 200,
-    opacity: 0.1,
-  },
-  
-  // Footer with elegant spacing
+  // Refined footer
   footer: {
     position: 'absolute',
-    bottom: 70,
-    left: 60,
-    right: 60,
+    bottom: 40,
+    left: 45,
+    right: 45,
     alignItems: 'center',
+    zIndex: 10,
   },
   
   disclaimer: {
-    fontSize: 9,
+    fontSize: 8.5,
     color: '#64748b',
     textAlign: 'center',
     lineHeight: 1.4,
     fontStyle: 'italic',
-    maxWidth: 600,
+    maxWidth: 580,
+    opacity: 0.8,
   },
 });
 
-// Decorative SVG component
-const DecorationSvg = () => (
-  React.createElement(Svg, { width: 60, height: 60, viewBox: "0 0 60 60" },
+// Elegant decorative SVG background pattern
+const BackgroundPattern = () => (
+  React.createElement(Svg, { width: "100%", height: "100%", viewBox: "0 0 800 600" },
     React.createElement(Defs, {},
-      React.createElement(LinearGradient, { id: "grad1", x1: "0%", y1: "0%", x2: "100%", y2: "100%" },
-        React.createElement(Stop, { offset: "0%", stopColor: "#f51042", stopOpacity: 0.8 }),
-        React.createElement(Stop, { offset: "100%", stopColor: "#f51042", stopOpacity: 0.3 })
+      React.createElement(LinearGradient, { id: "bgGrad", x1: "0%", y1: "0%", x2: "100%", y2: "100%" },
+        React.createElement(Stop, { offset: "0%", stopColor: "#f51042", stopOpacity: 0.03 }),
+        React.createElement(Stop, { offset: "50%", stopColor: "#e91e63", stopOpacity: 0.02 }),
+        React.createElement(Stop, { offset: "100%", stopColor: "#f51042", stopOpacity: 0.03 })
       )
     ),
-    React.createElement(Circle, { cx: 30, cy: 30, r: 25, fill: "url(#grad1)" }),
-    React.createElement(Circle, { cx: 30, cy: 30, r: 15, fill: "none", stroke: "#f51042", strokeWidth: 2, opacity: 0.6 }),
-    React.createElement(Circle, { cx: 30, cy: 30, r: 8, fill: "#f51042", opacity: 0.4 })
+    // Subtle geometric pattern
+    React.createElement(Circle, { cx: 100, cy: 100, r: 40, fill: "url(#bgGrad)" }),
+    React.createElement(Circle, { cx: 700, cy: 120, r: 30, fill: "url(#bgGrad)" }),
+    React.createElement(Circle, { cx: 150, cy: 450, r: 35, fill: "url(#bgGrad)" }),
+    React.createElement(Circle, { cx: 650, cy: 480, r: 25, fill: "url(#bgGrad)" }),
+    React.createElement(Rect, { x: 50, y: 250, width: 60, height: 60, rx: 30, fill: "url(#bgGrad)", transform: "rotate(45 80 280)" }),
+    React.createElement(Rect, { x: 680, y: 280, width: 50, height: 50, rx: 25, fill: "url(#bgGrad)", transform: "rotate(45 705 305)" })
   )
 );
 
@@ -254,18 +299,13 @@ const CertificateDocument = ({ certificateData }) => {
   return React.createElement(Document, null,
     React.createElement(Page, { size: 'A4', orientation: 'landscape', style: styles.page },
       
-      // Decorative borders
+      // Elegant border frame
       React.createElement(View, { style: styles.decorativeBorder }),
-      React.createElement(View, { style: styles.innerBorder }),
+      React.createElement(View, { style: styles.innerFrame }),
       
-      // Left decorative element
-      React.createElement(View, { style: styles.leftDecoration },
-        React.createElement(DecorationSvg)
-      ),
-      
-      // Right decorative element  
-      React.createElement(View, { style: styles.rightDecoration },
-        React.createElement(DecorationSvg)
+      // Subtle background pattern
+      React.createElement(View, { style: styles.backgroundPattern },
+        React.createElement(BackgroundPattern)
       ),
       
       // Header with centered logo
@@ -275,22 +315,27 @@ const CertificateDocument = ({ certificateData }) => {
 
       // Certificate Content
       React.createElement(View, { style: styles.certificateContainer },
-        // Modern certificate title
+        // Modern gradient certificate title
         React.createElement(View, { style: styles.certificateTitle },
           React.createElement(Text, { style: styles.titleText }, 'Certificate of Completion'),
-          React.createElement(Text, { style: styles.subtitleText }, 'Food Safety Training Program')
+          React.createElement(Text, { style: styles.subtitleText }, 'Local Cooks Food Safety Training Program')
         ),
 
-        // Verification section
+        // Elegant verification section
         React.createElement(View, { style: styles.verificationSection },
-          React.createElement(Text, { style: styles.verificationText }, 'This is to certify that'),
+          React.createElement(Text, { style: styles.verificationText }, 'This is to certify that')
+        ),
+        
+        // Enhanced recipient name section
+        React.createElement(View, { style: styles.recipientNameContainer },
           React.createElement(Text, { style: styles.recipientName }, certificateData.userName),
+          React.createElement(View, { style: styles.nameUnderline }),
           React.createElement(Text, { style: styles.completionText }, 
             'has successfully completed the comprehensive Local Cooks Food Safety Video Training Series, demonstrating dedication to professional culinary safety standards and best practices.'
           )
         ),
 
-        // Training standards section
+        // Enhanced training standards section
         React.createElement(View, { style: styles.standardsSection },
           React.createElement(Text, { style: styles.modulesHeader }, 'Food Safety Standards Mastered'),
           React.createElement(Text, { style: styles.safetyStandards }, 
@@ -299,7 +344,7 @@ const CertificateDocument = ({ certificateData }) => {
         )
       ),
 
-      // Certificate details
+      // Elegant certificate details
       React.createElement(View, { style: styles.detailsSection },
         React.createElement(View, { style: styles.detailBox },
           React.createElement(Text, { style: styles.detailLabel }, 'COMPLETION DATE'),
@@ -311,10 +356,10 @@ const CertificateDocument = ({ certificateData }) => {
         )
       ),
 
-      // Footer
+      // Refined footer with clear disclaimer
       React.createElement(View, { style: styles.footer },
         React.createElement(Text, { style: styles.disclaimer }, 
-          'This certificate acknowledges the completion of educational training materials provided by Local Cooks Community and serves as a record of professional development in food safety practices.'
+          'This is an unofficial certificate of completion for the Local Cooks Food Safety Training Program. This educational certificate acknowledges participation in training materials and is not an official professional certification. For official food safety certification, please consult certified food safety authorities.'
         )
       )
     )
