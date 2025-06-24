@@ -39,10 +39,14 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
     setHasAttemptedLogin?.(true);
     setFormError(null);
     try {
+      console.log('🟦 REGULAR LOGIN FORM ATTEMPT:', data.email);
       await login(data.email, data.password);
+      console.log('✅ REGULAR LOGIN SUCCESS');
       if (onSuccess) onSuccess(); // Auth page will handle verification and redirect
     } catch (e: any) {
-      setFormError(e.message);
+      console.log('❌ REGULAR LOGIN ERROR:', e.message);
+      // Show user-friendly error message instead of technical details
+      setFormError("Email/password sign-in is not available with the current email address. Please check your credentials or register for a new account.");
     }
   };
 
