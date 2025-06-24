@@ -25,14 +25,14 @@ try {
 const styles = StyleSheet.create({
   page: {
     backgroundColor: '#ffffff',
-    padding: 40,
+    padding: 30,
     fontFamily: 'Helvetica',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 60,
+    marginBottom: 40,
   },
   logo: {
     width: 55,
@@ -54,16 +54,16 @@ const styles = StyleSheet.create({
   },
   certificateContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 20,
   },
   organicBlob: {
     backgroundColor: '#f51042',
-    borderRadius: 50,
-    width: 380,
-    height: 100,
+    borderRadius: 25,
+    width: 320,
+    height: 85,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   blobText: {
     color: 'white',
@@ -78,93 +78,66 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#6c757d',
     textAlign: 'center',
-    marginBottom: 18,
+    marginBottom: 12,
   },
   verificationText: {
-    fontSize: 13,
-    color: '#2c3e50',
-    textAlign: 'center',
-    marginBottom: 18,
-  },
-  recipientName: {
-    fontSize: 30,
-    color: '#2c3e50',
-    textAlign: 'center',
-    marginBottom: 22,
-    fontFamily: 'Lobster',
-  },
-  completionText: {
     fontSize: 12,
     color: '#2c3e50',
     textAlign: 'center',
-    marginBottom: 18,
-    lineHeight: 1.4,
+    marginBottom: 12,
+  },
+  recipientName: {
+    fontSize: 26,
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 15,
+    fontFamily: 'Lobster',
+  },
+  completionText: {
+    fontSize: 11,
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 15,
+    lineHeight: 1.3,
   },
   modulesHeader: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#f51042',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
     fontFamily: 'Helvetica-Bold',
   },
-  modulesContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 20,
-  },
-  moduleBox: {
-    flex: 1,
-    border: '2px solid rgba(245, 16, 66, 0.2)',
-    backgroundColor: 'rgba(245, 16, 66, 0.05)',
-    padding: 10,
-    minHeight: 60,
-  },
-  moduleTitle: {
+  safetyStandards: {
     fontSize: 10,
-    fontWeight: 'bold',
     color: '#2c3e50',
     textAlign: 'center',
-    marginBottom: 4,
-    fontFamily: 'Helvetica-Bold',
-  },
-  moduleVideos: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    textAlign: 'center',
-    marginBottom: 8,
-    fontFamily: 'Helvetica-Bold',
-  },
-  moduleContent: {
-    fontSize: 8,
-    color: '#2c3e50',
-    textAlign: 'center',
-    lineHeight: 1.2,
+    lineHeight: 1.3,
+    marginBottom: 15,
+    paddingHorizontal: 30,
   },
   completionDate: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#2c3e50',
     textAlign: 'center',
-    marginBottom: 18,
+    marginBottom: 12,
     fontFamily: 'Helvetica-Bold',
   },
   recordId: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#6c757d',
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 20,
   },
   footer: {
     position: 'absolute',
-    bottom: 80,
-    left: 40,
-    right: 40,
+    bottom: 60,
+    left: 30,
+    right: 30,
   },
   disclaimer: {
     fontSize: 8,
@@ -193,7 +166,7 @@ const CertificateDocument = ({ certificateData }) => {
   });
 
   return React.createElement(Document, null,
-    React.createElement(Page, { size: 'A4', style: styles.page },
+    React.createElement(Page, { size: 'A4', orientation: 'landscape', style: styles.page },
       // Header
       React.createElement(View, { style: styles.header },
         React.createElement(Image, { style: styles.logo, src: logoPath }),
@@ -220,31 +193,10 @@ const CertificateDocument = ({ certificateData }) => {
           'demonstrating dedication to professional food safety education.'
         ),
 
-        // Training Modules
-        React.createElement(Text, { style: styles.modulesHeader }, 'Completed Training Modules:'),
-        
-        React.createElement(View, { style: styles.modulesContainer },
-          // Module 1
-          React.createElement(View, { style: styles.moduleBox },
-            React.createElement(Text, { style: styles.moduleTitle }, 'Module 1: Food Safety Basics'),
-            React.createElement(Text, { style: styles.moduleVideos }, '(14 Videos)'),
-            React.createElement(Text, { style: styles.moduleContent }, 
-              'Introduction • HACCP Principles • Reducing Complexity • Personal Hygiene • ' +
-              'Deliveries • Storage • Preparation • Regeneration • Service Start • ' +
-              'After Service • Waste Removal • Cleaning & Maintenance • Weekly Log Sheets • Wrap Up'
-            )
-          ),
-
-          // Module 2
-          React.createElement(View, { style: styles.moduleBox },
-            React.createElement(Text, { style: styles.moduleTitle }, 'Module 2: Safety & Hygiene How-To\'s'),
-            React.createElement(Text, { style: styles.moduleVideos }, '(8 Videos)'),
-            React.createElement(Text, { style: styles.moduleContent }, 
-              'Hand Washing • Food Prep Station Cleaning • Kitchen Utensil Cleaning • ' +
-              'Stove Cleaning • Kitchen Floor Cleaning • Restaurant Floor Cleaning • ' +
-              'Table & Chair Cleaning • Washroom Cleaning'
-            )
-          )
+        // Training Overview
+        React.createElement(Text, { style: styles.modulesHeader }, 'Food Safety Standards Completed:'),
+        React.createElement(Text, { style: styles.safetyStandards }, 
+          'HACCP Principles • Personal Hygiene • Temperature Control • Cross-Contamination Prevention • Food Storage Protocols • Sanitation Procedures • Equipment Maintenance • Health & Safety Compliance'
         ),
 
         // Completion Info
