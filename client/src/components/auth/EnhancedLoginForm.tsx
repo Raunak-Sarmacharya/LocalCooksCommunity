@@ -49,11 +49,32 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState<string>('');
+  const [userExists, setUserExists] = useState<boolean | null>(null);
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+
+  // Check user existence when email changes
+  const checkUserExistence = async (email: string) => {
+    if (!email || !email.includes('@')) {
+      setUserExists(null);
+      return;
+    }
+
+    setIsCheckingUser(true);
+    try {
+      const result = await checkUserExistsByEmail(email);
+      setUserExists(result.exists && result.canSignIn);
+    } catch (error) {
+      console.error('Error checking user existence:', error);
+      setUserExists(null);
+    } finally {
+      setIsCheckingUser(false);
+    }
+  };
 
   const handleSubmit = async (data: LoginFormData) => {
     setHasAttemptedLogin?.(true);
@@ -136,6 +157,24 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     return 'idle';
   };
 
+  const getButtonText = () => {
+    if (userExists === true) {
+      return {
+        default: "Welcome back!",
+        loading: "Signing you in...",
+        success: "Welcome back!",
+        error: "Try again"
+      };
+    } else {
+      return {
+        default: "Sign In",
+        loading: "Signing you in...",
+        success: "Signed in!",
+        error: "Try again"
+      };
+    }
+  };
+
   if (showEmailVerification) {
     return (
       <EmailVerificationScreen
@@ -153,7 +192,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     <>
       <LoadingOverlay 
         isVisible={showLoadingOverlay}
-        message={googleAuthState === 'loading' ? "Signing you in..." : "Welcome back!"}
+        message={googleAuthState === 'loading' ? "Signing you in..." : (userExists === true ? "Welcome back!" : "Signed in!")}
         submessage={googleAuthState === 'loading' ? "Please wait while we verify your credentials securely." : "Redirecting to your dashboard..."}
         type={googleAuthState === 'success' ? 'success' : 'loading'}
       />
@@ -215,8 +254,34 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                 form.watch('email') && !form.formState.errors.email ? 'valid' : 'idle'
               }
               error={form.formState.errors.email?.message}
-              {...form.register('email')}
+              {...form.register('email', {
+                onChange: (e) => {
+                  const email = e.target.value;
+                  if (email && email.includes('@')) {
+                    checkUserExistence(email);
+                  }
+                }
+              })}
             />
+            {/* User existence status */}
+            <AnimatePresence>
+              {(isCheckingUser || userExists !== null) && form.watch('email') && form.watch('email').includes('@') && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="mt-2 text-xs"
+                >
+                  {isCheckingUser ? (
+                    <span className="text-gray-500">Checking account...</span>
+                  ) : userExists === true ? (
+                    <span className="text-green-600">✓ Account found - welcome back!</span>
+                  ) : userExists === false ? (
+                    <span className="text-amber-600">⚠ No account found - you may need to register first</span>
+                  ) : null}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
 
           <motion.div variants={itemVariants}>
@@ -238,12 +303,12 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
             <AnimatedButton
               type="submit"
               state={getButtonState()}
-              loadingText="Signing you in..."
-              successText="Welcome back!"
-              errorText="Try again"
+              loadingText={getButtonText().loading}
+              successText={getButtonText().success}
+              errorText={getButtonText().error}
               disabled={authState === 'loading'}
             >
-              Sign In
+              {getButtonText().default}
             </AnimatedButton>
           </motion.div>
 
