@@ -96,20 +96,28 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       console.log('🔥 Setting authState to error');
       setAuthState('error');
       
-      if (e.message.includes('EMAIL_NOT_VERIFIED')) {
+      if (e.message.includes('EMAIL_NOT_VERIFIED') || e.message.includes('email')) {
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
       } else {
-        // Show user-friendly error message instead of technical details
+        // Show user-friendly error message based on the error type
         console.log('🔥 Setting formError to custom message');
-        setFormError("Email/password sign-in is not available with the current email address. Please check your credentials or register for a new account.");
+        if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
+          setFormError("Invalid email or password. Please check your credentials and try again.");
+        } else if (e.message.includes('user-disabled')) {
+          setFormError("This account has been disabled. Please contact support.");
+        } else if (e.message.includes('too-many-requests')) {
+          setFormError("Too many failed attempts. Please wait a moment before trying again.");
+        } else {
+          setFormError("Sign-in failed. Please check your credentials or register for a new account.");
+        }
       }
       
-      // Reset to idle state after showing error for a moment to allow retry
+      // Reset to idle state after showing error for a longer period to ensure user sees the error
       setTimeout(() => {
         console.log('🔥 Resetting authState to idle');
         setAuthState('idle');
-      }, 2000);
+      }, 3000); // Increased to 3 seconds so user sees the error
     }
   };
 
@@ -151,6 +159,8 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
   };
 
   const getButtonState = () => {
+    // If there's a form error, always show error state regardless of authState
+    if (formError || error) return 'error';
     if (authState === 'loading') return 'loading';
     if (authState === 'success') return 'success';
     if (authState === 'error') return 'error';
@@ -257,6 +267,11 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
               {...form.register('email', {
                 onChange: (e) => {
                   const email = e.target.value;
+                  // Clear errors and reset state when user starts typing
+                  if (formError || authState === 'error') {
+                    setFormError(null);
+                    setAuthState('idle');
+                  }
                   if (email && email.includes('@')) {
                     checkUserExistence(email);
                   }
@@ -295,7 +310,15 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
                 form.watch('password') && !form.formState.errors.password ? 'valid' : 'idle'
               }
               error={form.formState.errors.password?.message}
-              {...form.register('password')}
+              {...form.register('password', {
+                onChange: () => {
+                  // Clear errors and reset state when user starts typing in password
+                  if (formError || authState === 'error') {
+                    setFormError(null);
+                    setAuthState('idle');
+                  }
+                }
+              })}
             />
           </motion.div>
 
