@@ -1,160 +1,280 @@
-import PDFDocument from 'pdfkit';
+import ReactPDF, { Document, Font, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import path from 'path';
+import React from 'react';
 import { fileURLToPath } from 'url';
 
-/**
- * Generate a professional food safety certificate PDF
- * @param {Object} certificateData - Certificate information
- * @param {string} certificateData.userName - Name of the certificate recipient
- * @param {string} certificateData.completionDate - Date of completion
- * @param {string} certificateData.certificateId - Unique certificate ID
- * @param {number} certificateData.userId - User ID
- * @returns {Buffer} PDF buffer
- */
-function generateCertificatePDF(certificateData) {
-  return new Promise((resolve, reject) => {
-    try {
-      // ESM-compatible __dirname
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = path.dirname(__filename);
-      // Create a new PDF document
-      const doc = new PDFDocument({
-        size: 'A4',
-        layout: 'landscape',
-        margin: 50
-      });
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-      // Register Lobster font
-      const lobsterFontPath = path.join(__dirname, '../attached_assets/Lobster-Regular.ttf');
-      doc.registerFont('Lobster', lobsterFontPath);
-      // Register fallback font
-      doc.registerFont('Helvetica', 'Helvetica');
+// Register custom font
+const currentDir = __dirname;
+const lobsterFontPath = path.join(currentDir, '..', 'attached_assets', 'Lobster-Regular.ttf');
+const logoPath = path.join(currentDir, '..', 'attached_assets', 'Logo_LocalCooks.png');
 
-      // Buffer to store PDF data
-      const buffers = [];
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        const pdfData = Buffer.concat(buffers);
-        resolve(pdfData);
-      });
-
-      // Brand color
-      const brandColor = '#f51042';
-      const pageWidth = doc.page.width;
-      const pageHeight = doc.page.height;
-      const centerX = pageWidth / 2;
-
-      // Background and border
-      doc.save();
-      doc.rect(30, 30, pageWidth - 60, pageHeight - 60)
-         .lineWidth(4)
-         .stroke(brandColor); // Brand border
-      doc.restore();
-
-      // Logo
-      const logoPath = path.join(__dirname, '../attached_assets/Logo_LocalCooks.png');
-      const logoDisplayWidth = 90;
-      // Calculate logo height to preserve aspect ratio (assume original is 298x128 for now)
-      const logoAspectRatio = 1287 / 298; // width/height from file name, adjust if needed
-      const logoDisplayHeight = logoDisplayWidth / logoAspectRatio;
-      const logoY = 48;
-      doc.image(logoPath, centerX - logoDisplayWidth / 2, logoY, { width: logoDisplayWidth });
-
-      // Add even more vertical space below logo to prevent any overlap
-      let y = logoY + logoDisplayHeight + 70;
-
-      // (No company name in Lobster here)
-
-      // Subtitle
-      doc.font('Helvetica')
-         .fontSize(20)
-         .fillColor('#222')
-         .text('Training Record & Verification', 0, y, { width: pageWidth, align: 'center' });
-      y += 32; // 20px font + 12px spacing
-
-      // Verification text
-      doc.font('Helvetica')
-         .fontSize(15)
-         .fillColor('#222')
-         .text('We hereby verify that', 0, y, { width: pageWidth, align: 'center' });
-      y += 30;
-
-      // Recipient name in Lobster font, brand color, large
-      doc.font('Lobster')
-         .fontSize(40)
-         .fillColor(brandColor)
-         .text(certificateData.userName, 0, y, { width: pageWidth, align: 'center' });
-      y += 60; // Add extra space below the user's name
-
-      // Completion text
-      doc.font('Helvetica')
-         .fontSize(15)
-         .fillColor('#222')
-         .text('has completed the Local Cooks Food Safety Video Training Series, demonstrating dedication to professional food safety education.', 80, y, { width: pageWidth - 160, align: 'center' });
-      y += 40;
-
-      // Section heading
-      doc.font('Helvetica-Bold')
-         .fontSize(16)
-         .fillColor(brandColor)
-         .text('Completed Training Modules:', 80, y, { width: pageWidth - 160, align: 'center' });
-      y += 25;
-
-      // Module 1
-      doc.font('Helvetica')
-         .fontSize(12)
-         .fillColor('#222')
-         .text('Module 1: Introduction • HACCP Principles • Reducing Complexity • Personal Hygiene • Deliveries • Storage • Preparation • Regeneration • Service Start • After Service • Waste Removal • Cleaning & Maintenance • Weekly Log Sheets • Wrap Up', 80, y, { width: pageWidth - 160, align: 'center' });
-      y += 28;
-      // Module 2
-      doc.text('Module 2: Hand Washing • Food Prep Station Cleaning • Kitchen Utensil Cleaning • Stove Cleaning • Kitchen Floor Cleaning • Restaurant Floor Cleaning • Table & Chair Cleaning • Washroom Cleaning', 80, y, { width: pageWidth - 160, align: 'center' });
-      y += 40;
-
-      // Dates and Record ID
-      const formattedDate = new Date(certificateData.completionDate).toLocaleDateString('en-US', {
-        year: 'numeric', month: 'long', day: 'numeric'
-      });
-      doc.font('Helvetica-Bold')
-         .fontSize(16)
-         .fillColor('#222')
-         .text(`Completion Date: ${formattedDate}`, 80, y, { width: pageWidth - 160, align: 'center' });
-      y += 25;
-      doc.font('Helvetica')
-         .fontSize(12)
-         .fillColor('#444')
-         .text(`Record ID: ${certificateData.certificateId}`, 80, y, { width: pageWidth - 160, align: 'center' });
-
-      // Footer/disclaimer
-      doc.font('Helvetica')
-         .fontSize(11)
-         .fillColor('#888')
-         .text('This document confirms completion of Local Cooks educational videos and is not a professional certification.', 80, pageHeight - 80, { width: pageWidth - 160, align: 'center' });
-
-      // Decorative corners (optional, subtle)
-      doc.save();
-      doc.strokeColor(brandColor).lineWidth(2);
-      // Top left
-      doc.moveTo(40, 40).lineTo(80, 40).stroke();
-      doc.moveTo(40, 40).lineTo(40, 80).stroke();
-      // Top right
-      doc.moveTo(pageWidth - 40, 40).lineTo(pageWidth - 80, 40).stroke();
-      doc.moveTo(pageWidth - 40, 40).lineTo(pageWidth - 40, 80).stroke();
-      // Bottom left
-      doc.moveTo(40, pageHeight - 40).lineTo(80, pageHeight - 40).stroke();
-      doc.moveTo(40, pageHeight - 40).lineTo(40, pageHeight - 80).stroke();
-      // Bottom right
-      doc.moveTo(pageWidth - 40, pageHeight - 40).lineTo(pageWidth - 80, pageHeight - 40).stroke();
-      doc.moveTo(pageWidth - 40, pageHeight - 40).lineTo(pageWidth - 40, pageHeight - 80).stroke();
-      doc.restore();
-
-      // Finalize the PDF
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
+try {
+  Font.register({
+    family: 'Lobster',
+    src: lobsterFontPath,
   });
+} catch (error) {
+  console.log('Lobster font not found, using default');
 }
 
-export {
-    generateCertificatePDF
+// Create styles
+const styles = StyleSheet.create({
+  page: {
+    backgroundColor: '#ffffff',
+    padding: 40,
+    fontFamily: 'Helvetica',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 60,
+  },
+  logo: {
+    width: 55,
+    height: 55,
+  },
+  brandText: {
+    textAlign: 'right',
+  },
+  brandTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#f51042',
+    fontFamily: 'Helvetica-Bold',
+  },
+  brandSubtitle: {
+    fontSize: 8,
+    color: '#6c757d',
+    marginTop: 4,
+  },
+  certificateContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  organicBlob: {
+    backgroundColor: '#f51042',
+    borderRadius: 50,
+    width: 380,
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  blobText: {
+    color: 'white',
+    textAlign: 'center',
+    fontFamily: 'Helvetica-Bold',
+  },
+  blobMainText: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  blobSubText: {
+    fontSize: 24,
+  },
+  subtitle: {
+    fontSize: 11,
+    color: '#6c757d',
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  verificationText: {
+    fontSize: 13,
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  recipientName: {
+    fontSize: 30,
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 22,
+    fontFamily: 'Lobster',
+  },
+  completionText: {
+    fontSize: 12,
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 1.4,
+  },
+  modulesHeader: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#f51042',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontFamily: 'Helvetica-Bold',
+  },
+  modulesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 20,
+  },
+  moduleBox: {
+    flex: 1,
+    border: '2px solid rgba(245, 16, 66, 0.2)',
+    backgroundColor: 'rgba(245, 16, 66, 0.05)',
+    padding: 10,
+    minHeight: 60,
+  },
+  moduleTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 4,
+    fontFamily: 'Helvetica-Bold',
+  },
+  moduleVideos: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 8,
+    fontFamily: 'Helvetica-Bold',
+  },
+  moduleContent: {
+    fontSize: 8,
+    color: '#2c3e50',
+    textAlign: 'center',
+    lineHeight: 1.2,
+  },
+  completionDate: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+    marginBottom: 18,
+    fontFamily: 'Helvetica-Bold',
+  },
+  recordId: {
+    fontSize: 10,
+    color: '#6c757d',
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 80,
+    left: 40,
+    right: 40,
+  },
+  disclaimer: {
+    fontSize: 8,
+    color: '#6c757d',
+    textAlign: 'center',
+    lineHeight: 1.3,
+  },
+  wave: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+    backgroundColor: '#f51042',
+    opacity: 0.6,
+  },
+});
+
+// Certificate Document Component using React.createElement
+const CertificateDocument = ({ certificateData }) => {
+  const completionDate = new Date(certificateData.completionDate);
+  const formattedDate = completionDate.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+
+  return React.createElement(Document, null,
+    React.createElement(Page, { size: 'A4', style: styles.page },
+      // Header
+      React.createElement(View, { style: styles.header },
+        React.createElement(Image, { style: styles.logo, src: logoPath }),
+        React.createElement(View, { style: styles.brandText },
+          React.createElement(Text, { style: styles.brandTitle }, 'Local Cooks'),
+          React.createElement(Text, { style: styles.brandSubtitle }, 'Food Safety Training')
+        )
+      ),
+
+      // Certificate Content
+      React.createElement(View, { style: styles.certificateContainer },
+        // Organic Blob
+        React.createElement(View, { style: styles.organicBlob },
+          React.createElement(Text, { style: [styles.blobText, styles.blobMainText] }, 'Certificate of'),
+          React.createElement(Text, { style: [styles.blobText, styles.blobSubText] }, 'Completion')
+        ),
+
+        // Content
+        React.createElement(Text, { style: styles.subtitle }, 'Training Record & Verification'),
+        React.createElement(Text, { style: styles.verificationText }, 'We hereby verify that'),
+        React.createElement(Text, { style: styles.recipientName }, certificateData.userName),
+        React.createElement(Text, { style: styles.completionText }, 
+          'has completed the Local Cooks Food Safety Video Training Series,\n' +
+          'demonstrating dedication to professional food safety education.'
+        ),
+
+        // Training Modules
+        React.createElement(Text, { style: styles.modulesHeader }, 'Completed Training Modules:'),
+        
+        React.createElement(View, { style: styles.modulesContainer },
+          // Module 1
+          React.createElement(View, { style: styles.moduleBox },
+            React.createElement(Text, { style: styles.moduleTitle }, 'Module 1: Food Safety Basics'),
+            React.createElement(Text, { style: styles.moduleVideos }, '(14 Videos)'),
+            React.createElement(Text, { style: styles.moduleContent }, 
+              'Introduction • HACCP Principles • Reducing Complexity • Personal Hygiene • ' +
+              'Deliveries • Storage • Preparation • Regeneration • Service Start • ' +
+              'After Service • Waste Removal • Cleaning & Maintenance • Weekly Log Sheets • Wrap Up'
+            )
+          ),
+
+          // Module 2
+          React.createElement(View, { style: styles.moduleBox },
+            React.createElement(Text, { style: styles.moduleTitle }, 'Module 2: Safety & Hygiene How-To\'s'),
+            React.createElement(Text, { style: styles.moduleVideos }, '(8 Videos)'),
+            React.createElement(Text, { style: styles.moduleContent }, 
+              'Hand Washing • Food Prep Station Cleaning • Kitchen Utensil Cleaning • ' +
+              'Stove Cleaning • Kitchen Floor Cleaning • Restaurant Floor Cleaning • ' +
+              'Table & Chair Cleaning • Washroom Cleaning'
+            )
+          )
+        ),
+
+        // Completion Info
+        React.createElement(Text, { style: styles.completionDate }, `Completion Date: ${formattedDate}`),
+        React.createElement(Text, { style: styles.recordId }, `Record ID: ${certificateData.certificateId}`)
+      ),
+
+      // Footer
+      React.createElement(View, { style: styles.footer },
+        React.createElement(Text, { style: styles.disclaimer }, 
+          'This document confirms completion of Local Cooks educational videos and is not a professional certification.\n' +
+          'Complete your official certification at skillpass.nl'
+        )
+      ),
+
+      // Simple Wave
+      React.createElement(View, { style: styles.wave })
+    )
+  );
 };
+
+// Export function to generate certificate
+export const generateCertificate = async (certificateData) => {
+  try {
+    return await ReactPDF.renderToStream(
+      React.createElement(CertificateDocument, { certificateData })
+    );
+  } catch (error) {
+    console.error('Error generating certificate:', error);
+    throw error;
+  }
+};
+

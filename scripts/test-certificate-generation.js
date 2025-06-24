@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { generateCertificatePDF } from '../api/certificateGenerator.js';
+import { generateCertificate } from '../api/certificateGenerator.js';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -23,8 +23,13 @@ async function testCertificateGeneration() {
     console.log(JSON.stringify(testCertificateData, null, 2));
     console.log('\n🔄 Generating PDF...');
 
-    // Generate PDF
-    const pdfBuffer = await generateCertificatePDF(testCertificateData);
+    // Generate PDF stream and convert to buffer
+    const pdfStream = await generateCertificate(testCertificateData);
+    const chunks = [];
+    for await (const chunk of pdfStream) {
+      chunks.push(chunk);
+    }
+    const pdfBuffer = Buffer.concat(chunks);
 
     console.log(`✅ PDF Generated Successfully!`);
     console.log(`📊 Size: ${pdfBuffer.length} bytes (${(pdfBuffer.length / 1024).toFixed(2)} KB)`);
@@ -51,7 +56,12 @@ async function testCertificateGeneration() {
         userId: 100 + i
       };
 
-      const edgeCasePdf = await generateCertificatePDF(testCase);
+      const edgeCaseStream = await generateCertificate(testCase);
+      const edgeChunks = [];
+      for await (const chunk of edgeCaseStream) {
+        edgeChunks.push(chunk);
+      }
+      const edgeCasePdf = Buffer.concat(edgeChunks);
       console.log(`✅ Edge case ${i + 1}: ${testCase.userName} - ${edgeCasePdf.length} bytes`);
     }
 

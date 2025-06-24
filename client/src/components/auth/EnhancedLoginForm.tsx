@@ -1,5 +1,6 @@
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { checkUserExistsByEmail } from "@/utils/user-existence-check";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Lock, Mail } from "lucide-react";

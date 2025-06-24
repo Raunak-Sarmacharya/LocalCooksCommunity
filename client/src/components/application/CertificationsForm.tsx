@@ -370,7 +370,7 @@ export default function CertificationsForm() {
                     
                     {/* Document Upload Section for Food Safety License */}
                     {form.watch("foodSafetyLicense") === "yes" && (
-                      <div onClick={(e) => e.stopPropagation()}>
+                      <div onClick={(e) => e.stopPropagation()} className="w-full overflow-hidden">
                         <Tabs defaultValue="upload" className="w-full mt-4">
                           <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="upload" className="flex items-center gap-2 text-xs">
@@ -383,14 +383,17 @@ export default function CertificationsForm() {
                             </TabsTrigger>
                           </TabsList>
                           
-                          <TabsContent value="upload" className="mt-3">
-                            <FileUpload
-                              fieldName="foodSafetyLicense"
-                              label="Upload Food Safety License"
-                              required={true}
-                              currentFile={fileUploads.foodSafetyLicense}
-                              onFileChange={(file) => handleFileUpload("foodSafetyLicense", file)}
-                            />
+                          <TabsContent value="upload" className="mt-3 w-full overflow-hidden">
+                            <div className="w-full max-w-full">
+                              <FileUpload
+                                fieldName="foodSafetyLicense"
+                                label="Upload Food Safety License"
+                                required={true}
+                                currentFile={fileUploads.foodSafetyLicense}
+                                onFileChange={(file) => handleFileUpload("foodSafetyLicense", file)}
+                                className="max-w-full"
+                              />
+                            </div>
                             <div className="mt-2 p-3 bg-blue-50 rounded-md">
                               <div className="flex items-start space-x-2">
                                 <AlertTriangle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -401,8 +404,8 @@ export default function CertificationsForm() {
                             </div>
                           </TabsContent>
                           
-                          <TabsContent value="url" className="mt-3">
-                            <div className="space-y-2">
+                          <TabsContent value="url" className="mt-3 w-full overflow-hidden">
+                            <div className="space-y-2 w-full max-w-full">
                               <Label htmlFor="foodSafetyLicenseUrl" className="text-sm font-medium">
                                 Food Safety License URL
                               </Label>
@@ -415,7 +418,7 @@ export default function CertificationsForm() {
                                   ...prev, 
                                   foodSafetyLicenseUrl: e.target.value 
                                 }))}
-                                className="w-full"
+                                className="w-full max-w-full"
                               />
                               <div className="mt-2 p-3 bg-green-50 rounded-md">
                                 <div className="flex items-start space-x-2">
@@ -506,7 +509,7 @@ export default function CertificationsForm() {
                     
                     {/* Document Upload Section for Food Establishment Certificate */}
                     {form.watch("foodEstablishmentCert") === "yes" && (
-                      <div onClick={(e) => e.stopPropagation()}>
+                      <div onClick={(e) => e.stopPropagation()} className="w-full overflow-hidden">
                         <Tabs defaultValue="upload" className="w-full mt-4">
                           <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="upload" className="flex items-center gap-2 text-xs">
@@ -519,14 +522,17 @@ export default function CertificationsForm() {
                             </TabsTrigger>
                           </TabsList>
                           
-                          <TabsContent value="upload" className="mt-3">
-                            <FileUpload
-                              fieldName="foodEstablishmentCert"
-                              label="Upload Food Establishment Certificate"
-                              required={false}
-                              currentFile={fileUploads.foodEstablishmentCert}
-                              onFileChange={(file) => handleFileUpload("foodEstablishmentCert", file)}
-                            />
+                          <TabsContent value="upload" className="mt-3 w-full overflow-hidden">
+                            <div className="w-full max-w-full">
+                              <FileUpload
+                                fieldName="foodEstablishmentCert"
+                                label="Upload Food Establishment Certificate"
+                                required={false}
+                                currentFile={fileUploads.foodEstablishmentCert}
+                                onFileChange={(file) => handleFileUpload("foodEstablishmentCert", file)}
+                                className="max-w-full"
+                              />
+                            </div>
                             <div className="mt-2 p-3 bg-green-50 rounded-md">
                               <div className="flex items-start space-x-2">
                                 <Check className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
@@ -537,8 +543,8 @@ export default function CertificationsForm() {
                             </div>
                           </TabsContent>
                           
-                          <TabsContent value="url" className="mt-3">
-                            <div className="space-y-2">
+                          <TabsContent value="url" className="mt-3 w-full overflow-hidden">
+                            <div className="space-y-2 w-full max-w-full">
                               <Label htmlFor="foodEstablishmentCertUrl" className="text-sm font-medium">
                                 Food Establishment Certificate URL (Optional)
                               </Label>
@@ -551,7 +557,7 @@ export default function CertificationsForm() {
                                   ...prev, 
                                   foodEstablishmentCertUrl: e.target.value 
                                 }))}
-                                className="w-full"
+                                className="w-full max-w-full"
                               />
                               <div className="mt-2 p-3 bg-orange-50 rounded-md">
                                 <div className="flex items-start space-x-2">

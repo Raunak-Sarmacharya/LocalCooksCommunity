@@ -95,7 +95,7 @@ export function FileUpload({
             variant="ghost"
             size="sm"
             onClick={() => handleFileSelect(null)}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -103,15 +103,17 @@ export function FileUpload({
       </div>
       
       {currentFile ? (
-        <div className="flex items-center space-x-3 p-3 bg-white rounded-md border border-gray-200">
-          <FileText className="h-5 w-5 text-gray-500" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">
-              {currentFile.name}
-            </p>
-            <p className="text-xs text-gray-500">
-              {(currentFile.size / 1024 / 1024).toFixed(2)} MB
-            </p>
+        <div className="w-full">
+          <div className="flex items-center space-x-3 p-3 bg-white rounded-md border border-gray-200">
+            <FileText className="h-5 w-5 text-gray-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <p className="text-sm font-medium text-gray-900 truncate break-words" title={currentFile.name}>
+                {currentFile.name}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {(currentFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
           </div>
         </div>
       ) : (
