@@ -62,6 +62,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
     try {
       await login(data.email, data.password);
+      // Only set success if we reach this point without errors
       setAuthState('success');
       
       setTimeout(() => {
@@ -69,16 +70,21 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       }, 1000);
 
     } catch (e: any) {
+      // Immediately set error state when any error occurs
       setAuthState('error');
+      
       if (e.message.includes('EMAIL_NOT_VERIFIED')) {
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
       } else {
-        setFormError(e.message);
-        setTimeout(() => {
-          setAuthState('idle');
-        }, 2000);
+        // Show user-friendly error message instead of technical details
+        setFormError("Email/password sign-in is not available with the current email address. Please check your credentials or register for a new account.");
       }
+      
+      // Reset to idle state after showing error for a moment to allow retry
+      setTimeout(() => {
+        setAuthState('idle');
+      }, 2000);
     }
   };
 
