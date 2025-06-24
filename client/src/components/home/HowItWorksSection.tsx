@@ -100,8 +100,8 @@ export default function HowItWorksSection() {
                 <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 w-8 h-8 rotate-45 bg-white"></div>
               </div>
               <div className="p-8 relative z-10">
-                <h3 className="text-xl font-bold mb-3 group-hover:text-primary hover-text">{step.title}</h3>
-                <p className="text-gray-600 leading-relaxed group-hover:text-primary/80 hover-text">{step.description}</p>
+                <h3 className="text-xl font-bold mb-3 text-gray-900">{step.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{step.description}</p>
               </div>
             </motion.div>
           ))}
@@ -125,12 +125,12 @@ export default function HowItWorksSection() {
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 + 0.3 }}
                   >
-                    <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/20 hover-standard">
+                    <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary/15 hover-standard">
                       {benefit.icon}
                     </div>
-                    <div className="hover-text">
-                      <h4 className="font-bold text-gray-900 mb-1 group-hover:text-primary hover-text">{benefit.title}</h4>
-                      <p className="text-gray-600 leading-relaxed group-hover:text-primary/80 hover-text">{benefit.description}</p>
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">{benefit.title}</h4>
+                      <p className="text-gray-600 leading-relaxed">{benefit.description}</p>
                     </div>
                   </motion.div>
                 ))}

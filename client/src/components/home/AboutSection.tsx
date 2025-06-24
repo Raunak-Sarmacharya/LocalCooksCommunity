@@ -1,9 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { useApplicationStatus } from "@/hooks/use-application-status";
-import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { Globe, Heart, Leaf, Quote } from "lucide-react";
-import { useLocation } from "wouter";
 
 const values = [
   {
@@ -27,17 +23,7 @@ const values = [
 ];
 
 export default function AboutSection() {
-  const [, navigate] = useLocation();
-  const { user } = useFirebaseAuth();
-  const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
-
-  const handleJoinClick = () => {
-    navigate(getNavigationPath());
-  };
-
-  const getCtaButtonText = () => {
-    return getButtonText("Join Our Community");
-  };
+  // Removed button functionality as requested
 
   return (
     <section id="about" className="py-16 md:py-24 px-4 scroll-mt-24 bg-gradient-to-b from-gray-50 to-white relative overflow-hidden">
@@ -89,23 +75,13 @@ export default function AboutSection() {
                   <h3 className="text-xl font-semibold">Our Mission</h3>
                 </div>
                 <p className="text-gray-700 mb-4 leading-relaxed">
-                  To create a sustainable food ecosystem that celebrates local cuisines, reduces waste,
-                  and brings people together through the universal language of good food.
+                  Your kitchen holds stories, traditions, and flavors that deserve to be shared with the world. Local Cooks bridges the gap between your culinary gifts and the food lovers eager to discover them.
                 </p>
                 <p className="text-gray-700 leading-relaxed">
-                  We're dedicated to supporting St. John's culinary community by connecting
-                  talented home cooks with hungry customers who appreciate authentic, homemade meals.
+                  We're not just a platform—we're a movement empowering passionate cooks to turn their authentic recipes into sustainable businesses, one homemade dish at a time. We're dedicated to supporting St. John's culinary community by connecting talented home cooks with hungry customers who appreciate authentic, homemade meals.
                 </p>
 
-                <div className="mt-8 flex flex-wrap gap-4">
-                  <Button
-                    onClick={handleJoinClick}
-                    disabled={isLoading}
-                    className="rounded-full px-6 hover-standard"
-                  >
-                    {isLoading ? "Loading..." : getCtaButtonText()}
-                  </Button>
-                </div>
+
               </div>
             </div>
           </motion.div>
