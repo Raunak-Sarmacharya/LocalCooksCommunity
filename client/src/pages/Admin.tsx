@@ -1,5 +1,5 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
-import PromoCodeSender from "@/components/admin/PromoCodeSender";
+import { PromoCodeSender } from "@/components/admin/PromoCodeSender";
 import {
     formatApplicationStatus,
     formatCertificationStatus,

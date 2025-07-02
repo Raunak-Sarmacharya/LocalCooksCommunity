@@ -1406,70 +1406,104 @@ export const generatePromoCodeEmail = (
   userData: {
     email: string;
     promoCode: string;
-    adminMessage?: string;
-    templateType?: 'general' | 'loyalty' | 'comeback'; // New template types
+    customMessage: string;
+    promoStyle?: {
+      colorTheme: string;
+      borderStyle: string;
+    };
   }
 ): EmailContent => {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
-  const templateType = userData.templateType || 'general';
   
-  // Template-specific content
-  const getTemplateContent = (type: string) => {
-    switch (type) {
-      case 'loyalty':
-        return {
-          subject: `🙏 Thank You for Your Loyalty - Special Promo Inside!`,
-          greeting: "Dear Valued Customer! 👑",
-          mainMessage: `We are incredibly grateful for your continued loyalty and support of ${organizationName}. Your repeated orders and trust in our local cooks mean the world to us!`,
-          gratitudeMessage: `As one of our most loyal customers, you've helped us grow and support local cooks in our community. This special promo code is our way of saying thank you for being such an important part of our journey.`,
-          ctaText: "🌟 Enjoy Your Loyalty Reward",
-          footerNote: "loyal customer"
-        };
-      case 'comeback':
-        return {
-          subject: `🍽️ Long Time No See - We Miss You!`,
-          greeting: "We Miss You! 🥺",
-          mainMessage: `It's been a while since we've seen you at ${organizationName}, and we wanted to reach out because we genuinely miss having you as part of our community!`,
-          gratitudeMessage: `We remember the delicious orders you used to place with our local cooks, and we'd love to welcome you back. Our community of talented chefs has grown, and there are so many new flavors waiting for you to discover.`,
-          ctaText: "🍴 Welcome Back - Order Again",
-          footerNote: "returning customer"
-        };
-      default: // general
-        return {
-          subject: `🎉 Special Promo Code from ${organizationName}`,
-          greeting: "Hello there! 👋",
-          mainMessage: `We're excited to share this special promo code with you from ${organizationName}!`,
-          gratitudeMessage: `We appreciate you being part of our community and supporting local cooks in your area.`,
-          ctaText: "🌟 Use Promo Code Now",
-          footerNote: "valued customer"
-        };
-    }
+  const subject = `🎉 Special Promo Code from ${organizationName}`;
+  
+  // Style configurations based on admin choice
+  const getPromoStyling = (colorTheme: string, borderStyle: string) => {
+    const themes = {
+      green: {
+        background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+        textColor: '#16a34a',
+        accentColor: '#15803d',
+        borderColor: '#16a34a'
+      },
+      blue: {
+        background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+        textColor: '#2563eb',
+        accentColor: '#1d4ed8',
+        borderColor: '#2563eb'
+      },
+      purple: {
+        background: 'linear-gradient(135deg, #faf5ff 0%, #e9d5ff 100%)',
+        textColor: '#7c3aed',
+        accentColor: '#6d28d9',
+        borderColor: '#7c3aed'
+      },
+      red: {
+        background: 'linear-gradient(135deg, #fef2f2 0%, #fecaca 100%)',
+        textColor: '#dc2626',
+        accentColor: '#b91c1c',
+        borderColor: '#dc2626'
+      },
+      orange: {
+        background: 'linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%)',
+        textColor: '#ea580c',
+        accentColor: '#c2410c',
+        borderColor: '#ea580c'
+      },
+      pink: {
+        background: 'linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%)',
+        textColor: '#e11d48',
+        accentColor: '#be185d',
+        borderColor: '#e11d48'
+      },
+      yellow: {
+        background: 'linear-gradient(135deg, #fefce8 0%, #fef3c7 100%)',
+        textColor: '#ca8a04',
+        accentColor: '#a16207',
+        borderColor: '#ca8a04'
+      },
+      gray: {
+        background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+        textColor: '#475569',
+        accentColor: '#334155',
+        borderColor: '#475569'
+      }
+    };
+
+    const borderStyles = {
+      dashed: '2px dashed',
+      solid: '2px solid',
+      dotted: '3px dotted',
+      double: '3px double',
+      none: 'none'
+    };
+
+    const theme = themes[colorTheme as keyof typeof themes] || themes.green;
+    const border = borderStyles[borderStyle as keyof typeof borderStyles] || borderStyles.dashed;
+
+    return {
+      ...theme,
+      border: `${border} ${theme.borderColor}`,
+      boxShadow: borderStyle === 'none' ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
+    };
   };
 
-  const template = getTemplateContent(templateType);
-  const subject = template.subject;
+  const promoStyle = userData.promoStyle || { colorTheme: 'green', borderStyle: 'dashed' };
+  const styling = getPromoStyling(promoStyle.colorTheme, promoStyle.borderStyle);
   
   // Generate plain text version for better deliverability
-  const generatePlainText = (email: string, promoCode: string, adminMessage?: string) => {
-    const template = getTemplateContent(templateType);
-    
-    return `${template.subject}
+  const generatePlainText = (email: string, promoCode: string, customMessage: string) => {
+    return `Special Promo Code from ${organizationName}
 
-${template.greeting}
-
-${template.mainMessage}
-
-${template.gratitudeMessage}
+${customMessage}
 
 Your Promo Code: ${promoCode}
 
-${adminMessage ? `Personal message from our team: ${adminMessage}\n\n` : ''}To use your promo code:
+To use your promo code:
 1. Visit our website: ${getPromoUrl()}
 2. Apply during checkout or registration
 3. Enjoy your special offer!
-
-This promo code is exclusively for you as our ${template.footerNote}.
 
 Questions? Contact us at ${supportEmail}
 
@@ -1480,39 +1514,7 @@ Visit: ${getPromoUrl()}
 `;
   };
 
-  // Template-specific styling and colors
-  const getTemplateStyles = (type: string) => {
-    switch (type) {
-      case 'loyalty':
-        return {
-          headerGradient: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)', // Golden gradient for loyalty
-          promoBoxGradient: 'linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%)',
-          promoBorder: '#f59e0b',
-          promoColor: '#92400e',
-          accentColor: '#d97706'
-        };
-      case 'comeback':
-        return {
-          headerGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', // Purple gradient for comeback
-          promoBoxGradient: 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)',
-          promoBorder: '#8b5cf6',
-          promoColor: '#5b21b6',
-          accentColor: '#7c3aed'
-        };
-      default: // general
-        return {
-          headerGradient: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-          promoBoxGradient: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-          promoBorder: '#16a34a',
-          promoColor: '#16a34a',
-          accentColor: '#15803d'
-        };
-    }
-  };
-
-  const templateStyles = getTemplateStyles(templateType);
-
-  // Use uniform email template with template-specific styling
+  // Dynamic email template with admin-chosen styling
   const html = `
 <!DOCTYPE html>
 <html>
@@ -1522,54 +1524,40 @@ Visit: ${getPromoUrl()}
   <title>${subject}</title>
   ${getUniformEmailStyles()}
   <style>
-    .template-specific-header {
-      background: ${templateStyles.headerGradient};
-    }
     .promo-code-box {
-      background: ${templateStyles.promoBoxGradient};
-      border: 2px dashed ${templateStyles.promoBorder};
+      background: ${styling.background};
+      border: ${styling.border};
       border-radius: 12px;
       padding: 24px;
       text-align: center;
       margin: 24px 0;
+      box-shadow: ${styling.boxShadow};
     }
     .promo-code {
       font-family: 'Courier New', monospace;
       font-size: 28px;
       font-weight: 800;
-      color: ${templateStyles.promoColor};
+      color: ${styling.textColor};
       letter-spacing: 2px;
       margin: 8px 0;
     }
     .promo-label {
       font-size: 14px;
       font-weight: 600;
-      color: ${templateStyles.accentColor};
+      color: ${styling.accentColor};
       text-transform: uppercase;
       letter-spacing: 1px;
       margin-bottom: 8px;
     }
-    .loyalty-badge {
-      background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
-      border: 1px solid #f59e0b;
-      border-radius: 20px;
-      padding: 8px 16px;
-      display: inline-block;
-      margin: 12px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #92400e;
-    }
-    .comeback-badge {
-      background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
-      border: 1px solid #8b5cf6;
-      border-radius: 20px;
-      padding: 8px 16px;
-      display: inline-block;
-      margin: 12px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #5b21b6;
+    .custom-message {
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border-left: 4px solid ${styling.accentColor};
+      border-radius: 8px;
+      padding: 20px;
+      margin: 24px 0;
+      font-size: 16px;
+      line-height: 1.6;
+      white-space: pre-line; /* Preserves line breaks from admin input */
     }
     .usage-steps {
       background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
@@ -1593,28 +1581,6 @@ Visit: ${getPromoUrl()}
       margin: 6px 0;
       font-size: 14px;
     }
-    .exclusive-note {
-      background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
-      border: 1px solid #f59e0b;
-      border-radius: 8px;
-      padding: 16px;
-      margin: 24px 0;
-      text-align: center;
-    }
-    .exclusive-note p {
-      margin: 0;
-      color: #92400e;
-      font-size: 14px;
-      font-weight: 500;
-    }
-    .gratitude-box {
-      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      border-left: 4px solid ${templateStyles.accentColor};
-      border-radius: 8px;
-      padding: 20px;
-      margin: 24px 0;
-      font-style: italic;
-    }
     .cta-container {
       text-align: center;
       margin: 32px 0;
@@ -1627,28 +1593,14 @@ Visit: ${getPromoUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">${template.greeting}</h2>
+      <h2 class="greeting">Hello! 👋</h2>
       
-      ${templateType === 'loyalty' ? `<div class="loyalty-badge">👑 Loyal Customer Appreciation</div>` : ''}
-      ${templateType === 'comeback' ? `<div class="comeback-badge">💜 Welcome Back Offer</div>` : ''}
-      
-      <p class="message">
-        ${template.mainMessage}
-      </p>
-      
-      <div class="gratitude-box">
-        <strong>💖 ${templateType === 'loyalty' ? 'Our Heartfelt Thanks:' : templateType === 'comeback' ? 'We Remember You:' : 'Thank You:'}</strong><br>
-        ${template.gratitudeMessage}
+      <div class="custom-message">
+        ${userData.customMessage}
       </div>
       
-      ${userData.adminMessage ? `
-      <div class="info-box">
-        <strong>💬 Personal message from our team:</strong><br>
-        ${userData.adminMessage}
-      </div>` : ''}
-      
       <div class="promo-code-box">
-        <div class="promo-label">🎁 Your ${templateType === 'loyalty' ? 'Loyalty' : templateType === 'comeback' ? 'Welcome Back' : 'Exclusive'} Promo Code</div>
+        <div class="promo-label">🎁 Your Exclusive Promo Code</div>
         <div class="promo-code">${userData.promoCode}</div>
       </div>
       
@@ -1658,31 +1610,20 @@ Visit: ${getPromoUrl()}
           <li>Visit our website: <a href="${getPromoUrl()}" style="color: #1d4ed8;">${getPromoUrl()}</a></li>
           <li>Browse our amazing local cooks and their delicious offerings</li>
           <li>Apply your promo code during checkout</li>
-          <li>Enjoy your special ${templateType === 'loyalty' ? 'loyalty reward' : templateType === 'comeback' ? 'welcome back offer' : 'discount'}!</li>
+          <li>Enjoy your special offer!</li>
         </ol>
-      </div>
-      
-      <div class="exclusive-note">
-        <p>🔒 This promo code is exclusively for you as our ${template.footerNote}.</p>
       </div>
       
       <div class="cta-container">
         <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
-          ${template.ctaText}
+          🌟 Start Shopping Now
         </a>
       </div>
       
       <div class="divider"></div>
     </div>
     <div class="footer">
-      <p class="footer-text">
-        ${templateType === 'loyalty' ? 
-          `Thank you for being such a loyal part of the <strong>${organizationName}</strong> family! 👑` : 
-          templateType === 'comeback' ? 
-          `We can't wait to welcome you back to <strong>${organizationName}</strong>! 💜` : 
-          `Thank you for being part of the <strong>${organizationName}</strong> community!`
-        }
-      </p>
+      <p class="footer-text">Thank you for being part of the <strong>${organizationName}</strong> community!</p>
       <p class="footer-text">Questions? Contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
       <div class="divider"></div>
       <p class="footer-text">&copy; ${new Date().getFullYear()} ${organizationName}</p>
@@ -1694,7 +1635,7 @@ Visit: ${getPromoUrl()}
   return {
     to: userData.email,
     subject,
-    text: generatePlainText(userData.email, userData.promoCode, userData.adminMessage),
+    text: generatePlainText(userData.email, userData.promoCode, userData.customMessage),
     html,
     headers: {
       'X-Priority': '3',

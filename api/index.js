@@ -8746,13 +8746,13 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, adminMessage, templateType } = req.body;
+    const { email, promoCode, customMessage, promoStyle } = req.body;
 
     // Validate required fields
-    if (!email || !promoCode) {
+    if (!email || !promoCode || !customMessage) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Email and promo code are required'
+        message: 'Email, promo code, and custom message are required'
       });
     }
 
@@ -8773,40 +8773,43 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    // Validate template type
-    const validTemplateTypes = ['general', 'loyalty', 'comeback'];
-    const finalTemplateType = templateType && validTemplateTypes.includes(templateType) ? templateType : 'general';
+    // Validate custom message
+    if (customMessage.length < 10 || customMessage.length > 1000) {
+      return res.status(400).json({
+        error: 'Invalid message',
+        message: 'Custom message must be between 10 and 1000 characters'
+      });
+    }
 
-    console.log(`Admin ${user.username} sending ${finalTemplateType} promo email to ${email} with code: ${promoCode}`);
+    console.log(`Admin ${user.username} sending promo email to ${email} with code: ${promoCode}`);
 
     // Import the email functions
     const { sendEmail, generatePromoCodeEmail } = await import('../server/email.js');
 
-    // Generate the promo email with template type
+    // Generate the promo email with custom message and styling
     const emailContent = generatePromoCodeEmail({
       email: email,
       promoCode: promoCode.trim(),
-      adminMessage: adminMessage?.trim() || undefined,
-      templateType: finalTemplateType
+      customMessage: customMessage.trim(),
+      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' }
     });
 
     // Send the email
     const emailSent = await sendEmail(emailContent, {
-      trackingId: `promo_${finalTemplateType}_${email}_${promoCode}_${Date.now()}`
+      trackingId: `promo_custom_${email}_${promoCode}_${Date.now()}`
     });
 
     if (emailSent) {
-      console.log(`${finalTemplateType} promo email sent successfully to ${email} with code ${promoCode}`);
+      console.log(`Promo email sent successfully to ${email} with code ${promoCode}`);
       return res.status(200).json({
         message: 'Promo code email sent successfully',
         email: email,
         promoCode: promoCode,
-        templateType: finalTemplateType,
         sentBy: user.username,
         timestamp: new Date().toISOString()
       });
     } else {
-      console.error(`Failed to send ${finalTemplateType} promo email to ${email}`);
+      console.error(`Failed to send promo email to ${email}`);
       return res.status(500).json({
         error: 'Email sending failed',
         message: 'Failed to send promo code email. Please check email configuration.'
@@ -8841,102 +8844,31 @@ app.post('/api/test-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, adminMessage, templateType } = req.body;
+    const { email, promoCode, customMessage, promoStyle } = req.body;
 
-    // Validate template type
-    const validTemplateTypes = ['general', 'loyalty', 'comeback'];
-    const finalTemplateType = templateType && validTemplateTypes.includes(templateType) ? templateType : 'general';
-
-    console.log(`Admin ${user.username} testing ${finalTemplateType} promo email`);
+    console.log(`Admin ${user.username} testing promo email`);
 
     // Import the email functions
     const { sendEmail, generatePromoCodeEmail } = await import('../server/email.js');
 
-    // Generate test promo email with template type
+    // Generate test promo email with custom message and styling
     const emailContent = generatePromoCodeEmail({
       email: email || 'test@example.com',
       promoCode: promoCode || 'TEST20',
-      adminMessage: adminMessage || `This is a test ${finalTemplateType} promo code email from the admin panel.`,
-      templateType: finalTemplateType
+      customMessage: customMessage || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
+      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' }
     });
 
     // Send the email
     const emailSent = await sendEmail(emailContent, {
-      trackingId: `test_promo_${finalTemplateType}_${email || 'test'}_${Date.now()}`
+      trackingId: `test_promo_custom_${email || 'test'}_${Date.now()}`
     });
 
     if (emailSent) {
       return res.status(200).json({
         message: 'Test promo email sent successfully',
         email: email || 'test@example.com',
-        promoCode: promoCode || 'TEST20',
-        templateType: finalTemplateType
-      });
-    } else {
-      return res.status(500).json({
-        error: 'Test email failed',
-        message: 'Failed to send test promo email'
-      });
-    }
-
-  } catch (error) {
-    console.error('Error sending test promo email:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: 'An error occurred while testing promo email'
-    });
-  }
-});
-
-// Test endpoint for promo code emails (admin only)
-app.post('/api/test-promo-email', async (req, res) => {
-  // Check if user is authenticated via session
-  const rawUserId = req.session.userId || req.headers['x-user-id'];
-
-  if (!rawUserId) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  try {
-    // Check if the user is an admin
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: 'Only administrators can test promo emails'
-      });
-    }
-
-    const { email, promoCode, adminMessage, templateType } = req.body;
-
-    // Validate template type
-    const validTemplateTypes = ['general', 'loyalty', 'comeback'];
-    const finalTemplateType = templateType && validTemplateTypes.includes(templateType) ? templateType : 'general';
-
-    console.log(`Admin ${user.username} testing ${finalTemplateType} promo email`);
-
-    // Import the email functions
-    const { sendEmail, generatePromoCodeEmail } = await import('../server/email.js');
-
-    // Generate test promo email with template type
-    const emailContent = generatePromoCodeEmail({
-      email: email || 'test@example.com',
-      promoCode: promoCode || 'TEST20',
-      adminMessage: adminMessage || `This is a test ${finalTemplateType} promo code email from the admin panel.`,
-      templateType: finalTemplateType
-    });
-
-    // Send the email
-    const emailSent = await sendEmail(emailContent, {
-      trackingId: `test_promo_${finalTemplateType}_${email || 'test'}_${Date.now()}`
-    });
-
-    if (emailSent) {
-      return res.status(200).json({
-        message: 'Test promo email sent successfully',
-        email: email || 'test@example.com',
-        promoCode: promoCode || 'TEST20',
-        templateType: finalTemplateType
+        promoCode: promoCode || 'TEST20'
       });
     } else {
       return res.status(500).json({

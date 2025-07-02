@@ -1,436 +1,493 @@
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-    AlertTriangle,
     CheckCircle,
     Crown,
-    Gift,
-    Heart,
     Loader2,
-    Mail,
+    Rocket,
     Send,
+    Settings,
+    Sparkles,
+    Star,
     TestTube
 } from "lucide-react";
 import React, { useState } from 'react';
 
+// Import our ultra-premium email design system
+import { EmailDesignStudio } from './email-design-system/EmailDesignStudio';
+
 interface PromoEmailData {
   email: string;
   promoCode: string;
-  adminMessage: string;
-  templateType: 'general' | 'loyalty' | 'comeback';
+  customMessage: string;
+  designSystem?: any;
 }
 
-export default function PromoCodeSender() {
+interface EmailDesignData {
+  id: string;
+  name: string;
+  template: any;
+  designSystem: any;
+  content: any;
+  metadata: any;
+}
+
+export const PromoCodeSender: React.FC = () => {
   const { toast } = useToast();
-  const [formData, setFormData] = useState<PromoEmailData>({
+  const [activeTab, setActiveTab] = useState('premium');
+  const [isLoading, setIsLoading] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
+  const [designMode, setDesignMode] = useState<'premium' | 'simple'>('premium');
+  
+  // Premium Email Design State
+  const [emailDesign, setEmailDesign] = useState<EmailDesignData | null>(null);
+  
+  // Simple Form State (Fallback)
+  const [simpleFormData, setSimpleFormData] = useState<PromoEmailData>({
     email: '',
     promoCode: '',
-    adminMessage: '',
-    templateType: 'general'
+    customMessage: ''
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [lastSentEmail, setLastSentEmail] = useState<string | null>(null);
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handlePremiumEmailGenerated = (designData: EmailDesignData) => {
+    setEmailDesign(designData);
+    toast({
+      title: "🎨 Premium Email Design Ready!",
+      description: "Your enterprise-level email has been designed. Ready to send!",
+    });
   };
 
-  const handleTemplateChange = (value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      templateType: value as 'general' | 'loyalty' | 'comeback'
-    }));
-  };
-
-  // Template descriptions for UI
-  const getTemplateInfo = (type: string) => {
-    switch (type) {
-      case 'loyalty':
-        return {
-          icon: <Crown className="h-4 w-4 text-yellow-600" />,
-          title: 'Loyalty Customer',
-          description: 'Thank loyal customers for their continued support and orders',
-          bgColor: 'bg-yellow-50 border-yellow-200',
-          textColor: 'text-yellow-800'
-        };
-      case 'comeback':
-        return {
-          icon: <Heart className="h-4 w-4 text-purple-600" />,
-          title: 'Welcome Back',
-          description: 'Re-engage customers who haven\'t ordered in a while',
-          bgColor: 'bg-purple-50 border-purple-200',
-          textColor: 'text-purple-800'
-        };
-      default:
-        return {
-          icon: <Gift className="h-4 w-4 text-green-600" />,
-          title: 'General Promo',
-          description: 'Standard promotional email for any customer',
-          bgColor: 'bg-green-50 border-green-200',
-          textColor: 'text-green-800'
-        };
-    }
-  };
-
-  const validateForm = (): boolean => {
-    if (!formData.email.trim()) {
+  const handleSendPremiumEmail = async () => {
+    if (!emailDesign) {
       toast({
-        title: "Email Required",
-        description: "Please enter a recipient email address.",
+        title: "No Design Selected",
+        description: "Please create an email design first.",
         variant: "destructive"
       });
-      return false;
+      return;
     }
 
-    if (!formData.promoCode.trim()) {
-      toast({
-        title: "Promo Code Required",
-        description: "Please enter a promo code to send.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      toast({
-        title: "Invalid Email",
-        description: "Please enter a valid email address.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    // Promo code validation
-    if (formData.promoCode.length < 3 || formData.promoCode.length > 50) {
-      toast({
-        title: "Invalid Promo Code",
-        description: "Promo code must be between 3 and 50 characters.",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSendPromo = async () => {
-    if (!validateForm()) return;
-
-    setIsSubmitting(true);
+    setIsLoading(true);
+    
     try {
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: formData.email.trim(),
-          promoCode: formData.promoCode.trim(),
-          adminMessage: formData.adminMessage.trim() || undefined,
-          templateType: formData.templateType
-        })
+          email: emailDesign.content.email || simpleFormData.email,
+          promoCode: emailDesign.content.promoCode,
+          customMessage: emailDesign.content.customMessage,
+          designSystem: emailDesign.designSystem
+        }),
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
       if (response.ok) {
-        const templateInfo = getTemplateInfo(formData.templateType);
         toast({
-          title: "✅ Promo Email Sent!",
-          description: `${templateInfo.title} email with code "${formData.promoCode}" sent to ${formData.email}`,
-          variant: "default"
+          title: "🚀 Premium Email Sent!",
+          description: `Enterprise email successfully delivered to ${result.email}`,
         });
-        setLastSentEmail(formData.email);
         
-        // Clear form after successful send
-        setFormData({
-          email: '',
-          promoCode: '',
-          adminMessage: '',
-          templateType: 'general'
-        });
+        // Reset form
+        setEmailDesign(null);
       } else {
-        toast({
-          title: "❌ Failed to Send Email",
-          description: data.message || "An error occurred while sending the promo email.",
-          variant: "destructive"
-        });
+        throw new Error(result.message || 'Failed to send email');
       }
-    } catch (error) {
-      console.error('Error sending promo email:', error);
+    } catch (error: any) {
       toast({
-        title: "❌ Network Error",
-        description: "Unable to send promo email. Please check your connection.",
+        title: "Send Failed",
+        description: error.message || "Failed to send premium email",
         variant: "destructive"
       });
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
-  const handleTestEmail = async () => {
-    setIsTesting(true);
+  const handleTestPremiumEmail = async () => {
+    if (!emailDesign) {
+      toast({
+        title: "No Design Selected",
+        description: "Please create an email design first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setTestLoading(true);
+    
     try {
       const response = await fetch('/api/test-promo-email', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: formData.email.trim() || 'test@example.com',
-          promoCode: formData.promoCode.trim() || 'TEST20',
-          adminMessage: formData.adminMessage.trim() || `This is a test ${formData.templateType} promo code email from the admin panel.`,
-          templateType: formData.templateType
-        })
+          email: 'admin@test.com',
+          promoCode: emailDesign.content.promoCode || 'TEST20',
+          customMessage: emailDesign.content.customMessage || 'This is a premium test email',
+          designSystem: emailDesign.designSystem
+        }),
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
       if (response.ok) {
-        const templateInfo = getTemplateInfo(formData.templateType);
         toast({
-          title: "🧪 Test Email Sent!",
-          description: `Test ${templateInfo.title.toLowerCase()} email sent to ${formData.email || 'test@example.com'}`,
-          variant: "default"
+          title: "✨ Test Email Sent!",
+          description: "Premium test email delivered successfully",
         });
       } else {
-        toast({
-          title: "❌ Test Failed",
-          description: data.message || "Unable to send test email.",
-          variant: "destructive"
-        });
+        throw new Error(result.message || 'Failed to send test email');
       }
-    } catch (error) {
-      console.error('Error sending test email:', error);
+    } catch (error: any) {
       toast({
-        title: "❌ Test Error",
-        description: "Unable to send test email. Please check your connection.",
+        title: "Test Failed",
+        description: error.message || "Failed to send test email",
         variant: "destructive"
       });
     } finally {
-      setIsTesting(false);
+      setTestLoading(false);
     }
   };
 
-  const currentTemplateInfo = getTemplateInfo(formData.templateType);
+  // Simple form handlers (fallback)
+  const handleSimpleFormSubmit = async () => {
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch('/api/admin/send-promo-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(simpleFormData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Email Sent!",
+          description: `Promo email sent to ${result.email}`,
+        });
+        
+        setSimpleFormData({ email: '', promoCode: '', customMessage: '' });
+      } else {
+        throw new Error(result.message || 'Failed to send email');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Send Failed",
+        description: error.message || "Failed to send email",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <Card className="w-full rounded-xl sm:rounded-2xl border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 bg-white backdrop-blur-sm">
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-3 text-lg sm:text-xl font-semibold text-gray-900">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-pink-500 to-red-600 flex items-center justify-center flex-shrink-0">
-            <Gift className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-          </div>
-          Send Promo Code
-        </CardTitle>
-        <CardDescription className="text-sm sm:text-base text-gray-500">
-          Send exclusive promo codes to users with personalized templates for different customer types.
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-4 sm:space-y-6">
-        {/* Email Configuration Alert */}
-        <Alert className="bg-blue-50 text-blue-800 border-blue-200">
-          <Mail className="h-4 w-4" />
-          <AlertTitle>Email System Ready</AlertTitle>
-          <AlertDescription>
-            Your email system is configured and ready to send promo codes. 
-            Choose from different templates to personalize your message.
-          </AlertDescription>
-        </Alert>
-
-        {/* Success Alert */}
-        {lastSentEmail && (
-          <Alert className="bg-green-50 text-green-800 border-green-200">
-            <CheckCircle className="h-4 w-4" />
-            <AlertTitle>Last Email Sent Successfully</AlertTitle>
-            <AlertDescription>
-              Promo code was successfully sent to <strong>{lastSentEmail}</strong>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Template Type Selection */}
-        <div className="space-y-2">
-          <Label htmlFor="templateType" className="text-sm font-medium text-gray-700">
-            Email Template Type *
-          </Label>
-          <Select value={formData.templateType} onValueChange={handleTemplateChange}>
-            <SelectTrigger className="w-full rounded-lg border-gray-200 focus:border-pink-300 focus:ring-pink-200">
-              <SelectValue placeholder="Choose email template type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="general">
-                <div className="flex items-center gap-2">
-                  <Gift className="h-4 w-4 text-green-600" />
-                  <span>General Promo</span>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      {/* Ultra-Premium Header */}
+      <div className="border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-gradient-to-br from-purple-100 to-blue-100 rounded-xl">
+                  <Crown className="h-8 w-8 text-purple-600" />
                 </div>
-              </SelectItem>
-              <SelectItem value="loyalty">
-                <div className="flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-yellow-600" />
-                  <span>Loyalty Customer</span>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 via-blue-600 to-emerald-600 bg-clip-text text-transparent">
+                    Enterprise Email Studio
+                  </h1>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    Million-dollar company level email customization
+                  </p>
                 </div>
-              </SelectItem>
-              <SelectItem value="comeback">
-                <div className="flex items-center gap-2">
-                  <Heart className="h-4 w-4 text-purple-600" />
-                  <span>Welcome Back</span>
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          
-          {/* Template Info */}
-          <div className={`p-3 rounded-lg border ${currentTemplateInfo.bgColor}`}>
-            <div className="flex items-center gap-2 mb-1">
-              {currentTemplateInfo.icon}
-              <span className={`font-medium text-sm ${currentTemplateInfo.textColor}`}>
-                {currentTemplateInfo.title}
-              </span>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Badge variant="outline" className="bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 border-yellow-200">
+                  <Star className="h-3 w-3 mr-1" />
+                  Ultra Premium
+                </Badge>
+                <Badge variant="outline" className="bg-gradient-to-r from-purple-100 to-blue-100 text-purple-800 border-purple-200">
+                  <Rocket className="h-3 w-3 mr-1" />
+                  Enterprise Ready
+                </Badge>
+              </div>
             </div>
-            <p className={`text-xs ${currentTemplateInfo.textColor}`}>
-              {currentTemplateInfo.description}
-            </p>
-          </div>
-        </div>
 
-        {/* Email Input */}
-        <div className="space-y-2">
-          <Label htmlFor="email" className="text-sm font-medium text-gray-700">
-            Recipient Email Address *
-          </Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="user@example.com"
-            value={formData.email}
-            onChange={handleInputChange}
-            className="w-full rounded-lg border-gray-200 focus:border-pink-300 focus:ring-pink-200"
-            disabled={isSubmitting || isTesting}
-          />
-        </div>
+            <div className="flex items-center space-x-3">
+              {/* Design Mode Toggle */}
+              <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                <Button
+                  variant={designMode === 'premium' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setDesignMode('premium')}
+                  className="h-8 px-3"
+                >
+                  <Crown className="h-4 w-4 mr-2" />
+                  Premium Studio
+                </Button>
+                <Button
+                  variant={designMode === 'simple' ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setDesignMode('simple')}
+                  className="h-8 px-3"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Simple Mode
+                </Button>
+              </div>
 
-        {/* Promo Code Input */}
-        <div className="space-y-2">
-          <Label htmlFor="promoCode" className="text-sm font-medium text-gray-700">
-            Promo Code *
-          </Label>
-          <Input
-            id="promoCode"
-            name="promoCode"
-            type="text"
-            placeholder="SAVE20"
-            value={formData.promoCode}
-            onChange={handleInputChange}
-            className="w-full rounded-lg border-gray-200 focus:border-pink-300 focus:ring-pink-200 font-mono"
-            disabled={isSubmitting || isTesting}
-          />
-          <p className="text-xs text-gray-500">
-            Enter the promo code exactly as users should enter it (3-50 characters)
-          </p>
-        </div>
-
-        {/* Admin Message */}
-        <div className="space-y-2">
-          <Label htmlFor="adminMessage" className="text-sm font-medium text-gray-700">
-            Personal Message (Optional)
-          </Label>
-          <Textarea
-            id="adminMessage"
-            name="adminMessage"
-            placeholder={
-              formData.templateType === 'loyalty' 
-                ? "Add a personal note to thank this loyal customer..."
-                : formData.templateType === 'comeback'
-                ? "Add a personal welcome back message..."
-                : "Add a personal message to accompany the promo code..."
-            }
-            value={formData.adminMessage}
-            onChange={handleInputChange}
-            rows={3}
-            className="w-full rounded-lg border-gray-200 focus:border-pink-300 focus:ring-pink-200 resize-none"
-            disabled={isSubmitting || isTesting}
-          />
-          <p className="text-xs text-gray-500">
-            This message will appear in the email along with the template-specific content
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-          <Button
-            onClick={handleSendPromo}
-            disabled={isSubmitting || isTesting || !formData.email.trim() || !formData.promoCode.trim()}
-            className="flex-1 bg-gradient-to-r from-pink-500 to-red-600 hover:from-pink-600 hover:to-red-700 text-white font-semibold py-2.5 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Send {currentTemplateInfo.title} Email
-              </>
-            )}
-          </Button>
-          
-          <Button
-            onClick={handleTestEmail}
-            variant="outline"
-            disabled={isSubmitting || isTesting}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50 font-medium py-2.5 px-6 rounded-lg transition-all duration-200"
-          >
-            {isTesting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Testing...
-              </>
-            ) : (
-              <>
-                <TestTube className="h-4 w-4 mr-2" />
-                Send Test
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* Help Text */}
-        <div className="pt-2 border-t border-gray-100">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-gray-600">
-              <p className="font-medium mb-1">Template Information:</p>
-              <ul className="space-y-1 list-disc list-inside ml-2">
-                <li><strong>Loyalty Customer:</strong> Thanks customers for continued support with golden styling</li>
-                <li><strong>Welcome Back:</strong> Re-engages inactive customers with purple styling</li>
-                <li><strong>General Promo:</strong> Standard promotional email with green styling</li>
-                <li>Each template has unique messaging and visual design</li>
-              </ul>
+              {/* Action Buttons for Premium Mode */}
+              {designMode === 'premium' && emailDesign && (
+                <div className="flex items-center space-x-2">
+                  <Button 
+                    onClick={handleTestPremiumEmail}
+                    disabled={testLoading}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {testLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <TestTube className="h-4 w-4 mr-2" />
+                    )}
+                    Test Premium
+                  </Button>
+                  <Button 
+                    onClick={handleSendPremiumEmail}
+                    disabled={isLoading}
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Rocket className="h-4 w-4 mr-2" />
+                    )}
+                    Send Enterprise Email
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-8">
+        <AnimatePresence mode="wait">
+          {designMode === 'premium' ? (
+            <motion.div
+              key="premium"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              {/* Premium Design Studio */}
+              <Card className="border-2 border-gradient-to-r from-purple-200 to-blue-200 shadow-2xl">
+                <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 border-b">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Sparkles className="h-6 w-6 text-purple-600" />
+                      <div>
+                        <CardTitle className="text-2xl">Ultra-Premium Email Design Studio</CardTitle>
+                        <CardDescription className="text-lg">
+                          Create enterprise-level emails with advanced customization
+                        </CardDescription>
+                      </div>
+                    </div>
+                    
+                    {emailDesign && (
+                      <Badge variant="default" className="bg-gradient-to-r from-green-600 to-emerald-600">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Design Ready
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                
+                <CardContent className="p-0">
+                  <EmailDesignStudio 
+                    onEmailGenerated={handlePremiumEmailGenerated}
+                    initialDesign={emailDesign || undefined}
+                  />
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="simple"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              {/* Simple Mode Fallback */}
+              <Card className="max-w-2xl mx-auto">
+                <CardHeader>
+                  <div className="flex items-center space-x-3">
+                    <Settings className="h-6 w-6 text-slate-600" />
+                    <div>
+                      <CardTitle>Simple Promo Email Sender</CardTitle>
+                      <CardDescription>
+                        Quick and easy email sending
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="email">Recipient Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="customer@example.com"
+                        value={simpleFormData.email}
+                        onChange={(e) => setSimpleFormData(prev => ({ ...prev, email: e.target.value }))}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="promoCode">Promo Code</Label>
+                      <Input
+                        id="promoCode"
+                        placeholder="SAVE20"
+                        value={simpleFormData.promoCode}
+                        onChange={(e) => setSimpleFormData(prev => ({ ...prev, promoCode: e.target.value }))}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="customMessage">Custom Message</Label>
+                      <Textarea
+                        id="customMessage"
+                        placeholder="Thank you for being an amazing customer! Here's a special offer just for you..."
+                        rows={4}
+                        value={simpleFormData.customMessage}
+                        onChange={(e) => setSimpleFormData(prev => ({ ...prev, customMessage: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex space-x-3">
+                    <Button 
+                      onClick={handleSimpleFormSubmit}
+                      disabled={isLoading || !simpleFormData.email || !simpleFormData.promoCode || !simpleFormData.customMessage}
+                      className="flex-1"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Send Email
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Feature Comparison */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+          className="mt-12"
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-center">Choose Your Email Experience</CardTitle>
+              <CardDescription className="text-center">
+                From simple sending to enterprise-level design control
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 border rounded-lg bg-gradient-to-br from-purple-50 to-blue-50">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Crown className="h-8 w-8 text-purple-600" />
+                    <div>
+                      <h3 className="text-xl font-bold">Ultra-Premium Studio</h3>
+                      <Badge variant="outline" className="mt-1">Enterprise Level</Badge>
+                    </div>
+                  </div>
+                  <ul className="space-y-2 text-sm">
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Visual email designer with drag-drop</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Advanced color system with brand palettes</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Enterprise typography controls</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Multi-device preview modes</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>AI-powered design suggestions</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="p-6 border rounded-lg">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Settings className="h-8 w-8 text-slate-600" />
+                    <div>
+                      <h3 className="text-xl font-bold">Simple Mode</h3>
+                      <Badge variant="outline" className="mt-1">Quick & Easy</Badge>
+                    </div>
+                  </div>
+                  <ul className="space-y-2 text-sm">
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Quick form-based email creation</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Standard Local Cooks branding</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Custom message support</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span>Fast email delivery</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    </div>
   );
-} 
+}; 
