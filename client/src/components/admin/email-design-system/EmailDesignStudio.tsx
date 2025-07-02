@@ -10,6 +10,7 @@ import {
     Monitor,
     Palette,
     Save,
+    Send,
     Smartphone,
     Sparkles,
     Tablet,
@@ -118,6 +119,33 @@ interface EmailContent {
   promoCode?: string;
   customMessage?: string;
   email?: string;
+  orderButton?: {
+    text: string;
+    url: string;
+    styling?: {
+      backgroundColor?: string;
+      color?: string;
+      fontSize?: string;
+      fontWeight?: string;
+      padding?: string;
+      borderRadius?: string;
+      textAlign?: string;
+    };
+  };
+  header?: {
+    title: string;
+    subtitle: string;
+    styling?: {
+      backgroundColor?: string;
+      titleColor?: string;
+      subtitleColor?: string;
+      titleFontSize?: string;
+      subtitleFontSize?: string;
+      padding?: string;
+      borderRadius?: string;
+      textAlign?: string;
+    };
+  };
 }
 
 interface EmailSection {
@@ -165,8 +193,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     initialDesign || createDefaultDesign()
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [previewMode, setPreviewMode] = useState('desktop');
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Create default design configuration
@@ -219,7 +248,34 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         sections: [],
         promoCode: '',
         customMessage: '',
-        email: ''
+        email: '',
+        orderButton: {
+          text: 'Order Now',
+          url: '#',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }
+        },
+        header: {
+          title: 'Local Cooks',
+          subtitle: 'Special Offer Inside',
+          styling: {
+            backgroundColor: '#F51042',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            titleFontSize: '32px',
+            subtitleFontSize: '18px',
+            padding: '24px',
+            borderRadius: '12px',
+            textAlign: 'center'
+          }
+        }
       },
       metadata: {
         version: '1.0.0',
@@ -353,7 +409,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   };
 
   const handleLayoutChange = (layoutProp: string, value: string) => {
-    handleDesignUpdate({
+    // Update the layout configuration
+    const updatedDesign = {
+      ...currentDesign,
       designSystem: {
         ...currentDesign.designSystem,
         layout: {
@@ -361,11 +419,51 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           [layoutProp]: value
         }
       }
-    });
+    };
+
+    // Automatically apply layout changes to all elements
+    if (['maxWidth', 'padding', 'borderRadius'].includes(layoutProp)) {
+      const updatedSections = currentDesign.content.sections.map(section => {
+        const updatedStyling = { ...section.styling };
+
+        // Apply specific layout property changes
+        switch (layoutProp) {
+          case 'maxWidth':
+            updatedStyling.maxWidth = value;
+            break;
+          case 'padding':
+            // Apply to elements that should inherit global padding
+            updatedStyling.padding = value;
+            if (section.type === 'text') {
+              updatedStyling.paddingLeft = value;
+              updatedStyling.paddingRight = value;
+            } else if (section.type === 'button') {
+              updatedStyling.paddingLeft = parseInt(value) * 1.5 + 'px';
+              updatedStyling.paddingRight = parseInt(value) * 1.5 + 'px';
+            }
+            break;
+          case 'borderRadius':
+            updatedStyling.borderRadius = value;
+            break;
+        }
+
+        return {
+          ...section,
+          styling: updatedStyling
+        };
+      });
+
+      updatedDesign.content = {
+        ...updatedDesign.content,
+        sections: updatedSections
+      };
+    }
+
+    setCurrentDesign(updatedDesign);
     
     toast({
       title: "Layout Updated",
-      description: `${layoutProp} changed to ${value}`,
+      description: `${layoutProp} changed to ${value} and applied to all elements`,
     });
   };
 
@@ -399,6 +497,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       case 'tablet': return { width: '500px', height: '700px' };
       default: return { width: '600px', height: '800px' };
     }
+  };
+
+  const handleSendTestEmail = () => {
+    // Implementation of handleSendTestEmail
   };
 
   return (
@@ -482,28 +584,28 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       {/* Main Content */}
       <div className="flex h-[calc(100vh-120px)]">
         {/* Left Sidebar - Design Tools */}
-        <div className="w-80 bg-gray-50 border-r border-gray-200 overflow-y-auto">
+        <div className="w-96 bg-gray-50 border-r border-gray-200 overflow-y-auto">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-4 m-4 bg-white shadow-sm">
-              <TabsTrigger value="design" className="text-xs">
+              <TabsTrigger value="design" className="text-xs px-2">
                 <Layout className="h-4 w-4 mr-1" />
                 Design
               </TabsTrigger>
-              <TabsTrigger value="colors" className="text-xs">
+              <TabsTrigger value="colors" className="text-xs px-2">
                 <Palette className="h-4 w-4 mr-1" />
                 Colors
               </TabsTrigger>
-              <TabsTrigger value="typography" className="text-xs">
+              <TabsTrigger value="typography" className="text-xs px-2">
                 <Type className="h-4 w-4 mr-1" />
                 Type
               </TabsTrigger>
-              <TabsTrigger value="layout" className="text-xs">
+              <TabsTrigger value="layout" className="text-xs px-2">
                 <Grid3x3 className="h-4 w-4 mr-1" />
                 Layout
               </TabsTrigger>
             </TabsList>
 
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-4 space-y-4">
               <TabsContent value="design" className="mt-0">
                 <EmailCanvasDesigner 
                   currentDesign={currentDesign}
@@ -523,23 +625,23 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
               <TabsContent value="typography" className="mt-0">
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center text-gray-900">
                       <Type className="h-5 w-5 mr-2" />
                       Typography Studio
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="text-sm">
                       Font and text styling controls
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-3">
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Primary Font</label>
+                        <label className="text-sm font-medium text-gray-700 block mb-2">Primary Font</label>
                         <select 
                           value={currentDesign.designSystem.typography.primaryFont}
                           onChange={(e) => handleFontChange('primaryFont', e.target.value)}
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                          className="w-full p-2 border border-gray-300 rounded-md text-sm"
                         >
                           <option value="Inter">Inter</option>
                           <option value="Roboto">Roboto</option>
@@ -551,11 +653,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                       
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Secondary Font</label>
+                        <label className="text-sm font-medium text-gray-700 block mb-2">Secondary Font</label>
                         <select 
                           value={currentDesign.designSystem.typography.secondaryFont}
                           onChange={(e) => handleFontChange('secondaryFont', e.target.value)}
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                          className="w-full p-2 border border-gray-300 rounded-md text-sm"
                         >
                           <option value="Roboto">Roboto</option>
                           <option value="Inter">Inter</option>
@@ -564,9 +666,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </select>
                       </div>
 
-                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <h4 className="font-semibold text-blue-900 mb-2">Font Hierarchy</h4>
-                        <div className="space-y-2 text-sm">
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h4 className="font-semibold text-blue-900 mb-2 text-sm">Font Hierarchy</h4>
+                        <div className="space-y-1 text-xs">
                           <div className="flex justify-between">
                             <span className="text-blue-700">Heading 1:</span>
                             <span className="font-bold text-blue-900">32px / Bold</span>
@@ -594,68 +696,149 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       Layout System
                     </CardTitle>
                     <CardDescription>
-                      Grid and spacing controls
+                      Grid and spacing controls that apply to all elements
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Max Width</label>
-                      <select 
-                        value={currentDesign.designSystem.layout.maxWidth}
-                        onChange={(e) => handleLayoutChange('maxWidth', e.target.value)}
-                        className="w-full mt-1 p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="480px">480px (Mobile)</option>
-                        <option value="600px">600px (Standard)</option>
-                        <option value="800px">800px (Wide)</option>
-                        <option value="100%">100% (Responsive)</option>
-                      </select>
+                    {/* Container Settings */}
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-gray-900 border-b pb-2">Container Settings</h4>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Max Width</label>
+                        <select 
+                          value={currentDesign.designSystem.layout.maxWidth}
+                          onChange={(e) => handleLayoutChange('maxWidth', e.target.value)}
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="480px">480px (Mobile)</option>
+                          <option value="600px">600px (Standard)</option>
+                          <option value="800px">800px (Wide)</option>
+                          <option value="100%">100% (Responsive)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Controls the maximum width of all elements
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Global Padding</label>
+                        <select 
+                          value={currentDesign.designSystem.layout.padding}
+                          onChange={(e) => handleLayoutChange('padding', e.target.value)}
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="8px">8px (Compact)</option>
+                          <option value="16px">16px (Standard)</option>
+                          <option value="24px">24px (Comfortable)</option>
+                          <option value="32px">32px (Spacious)</option>
+                          <option value="40px">40px (Extra Spacious)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Default padding applied to text and button elements
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Border Radius</label>
+                        <select 
+                          value={currentDesign.designSystem.layout.borderRadius}
+                          onChange={(e) => handleLayoutChange('borderRadius', e.target.value)}
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="0px">0px (Square)</option>
+                          <option value="4px">4px (Slight)</option>
+                          <option value="8px">8px (Small)</option>
+                          <option value="12px">12px (Standard)</option>
+                          <option value="16px">16px (Medium)</option>
+                          <option value="24px">24px (Large)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Border radius applied to all elements with backgrounds
+                        </p>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Padding</label>
-                      <select 
-                        value={currentDesign.designSystem.layout.padding}
-                        onChange={(e) => handleLayoutChange('padding', e.target.value)}
-                        className="w-full mt-1 p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="16px">16px (Compact)</option>
-                        <option value="24px">24px (Standard)</option>
-                        <option value="32px">32px (Spacious)</option>
-                        <option value="40px">40px (Extra)</option>
-                      </select>
+                    {/* Spacing Settings */}
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-gray-900 border-b pb-2">Spacing System</h4>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Element Spacing</label>
+                        <select 
+                          value={currentDesign.designSystem.layout.gridSystem}
+                          onChange={(e) => handleLayoutChange('gridSystem', e.target.value)}
+                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="tight">Tight (8px gaps)</option>
+                          <option value="normal">Normal (16px gaps)</option>
+                          <option value="relaxed">Relaxed (24px gaps)</option>
+                          <option value="loose">Loose (32px gaps)</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Controls spacing between email elements
+                        </p>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="text-sm font-medium text-gray-700">Border Radius</label>
-                      <select 
-                        value={currentDesign.designSystem.layout.borderRadius}
-                        onChange={(e) => handleLayoutChange('borderRadius', e.target.value)}
-                        className="w-full mt-1 p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="0px">0px (Square)</option>
-                        <option value="8px">8px (Slight)</option>
-                        <option value="12px">12px (Standard)</option>
-                        <option value="16px">16px (Rounded)</option>
-                        <option value="24px">24px (Very Rounded)</option>
-                      </select>
+                    {/* Quick Actions */}
+                    <div className="space-y-2 pt-4 border-t">
+                      <h4 className="font-medium text-gray-900">Quick Actions</h4>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Apply mobile-optimized layout
+                            handleLayoutChange('maxWidth', '480px');
+                            handleLayoutChange('padding', '16px');
+                            handleLayoutChange('borderRadius', '8px');
+                          }}
+                          className="text-xs"
+                        >
+                          📱 Mobile Layout
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Apply desktop-optimized layout
+                            handleLayoutChange('maxWidth', '600px');
+                            handleLayoutChange('padding', '24px');
+                            handleLayoutChange('borderRadius', '12px');
+                          }}
+                          className="text-xs"
+                        >
+                          🖥️ Desktop Layout
+                        </Button>
+                      </div>
                     </div>
 
+                    {/* Current Settings Preview */}
                     <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <h4 className="font-semibold text-green-900 mb-2">Current Settings</h4>
+                      <h4 className="font-semibold text-green-900 mb-2">Current Layout Settings</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-green-700">Max Width:</span>
                           <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.maxWidth}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-green-700">Padding:</span>
+                          <span className="text-green-700">Global Padding:</span>
                           <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.padding}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-green-700">Border Radius:</span>
                           <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.borderRadius}</span>
                         </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700">Element Spacing:</span>
+                          <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.gridSystem}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 p-2 bg-green-100 rounded text-xs text-green-800">
+                        💡 <strong>Auto-Apply:</strong> Layout changes automatically apply to all elements. Use individual element controls for fine-tuning.
                       </div>
                     </div>
                   </CardContent>
@@ -682,24 +865,35 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 <div className="p-6 space-y-6">
                   {/* Header with Dynamic Colors */}
                   <div 
-                    className="text-white p-4 rounded-lg text-center"
+                    className={`text-white rounded-lg cursor-pointer transition-all duration-200 ${
+                      selectedElement === 'email-header' ? 'ring-2 ring-blue-500' : ''
+                    }`}
                     style={{ 
-                      background: currentDesign.designSystem.colors.gradients.primary,
-                      borderRadius: currentDesign.designSystem.layout.borderRadius
+                      background: currentDesign.content.header?.styling?.backgroundColor || currentDesign.designSystem.colors.gradients.primary,
+                      borderRadius: currentDesign.content.header?.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
+                      padding: currentDesign.content.header?.styling?.padding || '24px',
+                      textAlign: currentDesign.content.header?.styling?.textAlign || 'center'
                     }}
+                    onClick={() => setSelectedElement('email-header')}
                   >
                     <h2 
-                      className="text-xl font-bold"
+                      className="font-bold"
                       style={{ 
                         fontFamily: currentDesign.designSystem.typography.primaryFont,
-                        fontSize: currentDesign.designSystem.typography.hierarchy.h2.fontSize,
-                        fontWeight: currentDesign.designSystem.typography.hierarchy.h2.fontWeight
+                        fontSize: currentDesign.content.header?.styling?.titleFontSize || currentDesign.designSystem.typography.hierarchy.h2.fontSize,
+                        fontWeight: currentDesign.designSystem.typography.hierarchy.h2.fontWeight,
+                        color: currentDesign.content.header?.styling?.titleColor || '#ffffff',
+                        marginBottom: '8px'
                       }}
                     >
-                      Local Cooks
+                      {currentDesign.content.header?.title || 'Local Cooks'}
                     </h2>
-                    <p style={{ color: currentDesign.designSystem.colors.primary.light }}>
-                      Special Offer Inside
+                    <p style={{ 
+                      color: currentDesign.content.header?.styling?.subtitleColor || currentDesign.designSystem.colors.primary.light,
+                      fontSize: currentDesign.content.header?.styling?.subtitleFontSize || '18px',
+                      margin: '0'
+                    }}>
+                      {currentDesign.content.header?.subtitle || 'Special Offer Inside'}
                     </p>
                   </div>
 
@@ -790,26 +984,48 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     )}
 
                     <div 
-                      className={`text-center transition-all duration-200 ${
+                      className={`transition-all duration-200 ${
                         selectedElement === 'order-button' ? 'ring-2 ring-blue-500 rounded' : ''
                       }`}
+                      style={{
+                        textAlign: currentDesign.content.orderButton?.styling?.textAlign || 'center'
+                      }}
                       onClick={() => setSelectedElement('order-button')}
                     >
                       <div 
-                        className="inline-block text-white px-6 py-3 rounded font-medium cursor-pointer transition-colors"
+                        className="inline-block cursor-pointer transition-colors"
                         style={{ 
-                          backgroundColor: currentDesign.designSystem.colors.primary.main,
-                          borderRadius: currentDesign.designSystem.layout.borderRadius,
-                          fontFamily: currentDesign.designSystem.typography.primaryFont
+                          backgroundColor: currentDesign.content.orderButton?.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main,
+                          color: currentDesign.content.orderButton?.styling?.color || currentDesign.designSystem.colors.primary.contrast,
+                          borderRadius: currentDesign.content.orderButton?.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
+                          fontSize: currentDesign.content.orderButton?.styling?.fontSize || '16px',
+                          fontWeight: currentDesign.content.orderButton?.styling?.fontWeight || '600',
+                          fontFamily: currentDesign.designSystem.typography.primaryFont,
+                          padding: currentDesign.content.orderButton?.styling?.padding || '12px 24px',
+                          border: 'none',
+                          textDecoration: 'none',
+                          display: 'inline-block'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = currentDesign.designSystem.colors.primary.dark;
+                          // Darken background on hover
+                          const bgColor = currentDesign.content.orderButton?.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main;
+                          if (bgColor.startsWith('#')) {
+                            // Simple darkening for hex colors
+                            const darkerColor = bgColor.length === 7 
+                              ? '#' + bgColor.slice(1).split('').map(char => 
+                                  Math.max(0, parseInt(char, 16) - 2).toString(16).padStart(1, '0')
+                                ).join('')
+                              : currentDesign.designSystem.colors.primary.dark;
+                            e.currentTarget.style.backgroundColor = darkerColor;
+                          } else {
+                            e.currentTarget.style.backgroundColor = currentDesign.designSystem.colors.primary.dark;
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = currentDesign.designSystem.colors.primary.main;
+                          e.currentTarget.style.backgroundColor = currentDesign.content.orderButton?.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main;
                         }}
                       >
-                        Order Now
+                        {currentDesign.content.orderButton?.text || 'Order Now'}
                       </div>
                     </div>
 
@@ -822,141 +1038,168 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         }`}
                         onClick={() => setSelectedElement(section.id)}
                         style={{
-                          ...section.styling,
-                          fontFamily: currentDesign.designSystem.typography.primaryFont
+                          maxWidth: section.styling?.maxWidth || currentDesign.designSystem.layout.maxWidth,
+                          margin: '0 auto',
+                          marginTop: section.styling?.marginTop || '0px',
+                          marginBottom: section.styling?.marginBottom || '16px',
                         }}
                       >
                         {section.type === 'text' && (
                           <div style={{ 
-                            color: section.styling.color || currentDesign.designSystem.colors.neutral.dark,
-                            textAlign: section.styling.textAlign || 'left',
-                            fontSize: section.styling.fontSize || '16px',
-                            fontWeight: section.styling.fontWeight || '400',
-                            padding: section.styling.padding || '8px 0',
-                            margin: section.styling.margin || '0',
-                            background: section.styling.backgroundColor || 'transparent',
-                            borderRadius: section.styling.backgroundColor && section.styling.backgroundColor !== 'transparent' ? currentDesign.designSystem.layout.borderRadius : '0'
+                            color: section.styling?.color || currentDesign.designSystem.colors.neutral.dark,
+                            textAlign: section.styling?.textAlign || 'left',
+                            fontSize: section.styling?.fontSize || '16px',
+                            fontWeight: section.styling?.fontWeight || '400',
+                            fontFamily: currentDesign.designSystem.typography.primaryFont,
+                            background: section.styling?.backgroundColor || 'transparent',
+                            borderRadius: section.styling?.backgroundColor && section.styling?.backgroundColor !== 'transparent' 
+                              ? (section.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius) 
+                              : '0',
+                            padding: section.styling?.padding || 
+                                    `${section.styling?.paddingTop || '8px'} ${section.styling?.paddingRight || '0px'} ${section.styling?.paddingBottom || '8px'} ${section.styling?.paddingLeft || '0px'}`,
+                            lineHeight: '1.6'
                           }}>
-                            {section.content}
+                            {section.content || 'Text content'}
                           </div>
                         )}
+                        
                         {section.type === 'button' && (
-                          <div style={{ textAlign: section.styling.textAlign || 'center' }}>
+                          <div style={{ textAlign: section.styling?.textAlign || 'center' }}>
                             <button
-                              className="px-4 py-2 rounded font-medium"
                               style={{
-                                background: section.styling.backgroundColor || currentDesign.designSystem.colors.primary.main,
-                                color: section.styling.color || currentDesign.designSystem.colors.primary.contrast,
-                                borderRadius: currentDesign.designSystem.layout.borderRadius,
-                                fontSize: section.styling.fontSize || '16px',
-                                fontWeight: section.styling.fontWeight || '600',
-                                padding: section.styling.padding || '12px 24px',
+                                backgroundColor: section.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main,
+                                color: section.styling?.color || currentDesign.designSystem.colors.primary.contrast,
                                 border: 'none',
-                                cursor: 'pointer'
+                                borderRadius: section.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
+                                fontSize: section.styling?.fontSize || '16px',
+                                fontWeight: section.styling?.fontWeight || '600',
+                                fontFamily: currentDesign.designSystem.typography.primaryFont,
+                                padding: section.styling?.padding || 
+                                        `${section.styling?.paddingTop || '12px'} ${section.styling?.paddingRight || '24px'} ${section.styling?.paddingBottom || '12px'} ${section.styling?.paddingLeft || '24px'}`,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                display: 'inline-block'
                               }}
                             >
                               {section.content || 'Button'}
                             </button>
                           </div>
                         )}
+                        
                         {section.type === 'image' && (
-                          section.content ? (
-                            <div style={{ textAlign: section.styling.textAlign || 'center' }}>
-                              <div 
-                                style={{ 
-                                  position: 'relative',
-                                  display: 'inline-block',
-                                  width: section.styling.width || '200px',
-                                  height: section.styling.height || '100px',
-                                }}
-                              >
-                                <img 
-                                  src={section.content} 
-                                  alt="Email image"
-                                  style={{ 
-                                    width: '100%',
-                                    height: '100%',
-                                    borderRadius: currentDesign.designSystem.layout.borderRadius,
-                                    objectFit: section.styling.objectFit || 'cover',
-                                    border: '1px solid #e2e8f0'
-                                  }}
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
-                                    if (nextElement) {
-                                      nextElement.style.display = 'flex';
-                                    }
-                                  }}
-                                />
-                                {section.overlay?.enabled && section.overlay?.text && (
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      top: '50%',
-                                      left: '50%',
-                                      transform: 'translate(-50%, -50%)',
-                                      color: section.overlay.styling?.color || '#ffffff',
-                                      fontSize: section.overlay.styling?.fontSize || '18px',
-                                      fontWeight: section.overlay.styling?.fontWeight || '600',
-                                      textAlign: (section.overlay.styling?.textAlign || 'center') as any,
-                                      backgroundColor: section.overlay.styling?.backgroundColor || 'rgba(0, 0, 0, 0.5)',
-                                      padding: section.overlay.styling?.padding || '12px 20px',
-                                      borderRadius: section.overlay.styling?.borderRadius || '6px',
-                                      textShadow: section.overlay.styling?.textShadow || '1px 1px 2px rgba(0, 0, 0, 0.7)',
-                                      maxWidth: '90%',
-                                      wordWrap: 'break-word'
-                                    }}
-                                  >
-                                    {section.overlay.text}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : null
-                        )}
-                        {section.type === 'image' && !section.content && (
-                          <div style={{ textAlign: section.styling.textAlign || 'center' }}>
-                            <div 
-                              className="bg-gray-100 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-500 text-sm"
-                              style={{ 
-                                width: section.styling.width || '200px',
-                                height: section.styling.height || '100px',
-                                borderRadius: currentDesign.designSystem.layout.borderRadius,
+                          <div style={{ 
+                            textAlign: section.styling?.textAlign || 'center',
+                            position: 'relative'
+                          }}>
+                            <img
+                              src={section.content || 'https://via.placeholder.com/200x120?text=Image'}
+                              alt="Email content"
+                              style={{
+                                width: section.styling?.width || '200px',
+                                height: section.styling?.height || '120px',
+                                borderRadius: section.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
+                                objectFit: 'cover',
                                 display: 'inline-block'
                               }}
-                            >
-                              <div className="text-2xl mb-1">📷</div>
-                              <div>Upload image in designer</div>
-                            </div>
+                              onError={(e) => {
+                                e.currentTarget.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDIwMCAxMjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMTIwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgNjBMMTIwIDQwSDgwTDEwMCA2MFoiIGZpbGw9IiM5Q0EzQUYiLz4KPHN2Zz4K";
+                              }}
+                            />
+                            {/* Image Text Overlay */}
+                            {section.overlay?.enabled && section.overlay?.text && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: '50%',
+                                  left: '50%',
+                                  transform: 'translate(-50%, -50%)',
+                                  color: section.overlay?.styling?.color || '#ffffff',
+                                  fontSize: section.overlay?.styling?.fontSize || '18px',
+                                  fontWeight: section.overlay?.styling?.fontWeight || '600',
+                                  textAlign: section.overlay?.styling?.textAlign || 'center',
+                                  backgroundColor: section.overlay?.styling?.backgroundColor || 'rgba(0, 0, 0, 0.5)',
+                                  padding: section.overlay?.styling?.padding || '8px 16px',
+                                  borderRadius: section.overlay?.styling?.borderRadius || '4px',
+                                  textShadow: section.overlay?.styling?.textShadow || '0 1px 2px rgba(0,0,0,0.5)',
+                                  fontFamily: currentDesign.designSystem.typography.primaryFont,
+                                  whiteSpace: 'pre-wrap',
+                                  maxWidth: '80%'
+                                }}
+                              >
+                                {section.overlay.text}
+                              </div>
+                            )}
                           </div>
                         )}
-                        {section.type === 'image' && section.content && (
-                          <div 
-                            className="bg-gray-200 flex items-center justify-center text-gray-500 text-sm"
-                            style={{ 
-                              width: section.styling.width || '200px',
-                              height: section.styling.height || '100px',
-                              borderRadius: currentDesign.designSystem.layout.borderRadius,
-                              display: 'none'
-                            }}
-                          >
-                            Image not found
-                          </div>
-                        )}
+                        
                         {section.type === 'divider' && (
-                          <div 
-                            style={{
-                              height: section.styling?.height || '1px',
-                              backgroundColor: section.styling?.backgroundColor || currentDesign.designSystem.colors.neutral.light,
-                              margin: section.styling?.margin || '20px 0',
-                              border: 'none',
-                              width: '100%'
-                            }}
-                          />
+                          <hr style={{
+                            border: 'none',
+                            height: '1px',
+                            backgroundColor: section.styling?.color || currentDesign.designSystem.colors.neutral.main,
+                            margin: `${section.styling?.marginTop || '16px'} 0 ${section.styling?.marginBottom || '16px'} 0`,
+                            opacity: 0.3
+                          }} />
                         )}
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Email Preview */}
+        <div className="flex-1 bg-white border-l border-gray-200 overflow-hidden">
+          <div className="h-full flex flex-col">
+            {/* Preview Header */}
+            <div className="bg-white border-b border-gray-200 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <h2 className="text-lg font-semibold text-gray-900">Email Preview</h2>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant={previewMode === 'desktop' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPreviewMode('desktop')}
+                      className="h-8 px-3"
+                    >
+                      <Monitor className="h-3 w-3 mr-1" />
+                      <span className="text-xs">Desktop</span>
+                    </Button>
+                    <Button
+                      variant={previewMode === 'mobile' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPreviewMode('mobile')}
+                      className="h-8 px-3"
+                    >
+                      <Smartphone className="h-3 w-3 mr-1" />
+                      <span className="text-xs">Mobile</span>
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSendTestEmail}
+                    disabled={!currentDesign.content.email || isSending}
+                    className="h-8 px-3"
+                  >
+                    {isSending ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></div>
+                        <span className="text-xs">Sending...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Send className="h-3 w-3 mr-1" />
+                        <span className="text-xs">Test Email</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </div>

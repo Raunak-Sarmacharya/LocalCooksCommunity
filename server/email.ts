@@ -1419,12 +1419,41 @@ export const generatePromoCodeEmail = (
       content: any;
       styling: any;
     }>;
+    orderButton?: {
+      text: string;
+      url: string;
+      styling?: {
+        backgroundColor?: string;
+        color?: string;
+        fontSize?: string;
+        fontWeight?: string;
+        padding?: string;
+        borderRadius?: string;
+        textAlign?: string;
+      };
+    };
+    header?: {
+      title: string;
+      subtitle: string;
+      styling?: {
+        backgroundColor?: string;
+        titleColor?: string;
+        subtitleColor?: string;
+        titleFontSize?: string;
+        subtitleFontSize?: string;
+        padding?: string;
+        borderRadius?: string;
+        textAlign?: string;
+      };
+    };
+    subject?: string;
+    previewText?: string;
   }
 ): EmailContent => {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
   
-  const subject = `🎉 Special Promo Code from ${organizationName}`;
+  const subject = userData.subject || `🎉 Special Promo Code from ${organizationName}`;
   
   // Style configurations based on admin choice
   const getPromoStyling = (colorTheme: string, borderStyle: string) => {
@@ -1657,6 +1686,7 @@ Visit: ${getPromoUrl()}
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
+  ${userData.previewText ? `<meta name="description" content="${userData.previewText}">` : ''}
   ${getUniformEmailStyles()}
   <style>
     .promo-code-box {
@@ -1694,6 +1724,39 @@ Visit: ${getPromoUrl()}
       line-height: 1.6;
       white-space: pre-line; /* Preserves line breaks from admin input */
     }
+    .custom-header {
+      background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
+      border-radius: ${userData.header?.styling?.borderRadius || '12px'};
+      padding: ${userData.header?.styling?.padding || '24px'};
+      text-align: ${userData.header?.styling?.textAlign || 'center'};
+      margin: 0 0 24px 0;
+    }
+    .custom-header h1 {
+      color: ${userData.header?.styling?.titleColor || '#ffffff'};
+      font-size: ${userData.header?.styling?.titleFontSize || '32px'};
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      line-height: 1.2;
+    }
+    .custom-header p {
+      color: ${userData.header?.styling?.subtitleColor || '#ffffff'};
+      font-size: ${userData.header?.styling?.subtitleFontSize || '18px'};
+      margin: 0;
+      opacity: 0.9;
+    }
+    .custom-order-button {
+      display: inline-block;
+      background: ${userData.orderButton?.styling?.backgroundColor || styling.accentColor};
+      color: ${userData.orderButton?.styling?.color || '#ffffff'} !important;
+      text-decoration: none !important;
+      padding: ${userData.orderButton?.styling?.padding || '12px 24px'};
+      border-radius: ${userData.orderButton?.styling?.borderRadius || '8px'};
+      font-weight: ${userData.orderButton?.styling?.fontWeight || '600'};
+      font-size: ${userData.orderButton?.styling?.fontSize || '16px'};
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
     .usage-steps {
       background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
       border: 1px solid #93c5fd;
@@ -1717,16 +1780,23 @@ Visit: ${getPromoUrl()}
       font-size: 14px;
     }
     .cta-container {
-      text-align: center;
+      text-align: ${userData.orderButton?.styling?.textAlign || 'center'};
       margin: 32px 0;
     }
   </style>
 </head>
 <body>
   <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
+    ${userData.header ? `
+      <div class="custom-header">
+        <h1>${userData.header.title}</h1>
+        <p>${userData.header.subtitle}</p>
+      </div>
+    ` : `
+      <div class="header">
+        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+      </div>
+    `}
     <div class="content">
       ${userData.isPremium && userData.sections && userData.sections.length > 0 ? `
         <!-- Advanced Design Mode with Custom Sections -->
@@ -1745,8 +1815,8 @@ Visit: ${getPromoUrl()}
         ${generateAdvancedSections(userData.sections)}
         
         <div class="cta-container">
-          <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
-            🌟 Start Shopping Now
+          <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
+            ${userData.orderButton?.text || '🌟 Start Shopping Now'}
           </a>
         </div>
       ` : `
@@ -1765,7 +1835,7 @@ Visit: ${getPromoUrl()}
         <div class="usage-steps">
           <h4>🚀 How to use your promo code:</h4>
           <ol>
-            <li>Visit our website: <a href="${getPromoUrl()}" style="color: #1d4ed8;">${getPromoUrl()}</a></li>
+            <li>Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: #1d4ed8;">${userData.orderButton?.url || getPromoUrl()}</a></li>
             <li>Browse our amazing local cooks and their delicious offerings</li>
             <li>Apply your promo code during checkout</li>
             <li>Enjoy your special offer!</li>
@@ -1773,8 +1843,8 @@ Visit: ${getPromoUrl()}
         </div>
         
         <div class="cta-container">
-          <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
-            🌟 Start Shopping Now
+          <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
+            ${userData.orderButton?.text || '🌟 Start Shopping Now'}
           </a>
         </div>
       `}
