@@ -1,9 +1,10 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
+import PromoCodeSender from "@/components/admin/PromoCodeSender";
 import {
-  formatApplicationStatus,
-  formatCertificationStatus,
-  formatKitchenPreference,
-  getStatusBadgeColor
+    formatApplicationStatus,
+    formatCertificationStatus,
+    formatKitchenPreference,
+    getStatusBadgeColor
 } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,19 +64,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
-  AlertCircle,
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  ExternalLink,
-  RefreshCw,
-  Search,
-  Shield,
-  User as UserIcon,
-  XCircle
+    AlertCircle,
+    AlertTriangle,
+    CalendarDays,
+    CheckCircle,
+    ChevronDown,
+    ChevronRight,
+    Clock,
+    ExternalLink,
+    Gift,
+    RefreshCw,
+    Search,
+    Shield,
+    User as UserIcon,
+    XCircle
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -790,124 +792,146 @@ function AdminDashboard() {
             transition={{ delay: 0.6 }}
             className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                <Search className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Search & Filter</h3>
-                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Find and manage applications efficiently</p>
-              </div>
-            </div>
+            {/* Main Admin Tabs */}
+            <Tabs defaultValue="applications" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6">
+                <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
+                  <Shield className="h-4 w-4" />
+                  Application Management
+                </TabsTrigger>
+                <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
+                  <Gift className="h-4 w-4" />
+                  Send Promo Codes
+                </TabsTrigger>
+              </TabsList>
 
-            {/* Search Bar */}
-            <div className="mb-4 sm:mb-6">
-              <div className="relative w-full sm:max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Search by name, email, phone, or ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200 text-sm sm:text-base"
-                />
-              </div>
-            </div>
+              {/* Applications Tab Content */}
+              <TabsContent value="applications" className="mt-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                    <Search className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Search & Filter Applications</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Find and manage applications efficiently</p>
+                  </div>
+                </div>
 
-            {/* Quick Filter Buttons */}
-            <div className="mb-4 sm:mb-6">
-              <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
-              <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                <Button
-                  variant={quickFilters.needsDocumentReview ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
-                  className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
-                >
-                  <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  <span className="hidden xs:inline">Needs </span>Doc Review
-                  {applications.filter(app => 
-                    app.status === "approved" && (
-                      app.foodSafetyLicenseStatus === "pending" ||
-                      app.foodEstablishmentCertStatus === "pending"
-                    )
-                  ).length > 0 && (
-                    <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                {/* Search Bar */}
+                <div className="mb-4 sm:mb-6">
+                  <div className="relative w-full sm:max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search by name, email, phone, or ID..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200 text-sm sm:text-base"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Filter Buttons */}
+                <div className="mb-4 sm:mb-6">
+                  <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    <Button
+                      variant={quickFilters.needsDocumentReview ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
+                      className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
+                    >
+                      <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden xs:inline">Needs </span>Doc Review
                       {applications.filter(app => 
                         app.status === "approved" && (
                           app.foodSafetyLicenseStatus === "pending" ||
                           app.foodEstablishmentCertStatus === "pending"
                         )
-                      ).length}
-                    </span>
-                  )}
-                </Button>
-                
-                <Button
-                  variant={quickFilters.recentApplications ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
-                  className="rounded-xl"
-                >
-                  <CalendarDays className="h-4 w-4 mr-2" />
-                  Recent (3 days)
-                </Button>
-                
-                <Button
-                  variant={quickFilters.hasDocuments ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
-                  className="rounded-xl"
-                >
-                  <UserIcon className="h-4 w-4 mr-2" />
-                  Has Documents
-                </Button>
-                
-                {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
-                    className="rounded-xl text-gray-500 hover:text-gray-700"
-                  >
-                    Clear All
-                  </Button>
-                )}
-              </div>
-            </div>
+                      ).length > 0 && (
+                        <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                          {applications.filter(app => 
+                            app.status === "approved" && (
+                              app.foodSafetyLicenseStatus === "pending" ||
+                              app.foodEstablishmentCertStatus === "pending"
+                            )
+                          ).length}
+                        </span>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      variant={quickFilters.recentApplications ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
+                      className="rounded-xl"
+                    >
+                      <CalendarDays className="h-4 w-4 mr-2" />
+                      Recent (3 days)
+                    </Button>
+                    
+                    <Button
+                      variant={quickFilters.hasDocuments ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
+                      className="rounded-xl"
+                    >
+                      <UserIcon className="h-4 w-4 mr-2" />
+                      Has Documents
+                    </Button>
+                    
+                    {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
+                        className="rounded-xl text-gray-500 hover:text-gray-700"
+                      >
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
-            {/* Status Tabs */}
-            <Tabs defaultValue="all" className="w-full">
-              <TabsList className="rounded-xl bg-gray-100 p-1">
-                <TabsTrigger value="all" className="flex items-center gap-2 rounded-lg">
-                  <UserIcon className="h-3.5 w-3.5" />
-                  All ({statusCounts.total})
-                </TabsTrigger>
-                <TabsTrigger value="inReview" className="flex items-center gap-2 rounded-lg">
-                  <Clock className="h-3.5 w-3.5 text-yellow-500" />
-                  In Review ({statusCounts.inReview})
-                </TabsTrigger>
-                <TabsTrigger value="approved" className="flex items-center gap-2 rounded-lg">
-                  <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                  Approved ({statusCounts.approved})
-                </TabsTrigger>
-                <TabsTrigger value="rejected" className="flex items-center gap-2 rounded-lg">
-                  <XCircle className="h-3.5 w-3.5 text-red-500" />
-                  Rejected ({statusCounts.rejected})
-                </TabsTrigger>
-              </TabsList>
+                {/* Status Tabs */}
+                <Tabs defaultValue="all" className="w-full">
+                  <TabsList className="rounded-xl bg-gray-100 p-1">
+                    <TabsTrigger value="all" className="flex items-center gap-2 rounded-lg">
+                      <UserIcon className="h-3.5 w-3.5" />
+                      All ({statusCounts.total})
+                    </TabsTrigger>
+                    <TabsTrigger value="inReview" className="flex items-center gap-2 rounded-lg">
+                      <Clock className="h-3.5 w-3.5 text-yellow-500" />
+                      In Review ({statusCounts.inReview})
+                    </TabsTrigger>
+                    <TabsTrigger value="approved" className="flex items-center gap-2 rounded-lg">
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                      Approved ({statusCounts.approved})
+                    </TabsTrigger>
+                    <TabsTrigger value="rejected" className="flex items-center gap-2 rounded-lg">
+                      <XCircle className="h-3.5 w-3.5 text-red-500" />
+                      Rejected ({statusCounts.rejected})
+                    </TabsTrigger>
+                  </TabsList>
 
-              <TabsContent value="all" className="mt-6">
-                {renderApplicationList(filteredApplications)}
+                  <TabsContent value="all" className="mt-6">
+                    {renderApplicationList(filteredApplications)}
+                  </TabsContent>
+                  <TabsContent value="inReview" className="mt-6">
+                    {renderApplicationList(applications.filter(app => app.status === "inReview"))}
+                  </TabsContent>
+                  <TabsContent value="approved" className="mt-6">
+                    {renderApplicationList(applications.filter(app => app.status === "approved"))}
+                  </TabsContent>
+                  <TabsContent value="rejected" className="mt-6">
+                    {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
-              <TabsContent value="inReview" className="mt-6">
-                {renderApplicationList(applications.filter(app => app.status === "inReview"))}
-              </TabsContent>
-              <TabsContent value="approved" className="mt-6">
-                {renderApplicationList(applications.filter(app => app.status === "approved"))}
-              </TabsContent>
-              <TabsContent value="rejected" className="mt-6">
-                {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+
+              {/* Promo Codes Tab Content */}
+              <TabsContent value="promos" className="mt-0">
+                <PromoCodeSender />
               </TabsContent>
             </Tabs>
           </motion.div>
