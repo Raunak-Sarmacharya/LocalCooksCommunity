@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,14 +6,10 @@ import {
     Crown,
     Grid3x3,
     Layout,
-    Monitor,
     Palette,
     Save,
     Send,
-    Smartphone,
     Sparkles,
-    Tablet,
-    Type,
     Wand2
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -193,7 +188,6 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     initialDesign || createDefaultDesign()
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -273,7 +267,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             subtitleFontSize: '18px',
             padding: '24px',
             borderRadius: '12px',
-            textAlign: 'center'
+            textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
           }
         }
       },
@@ -491,13 +485,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     };
   };
 
-  const getPreviewDimensions = () => {
-    switch (previewMode) {
-      case 'mobile': return { width: '320px', height: '600px' };
-      case 'tablet': return { width: '500px', height: '700px' };
-      default: return { width: '600px', height: '800px' };
-    }
-  };
+
 
   const handleSendTestEmail = () => {
     // Implementation of handleSendTestEmail
@@ -507,72 +495,41 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     <div className="w-full bg-white">
       {/* Fixed Header */}
       <div className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
-        <div className="px-6 py-4">
+        <div className="px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-gradient-to-br from-purple-100 to-blue-100 rounded-lg">
-                  <Crown className="h-6 w-6 text-purple-600" />
+                  <Crown className="h-5 w-5 text-purple-600" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900">Email Design Studio</h1>
-                  <p className="text-sm text-gray-600">Advanced Email Customization Platform</p>
+                  <h1 className="text-lg font-bold text-gray-900">Email Design Studio</h1>
+                  <p className="text-xs text-gray-600">Simple Admin Interface</p>
                 </div>
               </div>
-              <Badge variant="outline" className="bg-gradient-to-r from-yellow-50 to-amber-50 text-yellow-800 border-yellow-200 font-medium">
-                <Sparkles className="h-3 w-3 mr-1" />
-                Advanced Studio
-              </Badge>
             </div>
 
             <div className="flex items-center space-x-3">
-              {/* Preview Mode Selector */}
-              <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
-                <Button
-                  variant={previewMode === 'desktop' ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setPreviewMode('desktop')}
-                  className="h-8 px-3"
-                >
-                  <Monitor className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={previewMode === 'tablet' ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setPreviewMode('tablet')}
-                  className="h-8 px-3"
-                >
-                  <Tablet className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={previewMode === 'mobile' ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setPreviewMode('mobile')}
-                  className="h-8 px-3"
-                >
-                  <Smartphone className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <Button variant="outline" size="sm" onClick={saveDesign}>
-                <Save className="h-4 w-4 mr-2" />
-                Save
+              <Button variant="outline" size="sm" onClick={saveDesign} className="h-8 px-3">
+                <Save className="h-3 w-3 mr-1" />
+                <span className="text-xs">Save</span>
               </Button>
 
               <Button 
                 onClick={handleGenerateEmail}
                 disabled={isLoading}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium"
+                size="sm"
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium h-8 px-3"
               >
                 {isLoading ? (
                   <>
-                    <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                    Generating...
+                    <Wand2 className="h-3 w-3 mr-1 animate-spin" />
+                    <span className="text-xs">Generating...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generate Email
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    <span className="text-xs">Generate Email</span>
                   </>
                 )}
               </Button>
@@ -582,31 +539,27 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       </div>
 
       {/* Main Content */}
-      <div className="flex h-[calc(100vh-120px)]">
+      <div className="flex h-[calc(100vh-100px)]">
         {/* Left Sidebar - Design Tools */}
-        <div className="w-96 bg-gray-50 border-r border-gray-200 overflow-y-auto">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 m-4 bg-white shadow-sm">
-              <TabsTrigger value="design" className="text-xs px-2">
-                <Layout className="h-4 w-4 mr-1" />
+        <div className="w-96 bg-gray-50 border-r border-gray-200 flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-3 m-3 bg-white shadow-sm border">
+              <TabsTrigger value="design" className="text-xs px-2 py-2">
+                <Layout className="h-3 w-3 mr-1" />
                 Design
               </TabsTrigger>
-              <TabsTrigger value="colors" className="text-xs px-2">
-                <Palette className="h-4 w-4 mr-1" />
+              <TabsTrigger value="colors" className="text-xs px-2 py-2">
+                <Palette className="h-3 w-3 mr-1" />
                 Colors
               </TabsTrigger>
-              <TabsTrigger value="typography" className="text-xs px-2">
-                <Type className="h-4 w-4 mr-1" />
-                Type
-              </TabsTrigger>
-              <TabsTrigger value="layout" className="text-xs px-2">
-                <Grid3x3 className="h-4 w-4 mr-1" />
+              <TabsTrigger value="layout" className="text-xs px-2 py-2">
+                <Grid3x3 className="h-3 w-3 mr-1" />
                 Layout
               </TabsTrigger>
             </TabsList>
 
-            <div className="px-4 pb-4 space-y-4">
-              <TabsContent value="design" className="mt-0">
+            <div className="flex-1 overflow-y-auto px-3 pb-3">
+              <TabsContent value="design" className="mt-0 space-y-0">
                 <EmailCanvasDesigner 
                   currentDesign={currentDesign}
                   onDesignUpdate={handleDesignUpdate}
@@ -616,100 +569,35 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 />
               </TabsContent>
 
-              <TabsContent value="colors" className="mt-0">
+              <TabsContent value="colors" className="mt-0 space-y-0">
                 <ColorPalette
                   colorSystem={currentDesign.designSystem.colors}
                   onColorSystemUpdate={handleColorSystemUpdate}
                 />
               </TabsContent>
 
-              <TabsContent value="typography" className="mt-0">
+              <TabsContent value="layout" className="mt-0 space-y-0">
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center text-gray-900">
-                      <Type className="h-5 w-5 mr-2" />
-                      Typography Studio
-                    </CardTitle>
-                    <CardDescription className="text-sm">
-                      Font and text styling controls
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 block mb-2">Primary Font</label>
-                        <select 
-                          value={currentDesign.designSystem.typography.primaryFont}
-                          onChange={(e) => handleFontChange('primaryFont', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                        >
-                          <option value="Inter">Inter</option>
-                          <option value="Roboto">Roboto</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Lato">Lato</option>
-                          <option value="Montserrat">Montserrat</option>
-                          <option value="Poppins">Poppins</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="text-sm font-medium text-gray-700 block mb-2">Secondary Font</label>
-                        <select 
-                          value={currentDesign.designSystem.typography.secondaryFont}
-                          onChange={(e) => handleFontChange('secondaryFont', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                        >
-                          <option value="Roboto">Roboto</option>
-                          <option value="Inter">Inter</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Source Sans Pro">Source Sans Pro</option>
-                        </select>
-                      </div>
-
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <h4 className="font-semibold text-blue-900 mb-2 text-sm">Font Hierarchy</h4>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Heading 1:</span>
-                            <span className="font-bold text-blue-900">32px / Bold</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Heading 2:</span>
-                            <span className="font-semibold text-blue-900">24px / Semi-bold</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">Body:</span>
-                            <span className="text-blue-900">16px / Regular</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="layout" className="mt-0">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center text-gray-900">
-                      <Grid3x3 className="h-5 w-5 mr-2" />
+                    <CardTitle className="text-base flex items-center text-gray-900">
+                      <Grid3x3 className="h-4 w-4 mr-2" />
                       Layout System
                     </CardTitle>
-                    <CardDescription>
-                      Grid and spacing controls that apply to all elements
+                    <CardDescription className="text-xs">
+                      Global layout controls for all elements
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-3">
                     {/* Container Settings */}
                     <div className="space-y-3">
-                      <h4 className="font-medium text-gray-900 border-b pb-2">Container Settings</h4>
+                      <h4 className="font-medium text-gray-900 text-sm border-b pb-1">Container Settings</h4>
                       
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Max Width</label>
+                        <label className="text-xs font-medium text-gray-700 block mb-1">Max Width</label>
                         <select 
                           value={currentDesign.designSystem.layout.maxWidth}
                           onChange={(e) => handleLayoutChange('maxWidth', e.target.value)}
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                          className="w-full p-2 border border-gray-300 rounded-md text-xs"
                         >
                           <option value="480px">480px (Mobile)</option>
                           <option value="600px">600px (Standard)</option>
@@ -722,11 +610,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
 
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Global Padding</label>
+                        <label className="text-xs font-medium text-gray-700 block mb-1">Global Padding</label>
                         <select 
                           value={currentDesign.designSystem.layout.padding}
                           onChange={(e) => handleLayoutChange('padding', e.target.value)}
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                          className="w-full p-2 border border-gray-300 rounded-md text-xs"
                         >
                           <option value="8px">8px (Compact)</option>
                           <option value="16px">16px (Standard)</option>
@@ -735,16 +623,16 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           <option value="40px">40px (Extra Spacious)</option>
                         </select>
                         <p className="text-xs text-gray-500 mt-1">
-                          Default padding applied to text and button elements
+                          Default padding applied to elements
                         </p>
                       </div>
 
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Border Radius</label>
+                        <label className="text-xs font-medium text-gray-700 block mb-1">Border Radius</label>
                         <select 
                           value={currentDesign.designSystem.layout.borderRadius}
                           onChange={(e) => handleLayoutChange('borderRadius', e.target.value)}
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
+                          className="w-full p-2 border border-gray-300 rounded-md text-xs"
                         >
                           <option value="0px">0px (Square)</option>
                           <option value="4px">4px (Slight)</option>
@@ -754,91 +642,67 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           <option value="24px">24px (Large)</option>
                         </select>
                         <p className="text-xs text-gray-500 mt-1">
-                          Border radius applied to all elements with backgrounds
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Spacing Settings */}
-                    <div className="space-y-3">
-                      <h4 className="font-medium text-gray-900 border-b pb-2">Spacing System</h4>
-                      
-                      <div>
-                        <label className="text-sm font-medium text-gray-700">Element Spacing</label>
-                        <select 
-                          value={currentDesign.designSystem.layout.gridSystem}
-                          onChange={(e) => handleLayoutChange('gridSystem', e.target.value)}
-                          className="w-full mt-1 p-2 border border-gray-300 rounded-md"
-                        >
-                          <option value="tight">Tight (8px gaps)</option>
-                          <option value="normal">Normal (16px gaps)</option>
-                          <option value="relaxed">Relaxed (24px gaps)</option>
-                          <option value="loose">Loose (32px gaps)</option>
-                        </select>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Controls spacing between email elements
+                          Border radius for all elements
                         </p>
                       </div>
                     </div>
 
                     {/* Quick Actions */}
-                    <div className="space-y-2 pt-4 border-t">
-                      <h4 className="font-medium text-gray-900">Quick Actions</h4>
+                    <div className="space-y-3 border-t pt-3">
+                      <h4 className="font-medium text-gray-900 text-sm border-b pb-1">Quick Actions</h4>
                       
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            // Apply mobile-optimized layout
+                            // Apply layout settings to all elements
+                            const layoutConfig = currentDesign.designSystem.layout;
+                            const updatedSections = currentDesign.content.sections.map(section => ({
+                              ...section,
+                              styling: {
+                                ...section.styling,
+                                borderRadius: layoutConfig.borderRadius,
+                                maxWidth: layoutConfig.maxWidth,
+                                padding: layoutConfig.padding,
+                              }
+                            }));
+
+                            handleContentUpdate({ sections: updatedSections });
+                          }}
+                          className="text-xs h-8"
+                        >
+                          <Grid3x3 className="h-3 w-3 mr-1" />
+                          Apply Layout to All
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Mobile optimized layout
                             handleLayoutChange('maxWidth', '480px');
                             handleLayoutChange('padding', '16px');
                             handleLayoutChange('borderRadius', '8px');
                           }}
-                          className="text-xs"
+                          className="text-xs h-8"
                         >
                           📱 Mobile Layout
                         </Button>
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            // Apply desktop-optimized layout
+                            // Desktop optimized layout
                             handleLayoutChange('maxWidth', '600px');
                             handleLayoutChange('padding', '24px');
                             handleLayoutChange('borderRadius', '12px');
                           }}
-                          className="text-xs"
+                          className="text-xs h-8"
                         >
                           🖥️ Desktop Layout
                         </Button>
-                      </div>
-                    </div>
-
-                    {/* Current Settings Preview */}
-                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <h4 className="font-semibold text-green-900 mb-2">Current Layout Settings</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-green-700">Max Width:</span>
-                          <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.maxWidth}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-green-700">Global Padding:</span>
-                          <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.padding}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-green-700">Border Radius:</span>
-                          <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.borderRadius}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-green-700">Element Spacing:</span>
-                          <span className="text-green-900 font-medium">{currentDesign.designSystem.layout.gridSystem}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 p-2 bg-green-100 rounded text-xs text-green-800">
-                        💡 <strong>Auto-Apply:</strong> Layout changes automatically apply to all elements. Use individual element controls for fine-tuning.
                       </div>
                     </div>
                   </CardContent>
@@ -855,7 +719,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               ref={canvasRef}
               className="bg-white shadow-lg transition-all duration-300"
               style={{ 
-                ...getPreviewDimensions(),
+                width: '100%',
+                maxWidth: currentDesign.designSystem.layout.maxWidth,
                 borderRadius: '12px',
                 overflow: 'hidden'
               }}
@@ -872,7 +737,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       background: currentDesign.content.header?.styling?.backgroundColor || currentDesign.designSystem.colors.gradients.primary,
                       borderRadius: currentDesign.content.header?.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
                       padding: currentDesign.content.header?.styling?.padding || '24px',
-                      textAlign: currentDesign.content.header?.styling?.textAlign || 'center'
+                      textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                     }}
                     onClick={() => setSelectedElement('email-header')}
                   >
@@ -988,7 +853,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         selectedElement === 'order-button' ? 'ring-2 ring-blue-500 rounded' : ''
                       }`}
                       style={{
-                        textAlign: currentDesign.content.orderButton?.styling?.textAlign || 'center'
+                        textAlign: (currentDesign.content.orderButton?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                       }}
                       onClick={() => setSelectedElement('order-button')}
                     >
@@ -1116,7 +981,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                   color: section.overlay?.styling?.color || '#ffffff',
                                   fontSize: section.overlay?.styling?.fontSize || '18px',
                                   fontWeight: section.overlay?.styling?.fontWeight || '600',
-                                  textAlign: section.overlay?.styling?.textAlign || 'center',
+                                  textAlign: (section.overlay?.styling?.textAlign || 'center') as React.CSSProperties['textAlign'],
                                   backgroundColor: section.overlay?.styling?.backgroundColor || 'rgba(0, 0, 0, 0.5)',
                                   padding: section.overlay?.styling?.padding || '8px 16px',
                                   borderRadius: section.overlay?.styling?.borderRadius || '4px',
@@ -1154,33 +1019,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         <div className="flex-1 bg-white border-l border-gray-200 overflow-hidden">
           <div className="h-full flex flex-col">
             {/* Preview Header */}
-            <div className="bg-white border-b border-gray-200 px-4 py-3">
+            <div className="bg-white border-b border-gray-200 px-6 py-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <h2 className="text-lg font-semibold text-gray-900">Email Preview</h2>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant={previewMode === 'desktop' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPreviewMode('desktop')}
-                      className="h-8 px-3"
-                    >
-                      <Monitor className="h-3 w-3 mr-1" />
-                      <span className="text-xs">Desktop</span>
-                    </Button>
-                    <Button
-                      variant={previewMode === 'mobile' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPreviewMode('mobile')}
-                      className="h-8 px-3"
-                    >
-                      <Smartphone className="h-3 w-3 mr-1" />
-                      <span className="text-xs">Mobile</span>
-                    </Button>
-                  </div>
-                </div>
+                <h2 className="text-lg font-semibold text-gray-900">Email Preview</h2>
                 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <Button
                     variant="outline"
                     size="sm"
@@ -1196,10 +1039,95 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     ) : (
                       <>
                         <Send className="h-3 w-3 mr-1" />
-                        <span className="text-xs">Test Email</span>
+                        <span className="text-xs">Send Test</span>
                       </>
                     )}
                   </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Preview Content */}
+            <div className="flex-1 overflow-auto bg-gray-100 p-6">
+              <div className="max-w-2xl mx-auto">
+                <div 
+                  ref={canvasRef}
+                  className="bg-white rounded-lg shadow-lg overflow-hidden border"
+                  style={{ 
+                    maxWidth: currentDesign.designSystem.layout.maxWidth,
+                    margin: '0 auto'
+                  }}
+                >
+                  {/* Email Preview Content will be rendered here */}
+                  <div className="p-6">
+                    <div className="text-center">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        Email Preview
+                      </h3>
+                      <p className="text-sm text-gray-600 mb-6">
+                        Your email design will appear here. Use the design tools on the left to customize your email.
+                      </p>
+                      <div className="space-y-4">
+                        {currentDesign.content.sections.map((section, index) => (
+                          <div
+                            key={section.id}
+                            className={`p-4 border rounded cursor-pointer transition-all ${
+                              selectedElement === section.id 
+                                ? 'ring-2 ring-blue-500 bg-blue-50' 
+                                : 'hover:border-gray-300'
+                            }`}
+                            onClick={() => setSelectedElement(section.id)}
+                            style={{
+                              ...section.styling,
+                              borderRadius: currentDesign.designSystem.layout.borderRadius
+                            }}
+                          >
+                            <div className="text-sm text-gray-700">
+                              {section.type === 'text' && (
+                                <div>{section.content || 'Text element'}</div>
+                              )}
+                              {section.type === 'image' && (
+                                <div className="text-center">
+                                  {section.content ? (
+                                    <img 
+                                      src={section.content} 
+                                      alt="Email content" 
+                                      className="max-w-full h-auto rounded"
+                                    />
+                                  ) : (
+                                    <div className="bg-gray-200 h-32 rounded flex items-center justify-center">
+                                      Image placeholder
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {section.type === 'button' && (
+                                <div className="text-center">
+                                  <button 
+                                    className="px-6 py-2 rounded font-medium"
+                                    style={{
+                                      backgroundColor: section.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main,
+                                      color: section.styling?.color || currentDesign.designSystem.colors.primary.contrast,
+                                      borderRadius: currentDesign.designSystem.layout.borderRadius
+                                    }}
+                                  >
+                                    {section.content || 'Button text'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {currentDesign.content.sections.length === 0 && (
+                          <div className="text-center py-12 text-gray-500">
+                            <p className="text-sm">No elements added yet.</p>
+                            <p className="text-xs mt-1">Use the Element Library to add content.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
