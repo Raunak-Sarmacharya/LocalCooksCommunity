@@ -325,6 +325,32 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           }
         }
       });
+    } else if (elementId === 'greeting') {
+      // Handle greeting styling
+      const greetingSection = currentDesign.content.sections.find(s => s.id === 'greeting-section');
+      if (greetingSection) {
+        const updatedSections = currentDesign.content.sections.map(section => 
+          section.id === 'greeting-section' 
+            ? { ...section, styling: { ...section.styling, [property]: value } }
+            : section
+        );
+        handleContentUpdate({ sections: updatedSections });
+      } else {
+        // Create greeting section if it doesn't exist
+        const newGreetingSection = {
+          id: 'greeting-section',
+          type: 'greeting',
+          content: "Hello! 👋",
+          styling: {
+            fontSize: '24px',
+            fontWeight: '600',
+            color: '#1e293b',
+            padding: '0 0 16px 0',
+            [property]: value
+          }
+        };
+        handleContentUpdate({ sections: [newGreetingSection, ...currentDesign.content.sections] });
+      }
     } else {
       const updatedSections = currentDesign.content.sections.map(section => 
         section.id === elementId 
@@ -343,6 +369,31 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       handleContentUpdate({ promoCode: content });
     } else if (elementId === 'customer-email') {
       handleContentUpdate({ email: content });
+    } else if (elementId === 'greeting') {
+      // Store greeting in a custom section for now
+      const greetingSection = currentDesign.content.sections.find(s => s.id === 'greeting-section');
+      if (greetingSection) {
+        const updatedSections = currentDesign.content.sections.map(section => 
+          section.id === 'greeting-section' 
+            ? { ...section, content }
+            : section
+        );
+        handleContentUpdate({ sections: updatedSections });
+      } else {
+        // Create greeting section if it doesn't exist
+        const newGreetingSection = {
+          id: 'greeting-section',
+          type: 'greeting',
+          content,
+          styling: {
+            fontSize: '24px',
+            fontWeight: '600',
+            color: '#1e293b',
+            padding: '0 0 16px 0'
+          }
+        };
+        handleContentUpdate({ sections: [newGreetingSection, ...currentDesign.content.sections] });
+      }
     } else if (elementId === 'order-button') {
       handleContentUpdate({
         orderButton: {
@@ -381,7 +432,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
     setIsSending(true);
     try {
-      const response = await fetch('/api/send-promo-email', {
+      const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -508,7 +559,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               </CardContent>
             </Card>
 
-            {/* Element Properties */}
+            {/* Element Properties - Enhanced */}
             {selectedElement && (
               <Card>
                 <CardHeader className="pb-3">
@@ -517,13 +568,155 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     Element Properties
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Editing: {selectedElement}
+                    Editing: {selectedElement.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* Content Editor */}
+                <CardContent className="space-y-4">
+                  {/* Email Header Properties */}
+                  {selectedElement === 'email-header' && (
+                    <>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Header Title (Optional)</Label>
+                        <Input
+                          placeholder="Add header title..."
+                          value={currentDesign.content.header?.title || ''}
+                          onChange={(e) => handleContentUpdate({
+                            header: {
+                              ...currentDesign.content.header,
+                              title: e.target.value
+                            }
+                          })}
+                          className="mt-1"
+                        />
+                      </div>
+                      
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Header Subtitle (Optional)</Label>
+                        <Input
+                          placeholder="Add header subtitle..."
+                          value={currentDesign.content.header?.subtitle || ''}
+                          onChange={(e) => handleContentUpdate({
+                            header: {
+                              ...currentDesign.content.header,
+                              subtitle: e.target.value
+                            }
+                          })}
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Background Color</Label>
+                        <Input
+                          type="color"
+                          value={currentDesign.content.header?.styling?.backgroundColor?.includes('gradient') ? '#F51042' : (currentDesign.content.header?.styling?.backgroundColor || '#F51042')}
+                          onChange={(e) => handleContentUpdate({
+                            header: {
+                              ...currentDesign.content.header,
+                              styling: {
+                                ...currentDesign.content.header?.styling,
+                                backgroundColor: e.target.value
+                              }
+                            }
+                          })}
+                          className="mt-1 h-8"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700">Title Color</Label>
+                          <Input
+                            type="color"
+                            value={currentDesign.content.header?.styling?.titleColor || '#ffffff'}
+                            onChange={(e) => handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  titleColor: e.target.value
+                                }
+                              }
+                            })}
+                            className="mt-1 h-8"
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700">Subtitle Color</Label>
+                          <Input
+                            type="color"
+                            value={currentDesign.content.header?.styling?.subtitleColor || '#ffffff'}
+                            onChange={(e) => handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  subtitleColor: e.target.value
+                                }
+                              }
+                            })}
+                            className="mt-1 h-8"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Quick Header Backgrounds</Label>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                          <button
+                            className="h-8 rounded border hover:border-gray-400 text-xs text-white"
+                            style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}
+                            onClick={() => handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'
+                                }
+                              }
+                            })}
+                          >
+                            Red Gradient
+                          </button>
+                          <button
+                            className="h-8 rounded border hover:border-gray-400 text-xs text-white"
+                            style={{ background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)' }}
+                            onClick={() => handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  backgroundColor: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)'
+                                }
+                              }
+                            })}
+                          >
+                            Blue Gradient
+                          </button>
+                          <button
+                            className="h-8 rounded border hover:border-gray-400 text-xs text-white"
+                            style={{ background: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)' }}
+                            onClick={() => handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  backgroundColor: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)'
+                                }
+                              }
+                            })}
+                          >
+                            Green Gradient
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Content Editor for other elements */}
                   {(selectedElement === 'custom-message' || selectedElement === 'promo-code' || 
-                    selectedElement.startsWith('section-') || selectedElement === 'order-button') && (
+                    selectedElement.startsWith('section-') || selectedElement === 'order-button' || selectedElement === 'greeting') && (
                     <div>
                       <Label className="text-sm font-medium text-gray-700">Content</Label>
                       {selectedElement === 'custom-message' ? (
@@ -548,6 +741,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           onChange={(e) => updateElementContent('order-button', e.target.value)}
                           className="mt-1"
                         />
+                      ) : selectedElement === 'greeting' ? (
+                        <Input
+                          placeholder="Greeting text"
+                          value={currentDesign.content.sections.find(s => s.id === 'greeting-section')?.content || "Hello! 👋"}
+                          onChange={(e) => updateElementContent('greeting', e.target.value)}
+                          className="mt-1"
+                        />
                       ) : (
                         <Textarea
                           placeholder="Enter content..."
@@ -560,26 +760,58 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
                   )}
 
-                  {/* Quick Color Options */}
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Quick Colors</Label>
-                    <div className="grid grid-cols-6 gap-2 mt-1">
-                      {['#F51042', '#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed'].map(color => (
-                        <button
-                          key={color}
-                          className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400"
-                          style={{ backgroundColor: color }}
-                          onClick={() => {
-                            if (selectedElement === 'order-button' || selectedElement.startsWith('section-')) {
-                              updateElementStyling(selectedElement, 'backgroundColor', color);
-                            }
-                          }}
+                  {/* Color Customization */}
+                  {selectedElement !== 'email-header' && (
+                    <>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Background Color</Label>
+                        <Input
+                          type="color"
+                                                  value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.backgroundColor || '#F51042'
+                            : selectedElement === 'greeting'
+                            ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.backgroundColor || 'transparent'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.backgroundColor || '#F51042'
+                        }
+                          onChange={(e) => updateElementStyling(selectedElement, 'backgroundColor', e.target.value)}
+                          className="mt-1 h-8"
                         />
-                      ))}
-                    </div>
-                  </div>
+                      </div>
 
-                  {/* Element Styling */}
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Text Color</Label>
+                        <Input
+                          type="color"
+                                                  value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.color || '#ffffff'
+                            : selectedElement === 'greeting'
+                            ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.color || '#1e293b'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.color || '#374151'
+                        }
+                          onChange={(e) => updateElementStyling(selectedElement, 'color', e.target.value)}
+                          className="mt-1 h-8"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Quick Colors</Label>
+                        <div className="grid grid-cols-6 gap-2 mt-1">
+                          {['#F51042', '#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed'].map(color => (
+                            <button
+                              key={color}
+                              className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400"
+                              style={{ backgroundColor: color }}
+                              onClick={() => updateElementStyling(selectedElement, 'backgroundColor', color)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Typography Controls */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-sm font-medium text-gray-700">Font Size</Label>
@@ -587,9 +819,27 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         value={
                           selectedElement === 'order-button' 
                             ? currentDesign.content.orderButton?.styling?.fontSize || '16px'
+                            : selectedElement === 'email-header'
+                            ? currentDesign.content.header?.styling?.titleFontSize || '24px'
+                            : selectedElement === 'greeting'
+                            ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontSize || '24px'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.fontSize || '16px'
                         }
-                        onValueChange={(value) => updateElementStyling(selectedElement, 'fontSize', value)}
+                        onValueChange={(value) => {
+                          if (selectedElement === 'email-header') {
+                            handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  titleFontSize: value
+                                }
+                              }
+                            });
+                          } else {
+                            updateElementStyling(selectedElement, 'fontSize', value);
+                          }
+                        }}
                       >
                         <SelectTrigger className="h-8">
                           <SelectValue />
@@ -601,19 +851,67 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           <SelectItem value="18px">18px</SelectItem>
                           <SelectItem value="20px">20px</SelectItem>
                           <SelectItem value="24px">24px</SelectItem>
+                          <SelectItem value="28px">28px</SelectItem>
+                          <SelectItem value="32px">32px</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Font Weight</Label>
+                      <Select
+                        value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.fontWeight || '600'
+                            : selectedElement === 'greeting'
+                            ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontWeight || '600'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.fontWeight || '400'
+                        }
+                        onValueChange={(value) => updateElementStyling(selectedElement, 'fontWeight', value)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="300">Light</SelectItem>
+                          <SelectItem value="400">Normal</SelectItem>
+                          <SelectItem value="500">Medium</SelectItem>
+                          <SelectItem value="600">Semibold</SelectItem>
+                          <SelectItem value="700">Bold</SelectItem>
+                          <SelectItem value="800">Extra Bold</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-sm font-medium text-gray-700">Text Align</Label>
                       <Select
                         value={
                           selectedElement === 'order-button' 
                             ? currentDesign.content.orderButton?.styling?.textAlign || 'center'
+                            : selectedElement === 'email-header'
+                            ? currentDesign.content.header?.styling?.textAlign || 'center'
+                            : selectedElement === 'greeting'
+                            ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.textAlign || 'left'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.textAlign || 'left'
                         }
-                        onValueChange={(value) => updateElementStyling(selectedElement, 'textAlign', value)}
+                        onValueChange={(value) => {
+                          if (selectedElement === 'email-header') {
+                            handleContentUpdate({
+                              header: {
+                                ...currentDesign.content.header,
+                                styling: {
+                                  ...currentDesign.content.header?.styling,
+                                  textAlign: value
+                                }
+                              }
+                            });
+                          } else {
+                            updateElementStyling(selectedElement, 'textAlign', value);
+                          }
+                        }}
                       >
                         <SelectTrigger className="h-8">
                           <SelectValue />
@@ -625,7 +923,58 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Border Radius</Label>
+                      <Select
+                        value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.borderRadius || '8px'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.borderRadius || '8px'
+                        }
+                        onValueChange={(value) => updateElementStyling(selectedElement, 'borderRadius', value)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0px">0px (Square)</SelectItem>
+                          <SelectItem value="4px">4px (Slight)</SelectItem>
+                          <SelectItem value="8px">8px (Small)</SelectItem>
+                          <SelectItem value="12px">12px (Medium)</SelectItem>
+                          <SelectItem value="16px">16px (Large)</SelectItem>
+                          <SelectItem value="24px">24px (Extra Large)</SelectItem>
+                          <SelectItem value="50%">50% (Pill)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+
+                  {/* Padding Control for buttons and sections */}
+                  {(selectedElement === 'order-button' || selectedElement.startsWith('section-')) && (
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Padding</Label>
+                      <Select
+                        value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.padding || '14px 28px'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.padding || '8px 0'
+                        }
+                        onValueChange={(value) => updateElementStyling(selectedElement, 'padding', value)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="4px 8px">Small</SelectItem>
+                          <SelectItem value="8px 16px">Medium</SelectItem>
+                          <SelectItem value="12px 24px">Large</SelectItem>
+                          <SelectItem value="14px 28px">Extra Large</SelectItem>
+                          <SelectItem value="16px 32px">XXL</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {/* Remove Section Button */}
                   {selectedElement.startsWith('section-') && (
@@ -697,13 +1046,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         <div className="flex-1 bg-gray-100 overflow-hidden">
           <div className="h-full flex items-center justify-center p-6">
             <div className="bg-white shadow-xl max-w-2xl w-full rounded-xl overflow-hidden" style={{ minHeight: '80vh' }}>
-              {/* Email Header - Fixed Brand Header */}
+              {/* Email Header - Customizable Brand Header */}
               <div 
-                className={`text-white ${selectedElement === 'email-header' ? 'ring-4 ring-blue-400' : ''}`}
+                className={`text-white cursor-pointer transition-all duration-200 ${selectedElement === 'email-header' ? 'ring-4 ring-blue-400' : ''}`}
                 style={{ 
-                  background: 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)',
-                  padding: '24px 32px',
-                  textAlign: 'center'
+                  background: currentDesign.content.header?.styling?.backgroundColor || 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)',
+                  padding: currentDesign.content.header?.styling?.padding || '24px 32px',
+                  textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                 }}
                 onClick={() => setSelectedElement('email-header')}
               >
@@ -717,26 +1066,49 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     margin: '0 auto'
                   }}
                 />
+                {/* Optional custom header title/subtitle */}
+                {currentDesign.content.header?.title && (
+                  <div style={{ marginTop: '16px' }}>
+                    <h2 style={{
+                      fontSize: currentDesign.content.header.styling?.titleFontSize || '24px',
+                      fontWeight: '600',
+                      color: currentDesign.content.header.styling?.titleColor || '#ffffff',
+                      margin: '0 0 8px 0'
+                    }}>
+                      {currentDesign.content.header.title}
+                    </h2>
+                    {currentDesign.content.header.subtitle && (
+                      <p style={{
+                        fontSize: currentDesign.content.header.styling?.subtitleFontSize || '16px',
+                        color: currentDesign.content.header.styling?.subtitleColor || '#ffffff',
+                        margin: '0',
+                        opacity: 0.9
+                      }}>
+                        {currentDesign.content.header.subtitle}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Email Content Body */}
               <div className="p-8 space-y-6">
-                {/* Greeting */}
-                <div 
-                  className={`cursor-pointer transition-all duration-200 ${
-                    selectedElement === 'greeting' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''
-                  }`}
-                  onClick={() => setSelectedElement('greeting')}
-                >
-                  <h2 style={{ 
-                    fontSize: '24px',
-                    fontWeight: '600',
-                    color: '#1e293b',
-                    margin: '0 0 16px 0'
-                  }}>
-                    Hello! 👋
-                  </h2>
-                </div>
+                                  {/* Greeting */}
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 ${
+                      selectedElement === 'greeting' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''
+                    }`}
+                    onClick={() => setSelectedElement('greeting')}
+                  >
+                    <h2 style={{ 
+                      fontSize: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontSize || '24px',
+                      fontWeight: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontWeight || '600',
+                      color: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.color || '#1e293b',
+                      margin: '0 0 16px 0'
+                    }}>
+                      {currentDesign.content.sections.find(s => s.id === 'greeting-section')?.content || "Hello! 👋"}
+                    </h2>
+                  </div>
 
                 {/* Custom Message */}
                 {currentDesign.content.customMessage ? (

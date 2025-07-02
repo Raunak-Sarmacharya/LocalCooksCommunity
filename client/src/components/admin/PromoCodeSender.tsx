@@ -244,7 +244,7 @@ const PromoCodeSender: React.FC = () => {
     setIsLoading(true);
     
     try {
-      const response = await fetch('/api/send-promo-email', {
+      const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
