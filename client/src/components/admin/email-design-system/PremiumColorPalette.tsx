@@ -120,14 +120,14 @@ const BRAND_PALETTES = {
     name: "Local Cooks",
     description: "Food & hospitality brand",
     colors: {
-      primary: { main: "#16a34a", light: "#4ade80", dark: "#15803d", contrast: "#ffffff" },
-      secondary: { main: "#F51042", light: "#FF5470", dark: "#C20D35", contrast: "#ffffff" },
+      primary: { main: "#F51042", light: "#FF5470", dark: "#C20D35", contrast: "#ffffff" },
+      secondary: { main: "#000000", light: "#404040", dark: "#000000", contrast: "#ffffff" },
       accent: { main: "#f59e0b", light: "#fbbf24", dark: "#d97706", contrast: "#ffffff" },
       neutral: { main: "#6b7280", light: "#f3f4f6", dark: "#1f2937", contrast: "#ffffff" },
       semantic: { success: "#16a34a", warning: "#f59e0b", error: "#dc2626", info: "#2563eb" },
       gradients: {
-        primary: "linear-gradient(135deg, #16a34a 0%, #4ade80 100%)",
-        secondary: "linear-gradient(135deg, #F51042 0%, #FF5470 100%)",
+        primary: "linear-gradient(135deg, #F51042 0%, #FF5470 100%)",
+        secondary: "linear-gradient(135deg, #000000 0%, #404040 100%)",
         accent: "linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)"
       }
     }

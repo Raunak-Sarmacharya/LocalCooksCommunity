@@ -1411,6 +1411,14 @@ export const generatePromoCodeEmail = (
       colorTheme: string;
       borderStyle: string;
     };
+    designSystem?: any;
+    isPremium?: boolean;
+    sections?: Array<{
+      id: string;
+      type: string;
+      content: any;
+      styling: any;
+    }>;
   }
 ): EmailContent => {
   const supportEmail = getSupportEmail();
@@ -1491,6 +1499,133 @@ export const generatePromoCodeEmail = (
 
   const promoStyle = userData.promoStyle || { colorTheme: 'green', borderStyle: 'dashed' };
   const styling = getPromoStyling(promoStyle.colorTheme, promoStyle.borderStyle);
+
+  // Helper function to generate advanced content sections
+  const generateAdvancedSections = (sections: Array<any> = []) => {
+    return sections.map(section => {
+      switch (section.type) {
+        case 'text':
+          const hasBackground = section.styling?.backgroundColor && section.styling.backgroundColor !== 'transparent';
+          const paddingValue = hasBackground ? '12px' : (section.styling?.padding || '8px 0');
+          return `
+            <div style="
+              font-size: ${section.styling?.fontSize || '16px'};
+              color: ${section.styling?.color || '#374151'};
+              font-weight: ${section.styling?.fontWeight || '400'};
+              text-align: ${section.styling?.textAlign || 'left'};
+              padding: ${paddingValue};
+              margin: ${section.styling?.margin || '0'};
+              line-height: 1.6;
+              ${hasBackground ? `background: ${section.styling.backgroundColor};` : ''}
+              ${hasBackground ? `border-radius: 8px;` : ''}
+            ">
+              ${section.content || ''}
+            </div>
+          `;
+        case 'button':
+          return `
+            <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
+              <a href="${getPromoUrl()}" style="
+                display: inline-block;
+                background: ${section.styling?.backgroundColor || styling.accentColor};
+                color: ${section.styling?.color || '#ffffff'} !important;
+                text-decoration: none !important;
+                padding: ${section.styling?.padding || '12px 24px'};
+                border-radius: 6px;
+                font-weight: ${section.styling?.fontWeight || '600'};
+                font-size: ${section.styling?.fontSize || '16px'};
+                border: none;
+                cursor: pointer;
+              ">
+                ${section.content || 'Click Here'}
+              </a>
+            </div>
+          `;
+        case 'image':
+          if (section.content) {
+            const hasOverlay = section.overlay?.enabled && section.overlay?.text;
+            
+            if (hasOverlay) {
+              return `
+                <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
+                  <div style="position: relative; display: inline-block; width: ${section.styling?.width || '200px'}; height: ${section.styling?.height || '120px'};">
+                    <img 
+                      src="${section.content}" 
+                      alt="Email image"
+                      style="
+                        width: 100%;
+                        height: 100%;
+                        object-fit: ${section.styling?.objectFit || 'cover'};
+                        border-radius: ${section.styling?.borderRadius || '8px'};
+                        border: 1px solid #e2e8f0;
+                        display: block;
+                        max-width: 100%;
+                      "
+                    />
+                    <!--[if mso]>
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10;">
+                    <![endif]-->
+                    <div style="
+                      position: absolute;
+                      top: 50%;
+                      left: 50%;
+                      transform: translate(-50%, -50%);
+                      color: ${section.overlay.styling?.color || '#ffffff'};
+                      font-size: ${section.overlay.styling?.fontSize || '18px'};
+                      font-weight: ${section.overlay.styling?.fontWeight || '600'};
+                      text-align: center;
+                      background-color: ${section.overlay.styling?.backgroundColor || 'rgba(0, 0, 0, 0.5)'};
+                      padding: ${section.overlay.styling?.padding || '12px 20px'};
+                      border-radius: ${section.overlay.styling?.borderRadius || '6px'};
+                      text-shadow: ${section.overlay.styling?.textShadow || '1px 1px 2px rgba(0, 0, 0, 0.7)'};
+                      max-width: 90%;
+                      word-wrap: break-word;
+                      z-index: 10;
+                      line-height: 1.4;
+                    ">
+                      ${section.overlay.text}
+                    </div>
+                    <!--[if mso]>
+                    </div>
+                    <![endif]-->
+                  </div>
+                </div>
+              `;
+            } else {
+              return `
+                <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
+                  <img 
+                    src="${section.content}" 
+                    alt="Email image"
+                    style="
+                      width: ${section.styling?.width || '200px'};
+                      height: ${section.styling?.height || '120px'};
+                      object-fit: ${section.styling?.objectFit || 'cover'};
+                      border-radius: ${section.styling?.borderRadius || '8px'};
+                      border: 1px solid #e2e8f0;
+                      display: block;
+                      max-width: 100%;
+                    "
+                  />
+                </div>
+              `;
+            }
+          }
+          return '';
+        case 'divider':
+          return `
+            <div style="
+              height: ${section.styling?.height || '1px'};
+              background-color: ${section.styling?.backgroundColor || '#e2e8f0'};
+              margin: ${section.styling?.margin || '20px 0'};
+              border: none;
+            "></div>
+          `;
+        default:
+          return '';
+      }
+    }).join('');
+  };
   
   // Generate plain text version for better deliverability
   const generatePlainText = (email: string, promoCode: string, customMessage: string) => {
@@ -1593,32 +1728,56 @@ Visit: ${getPromoUrl()}
       <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
     </div>
     <div class="content">
-      <h2 class="greeting">Hello! 👋</h2>
-      
-      <div class="custom-message">
-        ${userData.customMessage}
-      </div>
-      
-      <div class="promo-code-box">
-        <div class="promo-label">🎁 Your Exclusive Promo Code</div>
-        <div class="promo-code">${userData.promoCode}</div>
-      </div>
-      
-      <div class="usage-steps">
-        <h4>🚀 How to use your promo code:</h4>
-        <ol>
-          <li>Visit our website: <a href="${getPromoUrl()}" style="color: #1d4ed8;">${getPromoUrl()}</a></li>
-          <li>Browse our amazing local cooks and their delicious offerings</li>
-          <li>Apply your promo code during checkout</li>
-          <li>Enjoy your special offer!</li>
-        </ol>
-      </div>
-      
-      <div class="cta-container">
-        <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
-          🌟 Start Shopping Now
-        </a>
-      </div>
+      ${userData.isPremium && userData.sections && userData.sections.length > 0 ? `
+        <!-- Advanced Design Mode with Custom Sections -->
+        <h2 class="greeting">Hello! 👋</h2>
+        
+        <div class="custom-message">
+          ${userData.customMessage}
+        </div>
+        
+        <div class="promo-code-box">
+          <div class="promo-label">🎁 Your Exclusive Promo Code</div>
+          <div class="promo-code">${userData.promoCode}</div>
+        </div>
+        
+        <!-- Custom sections from advanced design -->
+        ${generateAdvancedSections(userData.sections)}
+        
+        <div class="cta-container">
+          <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
+            🌟 Start Shopping Now
+          </a>
+        </div>
+      ` : `
+        <!-- Simple Mode (Original Design) -->
+        <h2 class="greeting">Hello! 👋</h2>
+        
+        <div class="custom-message">
+          ${userData.customMessage}
+        </div>
+        
+        <div class="promo-code-box">
+          <div class="promo-label">🎁 Your Exclusive Promo Code</div>
+          <div class="promo-code">${userData.promoCode}</div>
+        </div>
+        
+        <div class="usage-steps">
+          <h4>🚀 How to use your promo code:</h4>
+          <ol>
+            <li>Visit our website: <a href="${getPromoUrl()}" style="color: #1d4ed8;">${getPromoUrl()}</a></li>
+            <li>Browse our amazing local cooks and their delicious offerings</li>
+            <li>Apply your promo code during checkout</li>
+            <li>Enjoy your special offer!</li>
+          </ol>
+        </div>
+        
+        <div class="cta-container">
+          <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
+            🌟 Start Shopping Now
+          </a>
+        </div>
+      `}
       
       <div class="divider"></div>
     </div>

@@ -8746,7 +8746,7 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, customMessage, promoStyle } = req.body;
+    const { email, promoCode, customMessage, promoStyle, designSystem, isPremium, sections } = req.body;
 
     // Validate required fields
     if (!email || !promoCode || !customMessage) {
@@ -8791,7 +8791,10 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       email: email,
       promoCode: promoCode.trim(),
       customMessage: customMessage.trim(),
-      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' }
+      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+      designSystem: designSystem,
+      isPremium: isPremium || false,
+      sections: sections || []
     });
 
     // Send the email
@@ -8844,7 +8847,7 @@ app.post('/api/test-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, customMessage, promoStyle } = req.body;
+    const { email, promoCode, customMessage, promoStyle, designSystem, isPremium, sections } = req.body;
 
     console.log(`Admin ${user.username} testing promo email`);
 
@@ -8856,7 +8859,10 @@ app.post('/api/test-promo-email', async (req, res) => {
       email: email || 'test@example.com',
       promoCode: promoCode || 'TEST20',
       customMessage: customMessage || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
-      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' }
+      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+      designSystem: designSystem,
+      isPremium: isPremium || false,
+      sections: sections || []
     });
 
     // Send the email
@@ -8905,7 +8911,7 @@ app.post('/api/preview-promo-email', async (req, res) => {
       });
     }
 
-    const { promoCode, customMessage, promoStyle } = req.body;
+    const { promoCode, customMessage, promoStyle, designSystem, isPremium, sections } = req.body;
 
     // Validate required fields for preview
     if (!promoCode || !customMessage) {
@@ -8925,7 +8931,10 @@ app.post('/api/preview-promo-email', async (req, res) => {
       email: 'preview@example.com', // Dummy email for preview
       promoCode: promoCode.trim(),
       customMessage: customMessage.trim(),
-      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' }
+      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+      designSystem: designSystem,
+      isPremium: isPremium || false,
+      sections: sections || []
     });
 
     // Return the HTML content directly for preview
