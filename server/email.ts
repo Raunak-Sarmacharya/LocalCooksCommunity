@@ -1340,6 +1340,11 @@ const getVendorDashboardUrl = (): string => {
   return process.env.VENDOR_DASHBOARD_URL || 'https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php';
 };
 
+// Helper function to get the correct promo URL for customer app
+const getPromoUrl = (): string => {
+  return 'https://localcook.shop/app/index.php';
+};
+
 // Generate document update email with unified design
 export const generateDocumentUpdateEmail = (
   userData: {
@@ -1460,7 +1465,7 @@ ${template.gratitudeMessage}
 Your Promo Code: ${promoCode}
 
 ${adminMessage ? `Personal message from our team: ${adminMessage}\n\n` : ''}To use your promo code:
-1. Visit our website: ${getWebsiteUrl()}
+1. Visit our website: ${getPromoUrl()}
 2. Apply during checkout or registration
 3. Enjoy your special offer!
 
@@ -1471,7 +1476,7 @@ Questions? Contact us at ${supportEmail}
 Best regards,
 ${organizationName} Team
 
-Visit: ${getWebsiteUrl()}
+Visit: ${getPromoUrl()}
 `;
   };
 
@@ -1610,6 +1615,10 @@ Visit: ${getWebsiteUrl()}
       margin: 24px 0;
       font-style: italic;
     }
+    .cta-container {
+      text-align: center;
+      margin: 32px 0;
+    }
   </style>
 </head>
 <body>
@@ -1646,7 +1655,7 @@ Visit: ${getWebsiteUrl()}
       <div class="usage-steps">
         <h4>🚀 How to use your promo code:</h4>
         <ol>
-          <li>Visit our website: <a href="${getWebsiteUrl()}" style="color: #1d4ed8;">${getWebsiteUrl()}</a></li>
+          <li>Visit our website: <a href="${getPromoUrl()}" style="color: #1d4ed8;">${getPromoUrl()}</a></li>
           <li>Browse our amazing local cooks and their delicious offerings</li>
           <li>Apply your promo code during checkout</li>
           <li>Enjoy your special ${templateType === 'loyalty' ? 'loyalty reward' : templateType === 'comeback' ? 'welcome back offer' : 'discount'}!</li>
@@ -1657,9 +1666,11 @@ Visit: ${getWebsiteUrl()}
         <p>🔒 This promo code is exclusively for you as our ${template.footerNote}.</p>
       </div>
       
-      <a href="${getWebsiteUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
-        ${template.ctaText}
-      </a>
+      <div class="cta-container">
+        <a href="${getPromoUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">
+          ${template.ctaText}
+        </a>
+      </div>
       
       <div class="divider"></div>
     </div>
