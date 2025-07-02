@@ -235,13 +235,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           tone: 'professional'
         }
       },
-      content: {
-        subject: 'Special Offer Just for You!',
-        previewText: 'Exclusive promo code inside',
-        sections: [],
-        promoCode: '',
-        customMessage: '',
-        email: '',
+          content: {
+      subject: 'Special Offer Just for You!',
+      previewText: 'Exclusive promo code inside',
+      sections: [],
+      promoCode: 'SAVE20',
+      customMessage: 'We\'re excited to offer you this exclusive discount! Use the promo code below to get amazing savings on your next order.',
+      email: '',
         orderButton: {
           text: '🌟 Start Shopping Now',
           url: 'https://localcooks.com',
@@ -419,8 +419,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     { id: 'gradient', name: 'Gradient Box', style: { background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderRadius: '8px' } }
   ];
 
-  // Send test email
-  const handleSendTestEmail = async () => {
+  // Send promo email
+  const handleSendPromoEmail = async () => {
     if (!currentDesign.content.email) {
       toast({
         title: "Email Required",
@@ -430,11 +430,33 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       return;
     }
 
+    // Validate required fields before sending
+    if (!currentDesign.content.promoCode) {
+      toast({
+        title: "Promo Code Required",
+        description: "Please enter a promo code",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!currentDesign.content.customMessage || currentDesign.content.customMessage.length < 10) {
+      toast({
+        title: "Custom Message Required",
+        description: "Please enter a custom message (at least 10 characters)",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsSending(true);
     try {
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
           email: currentDesign.content.email,
           promoCode: currentDesign.content.promoCode,
@@ -449,17 +471,26 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       });
 
       if (response.ok) {
+        const result = await response.json();
         toast({
-          title: "✅ Email Sent!",
-          description: `Test email sent to ${currentDesign.content.email}`
+          title: "✅ Promo Email Sent!",
+          description: `Promo email sent to ${currentDesign.content.email}`
         });
       } else {
-        throw new Error('Failed to send email');
+        // Get detailed error message from server
+        let errorMessage = "Could not send promo email. Please try again.";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (parseError) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
     } catch (error) {
       toast({
         title: "Send Failed",
-        description: "Could not send test email. Please try again.",
+        description: error instanceof Error ? error.message : "Could not send promo email. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -489,7 +520,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             </Button>
 
             <Button 
-              onClick={handleSendTestEmail}
+              onClick={handleSendPromoEmail}
               disabled={isSending || !currentDesign.content.email}
               className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white h-9 px-4"
             >
@@ -501,7 +532,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               ) : (
                 <>
                   <Send className="h-4 w-4 mr-2" />
-                  Send Test Email
+                  Send Promo Email
                 </>
               )}
             </Button>

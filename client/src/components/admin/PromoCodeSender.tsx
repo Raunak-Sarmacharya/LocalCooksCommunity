@@ -199,8 +199,8 @@ const PromoCodeSender: React.FC = () => {
       subject: 'Special Offer Just for You!',
       previewText: 'Exclusive promo code inside',
       sections: [],
-      promoCode: '',
-      customMessage: '',
+      promoCode: 'SAVE20',
+      customMessage: 'We\'re excited to offer you this exclusive discount! Use the promo code below to get amazing savings on your next order.',
       email: '',
       orderButton: {
         text: '🌟 Start Shopping Now',
@@ -241,12 +241,34 @@ const PromoCodeSender: React.FC = () => {
       return;
     }
 
+    // Validate required fields before sending
+    if (!emailDesign.content.promoCode || emailDesign.content.promoCode.length < 3) {
+      toast({
+        title: "Invalid Promo Code",
+        description: "Promo code must be at least 3 characters long",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!emailDesign.content.customMessage || emailDesign.content.customMessage.length < 10) {
+      toast({
+        title: "Invalid Custom Message",
+        description: "Custom message must be at least 10 characters long",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
           email: emailDesign.content.email,
           promoCode: emailDesign.content.promoCode,
@@ -262,6 +284,7 @@ const PromoCodeSender: React.FC = () => {
       });
 
       if (response.ok) {
+        const result = await response.json();
         toast({
           title: "🎉 Email Sent Successfully!",
           description: `Promo email sent to ${emailDesign.content.email}`,
@@ -278,8 +301,15 @@ const PromoCodeSender: React.FC = () => {
           }
         }));
       } else {
-        const error = await response.text();
-        throw new Error(error);
+        // Get detailed error message from server
+        let errorMessage = "Failed to send promo email";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (parseError) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
     } catch (error) {
       toast({
