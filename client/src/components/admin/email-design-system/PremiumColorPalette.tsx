@@ -6,24 +6,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { motion } from "framer-motion";
 import {
-    CheckCircle2,
+    Check,
     Copy,
-    Crown,
-    Droplets,
-    Layers,
-    Lightbulb,
-    Paintbrush,
     Palette,
-    Sparkles,
-    Star,
-    Sun,
-    Target,
+    RefreshCw,
     Wand2
 } from "lucide-react";
 import React, { useCallback, useState } from 'react';
 
+// Interface definitions
 interface ColorSystemConfig {
   primary: ColorPalette;
   secondary: ColorPalette;
@@ -53,279 +45,408 @@ interface GradientCollection {
   accent: string;
 }
 
-interface PremiumColorPaletteProps {
-  colors: ColorSystemConfig;
-  onUpdate: (colors: ColorSystemConfig) => void;
+export interface ColorPaletteProps {
+  colorSystem: ColorSystemConfig;
+  onColorSystemUpdate: (colorSystem: ColorSystemConfig) => void;
 }
 
-export const PremiumColorPalette: React.FC<PremiumColorPaletteProps> = ({
-  colors,
-  onUpdate
+// Brand Palettes
+const BRAND_PALETTES = {
+  apple: {
+    name: "Apple",
+    description: "Clean, minimalist design system",
+    colors: {
+      primary: { main: "#007AFF", light: "#66B6FF", dark: "#0056B3", contrast: "#FFFFFF" },
+      secondary: { main: "#8E8E93", light: "#C7C7CC", dark: "#636366", contrast: "#FFFFFF" },
+      accent: { main: "#FF9500", light: "#FFB84D", dark: "#CC7700", contrast: "#FFFFFF" },
+      neutral: { main: "#6D6D70", light: "#F2F2F7", dark: "#1C1C1E", contrast: "#FFFFFF" },
+      semantic: { success: "#34C759", warning: "#FF9500", error: "#FF3B30", info: "#007AFF" },
+      gradients: {
+        primary: "linear-gradient(135deg, #007AFF 0%, #66B6FF 100%)",
+        secondary: "linear-gradient(135deg, #8E8E93 0%, #C7C7CC 100%)",
+        accent: "linear-gradient(135deg, #FF9500 0%, #FFB84D 100%)"
+      }
+    }
+  },
+  stripe: {
+    name: "Stripe",
+    description: "Professional fintech design",
+    colors: {
+      primary: { main: "#635BFF", light: "#9A96FF", dark: "#453ECC", contrast: "#FFFFFF" },
+      secondary: { main: "#87BBFD", light: "#B5D4FE", dark: "#5A8BCA", contrast: "#FFFFFF" },
+      accent: { main: "#00D924", light: "#4DED57", dark: "#00A71D", contrast: "#FFFFFF" },
+      neutral: { main: "#6B7280", light: "#F9FAFB", dark: "#111827", contrast: "#FFFFFF" },
+      semantic: { success: "#00D924", warning: "#F59E0B", error: "#EF4444", info: "#635BFF" },
+      gradients: {
+        primary: "linear-gradient(135deg, #635BFF 0%, #9A96FF 100%)",
+        secondary: "linear-gradient(135deg, #87BBFD 0%, #B5D4FE 100%)",
+        accent: "linear-gradient(135deg, #00D924 0%, #4DED57 100%)"
+      }
+    }
+  },
+  netflix: {
+    name: "Netflix",
+    description: "Bold entertainment brand",
+    colors: {
+      primary: { main: "#E50914", light: "#F24250", dark: "#B20710", contrast: "#FFFFFF" },
+      secondary: { main: "#564D4D", light: "#8A7F7F", dark: "#3A3131", contrast: "#FFFFFF" },
+      accent: { main: "#F5F5F1", light: "#FFFFFF", dark: "#C2C2BE", contrast: "#000000" },
+      neutral: { main: "#6B7280", light: "#F9FAFB", dark: "#111827", contrast: "#FFFFFF" },
+      semantic: { success: "#10B981", warning: "#F59E0B", error: "#E50914", info: "#3B82F6" },
+      gradients: {
+        primary: "linear-gradient(135deg, #E50914 0%, #F24250 100%)",
+        secondary: "linear-gradient(135deg, #564D4D 0%, #8A7F7F 100%)",
+        accent: "linear-gradient(135deg, #F5F5F1 0%, #FFFFFF 100%)"
+      }
+    }
+  },
+  shopify: {
+    name: "Shopify",
+    description: "E-commerce optimized colors",
+    colors: {
+      primary: { main: "#7AB55C", light: "#9CC788", dark: "#5E8A46", contrast: "#FFFFFF" },
+      secondary: { main: "#5A6C7D", light: "#8A9BAC", dark: "#45525E", contrast: "#FFFFFF" },
+      accent: { main: "#6371C7", light: "#8A96E3", dark: "#4C5AA5", contrast: "#FFFFFF" },
+      neutral: { main: "#6B7280", light: "#F3F4F6", dark: "#1F2937", contrast: "#FFFFFF" },
+      semantic: { success: "#7AB55C", warning: "#F59E0B", error: "#EF4444", info: "#6371C7" },
+      gradients: {
+        primary: "linear-gradient(135deg, #7AB55C 0%, #9CC788 100%)",
+        secondary: "linear-gradient(135deg, #5A6C7D 0%, #8A9BAC 100%)",
+        accent: "linear-gradient(135deg, #6371C7 0%, #8A96E3 100%)"
+      }
+    }
+  },
+  localcooks: {
+    name: "Local Cooks",
+    description: "Food & hospitality brand",
+    colors: {
+      primary: { main: "#16a34a", light: "#4ade80", dark: "#15803d", contrast: "#ffffff" },
+      secondary: { main: "#F51042", light: "#FF5470", dark: "#C20D35", contrast: "#ffffff" },
+      accent: { main: "#f59e0b", light: "#fbbf24", dark: "#d97706", contrast: "#ffffff" },
+      neutral: { main: "#6b7280", light: "#f3f4f6", dark: "#1f2937", contrast: "#ffffff" },
+      semantic: { success: "#16a34a", warning: "#f59e0b", error: "#dc2626", info: "#2563eb" },
+      gradients: {
+        primary: "linear-gradient(135deg, #16a34a 0%, #4ade80 100%)",
+        secondary: "linear-gradient(135deg, #F51042 0%, #FF5470 100%)",
+        accent: "linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)"
+      }
+    }
+  }
+};
+
+// Color harmony algorithms
+const generateColorHarmony = (baseColor: string, type: 'complementary' | 'triadic' | 'analogous' | 'monochromatic') => {
+  // Convert hex to HSL for calculations
+  const hexToHsl = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+
+    return [h * 360, s * 100, l * 100];
+  };
+
+  // Convert HSL back to hex
+  const hslToHex = (h: number, s: number, l: number) => {
+    h /= 360; s /= 100; l /= 100;
+
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    let r, g, b;
+
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+
+    const toHex = (c: number) => {
+      const hex = Math.round(c * 255).toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    };
+
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  const [h, s, l] = hexToHsl(baseColor);
+
+  switch (type) {
+    case 'complementary':
+      return [
+        baseColor,
+        hslToHex((h + 180) % 360, s, l)
+      ];
+    case 'triadic':
+      return [
+        baseColor,
+        hslToHex((h + 120) % 360, s, l),
+        hslToHex((h + 240) % 360, s, l)
+      ];
+    case 'analogous':
+      return [
+        hslToHex((h - 30 + 360) % 360, s, l),
+        baseColor,
+        hslToHex((h + 30) % 360, s, l)
+      ];
+    case 'monochromatic':
+      return [
+        hslToHex(h, s, Math.max(10, l - 30)),
+        hslToHex(h, s, Math.max(10, l - 15)),
+        baseColor,
+        hslToHex(h, s, Math.min(90, l + 15)),
+        hslToHex(h, s, Math.min(90, l + 30))
+      ];
+    default:
+      return [baseColor];
+  }
+};
+
+export const ColorPalette: React.FC<ColorPaletteProps> = ({
+  colorSystem,
+  onColorSystemUpdate
 }) => {
   const { toast } = useToast();
-  const [activeColorSet, setActiveColorSet] = useState('primary');
-  const [colorMode, setColorMode] = useState<'picker' | 'harmony' | 'ai'>('picker');
-  const [harmonyType, setHarmonyType] = useState('complementary');
+  const [activeTab, setActiveTab] = useState('palettes');
+  const [selectedBrandPalette, setSelectedBrandPalette] = useState<string | null>(null);
+  const [customBaseColor, setCustomBaseColor] = useState('#16a34a');
+  const [harmonyType, setHarmonyType] = useState<'complementary' | 'triadic' | 'analogous' | 'monochromatic'>('complementary');
+  const [generatedColors, setGeneratedColors] = useState<string[]>([]);
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
-  const [customGradient, setCustomGradient] = useState('');
 
-  // Enterprise color palettes inspired by top brands
-  const premiumPalettes = [
-    {
-      name: 'Apple Refined',
-      description: 'Clean, minimal sophistication',
-      icon: '🍎',
-      colors: {
-        primary: { main: '#007AFF', light: '#5AC8FA', dark: '#0051D5', contrast: '#FFFFFF' },
-        secondary: { main: '#8E8E93', light: '#C7C7CC', dark: '#636366', contrast: '#FFFFFF' },
-        accent: { main: '#FF9500', light: '#FFCC02', dark: '#FF6D00', contrast: '#FFFFFF' },
-        neutral: { main: '#1C1C1E', light: '#F2F2F7', dark: '#000000', contrast: '#FFFFFF' }
-      }
-    },
-    {
-      name: 'Stripe Professional',
-      description: 'Trustworthy fintech elegance',
-      icon: '💳',
-      colors: {
-        primary: { main: '#635BFF', light: '#8B5FBF', dark: '#4E46E5', contrast: '#FFFFFF' },
-        secondary: { main: '#74788D', light: '#A3A8C3', dark: '#525F7F', contrast: '#FFFFFF' },
-        accent: { main: '#00D924', light: '#7CE38B', dark: '#00B020', contrast: '#FFFFFF' },
-        neutral: { main: '#32325D', light: '#F6F9FC', dark: '#1A1B23', contrast: '#FFFFFF' }
-      }
-    },
-    {
-      name: 'Netflix Bold',
-      description: 'Entertainment-grade impact',
-      icon: '🎬',
-      colors: {
-        primary: { main: '#E50914', light: '#F40612', dark: '#B81D24', contrast: '#FFFFFF' },
-        secondary: { main: '#221F1F', light: '#564D4D', dark: '#0F0F0F', contrast: '#FFFFFF' },
-        accent: { main: '#F5F5F1', light: '#FFFFFF', dark: '#E6E6E1', contrast: '#000000' },
-        neutral: { main: '#737373', light: '#CCCCCC', dark: '#404040', contrast: '#FFFFFF' }
-      }
-    },
-    {
-      name: 'Shopify Commerce',
-      description: 'E-commerce optimized',
-      icon: '🛍️',
-      colors: {
-        primary: { main: '#7AB55C', light: '#96C142', dark: '#5B8A3C', contrast: '#FFFFFF' },
-        secondary: { main: '#637381', light: '#919EAB', dark: '#454F5B', contrast: '#FFFFFF' },
-        accent: { main: '#FFC107', light: '#FFD54F', dark: '#FFA000', contrast: '#000000' },
-        neutral: { main: '#212B36', light: '#F4F6F8', dark: '#161C24', contrast: '#FFFFFF' }
-      }
-    },
-    {
-      name: 'Local Cooks Signature',
-      description: 'Your brand optimized',
-      icon: '👨‍🍳',
-      colors: {
-        primary: { main: '#F51042', light: '#FF4569', dark: '#D40E3A', contrast: '#FFFFFF' },
-        secondary: { main: '#16a34a', light: '#22c55e', dark: '#15803d', contrast: '#FFFFFF' },
-        accent: { main: '#f59e0b', light: '#fbbf24', dark: '#d97706', contrast: '#FFFFFF' },
-        neutral: { main: '#1f2937', light: '#f9fafb', dark: '#111827', contrast: '#FFFFFF' }
-      }
-    }
-  ];
+  // Apply brand palette
+  const applyBrandPalette = useCallback((paletteKey: string) => {
+    const palette = BRAND_PALETTES[paletteKey as keyof typeof BRAND_PALETTES];
+    if (!palette) return;
 
-  // Color harmony algorithms
-  const generateHarmony = useCallback((baseColor: string, type: string) => {
-    // Convert hex to HSL for calculations
-    const hexToHsl = (hex: string) => {
-      const r = parseInt(hex.slice(1, 3), 16) / 255;
-      const g = parseInt(hex.slice(3, 5), 16) / 255;
-      const b = parseInt(hex.slice(5, 7), 16) / 255;
+    setSelectedBrandPalette(paletteKey);
+    onColorSystemUpdate(palette.colors);
 
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      let h, s, l = (max + min) / 2;
+    toast({
+      title: `${palette.name} Palette Applied`,
+      description: palette.description,
+    });
+  }, [onColorSystemUpdate, toast]);
 
-      if (max === min) {
-        h = s = 0;
-      } else {
-        const d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        switch (max) {
-          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-          case g: h = (b - r) / d + 2; break;
-          case b: h = (r - g) / d + 4; break;
-          default: h = 0;
-        }
-        h /= 6;
-      }
+  // Generate color harmony
+  const generateHarmony = useCallback(() => {
+    const colors = generateColorHarmony(customBaseColor, harmonyType);
+    setGeneratedColors(colors);
 
-      return [h * 360, s * 100, l * 100];
-    };
-
-    const hslToHex = (h: number, s: number, l: number) => {
-      h /= 360; s /= 100; l /= 100;
-      const a = s * Math.min(l, 1 - l);
-      const f = (n: number) => {
-        const k = (n + h * 12) % 12;
-        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-        return Math.round(255 * color).toString(16).padStart(2, '0');
-      };
-      return `#${f(0)}${f(8)}${f(4)}`;
-    };
-
-    const [h, s, l] = hexToHsl(baseColor);
-
-    switch (type) {
-      case 'complementary':
-        return [baseColor, hslToHex((h + 180) % 360, s, l)];
-      case 'triadic':
-        return [
-          baseColor,
-          hslToHex((h + 120) % 360, s, l),
-          hslToHex((h + 240) % 360, s, l)
-        ];
-      case 'analogous':
-        return [
-          baseColor,
-          hslToHex((h + 30) % 360, s, l),
-          hslToHex((h - 30 + 360) % 360, s, l)
-        ];
-      case 'monochromatic':
-        return [
-          hslToHex(h, s, Math.max(l - 20, 0)),
-          baseColor,
-          hslToHex(h, s, Math.min(l + 20, 100))
-        ];
-      default:
-        return [baseColor];
-    }
-  }, []);
+    toast({
+      title: "Color Harmony Generated",
+      description: `Generated ${colors.length} ${harmonyType} colors`,
+    });
+  }, [customBaseColor, harmonyType, toast]);
 
   // Copy color to clipboard
   const copyColor = useCallback(async (color: string) => {
     try {
       await navigator.clipboard.writeText(color);
       setCopiedColor(color);
+      setTimeout(() => setCopiedColor(null), 2000);
+
       toast({
-        title: "Color Copied!",
+        title: "Color Copied",
         description: `${color} copied to clipboard`,
       });
-      setTimeout(() => setCopiedColor(null), 2000);
     } catch (error) {
       toast({
         title: "Copy Failed",
-        description: "Unable to copy color to clipboard",
+        description: "Failed to copy color to clipboard",
         variant: "destructive"
       });
     }
   }, [toast]);
 
-  // Generate AI-powered color suggestions
-  const generateAIColors = useCallback(() => {
-    // Simulate AI color generation with sophisticated algorithms
-    const aiPalettes = [
-      { name: 'Warm Sunset', base: '#FF6B35' },
-      { name: 'Ocean Depths', base: '#0077BE' },
-      { name: 'Forest Canopy', base: '#228B22' },
-      { name: 'Lavender Dreams', base: '#B19CD9' },
-      { name: 'Coral Reef', base: '#FF7F7F' }
-    ];
-
-    const randomPalette = aiPalettes[Math.floor(Math.random() * aiPalettes.length)];
-    const harmony = generateHarmony(randomPalette.base, 'triadic');
-    
-    toast({
-      title: "🤖 AI Colors Generated!",
-      description: `Applied "${randomPalette.name}" palette`,
-    });
-
-    return {
-      primary: { main: harmony[0], light: `${harmony[0]}80`, dark: `${harmony[0]}C0`, contrast: '#FFFFFF' },
-      secondary: { main: harmony[1], light: `${harmony[1]}80`, dark: `${harmony[1]}C0`, contrast: '#FFFFFF' },
-      accent: { main: harmony[2], light: `${harmony[2]}80`, dark: `${harmony[2]}C0`, contrast: '#FFFFFF' }
-    };
-  }, [generateHarmony, toast]);
-
-  // Apply premium palette
-  const applyPremiumPalette = useCallback((palette: any) => {
-    const newColors = {
-      ...colors,
-      primary: palette.colors.primary,
-      secondary: palette.colors.secondary,
-      accent: palette.colors.accent,
-      neutral: palette.colors.neutral
-    };
-    
-    onUpdate(newColors);
-    
-    toast({
-      title: `${palette.icon} ${palette.name} Applied!`,
-      description: palette.description,
-    });
-  }, [colors, onUpdate, toast]);
-
   // Update individual color
-  const updateColor = useCallback((category: string, type: string, value: string) => {
-    const newColors = {
-      ...colors,
+  const updateColor = useCallback((category: keyof ColorSystemConfig, property: string, value: string) => {
+    const updatedColorSystem = {
+      ...colorSystem,
       [category]: {
-        ...colors[category as keyof ColorSystemConfig],
-        [type]: value
+        ...colorSystem[category],
+        [property]: value
       }
     };
-    onUpdate(newColors);
-  }, [colors, onUpdate]);
+
+    onColorSystemUpdate(updatedColorSystem);
+
+    toast({
+      title: "Color Updated",
+      description: `${category} ${property} updated`,
+    });
+  }, [colorSystem, onColorSystemUpdate, toast]);
+
+  // Generate gradient from two colors
+  const generateGradient = (color1: string, color2: string, direction = '135deg') => {
+    return `linear-gradient(${direction}, ${color1} 0%, ${color2} 100%)`;
+  };
+
+  // Update gradient
+  const updateGradient = useCallback((gradientKey: keyof GradientCollection, color1: string, color2: string) => {
+    const newGradient = generateGradient(color1, color2);
+    
+    const updatedColorSystem = {
+      ...colorSystem,
+      gradients: {
+        ...colorSystem.gradients,
+        [gradientKey]: newGradient
+      }
+    };
+
+    onColorSystemUpdate(updatedColorSystem);
+
+    toast({
+      title: "Gradient Updated",
+      description: `${gradientKey} gradient updated`,
+    });
+  }, [colorSystem, onColorSystemUpdate, toast]);
+
+  // Apply generated color to palette
+  const applyGeneratedColor = useCallback((color: string, target: string) => {
+    const [category, property] = target.split('.');
+    updateColor(category as keyof ColorSystemConfig, property, color);
+  }, [updateColor]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg">
-            <Palette className="h-6 w-6 text-purple-600" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold">Premium Color System</h2>
-            <p className="text-slate-600 dark:text-slate-400">
-              Enterprise-grade color design tools
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Badge variant="outline" className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-            <Crown className="h-3 w-3 mr-1" />
-            Pro Studio
-          </Badge>
-        </div>
-      </div>
-
-      {/* Color Mode Selector */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center space-x-2">
-            <Wand2 className="h-5 w-5" />
-            <span>Color Generation Mode</span>
-          </CardTitle>
+          <CardTitle className="text-lg flex items-center text-gray-900">
+            <Palette className="h-5 w-5 mr-2" />
+                    Color System
+      </CardTitle>
+      <CardDescription>
+        Advanced color management and design tools
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Tabs value={colorMode} onValueChange={(value) => setColorMode(value as any)}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="picker" className="flex items-center space-x-2">
-                <Droplets className="h-4 w-4" />
-                <span>Manual Picker</span>
-              </TabsTrigger>
-              <TabsTrigger value="harmony" className="flex items-center space-x-2">
-                <Target className="h-4 w-4" />
-                <span>Color Harmony</span>
-              </TabsTrigger>
-              <TabsTrigger value="ai" className="flex items-center space-x-2">
-                <Sparkles className="h-4 w-4" />
-                <span>AI Generated</span>
-              </TabsTrigger>
-            </TabsList>
+      </Card>
 
-            <TabsContent value="harmony" className="mt-4">
-              <div className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-4 bg-white shadow-sm">
+          <TabsTrigger value="palettes">Brand Palettes</TabsTrigger>
+          <TabsTrigger value="harmony">Color Harmony</TabsTrigger>
+          <TabsTrigger value="custom">Custom Colors</TabsTrigger>
+          <TabsTrigger value="gradients">Gradients</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="palettes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base text-gray-900">Brand Palettes</CardTitle>
+              <CardDescription>
+                Professionally designed color systems from top brands
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Object.entries(BRAND_PALETTES).map(([key, palette]) => (
+                <div 
+                  key={key}
+                  className={`p-4 border rounded-lg cursor-pointer transition-all duration-200 ${
+                    selectedBrandPalette === key 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => applyBrandPalette(key)}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{palette.name}</h4>
+                      <p className="text-sm text-gray-600">{palette.description}</p>
+                    </div>
+                    {selectedBrandPalette === key && (
+                      <Badge variant="default" className="bg-blue-600">
+                        <Check className="h-3 w-3 mr-1" />
+                        Active
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  <div className="flex space-x-2">
+                    <div 
+                      className="w-8 h-8 rounded border"
+                      style={{ backgroundColor: palette.colors.primary.main }}
+                      title={`Primary: ${palette.colors.primary.main}`}
+                    />
+                    <div 
+                      className="w-8 h-8 rounded border"
+                      style={{ backgroundColor: palette.colors.secondary.main }}
+                      title={`Secondary: ${palette.colors.secondary.main}`}
+                    />
+                    <div 
+                      className="w-8 h-8 rounded border"
+                      style={{ backgroundColor: palette.colors.accent.main }}
+                      title={`Accent: ${palette.colors.accent.main}`}
+                    />
+                    <div 
+                      className="w-8 h-8 rounded border"
+                      style={{ backgroundColor: palette.colors.neutral.dark }}
+                      title={`Neutral: ${palette.colors.neutral.dark}`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="harmony" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base text-gray-900">Color Harmony Generator</CardTitle>
+              <CardDescription>
+                Generate color combinations using color theory
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Harmony Type</Label>
-                  <Select value={harmonyType} onValueChange={setHarmonyType}>
-                    <SelectTrigger>
+                  <Label className="text-sm font-medium text-gray-700">Base Color</Label>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <Input
+                      type="color"
+                      value={customBaseColor}
+                      onChange={(e) => setCustomBaseColor(e.target.value)}
+                      className="w-12 h-10 p-1 border rounded"
+                    />
+                    <Input
+                      value={customBaseColor}
+                      onChange={(e) => setCustomBaseColor(e.target.value)}
+                      placeholder="#16a34a"
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Harmony Type</Label>
+                  <Select value={harmonyType} onValueChange={(value: any) => setHarmonyType(value)}>
+                    <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -337,220 +458,316 @@ export const PremiumColorPalette: React.FC<PremiumColorPaletteProps> = ({
                   </Select>
                 </div>
               </div>
-            </TabsContent>
 
-            <TabsContent value="ai" className="mt-4">
-              <div className="space-y-4">
-                <Button 
-                  onClick={() => {
-                    const aiColors = generateAIColors();
-                    onUpdate({ ...colors, ...aiColors });
-                  }}
-                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Generate AI-Powered Palette
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+              <Button onClick={generateHarmony} className="w-full">
+                <Wand2 className="h-4 w-4 mr-2" />
+                Generate Color Harmony
+              </Button>
 
-      {/* Premium Palette Library */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center space-x-2">
-            <Star className="h-5 w-5" />
-            <span>Premium Palette Library</span>
-          </CardTitle>
-          <CardDescription>
-            Curated color systems from leading design companies
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {premiumPalettes.map((palette, index) => (
-              <motion.div
-                key={palette.name}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="border rounded-lg p-4 cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-purple-200"
-                onClick={() => applyPremiumPalette(palette)}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl">{palette.icon}</span>
-                    <div>
-                      <h4 className="font-semibold">{palette.name}</h4>
-                      <p className="text-xs text-slate-600">{palette.description}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex space-x-1 mb-2">
-                  {Object.values(palette.colors).map((color: any, i) => (
-                    <div
-                      key={i}
-                      className="w-6 h-6 rounded-full border border-white shadow-sm"
-                      style={{ backgroundColor: color.main }}
-                    />
-                  ))}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Color System Editor */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center space-x-2">
-            <Layers className="h-5 w-5" />
-            <span>Color System Editor</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeColorSet} onValueChange={setActiveColorSet}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="primary">Primary</TabsTrigger>
-              <TabsTrigger value="secondary">Secondary</TabsTrigger>
-              <TabsTrigger value="accent">Accent</TabsTrigger>
-              <TabsTrigger value="semantic">Semantic</TabsTrigger>
-            </TabsList>
-
-            {['primary', 'secondary', 'accent'].map((colorSet) => (
-              <TabsContent key={colorSet} value={colorSet} className="mt-6">
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {['main', 'light', 'dark', 'contrast'].map((variant) => (
-                      <div key={variant} className="space-y-3">
-                        <Label className="capitalize font-medium">{variant}</Label>
-                        <div className="space-y-2">
-                                                     <div
-                             className="w-full h-16 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer relative group overflow-hidden"
-                             style={{ 
-                               backgroundColor: (colors[colorSet as keyof ColorSystemConfig] as any)[variant] as string 
-                             }}
-                             onClick={() => copyColor((colors[colorSet as keyof ColorSystemConfig] as any)[variant] as string)}
-                          >
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center">
-                              <motion.div
-                                initial={{ scale: 0 }}
-                                whileHover={{ scale: 1 }}
-                                className="p-2 bg-white bg-opacity-90 rounded-full"
-                              >
-                                                                 {copiedColor === (colors[colorSet as keyof ColorSystemConfig] as any)[variant] ? (
-                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                ) : (
-                                  <Copy className="h-4 w-4 text-gray-600" />
-                                )}
-                              </motion.div>
-                            </div>
+              {generatedColors.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="font-medium text-gray-900">Generated Colors</h4>
+                  <div className="grid grid-cols-5 gap-2">
+                    {generatedColors.map((color, index) => (
+                      <div
+                        key={index}
+                        className="relative group cursor-pointer"
+                        onClick={() => copyColor(color)}
+                      >
+                        <div 
+                          className="w-full h-12 rounded border shadow-sm group-hover:scale-105 transition-transform"
+                          style={{ backgroundColor: color }}
+                        />
+                        <p className="text-xs text-center mt-1 text-gray-600 font-mono">
+                          {color}
+                        </p>
+                        {copiedColor === color && (
+                          <div className="absolute -top-1 -right-1 bg-green-500 text-white rounded-full p-1">
+                            <Check className="h-3 w-3" />
                           </div>
-                                                     <Input
-                             type="color"
-                             value={(colors[colorSet as keyof ColorSystemConfig] as any)[variant] as string}
-                             onChange={(e) => updateColor(colorSet, variant, e.target.value)}
-                             className="w-full h-8"
-                           />
-                           <Input
-                             type="text"
-                             value={(colors[colorSet as keyof ColorSystemConfig] as any)[variant] as string}
-                             onChange={(e) => updateColor(colorSet, variant, e.target.value)}
-                             className="font-mono text-sm"
-                             placeholder="#000000"
-                           />
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
-                </div>
-              </TabsContent>
-            ))}
 
-            <TabsContent value="semantic" className="mt-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {Object.entries(colors.semantic).map(([type, color]) => (
-                  <div key={type} className="space-y-3">
-                    <Label className="capitalize font-medium flex items-center space-x-2">
-                      <span>{type}</span>
-                      {type === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                      {type === 'warning' && <Sun className="h-4 w-4 text-yellow-600" />}
-                      {type === 'error' && <Target className="h-4 w-4 text-red-600" />}
-                      {type === 'info' && <Lightbulb className="h-4 w-4 text-blue-600" />}
-                    </Label>
-                    <div className="space-y-2">
-                      <div
-                        className="w-full h-16 rounded-lg border-2 border-dashed border-gray-300 cursor-pointer relative group overflow-hidden"
-                        style={{ backgroundColor: color }}
-                        onClick={() => copyColor(color)}
-                      >
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center">
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            whileHover={{ scale: 1 }}
-                            className="p-2 bg-white bg-opacity-90 rounded-full"
-                          >
-                            {copiedColor === color ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            ) : (
-                              <Copy className="h-4 w-4 text-gray-600" />
-                            )}
-                          </motion.div>
-                        </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select onValueChange={(value) => applyGeneratedColor(generatedColors[0], value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Apply to..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="primary.main">Primary Main</SelectItem>
+                        <SelectItem value="secondary.main">Secondary Main</SelectItem>
+                        <SelectItem value="accent.main">Accent Main</SelectItem>
+                        <SelectItem value="neutral.main">Neutral Main</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Button variant="outline" onClick={() => setGeneratedColors([])}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="custom" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base text-gray-900">Custom Color Editor</CardTitle>
+              <CardDescription>
+                Fine-tune individual colors in your design system
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Primary Colors */}
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Primary Colors</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(colorSystem.primary).map(([key, value]) => (
+                    <div key={key}>
+                      <Label className="text-sm font-medium text-gray-700 capitalize">{key}</Label>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Input
+                          type="color"
+                          value={value}
+                          onChange={(e) => updateColor('primary', key, e.target.value)}
+                          className="w-12 h-8 p-1 border rounded"
+                        />
+                        <Input
+                          value={value}
+                          onChange={(e) => updateColor('primary', key, e.target.value)}
+                          className="flex-1 font-mono text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyColor(value)}
+                        >
+                          {copiedColor === value ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Secondary Colors */}
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Secondary Colors</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(colorSystem.secondary).map(([key, value]) => (
+                    <div key={key}>
+                      <Label className="text-sm font-medium text-gray-700 capitalize">{key}</Label>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Input
+                          type="color"
+                          value={value}
+                          onChange={(e) => updateColor('secondary', key, e.target.value)}
+                          className="w-12 h-8 p-1 border rounded"
+                        />
+                        <Input
+                          value={value}
+                          onChange={(e) => updateColor('secondary', key, e.target.value)}
+                          className="flex-1 font-mono text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyColor(value)}
+                        >
+                          {copiedColor === value ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Accent Colors */}
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Accent Colors</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(colorSystem.accent).map(([key, value]) => (
+                    <div key={key}>
+                      <Label className="text-sm font-medium text-gray-700 capitalize">{key}</Label>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Input
+                          type="color"
+                          value={value}
+                          onChange={(e) => updateColor('accent', key, e.target.value)}
+                          className="w-12 h-8 p-1 border rounded"
+                        />
+                        <Input
+                          value={value}
+                          onChange={(e) => updateColor('accent', key, e.target.value)}
+                          className="flex-1 font-mono text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyColor(value)}
+                        >
+                          {copiedColor === value ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Semantic Colors */}
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Semantic Colors</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.entries(colorSystem.semantic).map(([key, value]) => (
+                    <div key={key}>
+                      <Label className="text-sm font-medium text-gray-700 capitalize">{key}</Label>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Input
+                          type="color"
+                          value={value}
+                          onChange={(e) => updateColor('semantic', key, e.target.value)}
+                          className="w-12 h-8 p-1 border rounded"
+                        />
+                        <Input
+                          value={value}
+                          onChange={(e) => updateColor('semantic', key, e.target.value)}
+                          className="flex-1 font-mono text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyColor(value)}
+                        >
+                          {copiedColor === value ? (
+                            <Check className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="gradients" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base text-gray-900">Gradient Studio</CardTitle>
+              <CardDescription>
+                Create and customize gradient combinations
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {Object.entries(colorSystem.gradients).map(([key, gradient]) => (
+                <div key={key}>
+                  <Label className="text-sm font-medium text-gray-700 capitalize mb-2 block">
+                    {key} Gradient
+                  </Label>
+                  
+                  <div className="space-y-3">
+                    {/* Gradient Preview */}
+                    <div 
+                      className="w-full h-16 rounded border shadow-sm"
+                      style={{ background: gradient }}
+                    />
+                    
+                    {/* Gradient CSS */}
+                    <div className="flex items-center space-x-2">
                       <Input
-                        type="color"
-                        value={color}
-                        onChange={(e) => onUpdate({
-                          ...colors,
-                          semantic: { ...colors.semantic, [type]: e.target.value }
-                        })}
-                        className="w-full h-8"
+                        value={gradient}
+                        onChange={(e) => updateGradient(key as keyof GradientCollection, e.target.value, e.target.value)}
+                        className="flex-1 font-mono text-sm"
+                        placeholder="CSS gradient..."
                       />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyColor(gradient)}
+                      >
+                        {copiedColor === gradient ? (
+                          <Check className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Quick Gradient Generator */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateGradient(
+                          key as keyof GradientCollection, 
+                          colorSystem.primary.main, 
+                          colorSystem.primary.light
+                        )}
+                      >
+                        Primary
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateGradient(
+                          key as keyof GradientCollection, 
+                          colorSystem.secondary.main, 
+                          colorSystem.secondary.light
+                        )}
+                      >
+                        Secondary
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateGradient(
+                          key as keyof GradientCollection, 
+                          colorSystem.accent.main, 
+                          colorSystem.accent.light
+                        )}
+                      >
+                        Accent
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      {/* Gradient Studio */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center space-x-2">
-            <Paintbrush className="h-5 w-5" />
-            <span>Gradient Studio</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {Object.entries(colors.gradients).map(([type, gradient]) => (
-              <div key={type} className="space-y-2">
-                <Label className="capitalize font-medium">{type} Gradient</Label>
-                <div className="flex items-center space-x-2">
-                  <div
-                    className="flex-1 h-12 rounded-lg border"
-                    style={{ background: gradient }}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyColor(gradient)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
                 </div>
+              ))}
+
+              <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                <h4 className="font-semibold text-purple-900 mb-2">
+                  Tips
+                </h4>
+                <ul className="text-sm text-purple-800 space-y-1">
+                  <li>• Use subtle gradients for backgrounds</li>
+                  <li>• High contrast gradients work well for buttons</li>
+                  <li>• Test gradients across different devices</li>
+                  <li>• Copy CSS directly to use in custom code</li>
+                </ul>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }; 

@@ -8886,4 +8886,59 @@ app.post('/api/test-promo-email', async (req, res) => {
   }
 });
 
+// Preview endpoint for promo code emails (admin only) - returns HTML without sending
+app.post('/api/preview-promo-email', async (req, res) => {
+  // Check if user is authenticated via session
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
+
+  if (!rawUserId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    // Check if the user is an admin
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only administrators can preview promo emails'
+      });
+    }
+
+    const { promoCode, customMessage, promoStyle } = req.body;
+
+    // Validate required fields for preview
+    if (!promoCode || !customMessage) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'Promo code and custom message are required for preview'
+      });
+    }
+
+    console.log(`Admin ${user.username} previewing promo email`);
+
+    // Import the email functions
+    const { generatePromoCodeEmail } = await import('../server/email.js');
+
+    // Generate promo email content for preview
+    const emailContent = generatePromoCodeEmail({
+      email: 'preview@example.com', // Dummy email for preview
+      promoCode: promoCode.trim(),
+      customMessage: customMessage.trim(),
+      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' }
+    });
+
+    // Return the HTML content directly for preview
+    res.setHeader('Content-Type', 'text/html');
+    return res.status(200).send(emailContent.html || '<p>No HTML content generated</p>');
+
+  } catch (error) {
+    console.error('Error generating promo email preview:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'An error occurred while generating email preview'
+    });
+  }
+});
+
 export default app;

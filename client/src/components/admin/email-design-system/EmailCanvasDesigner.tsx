@@ -1,320 +1,810 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useDragControls } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 import {
-    Crown,
+    AlignCenter,
+    AlignLeft,
+    AlignRight,
+    Copy,
+    Edit3,
     Eye,
+    Grid3x3,
     Image as ImageIcon,
-    Layers,
     MousePointer,
-    Square,
+    Move,
+    Paintbrush2,
+    RotateCcw,
+    Settings,
     Trash2,
-    Type,
-    Zap
+    Type
 } from "lucide-react";
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 
-interface EmailCanvasDesignerProps {
-  design: any;
-  onUpdate: (updates: any) => void;
-  previewMode: string;
+// Interface definitions
+interface EmailDesignData {
+  id: string;
+  name: string;
+  template: any;
+  designSystem: DesignSystemConfig;
+  content: EmailContent;
+  metadata: EmailMetadata;
+}
+
+interface DesignSystemConfig {
+  typography: TypographyConfig;
+  colors: ColorSystemConfig;
+  layout: LayoutConfig;
+  branding: BrandingConfig;
+}
+
+interface TypographyConfig {
+  primaryFont: string;
+  secondaryFont: string;
+  hierarchy: {
+    h1: FontSettings;
+    h2: FontSettings;
+    h3: FontSettings;
+    body: FontSettings;
+    caption: FontSettings;
+  };
+}
+
+interface FontSettings {
+  fontSize: string;
+  lineHeight: string;
+  fontWeight: string;
+  letterSpacing: string;
+  textTransform?: string;
+}
+
+interface ColorSystemConfig {
+  primary: ColorPalette;
+  secondary: ColorPalette;
+  accent: ColorPalette;
+  neutral: ColorPalette;
+  semantic: SemanticColors;
+  gradients: GradientCollection;
+}
+
+interface ColorPalette {
+  main: string;
+  light: string;
+  dark: string;
+  contrast: string;
+}
+
+interface SemanticColors {
+  success: string;
+  warning: string;
+  error: string;
+  info: string;
+}
+
+interface GradientCollection {
+  primary: string;
+  secondary: string;
+  accent: string;
+}
+
+interface LayoutConfig {
+  maxWidth: string;
+  padding: string;
+  borderRadius: string;
+  gridSystem: string;
+  breakpoints: {
+    mobile: string;
+    tablet: string;
+    desktop: string;
+  };
+}
+
+interface BrandingConfig {
+  logoUrl: string;
+  brandColors: string[];
+  fontFamily: string;
+  tone: string;
+}
+
+interface EmailContent {
+  subject: string;
+  previewText: string;
+  sections: EmailSection[];
+  promoCode?: string;
+  customMessage?: string;
+  email?: string;
+}
+
+interface EmailSection {
+  id: string;
+  type: string;
+  content: any;
+  styling: any;
+}
+
+interface EmailMetadata {
+  version: string;
+  lastModified: Date;
+  author: string;
+  tags: string[];
+  performance: PerformanceMetrics;
+}
+
+interface PerformanceMetrics {
+  openRate: number;
+  clickRate: number;
+  conversionRate: number;
+}
+
+export interface EmailCanvasDesignerProps {
+  currentDesign: EmailDesignData;
+  onDesignUpdate: (updates: Partial<EmailDesignData>) => void;
+  onContentUpdate: (content: Partial<EmailContent>) => void;
+  selectedElement: string | null;
+  onElementSelect: (elementId: string | null) => void;
 }
 
 export const EmailCanvasDesigner: React.FC<EmailCanvasDesignerProps> = ({
-  design,
-  onUpdate,
-  previewMode
+  currentDesign,
+  onDesignUpdate,
+  onContentUpdate,
+  selectedElement,
+  onElementSelect
 }) => {
-  const [selectedElement, setSelectedElement] = useState<string | null>(null);
-  const [tool, setTool] = useState<'select' | 'text' | 'image' | 'shape'>('select');
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const dragControls = useDragControls();
+  const { toast } = useToast();
+  const [draggedElement, setDraggedElement] = useState<string | null>(null);
+  const [editingElement, setEditingElement] = useState<string | null>(null);
 
-  const tools = [
-    { id: 'select', label: 'Select', icon: MousePointer },
-    { id: 'text', label: 'Text', icon: Type },
-    { id: 'image', label: 'Image', icon: ImageIcon },
-    { id: 'shape', label: 'Shape', icon: Square }
+  // Element templates
+  const elementTemplates = [
+    {
+      id: 'text',
+      label: 'Text Block',
+      icon: Type,
+      template: {
+        type: 'text',
+        content: 'Enter your text here...',
+        styling: {
+          fontSize: '16px',
+          color: currentDesign.designSystem.colors.neutral.dark,
+          fontWeight: '400',
+          textAlign: 'left',
+          padding: '8px 0',
+          margin: '0'
+        }
+      }
+    },
+    {
+      id: 'button',
+      label: 'CTA Button',
+      icon: MousePointer,
+      template: {
+        type: 'button',
+        content: 'Click Here',
+        styling: {
+          backgroundColor: currentDesign.designSystem.colors.primary.main,
+          color: currentDesign.designSystem.colors.primary.contrast,
+          padding: '12px 24px',
+          borderRadius: currentDesign.designSystem.layout.borderRadius,
+          fontWeight: '600',
+          textAlign: 'center',
+          display: 'inline-block',
+          textDecoration: 'none',
+          cursor: 'pointer'
+        }
+      }
+    },
+    {
+      id: 'image',
+      label: 'Image',
+      icon: ImageIcon,
+      template: {
+        type: 'image',
+        content: '',
+        styling: {
+          width: '200px',
+          height: '120px',
+          borderRadius: currentDesign.designSystem.layout.borderRadius,
+          objectFit: 'cover'
+        }
+      }
+    },
+    {
+      id: 'divider',
+      label: 'Divider',
+      icon: AlignCenter,
+      template: {
+        type: 'divider',
+        content: '',
+        styling: {
+          height: '1px',
+          backgroundColor: currentDesign.designSystem.colors.neutral.light,
+          margin: '20px 0',
+          border: 'none'
+        }
+      }
+    }
   ];
 
-  const addElement = (type: string) => {
-    const newElement = {
+  // Add element to email
+  const addElement = useCallback((elementType: string) => {
+    const template = elementTemplates.find(t => t.id === elementType);
+    if (!template) return;
+
+    const newElement: EmailSection = {
       id: `element-${Date.now()}`,
-      type,
-      x: 50,
-      y: 50,
-      width: type === 'text' ? 200 : 100,
-      height: type === 'text' ? 40 : 100,
-      content: type === 'text' ? 'Click to edit text' : '',
-      style: {
-        backgroundColor: '#f3f4f6',
-        color: '#1f2937',
-        fontSize: '16px',
-        fontWeight: 'normal',
-        borderRadius: '4px',
-        padding: '8px'
-      }
+      ...template.template
     };
 
-    onUpdate({
-      content: {
-        ...design.content,
-        elements: [...(design.content.elements || []), newElement]
+    const updatedSections = [...currentDesign.content.sections, newElement];
+    
+    onContentUpdate({
+      sections: updatedSections
+    });
+
+    onElementSelect(newElement.id);
+
+    toast({
+      title: "Element Added",
+      description: `${template.label} has been added to your email`,
+    });
+  }, [currentDesign.content.sections, onContentUpdate, onElementSelect, toast, elementTemplates]);
+
+  // Update element content
+  const updateElement = useCallback((elementId: string, updates: Partial<EmailSection>) => {
+    const updatedSections = currentDesign.content.sections.map(section => 
+      section.id === elementId 
+        ? { ...section, ...updates }
+        : section
+    );
+
+    onContentUpdate({
+      sections: updatedSections
+    });
+
+    toast({
+      title: "Element Updated",
+      description: "Your changes have been applied",
+    });
+  }, [currentDesign.content.sections, onContentUpdate, toast]);
+
+  // Delete element
+  const deleteElement = useCallback((elementId: string) => {
+    const updatedSections = currentDesign.content.sections.filter(section => section.id !== elementId);
+    
+    onContentUpdate({
+      sections: updatedSections
+    });
+
+    if (selectedElement === elementId) {
+      onElementSelect(null);
+    }
+
+    toast({
+      title: "Element Deleted",
+      description: "Element has been removed from your email",
+    });
+  }, [currentDesign.content.sections, onContentUpdate, selectedElement, onElementSelect, toast]);
+
+  // Duplicate element
+  const duplicateElement = useCallback((elementId: string) => {
+    const elementToDuplicate = currentDesign.content.sections.find(section => section.id === elementId);
+    if (!elementToDuplicate) return;
+
+    const duplicatedElement: EmailSection = {
+      ...elementToDuplicate,
+      id: `element-${Date.now()}`
+    };
+
+    const updatedSections = [...currentDesign.content.sections, duplicatedElement];
+    
+    onContentUpdate({
+      sections: updatedSections
+    });
+
+    onElementSelect(duplicatedElement.id);
+
+    toast({
+      title: "Element Duplicated",
+      description: "Element has been duplicated successfully",
+    });
+  }, [currentDesign.content.sections, onContentUpdate, onElementSelect, toast]);
+
+  // Update promo code and custom message
+  const handlePromoCodeChange = (value: string) => {
+    onContentUpdate({ promoCode: value });
+  };
+
+  const handleCustomMessageChange = (value: string) => {
+    onContentUpdate({ customMessage: value });
+  };
+
+  const handleEmailChange = (value: string) => {
+    onContentUpdate({ email: value });
+  };
+
+  // Get selected element
+  const getSelectedElement = () => {
+    return currentDesign.content.sections.find(section => section.id === selectedElement);
+  };
+
+  const selectedElementData = getSelectedElement();
+
+  // Update element styling
+  const updateElementStyling = (property: string, value: string) => {
+    if (!selectedElement) return;
+
+    updateElement(selectedElement, {
+      styling: {
+        ...selectedElementData?.styling,
+        [property]: value
       }
     });
   };
 
+  // Update element content
+  const updateElementContent = (content: string) => {
+    if (!selectedElement) return;
+
+    updateElement(selectedElement, { content });
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
-            <Layers className="h-6 w-6 text-blue-600" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold">Email Canvas Designer</h2>
-            <p className="text-slate-600 dark:text-slate-400">
-              Drag-and-drop email builder
-            </p>
-          </div>
-        </div>
-        
-        <Badge variant="outline" className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-          <Crown className="h-3 w-3 mr-1" />
-          Premium Canvas
-        </Badge>
-      </div>
-
-      {/* Toolbar */}
+      {/* Content Editor */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              {tools.map((toolItem) => (
-                <Button
-                  key={toolItem.id}
-                  variant={tool === toolItem.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setTool(toolItem.id as any)}
-                  className="h-10 px-3"
-                >
-                  <toolItem.icon className="h-4 w-4 mr-2" />
-                  {toolItem.label}
-                </Button>
-              ))}
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm">
-                <Eye className="h-4 w-4 mr-2" />
-                Preview
-              </Button>
-              <Button variant="outline" size="sm">
-                <Zap className="h-4 w-4 mr-2" />
-                Test Send
-              </Button>
-            </div>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center text-gray-900">
+            <Edit3 className="h-5 w-5 mr-2" />
+            Content Editor
+          </CardTitle>
+          <CardDescription>
+            Manage your email content and promo details
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="email" className="text-sm font-medium text-gray-700">Customer Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="customer@example.com"
+              value={currentDesign.content.email || ''}
+              onChange={(e) => handleEmailChange(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="promoCode" className="text-sm font-medium text-gray-700">Promo Code</Label>
+            <Input
+              id="promoCode"
+              placeholder="SAVE20"
+              value={currentDesign.content.promoCode || ''}
+              onChange={(e) => handlePromoCodeChange(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="customMessage" className="text-sm font-medium text-gray-700">
+              Custom Message ({currentDesign.content.customMessage?.length || 0}/1000)
+            </Label>
+            <Textarea
+              id="customMessage"
+              placeholder="Write your personalized message to the customer..."
+              value={currentDesign.content.customMessage || ''}
+              onChange={(e) => handleCustomMessageChange(e.target.value)}
+              maxLength={1000}
+              rows={4}
+              className="mt-1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This message will appear prominently in your email template
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Canvas Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Elements Panel */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-lg">Elements</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button 
-              onClick={() => addElement('text')}
-              variant="outline" 
-              className="w-full justify-start"
-            >
-              <Type className="h-4 w-4 mr-2" />
-              Add Text
-            </Button>
-            <Button 
-              onClick={() => addElement('image')}
-              variant="outline" 
-              className="w-full justify-start"
-            >
-              <ImageIcon className="h-4 w-4 mr-2" />
-              Add Image
-            </Button>
-            <Button 
-              onClick={() => addElement('button')}
-              variant="outline" 
-              className="w-full justify-start"
-            >
-              <Square className="h-4 w-4 mr-2" />
-              Add Button
-            </Button>
-            
-            {/* Promo Code Section */}
-            <div className="border-t pt-4 mt-4">
-              <Label className="text-sm font-medium">Promo Code</Label>
-              <div className="space-y-2 mt-2">
-                <Input
-                  placeholder="Enter promo code"
-                  value={design.content.promoCode || ''}
-                  onChange={(e) => onUpdate({
-                    content: { ...design.content, promoCode: e.target.value }
-                  })}
-                />
-                <Textarea
-                  placeholder="Custom message..."
-                  rows={3}
-                  value={design.content.customMessage || ''}
-                  onChange={(e) => onUpdate({
-                    content: { ...design.content, customMessage: e.target.value }
-                  })}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Element Library */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center text-gray-900">
+            <Grid3x3 className="h-5 w-5 mr-2" />
+            Element Library
+          </CardTitle>
+          <CardDescription>
+            Drag and drop elements to build your email
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            {elementTemplates.map((template) => (
+              <Button
+                key={template.id}
+                variant="outline"
+                className="h-auto p-4 flex flex-col items-center space-y-2 hover:bg-gray-50 transition-colors"
+                onClick={() => addElement(template.id)}
+                draggable
+                onDragStart={() => setDraggedElement(template.id)}
+                onDragEnd={() => setDraggedElement(null)}
+              >
+                <template.icon className="h-6 w-6 text-gray-600" />
+                <span className="text-sm font-medium text-gray-700">{template.label}</span>
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* Canvas */}
-        <Card className="lg:col-span-2">
+      {/* Element List */}
+      {currentDesign.content.sections.length > 0 && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center space-x-2">
-              <span>Email Canvas</span>
-              <Badge variant="secondary" className="text-xs">
-                {previewMode}
-              </Badge>
+            <CardTitle className="text-lg flex items-center text-gray-900">
+              <Eye className="h-5 w-5 mr-2" />
+              Email Elements
             </CardTitle>
+            <CardDescription>
+              Manage and edit your email elements
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div 
-              ref={canvasRef}
-              className={`relative bg-white border-2 border-dashed border-gray-200 rounded-lg overflow-hidden
-                ${previewMode === 'mobile' ? 'w-80 h-96' : 
-                  previewMode === 'tablet' ? 'w-96 h-80' : 'w-full h-96'}`}
-              style={{ minHeight: '600px' }}
-            >
-              {/* Email Container */}
-              <div className="w-full h-full p-6 bg-gradient-to-br from-slate-50 to-slate-100">
-                <div className="max-w-md mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
-                  {/* Header */}
-                  <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-6 text-white">
+            <div className="space-y-2">
+              {currentDesign.content.sections.map((section, index) => (
+                <div
+                  key={section.id}
+                  className={`p-3 border rounded-lg cursor-pointer transition-all duration-200 ${
+                    selectedElement === section.id 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => onElementSelect(section.id)}
+                >
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                        <span className="text-xl font-bold">LC</span>
-                      </div>
+                      <Move className="h-4 w-4 text-gray-400" />
                       <div>
-                        <h1 className="text-xl font-bold">Local Cooks</h1>
-                        <p className="text-green-100">Special Offer Inside</p>
+                        <p className="font-medium text-gray-900 capitalize">
+                          {section.type} #{index + 1}
+                        </p>
+                        <p className="text-sm text-gray-500 truncate max-w-40">
+                          {section.content || 'No content'}
+                        </p>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-6 space-y-4">
-                    <div className="text-center">
-                      <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                        Exclusive Promo Code!
-                      </h2>
-                      <p className="text-gray-600">
-                        {design.content.customMessage || 'Thank you for being an amazing customer! Here\'s a special offer just for you.'}
-                      </p>
-                    </div>
-
-                    {/* Promo Code Box - This is what gets customized */}
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-dashed border-green-300 rounded-lg p-6 text-center">
-                      <div className="text-sm text-green-600 font-medium mb-2">YOUR PROMO CODE</div>
-                      <div className="text-3xl font-bold text-green-700 tracking-wider mb-2">
-                        {design.content.promoCode || 'SAVE20'}
-                      </div>
-                      <div className="text-xs text-green-600">
-                        Use this code at checkout
-                      </div>
-                    </div>
-
-                    {/* CTA Button */}
-                    <div className="text-center">
-                      <Button className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-3 rounded-lg font-semibold">
-                        Order Now & Save
+                    <div className="flex items-center space-x-1">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingElement(section.id);
+                        }}
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          duplicateElement(section.id);
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteElement(section.id);
+                        }}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-
-                  {/* Footer */}
-                  <div className="bg-gray-50 p-4 text-center text-xs text-gray-500">
-                    <p>© 2024 Local Cooks. All rights reserved.</p>
-                  </div>
                 </div>
-              </div>
-
-              {/* Drop Overlay */}
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="w-full h-full border-2 border-transparent hover:border-blue-300 transition-colors" />
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* Properties Panel */}
-        <Card className="lg:col-span-1">
+      {/* Element Properties Panel */}
+      {selectedElementData && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Properties</CardTitle>
+            <CardTitle className="text-lg flex items-center text-gray-900">
+              <Settings className="h-5 w-5 mr-2" />
+              Element Properties
+            </CardTitle>
+            <CardDescription>
+              Customize the selected {selectedElementData.type} element
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {selectedElement ? (
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-sm">Element Type</Label>
-                  <Badge variant="outline" className="ml-2">Text</Badge>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label className="text-sm">Content</Label>
-                  <Textarea 
-                    placeholder="Edit content..."
+            {/* Content Editor */}
+            {selectedElementData.type !== 'divider' && (
+              <div>
+                <Label className="text-sm font-medium text-gray-700">Content</Label>
+                {selectedElementData.type === 'text' ? (
+                  <Textarea
+                    value={selectedElementData.content || ''}
+                    onChange={(e) => updateElementContent(e.target.value)}
+                    placeholder="Enter text content..."
                     rows={3}
+                    className="mt-1"
                   />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Width</Label>
-                    <Input type="number" placeholder="200" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Height</Label>
-                    <Input type="number" placeholder="40" />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Background</Label>
-                  <div className="flex space-x-2">
-                    <Input type="color" className="w-12 h-8 p-1" />
-                    <Input placeholder="#ffffff" className="font-mono text-sm" />
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t">
-                  <Button variant="destructive" size="sm" className="w-full">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Element
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center text-gray-500 py-8">
-                <MousePointer className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm">Select an element to edit properties</p>
+                ) : (
+                  <Input
+                    value={selectedElementData.content || ''}
+                    onChange={(e) => updateElementContent(e.target.value)}
+                    placeholder={selectedElementData.type === 'button' ? 'Button text' : 'Content'}
+                    className="mt-1"
+                  />
+                )}
               </div>
             )}
+
+            {/* Styling Options */}
+            <div className="space-y-3">
+              <h4 className="font-medium text-gray-900">Styling</h4>
+
+              {/* Color */}
+              <div>
+                <Label className="text-sm font-medium text-gray-700">Color</Label>
+                <div className="flex items-center space-x-2 mt-1">
+                  <Input
+                    type="color"
+                    value={selectedElementData.styling?.color || currentDesign.designSystem.colors.neutral.dark}
+                    onChange={(e) => updateElementStyling('color', e.target.value)}
+                    className="w-12 h-8 p-1 border rounded"
+                  />
+                  <Input
+                    value={selectedElementData.styling?.color || currentDesign.designSystem.colors.neutral.dark}
+                    onChange={(e) => updateElementStyling('color', e.target.value)}
+                    placeholder="#000000"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              {/* Background Color (for buttons) */}
+              {selectedElementData.type === 'button' && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Background Color</Label>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <Input
+                      type="color"
+                      value={selectedElementData.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main}
+                      onChange={(e) => updateElementStyling('backgroundColor', e.target.value)}
+                      className="w-12 h-8 p-1 border rounded"
+                    />
+                    <Input
+                      value={selectedElementData.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main}
+                      onChange={(e) => updateElementStyling('backgroundColor', e.target.value)}
+                      placeholder="#000000"
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Font Size */}
+              {selectedElementData.type !== 'divider' && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Font Size</Label>
+                  <Select
+                    value={selectedElementData.styling?.fontSize || '16px'}
+                    onValueChange={(value) => updateElementStyling('fontSize', value)}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="12px">12px</SelectItem>
+                      <SelectItem value="14px">14px</SelectItem>
+                      <SelectItem value="16px">16px</SelectItem>
+                      <SelectItem value="18px">18px</SelectItem>
+                      <SelectItem value="20px">20px</SelectItem>
+                      <SelectItem value="24px">24px</SelectItem>
+                      <SelectItem value="28px">28px</SelectItem>
+                      <SelectItem value="32px">32px</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Font Weight */}
+              {selectedElementData.type !== 'divider' && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Font Weight</Label>
+                  <Select
+                    value={selectedElementData.styling?.fontWeight || '400'}
+                    onValueChange={(value) => updateElementStyling('fontWeight', value)}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="300">Light (300)</SelectItem>
+                      <SelectItem value="400">Regular (400)</SelectItem>
+                      <SelectItem value="500">Medium (500)</SelectItem>
+                      <SelectItem value="600">Semi-bold (600)</SelectItem>
+                      <SelectItem value="700">Bold (700)</SelectItem>
+                      <SelectItem value="800">Extra Bold (800)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Text Alignment */}
+              {selectedElementData.type !== 'divider' && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Text Alignment</Label>
+                  <div className="flex items-center space-x-1 mt-1">
+                    <Button
+                      variant={selectedElementData.styling?.textAlign === 'left' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => updateElementStyling('textAlign', 'left')}
+                    >
+                      <AlignLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={selectedElementData.styling?.textAlign === 'center' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => updateElementStyling('textAlign', 'center')}
+                    >
+                      <AlignCenter className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={selectedElementData.styling?.textAlign === 'right' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => updateElementStyling('textAlign', 'right')}
+                    >
+                      <AlignRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Dimensions for images */}
+              {selectedElementData.type === 'image' && (
+                <>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Width</Label>
+                    <Input
+                      value={selectedElementData.styling?.width || '200px'}
+                      onChange={(e) => updateElementStyling('width', e.target.value)}
+                      placeholder="200px"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Height</Label>
+                    <Input
+                      value={selectedElementData.styling?.height || '120px'}
+                      onChange={(e) => updateElementStyling('height', e.target.value)}
+                      placeholder="120px"
+                      className="mt-1"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex space-x-2 pt-4 border-t">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => duplicateElement(selectedElementData.id)}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicate
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => deleteElement(selectedElementData.id)}
+                className="text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </Button>
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Design System Integration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center text-gray-900">
+            <Settings className="h-5 w-5 mr-2" />
+            Quick Actions
+          </CardTitle>
+          <CardDescription>
+            Design system integration and shortcuts
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button 
+            variant="outline" 
+            className="w-full justify-start"
+            onClick={() => {
+              // Apply brand colors to all elements
+              const updatedSections = currentDesign.content.sections.map(section => ({
+                ...section,
+                styling: {
+                  ...section.styling,
+                  color: section.type === 'button' 
+                    ? currentDesign.designSystem.colors.primary.contrast
+                    : currentDesign.designSystem.colors.neutral.dark,
+                  backgroundColor: section.type === 'button' 
+                    ? currentDesign.designSystem.colors.primary.main
+                    : section.styling?.backgroundColor
+                }
+              }));
+
+              onContentUpdate({ sections: updatedSections });
+              
+              toast({
+                title: "Brand Colors Applied",
+                description: "All elements updated with brand colors",
+              });
+            }}
+          >
+            <Paintbrush2 className="h-4 w-4 mr-2" />
+            Apply Brand Colors
+          </Button>
+
+          <Button 
+            variant="outline" 
+            className="w-full justify-start"
+            onClick={() => {
+              // Reset all elements to default styling
+              const updatedSections = currentDesign.content.sections.map(section => {
+                const template = elementTemplates.find(t => t.id === section.type);
+                return {
+                  ...section,
+                  styling: template?.template.styling || section.styling
+                };
+              });
+
+              onContentUpdate({ sections: updatedSections });
+              onElementSelect(null);
+              
+              toast({
+                title: "Design Reset",
+                description: "All elements reset to default styling",
+              });
+            }}
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset All Elements
+          </Button>
+
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="font-semibold text-blue-900 mb-2">
+              Tips
+            </h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Click elements in the preview to select them</li>
+              <li>• Use the element library to add new components</li>
+              <li>• Customize colors and fonts using the properties panel</li>
+              <li>• Apply brand colors for consistent styling</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }; 
