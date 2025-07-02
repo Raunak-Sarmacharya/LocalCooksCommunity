@@ -4,17 +4,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Crown,
-  Grid3x3,
-  Layout,
-  Monitor,
-  Palette,
-  Save,
-  Smartphone,
-  Sparkles,
-  Tablet,
-  Type,
-  Wand2
+    Crown,
+    Grid3x3,
+    Layout,
+    Monitor,
+    Palette,
+    Save,
+    Smartphone,
+    Sparkles,
+    Tablet,
+    Type,
+    Wand2
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -125,6 +125,20 @@ interface EmailSection {
   type: string;
   content: any;
   styling: any;
+  overlay?: {
+    enabled?: boolean;
+    text?: string;
+    styling?: {
+      color?: string;
+      fontSize?: string;
+      fontWeight?: string;
+      textAlign?: string;
+      backgroundColor?: string;
+      padding?: string;
+      borderRadius?: string;
+      textShadow?: string;
+    };
+  };
 }
 
 interface EmailMetadata {
@@ -174,14 +188,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           }
         },
         colors: {
-          primary: { main: '#16a34a', light: '#4ade80', dark: '#15803d', contrast: '#ffffff' },
-          secondary: { main: '#64748b', light: '#94a3b8', dark: '#475569', contrast: '#ffffff' },
+          primary: { main: '#F51042', light: '#FF5470', dark: '#C20D35', contrast: '#ffffff' },
+          secondary: { main: '#000000', light: '#404040', dark: '#000000', contrast: '#ffffff' },
           accent: { main: '#f59e0b', light: '#fbbf24', dark: '#d97706', contrast: '#ffffff' },
           neutral: { main: '#6b7280', light: '#d1d5db', dark: '#374151', contrast: '#ffffff' },
           semantic: { success: '#16a34a', warning: '#f59e0b', error: '#dc2626', info: '#2563eb' },
           gradients: {
-            primary: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)',
-            secondary: 'linear-gradient(135deg, #64748b 0%, #94a3b8 100%)',
+            primary: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            secondary: 'linear-gradient(135deg, #000000 0%, #404040 100%)',
             accent: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)'
           }
         },
@@ -194,7 +208,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         },
         branding: {
           logoUrl: '/assets/Logo_LocalCooks.png',
-          brandColors: ['#F51042', '#16a34a'],
+          brandColors: ['#F51042', '#000000'],
           fontFamily: 'Inter',
           tone: 'professional'
         }
@@ -704,12 +718,15 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     
                     {currentDesign.content.customMessage ? (
                       <div 
-                        className="p-4 rounded"
+                        className={`p-4 rounded cursor-pointer transition-all duration-200 ${
+                          selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
+                        }`}
                         style={{ 
                           backgroundColor: currentDesign.designSystem.colors.neutral.light,
                           borderLeft: `4px solid ${currentDesign.designSystem.colors.primary.main}`,
                           borderRadius: currentDesign.designSystem.layout.borderRadius
                         }}
+                        onClick={() => setSelectedElement('custom-message')}
                       >
                         <p 
                           style={{ 
@@ -723,19 +740,27 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </p>
                       </div>
                     ) : (
-                      <div className="p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded text-center">
+                      <div 
+                        className={`p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded text-center cursor-pointer transition-all duration-200 ${
+                          selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
+                        }`}
+                        onClick={() => setSelectedElement('custom-message')}
+                      >
                         <p className="text-gray-500">Custom message will appear here</p>
                       </div>
                     )}
 
                     {currentDesign.content.promoCode ? (
                       <div 
-                        className="border rounded p-4 text-center"
+                        className={`border rounded p-4 text-center cursor-pointer transition-all duration-200 ${
+                          selectedElement === 'promo-code' ? 'ring-2 ring-blue-500' : ''
+                        }`}
                         style={{ 
                           backgroundColor: currentDesign.designSystem.colors.accent.light,
                           borderColor: currentDesign.designSystem.colors.accent.main,
                           borderRadius: currentDesign.designSystem.layout.borderRadius
                         }}
+                        onClick={() => setSelectedElement('promo-code')}
                       >
                         <p 
                           className="text-sm font-medium"
@@ -754,12 +779,22 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </p>
                       </div>
                     ) : (
-                      <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded p-4 text-center">
+                      <div 
+                        className={`bg-gray-50 border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer transition-all duration-200 ${
+                          selectedElement === 'promo-code' ? 'ring-2 ring-blue-500' : ''
+                        }`}
+                        onClick={() => setSelectedElement('promo-code')}
+                      >
                         <p className="text-gray-500">Promo code will appear here</p>
                       </div>
                     )}
 
-                    <div className="text-center">
+                    <div 
+                      className={`text-center transition-all duration-200 ${
+                        selectedElement === 'order-button' ? 'ring-2 ring-blue-500 rounded' : ''
+                      }`}
+                      onClick={() => setSelectedElement('order-button')}
+                    >
                       <div 
                         className="inline-block text-white px-6 py-3 rounded font-medium cursor-pointer transition-colors"
                         style={{ 
@@ -792,33 +827,132 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         }}
                       >
                         {section.type === 'text' && (
-                          <div style={{ color: section.styling.color || currentDesign.designSystem.colors.neutral.dark }}>
+                          <div style={{ 
+                            color: section.styling.color || currentDesign.designSystem.colors.neutral.dark,
+                            textAlign: section.styling.textAlign || 'left',
+                            fontSize: section.styling.fontSize || '16px',
+                            fontWeight: section.styling.fontWeight || '400',
+                            padding: section.styling.padding || '8px 0',
+                            margin: section.styling.margin || '0',
+                            background: section.styling.backgroundColor || 'transparent',
+                            borderRadius: section.styling.backgroundColor && section.styling.backgroundColor !== 'transparent' ? currentDesign.designSystem.layout.borderRadius : '0'
+                          }}>
                             {section.content}
                           </div>
                         )}
                         {section.type === 'button' && (
-                          <button
-                            className="px-4 py-2 rounded font-medium"
-                            style={{
-                              backgroundColor: section.styling.backgroundColor || currentDesign.designSystem.colors.primary.main,
-                              color: section.styling.color || currentDesign.designSystem.colors.primary.contrast,
-                              borderRadius: currentDesign.designSystem.layout.borderRadius
-                            }}
-                          >
-                            {section.content || 'Button'}
-                          </button>
+                          <div style={{ textAlign: section.styling.textAlign || 'center' }}>
+                            <button
+                              className="px-4 py-2 rounded font-medium"
+                              style={{
+                                background: section.styling.backgroundColor || currentDesign.designSystem.colors.primary.main,
+                                color: section.styling.color || currentDesign.designSystem.colors.primary.contrast,
+                                borderRadius: currentDesign.designSystem.layout.borderRadius,
+                                fontSize: section.styling.fontSize || '16px',
+                                fontWeight: section.styling.fontWeight || '600',
+                                padding: section.styling.padding || '12px 24px',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {section.content || 'Button'}
+                            </button>
+                          </div>
                         )}
                         {section.type === 'image' && (
+                          section.content ? (
+                            <div style={{ textAlign: section.styling.textAlign || 'center' }}>
+                              <div 
+                                style={{ 
+                                  position: 'relative',
+                                  display: 'inline-block',
+                                  width: section.styling.width || '200px',
+                                  height: section.styling.height || '100px',
+                                }}
+                              >
+                                <img 
+                                  src={section.content} 
+                                  alt="Email image"
+                                  style={{ 
+                                    width: '100%',
+                                    height: '100%',
+                                    borderRadius: currentDesign.designSystem.layout.borderRadius,
+                                    objectFit: section.styling.objectFit || 'cover',
+                                    border: '1px solid #e2e8f0'
+                                  }}
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+                                    if (nextElement) {
+                                      nextElement.style.display = 'flex';
+                                    }
+                                  }}
+                                />
+                                {section.overlay?.enabled && section.overlay?.text && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      top: '50%',
+                                      left: '50%',
+                                      transform: 'translate(-50%, -50%)',
+                                      color: section.overlay.styling?.color || '#ffffff',
+                                      fontSize: section.overlay.styling?.fontSize || '18px',
+                                      fontWeight: section.overlay.styling?.fontWeight || '600',
+                                      textAlign: (section.overlay.styling?.textAlign || 'center') as any,
+                                      backgroundColor: section.overlay.styling?.backgroundColor || 'rgba(0, 0, 0, 0.5)',
+                                      padding: section.overlay.styling?.padding || '12px 20px',
+                                      borderRadius: section.overlay.styling?.borderRadius || '6px',
+                                      textShadow: section.overlay.styling?.textShadow || '1px 1px 2px rgba(0, 0, 0, 0.7)',
+                                      maxWidth: '90%',
+                                      wordWrap: 'break-word'
+                                    }}
+                                  >
+                                    {section.overlay.text}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null
+                        )}
+                        {section.type === 'image' && !section.content && (
+                          <div style={{ textAlign: section.styling.textAlign || 'center' }}>
+                            <div 
+                              className="bg-gray-100 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-500 text-sm"
+                              style={{ 
+                                width: section.styling.width || '200px',
+                                height: section.styling.height || '100px',
+                                borderRadius: currentDesign.designSystem.layout.borderRadius,
+                                display: 'inline-block'
+                              }}
+                            >
+                              <div className="text-2xl mb-1">📷</div>
+                              <div>Upload image in designer</div>
+                            </div>
+                          </div>
+                        )}
+                        {section.type === 'image' && section.content && (
                           <div 
                             className="bg-gray-200 flex items-center justify-center text-gray-500 text-sm"
                             style={{ 
                               width: section.styling.width || '200px',
                               height: section.styling.height || '100px',
-                              borderRadius: currentDesign.designSystem.layout.borderRadius
+                              borderRadius: currentDesign.designSystem.layout.borderRadius,
+                              display: 'none'
                             }}
                           >
-                            Image Placeholder
+                            Image not found
                           </div>
+                        )}
+                        {section.type === 'divider' && (
+                          <div 
+                            style={{
+                              height: section.styling?.height || '1px',
+                              backgroundColor: section.styling?.backgroundColor || currentDesign.designSystem.colors.neutral.light,
+                              margin: section.styling?.margin || '20px 0',
+                              border: 'none',
+                              width: '100%'
+                            }}
+                          />
                         )}
                       </div>
                     ))}

@@ -176,14 +176,14 @@ const PromoCodeSender: React.FC = () => {
         }
       },
       colors: {
-        primary: { main: '#16a34a', light: '#4ade80', dark: '#15803d', contrast: '#ffffff' },
-        secondary: { main: '#64748b', light: '#94a3b8', dark: '#475569', contrast: '#ffffff' },
+        primary: { main: '#F51042', light: '#FF5470', dark: '#C20D35', contrast: '#ffffff' },
+        secondary: { main: '#000000', light: '#404040', dark: '#000000', contrast: '#ffffff' },
         accent: { main: '#f59e0b', light: '#fbbf24', dark: '#d97706', contrast: '#ffffff' },
         neutral: { main: '#6b7280', light: '#d1d5db', dark: '#374151', contrast: '#ffffff' },
         semantic: { success: '#16a34a', warning: '#f59e0b', error: '#dc2626', info: '#2563eb' },
         gradients: {
-          primary: 'linear-gradient(135deg, #16a34a 0%, #4ade80 100%)',
-          secondary: 'linear-gradient(135deg, #64748b 0%, #94a3b8 100%)',
+          primary: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+          secondary: 'linear-gradient(135deg, #000000 0%, #404040 100%)',
           accent: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)'
         }
       },
@@ -196,7 +196,7 @@ const PromoCodeSender: React.FC = () => {
       },
       branding: {
         logoUrl: '/assets/Logo_LocalCooks.png',
-        brandColors: ['#F51042', '#16a34a'],
+        brandColors: ['#F51042', '#000000'],
         fontFamily: 'Inter',
         tone: 'professional'
       }
