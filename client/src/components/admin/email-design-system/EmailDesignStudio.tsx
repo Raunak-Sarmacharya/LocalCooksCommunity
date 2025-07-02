@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
-    Image as ImageIcon,
     Move,
     Palette,
     Plus,
@@ -114,6 +113,7 @@ interface EmailContent {
   previewText: string;
   sections: EmailSection[];
   promoCode?: string;
+  promoCodeLabel?: string;
   customMessage?: string;
   email?: string;
   orderButton?: {
@@ -240,6 +240,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       previewText: 'Exclusive promo code inside',
       sections: [],
       promoCode: 'SAVE20',
+      promoCodeLabel: '🎁 Your Exclusive Promo Code',
       customMessage: 'We\'re excited to offer you this exclusive discount! Use the promo code below to get amazing savings on your next order.',
       email: '',
         orderButton: {
@@ -351,6 +352,32 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         };
         handleContentUpdate({ sections: [newGreetingSection, ...currentDesign.content.sections] });
       }
+    } else if (elementId === 'custom-message') {
+      // Handle custom message styling
+      const customMessageSection = currentDesign.content.sections.find(s => s.id === 'custom-message-section');
+      if (customMessageSection) {
+        const updatedSections = currentDesign.content.sections.map(section => 
+          section.id === 'custom-message-section' 
+            ? { ...section, styling: { ...section.styling, [property]: value } }
+            : section
+        );
+        handleContentUpdate({ sections: updatedSections });
+      } else {
+        // Create custom message section if it doesn't exist
+        const newCustomMessageSection = {
+          id: 'custom-message-section',
+          type: 'custom-message',
+          content: currentDesign.content.customMessage || '',
+          styling: {
+            fontSize: '16px',
+            fontWeight: '400',
+            color: '#374151',
+            textAlign: 'left',
+            [property]: value
+          }
+        };
+        handleContentUpdate({ sections: [...currentDesign.content.sections, newCustomMessageSection] });
+      }
     } else {
       const updatedSections = currentDesign.content.sections.map(section => 
         section.id === elementId 
@@ -365,8 +392,26 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   const updateElementContent = (elementId: string, content: string) => {
     if (elementId === 'custom-message') {
       handleContentUpdate({ customMessage: content });
+      // Also ensure we have a custom message section for styling
+      const customMessageSection = currentDesign.content.sections.find(s => s.id === 'custom-message-section');
+      if (!customMessageSection) {
+        const newCustomMessageSection = {
+          id: 'custom-message-section',
+          type: 'custom-message',
+          content,
+          styling: {
+            fontSize: '16px',
+            fontWeight: '400',
+            color: '#374151',
+            textAlign: 'left'
+          }
+        };
+        handleContentUpdate({ sections: [...currentDesign.content.sections, newCustomMessageSection] });
+      }
     } else if (elementId === 'promo-code') {
       handleContentUpdate({ promoCode: content });
+    } else if (elementId === 'promo-code-label') {
+      handleContentUpdate({ promoCodeLabel: content });
     } else if (elementId === 'customer-email') {
       handleContentUpdate({ email: content });
     } else if (elementId === 'greeting') {
@@ -460,13 +505,16 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         body: JSON.stringify({
           email: currentDesign.content.email,
           promoCode: currentDesign.content.promoCode,
+          promoCodeLabel: currentDesign.content.promoCodeLabel,
           customMessage: currentDesign.content.customMessage,
           designSystem: currentDesign.designSystem,
           isPremium: true,
           sections: currentDesign.content.sections,
           orderButton: currentDesign.content.orderButton,
+          header: currentDesign.content.header,
           subject: currentDesign.content.subject,
-          previewText: currentDesign.content.previewText
+          previewText: currentDesign.content.previewText,
+          customDesign: currentDesign
         })
       });
 
@@ -746,7 +794,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                   )}
 
                   {/* Content Editor for other elements */}
-                  {(selectedElement === 'custom-message' || selectedElement === 'promo-code' || 
+                  {(selectedElement === 'custom-message' || selectedElement === 'promo-code' || selectedElement === 'promo-code-label' ||
                     selectedElement.startsWith('section-') || selectedElement === 'order-button' || selectedElement === 'greeting') && (
                     <div>
                       <Label className="text-sm font-medium text-gray-700">Content</Label>
@@ -765,13 +813,34 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           onChange={(e) => updateElementContent('promo-code', e.target.value.toUpperCase())}
                           className="mt-1"
                         />
-                      ) : selectedElement === 'order-button' ? (
+                      ) : selectedElement === 'promo-code-label' ? (
                         <Input
-                          placeholder="Button text"
-                          value={currentDesign.content.orderButton?.text || ''}
-                          onChange={(e) => updateElementContent('order-button', e.target.value)}
+                          placeholder="🎁 Your Exclusive Promo Code"
+                          value={currentDesign.content.promoCodeLabel || ''}
+                          onChange={(e) => updateElementContent('promo-code-label', e.target.value)}
                           className="mt-1"
                         />
+                      ) : selectedElement === 'order-button' ? (
+                        <>
+                          <Input
+                            placeholder="Button text"
+                            value={currentDesign.content.orderButton?.text || ''}
+                            onChange={(e) => updateElementContent('order-button', e.target.value)}
+                            className="mt-1 mb-2"
+                          />
+                          <Label className="text-sm font-medium text-gray-700">Button URL</Label>
+                          <Input
+                            placeholder="https://example.com"
+                            value={currentDesign.content.orderButton?.url || ''}
+                            onChange={(e) => handleContentUpdate({
+                              orderButton: {
+                                ...currentDesign.content.orderButton,
+                                url: e.target.value
+                              }
+                            })}
+                            className="mt-1"
+                          />
+                        </>
                       ) : selectedElement === 'greeting' ? (
                         <Input
                           placeholder="Greeting text"
@@ -779,6 +848,22 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           onChange={(e) => updateElementContent('greeting', e.target.value)}
                           className="mt-1"
                         />
+                      ) : selectedElement.startsWith('section-') && currentDesign.content.sections.find(s => s.id === selectedElement)?.type === 'button' ? (
+                        <>
+                          <Input
+                            placeholder="Button text"
+                            value={currentDesign.content.sections.find(s => s.id === selectedElement)?.content || ''}
+                            onChange={(e) => updateElementContent(selectedElement, e.target.value)}
+                            className="mt-1 mb-2"
+                          />
+                          <Label className="text-sm font-medium text-gray-700">Button URL</Label>
+                          <Input
+                            placeholder="https://example.com"
+                            value={currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.url || ''}
+                            onChange={(e) => updateElementStyling(selectedElement, 'url', e.target.value)}
+                            className="mt-1"
+                          />
+                        </>
                       ) : (
                         <Textarea
                           placeholder="Enter content..."
@@ -791,27 +876,29 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
                   )}
 
-                  {/* Color Customization */}
-                  {selectedElement !== 'email-header' && (
+                                    {/* Color Customization */}
+                  {selectedElement !== 'email-header' && selectedElement !== 'greeting' && (
                     <>
                       <div>
                         <Label className="text-sm font-medium text-gray-700">Background Color</Label>
                         <Input
                           type="color"
-                                                  value={
+                          value={
                           selectedElement === 'order-button' 
                             ? currentDesign.content.orderButton?.styling?.backgroundColor || '#F51042'
-                            : selectedElement === 'greeting'
-                            ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.backgroundColor || 'transparent'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.backgroundColor || '#F51042'
                         }
                           onChange={(e) => updateElementStyling(selectedElement, 'backgroundColor', e.target.value)}
                           className="mt-1 h-8"
                         />
                       </div>
+                    </>
+                  )}
 
-                      <div>
-                        <Label className="text-sm font-medium text-gray-700">Text Color</Label>
+                  {/* Text Color - Available for all elements except email-header */}
+                  {selectedElement !== 'email-header' && (
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Text Color</Label>
                         <Input
                           type="color"
                                                   value={
@@ -821,25 +908,27 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.color || '#1e293b'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.color || '#374151'
                         }
-                          onChange={(e) => updateElementStyling(selectedElement, 'color', e.target.value)}
-                          className="mt-1 h-8"
-                        />
-                      </div>
+                                                  onChange={(e) => updateElementStyling(selectedElement, 'color', e.target.value)}
+                        className="mt-1 h-8"
+                      />
+                    </div>
+                  )}
 
-                      <div>
-                        <Label className="text-sm font-medium text-gray-700">Quick Colors</Label>
-                        <div className="grid grid-cols-6 gap-2 mt-1">
-                          {['#F51042', '#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed'].map(color => (
-                            <button
-                              key={color}
-                              className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400"
-                              style={{ backgroundColor: color }}
-                              onClick={() => updateElementStyling(selectedElement, 'backgroundColor', color)}
-                            />
-                          ))}
-                        </div>
+                  {/* Quick Colors - Only for elements that can have background colors */}
+                  {selectedElement !== 'email-header' && selectedElement !== 'greeting' && (
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Quick Colors</Label>
+                      <div className="grid grid-cols-6 gap-2 mt-1">
+                        {['#F51042', '#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed'].map(color => (
+                          <button
+                            key={color}
+                            className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400"
+                            style={{ backgroundColor: color }}
+                            onClick={() => updateElementStyling(selectedElement, 'backgroundColor', color)}
+                          />
+                        ))}
                       </div>
-                    </>
+                    </div>
                   )}
 
                   {/* Typography Controls */}
@@ -854,6 +943,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             ? currentDesign.content.header?.styling?.titleFontSize || '24px'
                             : selectedElement === 'greeting'
                             ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontSize || '24px'
+                            : selectedElement === 'custom-message'
+                            ? currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontSize || '16px'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.fontSize || '16px'
                         }
                         onValueChange={(value) => {
@@ -867,6 +958,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                 }
                               }
                             });
+                          } else if (selectedElement === 'greeting') {
+                            updateElementStyling('greeting', 'fontSize', value);
+                          } else if (selectedElement === 'custom-message') {
+                            updateElementStyling('custom-message', 'fontSize', value);
                           } else {
                             updateElementStyling(selectedElement, 'fontSize', value);
                           }
@@ -896,9 +991,17 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             ? currentDesign.content.orderButton?.styling?.fontWeight || '600'
                             : selectedElement === 'greeting'
                             ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontWeight || '600'
+                            : selectedElement === 'custom-message'
+                            ? currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontWeight || '400'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.fontWeight || '400'
                         }
-                        onValueChange={(value) => updateElementStyling(selectedElement, 'fontWeight', value)}
+                        onValueChange={(value) => {
+                          if (selectedElement === 'greeting') {
+                            updateElementStyling('greeting', 'fontWeight', value);
+                          } else {
+                            updateElementStyling(selectedElement, 'fontWeight', value);
+                          }
+                        }}
                       >
                         <SelectTrigger className="h-8">
                           <SelectValue />
@@ -926,6 +1029,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             ? currentDesign.content.header?.styling?.textAlign || 'center'
                             : selectedElement === 'greeting'
                             ? currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.textAlign || 'left'
+                            : selectedElement === 'custom-message'
+                            ? currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.textAlign || 'left'
                             : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.textAlign || 'left'
                         }
                         onValueChange={(value) => {
@@ -939,6 +1044,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                 }
                               }
                             });
+                          } else if (selectedElement === 'greeting') {
+                            updateElementStyling('greeting', 'textAlign', value);
+                          } else if (selectedElement === 'custom-message') {
+                            updateElementStyling('custom-message', 'textAlign', value);
                           } else {
                             updateElementStyling(selectedElement, 'textAlign', value);
                           }
@@ -1050,15 +1159,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                   <Square className="h-3 w-3 mr-2" />
                   Add Button
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full justify-start text-xs h-8"
-                  onClick={() => addSection('image')}
-                >
-                  <ImageIcon className="h-3 w-3 mr-2" />
-                  Add Image
-                </Button>
+
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -1145,17 +1246,17 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 {currentDesign.content.customMessage ? (
                   <div 
                     className={`cursor-pointer transition-all duration-200 ${
-                      selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
+                      selectedElement === 'custom-message' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''
                     }`}
                     style={{
-                      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-                      borderLeft: '4px solid hsl(347, 91%, 51%)',
-                      borderRadius: '8px',
-                      padding: '20px',
-                      fontSize: '16px',
+                      fontFamily: 'Nunito, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                      fontSize: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontSize || '16px',
+                      fontWeight: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontWeight || '400',
+                      textAlign: (currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.textAlign || 'left') as React.CSSProperties['textAlign'],
                       lineHeight: '1.6',
-                      color: '#475569',
-                      whiteSpace: 'pre-line'
+                      color: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.color || '#374151',
+                      whiteSpace: 'pre-line',
+                      padding: selectedElement === 'custom-message' ? '0' : '8px 0'
                     }}
                     onClick={() => setSelectedElement('custom-message')}
                   >
@@ -1188,15 +1289,24 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     }}
                     onClick={() => setSelectedElement('promo-code')}
                   >
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#15803d',
-                      textTransform: 'uppercase',
-                      letterSpacing: '1px',
-                      marginBottom: '8px'
-                    }}>
-                      🎁 Your Exclusive Promo Code
+                    <div 
+                      className={`cursor-pointer transition-all duration-200 ${
+                        selectedElement === 'promo-code-label' ? 'ring-2 ring-purple-500 rounded p-1' : ''
+                      }`}
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: '#15803d',
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px',
+                        marginBottom: '8px'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedElement('promo-code-label');
+                      }}
+                    >
+                      {currentDesign.content.promoCodeLabel || '🎁 Your Exclusive Promo Code'}
                     </div>
                     <div style={{
                       fontFamily: '"Courier New", monospace',
@@ -1248,41 +1358,32 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     
                     {section.type === 'button' && (
                       <div style={{ textAlign: section.styling?.textAlign || 'center' }}>
-                        <button style={{
-                          backgroundColor: section.styling?.backgroundColor || '#F51042',
-                          color: section.styling?.color || '#ffffff',
-                          border: 'none',
-                          borderRadius: '8px',
-                          fontSize: section.styling?.fontSize || '16px',
-                          fontWeight: '600',
-                          padding: '12px 24px',
-                          cursor: 'pointer'
-                        }}>
-                          {section.content || 'Button'}
-                        </button>
-                      </div>
-                    )}
-                    
-                    {section.type === 'image' && (
-                      <div style={{ textAlign: 'center' }}>
-                        <img
-                          src={section.content || 'https://via.placeholder.com/200x120?text=Image'}
-                          alt="Email content"
+                        <a 
+                          href={section.styling?.url || '#'}
                           style={{
-                            width: '200px',
-                            height: '120px',
-                            borderRadius: '8px',
-                            objectFit: 'cover'
+                            display: 'inline-block',
+                            backgroundColor: section.styling?.backgroundColor || '#F51042',
+                            color: section.styling?.color || '#ffffff',
+                            border: 'none',
+                            borderRadius: section.styling?.borderRadius || '8px',
+                            fontSize: section.styling?.fontSize || '16px',
+                            fontWeight: section.styling?.fontWeight || '600',
+                            padding: section.styling?.padding || '12px 24px',
+                            cursor: 'pointer',
+                            textDecoration: 'none'
                           }}
-                        />
+                        >
+                          {section.content || 'Button'}
+                        </a>
                       </div>
                     )}
+
                     
                     {section.type === 'divider' && (
                       <hr style={{
                         border: 'none',
-                        height: '1px',
-                        backgroundColor: '#e2e8f0',
+                        height: section.styling?.height || '1px',
+                        backgroundColor: section.styling?.backgroundColor || '#e2e8f0',
                         margin: '16px 0'
                       }} />
                     )}
