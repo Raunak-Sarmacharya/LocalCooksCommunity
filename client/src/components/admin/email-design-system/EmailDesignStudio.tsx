@@ -1,22 +1,24 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
-    Crown,
-    Grid3x3,
-    Layout,
+    Image as ImageIcon,
+    Move,
     Palette,
+    Plus,
     Save,
     Send,
+    Settings2,
     Sparkles,
-    Wand2
+    Square,
+    Trash2,
+    Type
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-
-// Import our email design components
-import { EmailCanvasDesigner } from './EmailCanvasDesigner';
-import { ColorPalette } from './PremiumColorPalette';
+import React, { useState } from 'react';
 
 interface EmailDesignStudioProps {
   onEmailGenerated: (emailData: EmailDesignData) => void;
@@ -115,8 +117,8 @@ interface EmailContent {
   customMessage?: string;
   email?: string;
   orderButton?: {
-    text: string;
-    url: string;
+    text?: string;
+    url?: string;
     styling?: {
       backgroundColor?: string;
       color?: string;
@@ -128,8 +130,8 @@ interface EmailContent {
     };
   };
   header?: {
-    title: string;
-    subtitle: string;
+    title?: string;
+    subtitle?: string;
     styling?: {
       backgroundColor?: string;
       titleColor?: string;
@@ -183,20 +185,17 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   initialDesign
 }) => {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('design');
   const [currentDesign, setCurrentDesign] = useState<EmailDesignData>(
     initialDesign || createDefaultDesign()
   );
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const canvasRef = useRef<HTMLDivElement>(null);
 
   // Create default design configuration
   function createDefaultDesign(): EmailDesignData {
     return {
       id: `design-${Date.now()}`,
-      name: 'Untitled Design',
+      name: 'Premium Email Design',
       template: null,
       designSystem: {
         typography: {
@@ -237,303 +236,224 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         }
       },
       content: {
-        subject: '',
-        previewText: '',
+        subject: 'Special Offer Just for You!',
+        previewText: 'Exclusive promo code inside',
         sections: [],
         promoCode: '',
         customMessage: '',
         email: '',
         orderButton: {
-          text: 'Order Now',
-          url: '#',
+          text: '🌟 Start Shopping Now',
+          url: 'https://localcooks.com',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
             fontSize: '16px',
             fontWeight: '600',
-            padding: '12px 24px',
+            padding: '14px 28px',
             borderRadius: '8px',
             textAlign: 'center'
-          }
-        },
-        header: {
-          title: 'Local Cooks',
-          subtitle: 'Special Offer Inside',
-          styling: {
-            backgroundColor: '#F51042',
-            titleColor: '#ffffff',
-            subtitleColor: '#ffffff',
-            titleFontSize: '32px',
-            subtitleFontSize: '18px',
-            padding: '24px',
-            borderRadius: '12px',
-            textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
           }
         }
       },
       metadata: {
-        version: '1.0.0',
+        version: '1.0',
         lastModified: new Date(),
         author: 'Admin',
-        tags: ['promo', 'marketing'],
+        tags: ['promo', 'email'],
         performance: { openRate: 0, clickRate: 0, conversionRate: 0 }
       }
     };
   }
 
-  // Real-time design updates
-  const handleDesignUpdate = useCallback((updates: Partial<EmailDesignData>) => {
-    setCurrentDesign(prev => {
-      const updated = {
-        ...prev,
-        ...updates,
-        metadata: {
-          ...prev.metadata,
-          ...updates.metadata,
-          lastModified: new Date()
-        }
-      };
-      
-      // Auto-save functionality
-      localStorage.setItem('emailDesign_draft', JSON.stringify(updated));
-      
-      return updated;
+  // Handle content updates
+  const handleContentUpdate = (content: Partial<EmailContent>) => {
+    setCurrentDesign(prev => ({
+      ...prev,
+      content: { ...prev.content, ...content }
+    }));
+    
+    // Notify parent component
+    onEmailGenerated({
+      ...currentDesign,
+      content: { ...currentDesign.content, ...content }
     });
-  }, []);
+  };
 
-  // Load saved design on mount
-  useEffect(() => {
-    const savedDesign = localStorage.getItem('emailDesign_draft');
-    if (savedDesign && !initialDesign) {
-      try {
-        const parsed = JSON.parse(savedDesign);
-        setCurrentDesign(parsed);
-        toast({
-          title: "Draft Loaded",
-          description: "Restored your previous email design",
-        });
-      } catch (error) {
-        console.error('Failed to load saved design:', error);
+  // Add new section
+  const addSection = (type: string) => {
+    const newSection: EmailSection = {
+      id: `section-${Date.now()}`,
+      type,
+      content: type === 'text' ? 'New text content' : type === 'button' ? 'Button Text' : '',
+      styling: {
+        backgroundColor: type === 'button' ? currentDesign.designSystem.colors.primary.main : 'transparent',
+        color: type === 'button' ? '#ffffff' : '#374151',
+        fontSize: '16px',
+        fontWeight: type === 'button' ? '600' : '400',
+        padding: type === 'button' ? '12px 24px' : '8px 0',
+        borderRadius: '8px',
+        textAlign: 'left'
       }
-    }
-  }, [initialDesign, toast]);
+    };
 
-  const handleGenerateEmail = async () => {
-    if (!currentDesign.content.promoCode || !currentDesign.content.customMessage) {
+    handleContentUpdate({
+      sections: [...currentDesign.content.sections, newSection]
+    });
+    setSelectedElement(newSection.id);
+  };
+
+  // Remove section
+  const removeSection = (sectionId: string) => {
+    handleContentUpdate({
+      sections: currentDesign.content.sections.filter(s => s.id !== sectionId)
+    });
+    if (selectedElement === sectionId) {
+      setSelectedElement(null);
+    }
+  };
+
+  // Update element styling
+  const updateElementStyling = (elementId: string, property: string, value: string) => {
+    if (elementId === 'order-button') {
+      handleContentUpdate({
+        orderButton: {
+          ...currentDesign.content.orderButton,
+          styling: {
+            ...currentDesign.content.orderButton?.styling,
+            [property]: value
+          }
+        }
+      });
+    } else {
+      const updatedSections = currentDesign.content.sections.map(section => 
+        section.id === elementId 
+          ? { ...section, styling: { ...section.styling, [property]: value } }
+          : section
+      );
+      handleContentUpdate({ sections: updatedSections });
+    }
+  };
+
+  // Update element content
+  const updateElementContent = (elementId: string, content: string) => {
+    if (elementId === 'custom-message') {
+      handleContentUpdate({ customMessage: content });
+    } else if (elementId === 'promo-code') {
+      handleContentUpdate({ promoCode: content });
+    } else if (elementId === 'customer-email') {
+      handleContentUpdate({ email: content });
+    } else if (elementId === 'order-button') {
+      handleContentUpdate({
+        orderButton: {
+          ...currentDesign.content.orderButton,
+          text: content
+        }
+      });
+    } else {
+      const updatedSections = currentDesign.content.sections.map(section => 
+        section.id === elementId 
+          ? { ...section, content }
+          : section
+      );
+      handleContentUpdate({ sections: updatedSections });
+    }
+  };
+
+  // Promo code container shapes
+  const promoCodeShapes = [
+    { id: 'ticket', name: 'Ticket Shape', style: { clipPath: 'polygon(0 0, 90% 0, 100% 50%, 90% 100%, 0 100%, 10% 50%)' } },
+    { id: 'rounded', name: 'Rounded Box', style: { borderRadius: '12px' } },
+    { id: 'dashed', name: 'Dashed Border', style: { border: '2px dashed #16a34a', borderRadius: '8px' } },
+    { id: 'gradient', name: 'Gradient Box', style: { background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderRadius: '8px' } }
+  ];
+
+  // Send test email
+  const handleSendTestEmail = async () => {
+    if (!currentDesign.content.email) {
       toast({
-        title: "Missing Content",
-        description: "Please add promo code and custom message",
+        title: "Email Required",
+        description: "Please enter a test email address",
         variant: "destructive"
       });
       return;
     }
 
-    setIsLoading(true);
-    
+    setIsSending(true);
     try {
-          // Simulate processing time for email generation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const finalDesign = {
-        ...currentDesign,
-        metadata: {
-          ...currentDesign.metadata,
-          lastModified: new Date()
-        }
-      };
-
-      // Clear draft
-      localStorage.removeItem('emailDesign_draft');
-
-      onEmailGenerated(finalDesign);
-      
-      toast({
-              title: "🎨 Email Generated!",
-      description: "Your email design is ready to send",
+      const response = await fetch('/api/send-promo-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentDesign.content.email,
+          promoCode: currentDesign.content.promoCode,
+          customMessage: currentDesign.content.customMessage,
+          designSystem: currentDesign.designSystem,
+          isPremium: true,
+          sections: currentDesign.content.sections,
+          orderButton: currentDesign.content.orderButton,
+          subject: currentDesign.content.subject,
+          previewText: currentDesign.content.previewText
+        })
       });
+
+      if (response.ok) {
+        toast({
+          title: "✅ Email Sent!",
+          description: `Test email sent to ${currentDesign.content.email}`
+        });
+      } else {
+        throw new Error('Failed to send email');
+      }
     } catch (error) {
       toast({
-        title: "Generation Failed",
-        description: "Failed to generate email design",
+        title: "Send Failed",
+        description: "Could not send test email. Please try again.",
         variant: "destructive"
       });
     } finally {
-      setIsLoading(false);
+      setIsSending(false);
     }
-  };
-
-  const handleColorSystemUpdate = (colorSystem: ColorSystemConfig) => {
-    handleDesignUpdate({
-      designSystem: {
-        ...currentDesign.designSystem,
-        colors: colorSystem
-      }
-    });
-    
-    toast({
-      title: "Colors Updated",
-      description: "Email preview updated with new color system",
-    });
-  };
-
-  const handleContentUpdate = (content: Partial<EmailContent>) => {
-    handleDesignUpdate({
-      content: {
-        ...currentDesign.content,
-        ...content
-      }
-    });
-  };
-
-  const handleFontChange = (fontType: string, value: string) => {
-    handleDesignUpdate({
-      designSystem: {
-        ...currentDesign.designSystem,
-        typography: {
-          ...currentDesign.designSystem.typography,
-          [fontType]: value
-        }
-      }
-    });
-    
-    toast({
-      title: "Typography Updated",
-      description: `${fontType} font changed to ${value}`,
-    });
-  };
-
-  const handleLayoutChange = (layoutProp: string, value: string) => {
-    // Update the layout configuration
-    const updatedDesign = {
-      ...currentDesign,
-      designSystem: {
-        ...currentDesign.designSystem,
-        layout: {
-          ...currentDesign.designSystem.layout,
-          [layoutProp]: value
-        }
-      }
-    };
-
-    // Automatically apply layout changes to all elements
-    if (['maxWidth', 'padding', 'borderRadius'].includes(layoutProp)) {
-      const updatedSections = currentDesign.content.sections.map(section => {
-        const updatedStyling = { ...section.styling };
-
-        // Apply specific layout property changes
-        switch (layoutProp) {
-          case 'maxWidth':
-            updatedStyling.maxWidth = value;
-            break;
-          case 'padding':
-            // Apply to elements that should inherit global padding
-            updatedStyling.padding = value;
-            if (section.type === 'text') {
-              updatedStyling.paddingLeft = value;
-              updatedStyling.paddingRight = value;
-            } else if (section.type === 'button') {
-              updatedStyling.paddingLeft = parseInt(value) * 1.5 + 'px';
-              updatedStyling.paddingRight = parseInt(value) * 1.5 + 'px';
-            }
-            break;
-          case 'borderRadius':
-            updatedStyling.borderRadius = value;
-            break;
-        }
-
-        return {
-          ...section,
-          styling: updatedStyling
-        };
-      });
-
-      updatedDesign.content = {
-        ...updatedDesign.content,
-        sections: updatedSections
-      };
-    }
-
-    setCurrentDesign(updatedDesign);
-    
-    toast({
-      title: "Layout Updated",
-      description: `${layoutProp} changed to ${value} and applied to all elements`,
-    });
-  };
-
-  const saveDesign = () => {
-    localStorage.setItem(`emailDesign_${currentDesign.id}`, JSON.stringify(currentDesign));
-    toast({
-      title: "Design Saved",
-      description: "Your email design has been saved successfully",
-    });
-  };
-
-  // Generate email preview styles based on current design
-  const getEmailPreviewStyles = () => {
-    const { colors, typography, layout } = currentDesign.designSystem;
-    
-    return {
-      maxWidth: layout.maxWidth,
-      padding: layout.padding,
-      borderRadius: layout.borderRadius,
-      fontFamily: typography.primaryFont,
-      fontSize: typography.hierarchy.body.fontSize,
-      lineHeight: typography.hierarchy.body.lineHeight,
-      backgroundColor: colors.neutral.light,
-      color: colors.neutral.dark
-    };
-  };
-
-
-
-  const handleSendTestEmail = () => {
-    // Implementation of handleSendTestEmail
   };
 
   return (
-    <div className="w-full bg-white">
-      {/* Fixed Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
-        <div className="px-6 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-gradient-to-br from-purple-100 to-blue-100 rounded-lg">
-                  <Crown className="h-5 w-5 text-purple-600" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold text-gray-900">Email Design Studio</h1>
-                  <p className="text-xs text-gray-600">Simple Admin Interface</p>
-                </div>
-              </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-gradient-to-br from-purple-100 to-blue-100 rounded-lg">
+              <Sparkles className="h-5 w-5 text-purple-600" />
             </div>
-
-            <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm" onClick={saveDesign} className="h-8 px-3">
-                <Save className="h-3 w-3 mr-1" />
-                <span className="text-xs">Save</span>
-              </Button>
-
-              <Button 
-                onClick={handleGenerateEmail}
-                disabled={isLoading}
-                size="sm"
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium h-8 px-3"
-              >
-                {isLoading ? (
-                  <>
-                    <Wand2 className="h-3 w-3 mr-1 animate-spin" />
-                    <span className="text-xs">Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    <span className="text-xs">Generate Email</span>
-                  </>
-                )}
-              </Button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Premium Email Designer</h1>
+              <p className="text-sm text-gray-600">Create stunning promo emails with ease</p>
             </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <Button variant="outline" size="sm" className="h-9 px-4">
+              <Save className="h-4 w-4 mr-2" />
+              Save Design
+            </Button>
+
+            <Button 
+              onClick={handleSendTestEmail}
+              disabled={isSending || !currentDesign.content.email}
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white h-9 px-4"
+            >
+              {isSending ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Test Email
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </div>
@@ -541,594 +461,491 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       {/* Main Content */}
       <div className="flex h-[calc(100vh-100px)]">
         {/* Left Sidebar - Design Tools */}
-        <div className="w-96 bg-gray-50 border-r border-gray-200 flex flex-col">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-3 m-3 bg-white shadow-sm border">
-              <TabsTrigger value="design" className="text-xs px-2 py-2">
-                <Layout className="h-3 w-3 mr-1" />
-                Design
-              </TabsTrigger>
-              <TabsTrigger value="colors" className="text-xs px-2 py-2">
-                <Palette className="h-3 w-3 mr-1" />
-                Colors
-              </TabsTrigger>
-              <TabsTrigger value="layout" className="text-xs px-2 py-2">
-                <Grid3x3 className="h-3 w-3 mr-1" />
-                Layout
-              </TabsTrigger>
-            </TabsList>
-
-            <div className="flex-1 overflow-y-auto px-3 pb-3">
-              <TabsContent value="design" className="mt-0 space-y-0">
-                <EmailCanvasDesigner 
-                  currentDesign={currentDesign}
-                  onDesignUpdate={handleDesignUpdate}
-                  onContentUpdate={handleContentUpdate}
-                  selectedElement={selectedElement}
-                  onElementSelect={setSelectedElement}
-                />
-              </TabsContent>
-
-              <TabsContent value="colors" className="mt-0 space-y-0">
-                <ColorPalette
-                  colorSystem={currentDesign.designSystem.colors}
-                  onColorSystemUpdate={handleColorSystemUpdate}
-                />
-              </TabsContent>
-
-              <TabsContent value="layout" className="mt-0 space-y-0">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center text-gray-900">
-                      <Grid3x3 className="h-4 w-4 mr-2" />
-                      Layout System
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Global layout controls for all elements
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {/* Container Settings */}
-                    <div className="space-y-3">
-                      <h4 className="font-medium text-gray-900 text-sm border-b pb-1">Container Settings</h4>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-gray-700 block mb-1">Max Width</label>
-                        <select 
-                          value={currentDesign.designSystem.layout.maxWidth}
-                          onChange={(e) => handleLayoutChange('maxWidth', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-md text-xs"
-                        >
-                          <option value="480px">480px (Mobile)</option>
-                          <option value="600px">600px (Standard)</option>
-                          <option value="800px">800px (Wide)</option>
-                          <option value="100%">100% (Responsive)</option>
-                        </select>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Controls the maximum width of all elements
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-gray-700 block mb-1">Global Padding</label>
-                        <select 
-                          value={currentDesign.designSystem.layout.padding}
-                          onChange={(e) => handleLayoutChange('padding', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-md text-xs"
-                        >
-                          <option value="8px">8px (Compact)</option>
-                          <option value="16px">16px (Standard)</option>
-                          <option value="24px">24px (Comfortable)</option>
-                          <option value="32px">32px (Spacious)</option>
-                          <option value="40px">40px (Extra Spacious)</option>
-                        </select>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Default padding applied to elements
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-gray-700 block mb-1">Border Radius</label>
-                        <select 
-                          value={currentDesign.designSystem.layout.borderRadius}
-                          onChange={(e) => handleLayoutChange('borderRadius', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded-md text-xs"
-                        >
-                          <option value="0px">0px (Square)</option>
-                          <option value="4px">4px (Slight)</option>
-                          <option value="8px">8px (Small)</option>
-                          <option value="12px">12px (Standard)</option>
-                          <option value="16px">16px (Medium)</option>
-                          <option value="24px">24px (Large)</option>
-                        </select>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Border radius for all elements
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Quick Actions */}
-                    <div className="space-y-3 border-t pt-3">
-                      <h4 className="font-medium text-gray-900 text-sm border-b pb-1">Quick Actions</h4>
-                      
-                      <div className="grid grid-cols-1 gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Apply layout settings to all elements
-                            const layoutConfig = currentDesign.designSystem.layout;
-                            const updatedSections = currentDesign.content.sections.map(section => ({
-                              ...section,
-                              styling: {
-                                ...section.styling,
-                                borderRadius: layoutConfig.borderRadius,
-                                maxWidth: layoutConfig.maxWidth,
-                                padding: layoutConfig.padding,
-                              }
-                            }));
-
-                            handleContentUpdate({ sections: updatedSections });
-                          }}
-                          className="text-xs h-8"
-                        >
-                          <Grid3x3 className="h-3 w-3 mr-1" />
-                          Apply Layout to All
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Mobile optimized layout
-                            handleLayoutChange('maxWidth', '480px');
-                            handleLayoutChange('padding', '16px');
-                            handleLayoutChange('borderRadius', '8px');
-                          }}
-                          className="text-xs h-8"
-                        >
-                          📱 Mobile Layout
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Desktop optimized layout
-                            handleLayoutChange('maxWidth', '600px');
-                            handleLayoutChange('padding', '24px');
-                            handleLayoutChange('borderRadius', '12px');
-                          }}
-                          className="text-xs h-8"
-                        >
-                          🖥️ Desktop Layout
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </div>
-          </Tabs>
-        </div>
-
-        {/* Main Canvas Area */}
-        <div className="flex-1 bg-gray-100 overflow-hidden">
-          <div className="h-full flex items-center justify-center p-8">
-            <div 
-              ref={canvasRef}
-              className="bg-white shadow-lg transition-all duration-300"
-              style={{ 
-                width: '100%',
-                maxWidth: currentDesign.designSystem.layout.maxWidth,
-                borderRadius: '12px',
-                overflow: 'hidden'
-              }}
-            >
-              {/* Email Preview Content with Real-time Updates */}
-              <div className="h-full overflow-y-auto" style={getEmailPreviewStyles()}>
-                <div className="p-6 space-y-6">
-                  {/* Header with Dynamic Colors */}
-                  <div 
-                    className={`text-white rounded-lg cursor-pointer transition-all duration-200 ${
-                      selectedElement === 'email-header' ? 'ring-2 ring-blue-500' : ''
-                    }`}
-                    style={{ 
-                      background: currentDesign.content.header?.styling?.backgroundColor || currentDesign.designSystem.colors.gradients.primary,
-                      borderRadius: currentDesign.content.header?.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
-                      padding: currentDesign.content.header?.styling?.padding || '24px',
-                      textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
-                    }}
-                    onClick={() => setSelectedElement('email-header')}
-                  >
-                    <h2 
-                      className="font-bold"
-                      style={{ 
-                        fontFamily: currentDesign.designSystem.typography.primaryFont,
-                        fontSize: currentDesign.content.header?.styling?.titleFontSize || currentDesign.designSystem.typography.hierarchy.h2.fontSize,
-                        fontWeight: currentDesign.designSystem.typography.hierarchy.h2.fontWeight,
-                        color: currentDesign.content.header?.styling?.titleColor || '#ffffff',
-                        marginBottom: '8px'
-                      }}
-                    >
-                      {currentDesign.content.header?.title || 'Local Cooks'}
-                    </h2>
-                    <p style={{ 
-                      color: currentDesign.content.header?.styling?.subtitleColor || currentDesign.designSystem.colors.primary.light,
-                      fontSize: currentDesign.content.header?.styling?.subtitleFontSize || '18px',
-                      margin: '0'
-                    }}>
-                      {currentDesign.content.header?.subtitle || 'Special Offer Inside'}
-                    </p>
-                  </div>
-
-                  {/* Content Preview with Live Updates */}
-                  <div className="space-y-4">
-                    <h3 
-                      className="text-lg font-semibold"
-                      style={{ 
-                        color: currentDesign.designSystem.colors.neutral.dark,
-                        fontFamily: currentDesign.designSystem.typography.primaryFont,
-                        fontSize: currentDesign.designSystem.typography.hierarchy.h3.fontSize
-                      }}
-                    >
-                      Exclusive Promo Code!
-                    </h3>
-                    
-                    {currentDesign.content.customMessage ? (
-                      <div 
-                        className={`p-4 rounded cursor-pointer transition-all duration-200 ${
-                          selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
-                        }`}
-                        style={{ 
-                          backgroundColor: currentDesign.designSystem.colors.neutral.light,
-                          borderLeft: `4px solid ${currentDesign.designSystem.colors.primary.main}`,
-                          borderRadius: currentDesign.designSystem.layout.borderRadius
-                        }}
-                        onClick={() => setSelectedElement('custom-message')}
-                      >
-                        <p 
-                          style={{ 
-                            color: currentDesign.designSystem.colors.neutral.dark,
-                            fontFamily: currentDesign.designSystem.typography.primaryFont,
-                            fontSize: currentDesign.designSystem.typography.hierarchy.body.fontSize,
-                            lineHeight: currentDesign.designSystem.typography.hierarchy.body.lineHeight
-                          }}
-                        >
-                          {currentDesign.content.customMessage}
-                        </p>
-                      </div>
-                    ) : (
-                      <div 
-                        className={`p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded text-center cursor-pointer transition-all duration-200 ${
-                          selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
-                        }`}
-                        onClick={() => setSelectedElement('custom-message')}
-                      >
-                        <p className="text-gray-500">Custom message will appear here</p>
-                      </div>
-                    )}
-
-                    {currentDesign.content.promoCode ? (
-                      <div 
-                        className={`border rounded p-4 text-center cursor-pointer transition-all duration-200 ${
-                          selectedElement === 'promo-code' ? 'ring-2 ring-blue-500' : ''
-                        }`}
-                        style={{ 
-                          backgroundColor: currentDesign.designSystem.colors.accent.light,
-                          borderColor: currentDesign.designSystem.colors.accent.main,
-                          borderRadius: currentDesign.designSystem.layout.borderRadius
-                        }}
-                        onClick={() => setSelectedElement('promo-code')}
-                      >
-                        <p 
-                          className="text-sm font-medium"
-                          style={{ color: currentDesign.designSystem.colors.accent.dark }}
-                        >
-                          Your Promo Code
-                        </p>
-                        <p 
-                          className="text-2xl font-bold"
-                          style={{ 
-                            color: currentDesign.designSystem.colors.accent.dark,
-                            fontFamily: currentDesign.designSystem.typography.primaryFont
-                          }}
-                        >
-                          {currentDesign.content.promoCode}
-                        </p>
-                      </div>
-                    ) : (
-                      <div 
-                        className={`bg-gray-50 border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer transition-all duration-200 ${
-                          selectedElement === 'promo-code' ? 'ring-2 ring-blue-500' : ''
-                        }`}
-                        onClick={() => setSelectedElement('promo-code')}
-                      >
-                        <p className="text-gray-500">Promo code will appear here</p>
-                      </div>
-                    )}
-
-                    <div 
-                      className={`transition-all duration-200 ${
-                        selectedElement === 'order-button' ? 'ring-2 ring-blue-500 rounded' : ''
-                      }`}
-                      style={{
-                        textAlign: (currentDesign.content.orderButton?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
-                      }}
-                      onClick={() => setSelectedElement('order-button')}
-                    >
-                      <div 
-                        className="inline-block cursor-pointer transition-colors"
-                        style={{ 
-                          backgroundColor: currentDesign.content.orderButton?.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main,
-                          color: currentDesign.content.orderButton?.styling?.color || currentDesign.designSystem.colors.primary.contrast,
-                          borderRadius: currentDesign.content.orderButton?.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
-                          fontSize: currentDesign.content.orderButton?.styling?.fontSize || '16px',
-                          fontWeight: currentDesign.content.orderButton?.styling?.fontWeight || '600',
-                          fontFamily: currentDesign.designSystem.typography.primaryFont,
-                          padding: currentDesign.content.orderButton?.styling?.padding || '12px 24px',
-                          border: 'none',
-                          textDecoration: 'none',
-                          display: 'inline-block'
-                        }}
-                        onMouseEnter={(e) => {
-                          // Darken background on hover
-                          const bgColor = currentDesign.content.orderButton?.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main;
-                          if (bgColor.startsWith('#')) {
-                            // Simple darkening for hex colors
-                            const darkerColor = bgColor.length === 7 
-                              ? '#' + bgColor.slice(1).split('').map(char => 
-                                  Math.max(0, parseInt(char, 16) - 2).toString(16).padStart(1, '0')
-                                ).join('')
-                              : currentDesign.designSystem.colors.primary.dark;
-                            e.currentTarget.style.backgroundColor = darkerColor;
-                          } else {
-                            e.currentTarget.style.backgroundColor = currentDesign.designSystem.colors.primary.dark;
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = currentDesign.content.orderButton?.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main;
-                        }}
-                      >
-                        {currentDesign.content.orderButton?.text || 'Order Now'}
-                      </div>
-                    </div>
-
-                    {/* Render Custom Elements */}
-                    {currentDesign.content.sections.map((section) => (
-                      <div
-                        key={section.id}
-                        className={`cursor-pointer transition-all duration-200 ${
-                          selectedElement === section.id ? 'ring-2 ring-blue-500' : ''
-                        }`}
-                        onClick={() => setSelectedElement(section.id)}
-                        style={{
-                          maxWidth: section.styling?.maxWidth || currentDesign.designSystem.layout.maxWidth,
-                          margin: '0 auto',
-                          marginTop: section.styling?.marginTop || '0px',
-                          marginBottom: section.styling?.marginBottom || '16px',
-                        }}
-                      >
-                        {section.type === 'text' && (
-                          <div style={{ 
-                            color: section.styling?.color || currentDesign.designSystem.colors.neutral.dark,
-                            textAlign: section.styling?.textAlign || 'left',
-                            fontSize: section.styling?.fontSize || '16px',
-                            fontWeight: section.styling?.fontWeight || '400',
-                            fontFamily: currentDesign.designSystem.typography.primaryFont,
-                            background: section.styling?.backgroundColor || 'transparent',
-                            borderRadius: section.styling?.backgroundColor && section.styling?.backgroundColor !== 'transparent' 
-                              ? (section.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius) 
-                              : '0',
-                            padding: section.styling?.padding || 
-                                    `${section.styling?.paddingTop || '8px'} ${section.styling?.paddingRight || '0px'} ${section.styling?.paddingBottom || '8px'} ${section.styling?.paddingLeft || '0px'}`,
-                            lineHeight: '1.6'
-                          }}>
-                            {section.content || 'Text content'}
-                          </div>
-                        )}
-                        
-                        {section.type === 'button' && (
-                          <div style={{ textAlign: section.styling?.textAlign || 'center' }}>
-                            <button
-                              style={{
-                                backgroundColor: section.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main,
-                                color: section.styling?.color || currentDesign.designSystem.colors.primary.contrast,
-                                border: 'none',
-                                borderRadius: section.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
-                                fontSize: section.styling?.fontSize || '16px',
-                                fontWeight: section.styling?.fontWeight || '600',
-                                fontFamily: currentDesign.designSystem.typography.primaryFont,
-                                padding: section.styling?.padding || 
-                                        `${section.styling?.paddingTop || '12px'} ${section.styling?.paddingRight || '24px'} ${section.styling?.paddingBottom || '12px'} ${section.styling?.paddingLeft || '24px'}`,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                                display: 'inline-block'
-                              }}
-                            >
-                              {section.content || 'Button'}
-                            </button>
-                          </div>
-                        )}
-                        
-                        {section.type === 'image' && (
-                          <div style={{ 
-                            textAlign: section.styling?.textAlign || 'center',
-                            position: 'relative'
-                          }}>
-                            <img
-                              src={section.content || 'https://via.placeholder.com/200x120?text=Image'}
-                              alt="Email content"
-                              style={{
-                                width: section.styling?.width || '200px',
-                                height: section.styling?.height || '120px',
-                                borderRadius: section.styling?.borderRadius || currentDesign.designSystem.layout.borderRadius,
-                                objectFit: 'cover',
-                                display: 'inline-block'
-                              }}
-                              onError={(e) => {
-                                e.currentTarget.src = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDIwMCAxMjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMTIwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xMDAgNjBMMTIwIDQwSDgwTDEwMCA2MFoiIGZpbGw9IiM5Q0EzQUYiLz4KPHN2Zz4K";
-                              }}
-                            />
-                            {/* Image Text Overlay */}
-                            {section.overlay?.enabled && section.overlay?.text && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: '50%',
-                                  left: '50%',
-                                  transform: 'translate(-50%, -50%)',
-                                  color: section.overlay?.styling?.color || '#ffffff',
-                                  fontSize: section.overlay?.styling?.fontSize || '18px',
-                                  fontWeight: section.overlay?.styling?.fontWeight || '600',
-                                  textAlign: (section.overlay?.styling?.textAlign || 'center') as React.CSSProperties['textAlign'],
-                                  backgroundColor: section.overlay?.styling?.backgroundColor || 'rgba(0, 0, 0, 0.5)',
-                                  padding: section.overlay?.styling?.padding || '8px 16px',
-                                  borderRadius: section.overlay?.styling?.borderRadius || '4px',
-                                  textShadow: section.overlay?.styling?.textShadow || '0 1px 2px rgba(0,0,0,0.5)',
-                                  fontFamily: currentDesign.designSystem.typography.primaryFont,
-                                  whiteSpace: 'pre-wrap',
-                                  maxWidth: '80%'
-                                }}
-                              >
-                                {section.overlay.text}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        {section.type === 'divider' && (
-                          <hr style={{
-                            border: 'none',
-                            height: '1px',
-                            backgroundColor: section.styling?.color || currentDesign.designSystem.colors.neutral.main,
-                            margin: `${section.styling?.marginTop || '16px'} 0 ${section.styling?.marginBottom || '16px'} 0`,
-                            opacity: 0.3
-                          }} />
-                        )}
-                      </div>
-                    ))}
-                  </div>
+        <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
+          <div className="p-4 space-y-4">
+            {/* Email Settings */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center text-gray-900">
+                  <Settings2 className="h-4 w-4 mr-2" />
+                  Email Settings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label htmlFor="email" className="text-sm font-medium text-gray-700">Customer Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="customer@example.com"
+                    value={currentDesign.content.email || ''}
+                    onChange={(e) => updateElementContent('customer-email', e.target.value)}
+                    className="mt-1"
+                  />
                 </div>
-              </div>
-            </div>
+
+                <div>
+                  <Label htmlFor="subject" className="text-sm font-medium text-gray-700">Subject Line</Label>
+                  <Input
+                    id="subject"
+                    placeholder="Special Offer Just for You!"
+                    value={currentDesign.content.subject}
+                    onChange={(e) => handleContentUpdate({ subject: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="previewText" className="text-sm font-medium text-gray-700">Preview Text</Label>
+                  <Input
+                    id="previewText"
+                    placeholder="Exclusive promo code inside"
+                    value={currentDesign.content.previewText}
+                    onChange={(e) => handleContentUpdate({ previewText: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Element Properties */}
+            {selectedElement && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center text-gray-900">
+                    <Palette className="h-4 w-4 mr-2" />
+                    Element Properties
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Editing: {selectedElement}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Content Editor */}
+                  {(selectedElement === 'custom-message' || selectedElement === 'promo-code' || 
+                    selectedElement.startsWith('section-') || selectedElement === 'order-button') && (
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Content</Label>
+                      {selectedElement === 'custom-message' ? (
+                        <Textarea
+                          placeholder="Enter your custom message..."
+                          value={currentDesign.content.customMessage || ''}
+                          onChange={(e) => updateElementContent('custom-message', e.target.value)}
+                          className="mt-1"
+                          rows={3}
+                        />
+                      ) : selectedElement === 'promo-code' ? (
+                        <Input
+                          placeholder="PROMO20"
+                          value={currentDesign.content.promoCode || ''}
+                          onChange={(e) => updateElementContent('promo-code', e.target.value.toUpperCase())}
+                          className="mt-1"
+                        />
+                      ) : selectedElement === 'order-button' ? (
+                        <Input
+                          placeholder="Button text"
+                          value={currentDesign.content.orderButton?.text || ''}
+                          onChange={(e) => updateElementContent('order-button', e.target.value)}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <Textarea
+                          placeholder="Enter content..."
+                          value={currentDesign.content.sections.find(s => s.id === selectedElement)?.content || ''}
+                          onChange={(e) => updateElementContent(selectedElement, e.target.value)}
+                          className="mt-1"
+                          rows={3}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick Color Options */}
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Quick Colors</Label>
+                    <div className="grid grid-cols-6 gap-2 mt-1">
+                      {['#F51042', '#16a34a', '#2563eb', '#f59e0b', '#dc2626', '#7c3aed'].map(color => (
+                        <button
+                          key={color}
+                          className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400"
+                          style={{ backgroundColor: color }}
+                          onClick={() => {
+                            if (selectedElement === 'order-button' || selectedElement.startsWith('section-')) {
+                              updateElementStyling(selectedElement, 'backgroundColor', color);
+                            }
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Element Styling */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Font Size</Label>
+                      <Select
+                        value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.fontSize || '16px'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.fontSize || '16px'
+                        }
+                        onValueChange={(value) => updateElementStyling(selectedElement, 'fontSize', value)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="12px">12px</SelectItem>
+                          <SelectItem value="14px">14px</SelectItem>
+                          <SelectItem value="16px">16px</SelectItem>
+                          <SelectItem value="18px">18px</SelectItem>
+                          <SelectItem value="20px">20px</SelectItem>
+                          <SelectItem value="24px">24px</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Text Align</Label>
+                      <Select
+                        value={
+                          selectedElement === 'order-button' 
+                            ? currentDesign.content.orderButton?.styling?.textAlign || 'center'
+                            : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.textAlign || 'left'
+                        }
+                        onValueChange={(value) => updateElementStyling(selectedElement, 'textAlign', value)}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="left">Left</SelectItem>
+                          <SelectItem value="center">Center</SelectItem>
+                          <SelectItem value="right">Right</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Remove Section Button */}
+                  {selectedElement.startsWith('section-') && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => removeSection(selectedElement)}
+                      className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Remove Element
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Add Elements */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center text-gray-900">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Elements
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-xs h-8"
+                  onClick={() => addSection('text')}
+                >
+                  <Type className="h-3 w-3 mr-2" />
+                  Add Text Block
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-xs h-8"
+                  onClick={() => addSection('button')}
+                >
+                  <Square className="h-3 w-3 mr-2" />
+                  Add Button
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-xs h-8"
+                  onClick={() => addSection('image')}
+                >
+                  <ImageIcon className="h-3 w-3 mr-2" />
+                  Add Image
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-xs h-8"
+                  onClick={() => addSection('divider')}
+                >
+                  <Move className="h-3 w-3 mr-2" />
+                  Add Divider
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        {/* Right Panel - Email Preview */}
-        <div className="flex-1 bg-white border-l border-gray-200 overflow-hidden">
-          <div className="h-full flex flex-col">
-            {/* Preview Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Email Preview</h2>
-                
-                <div className="flex items-center space-x-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSendTestEmail}
-                    disabled={!currentDesign.content.email || isSending}
-                    className="h-8 px-3"
-                  >
-                    {isSending ? (
-                      <div className="flex items-center">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></div>
-                        <span className="text-xs">Sending...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <Send className="h-3 w-3 mr-1" />
-                        <span className="text-xs">Send Test</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Preview Content */}
-            <div className="flex-1 overflow-auto bg-gray-100 p-6">
-              <div className="max-w-2xl mx-auto">
-                <div 
-                  ref={canvasRef}
-                  className="bg-white rounded-lg shadow-lg overflow-hidden border"
-                  style={{ 
-                    maxWidth: currentDesign.designSystem.layout.maxWidth,
+        {/* Main Preview Area */}
+        <div className="flex-1 bg-gray-100 overflow-hidden">
+          <div className="h-full flex items-center justify-center p-6">
+            <div className="bg-white shadow-xl max-w-2xl w-full rounded-xl overflow-hidden" style={{ minHeight: '80vh' }}>
+              {/* Email Header - Fixed Brand Header */}
+              <div 
+                className={`text-white ${selectedElement === 'email-header' ? 'ring-4 ring-blue-400' : ''}`}
+                style={{ 
+                  background: 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)',
+                  padding: '24px 32px',
+                  textAlign: 'center'
+                }}
+                onClick={() => setSelectedElement('email-header')}
+              >
+                <img 
+                  src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
+                  alt="Local Cooks" 
+                  style={{
+                    maxWidth: '280px',
+                    height: 'auto',
+                    display: 'block',
                     margin: '0 auto'
                   }}
+                />
+              </div>
+
+              {/* Email Content Body */}
+              <div className="p-8 space-y-6">
+                {/* Greeting */}
+                <div 
+                  className={`cursor-pointer transition-all duration-200 ${
+                    selectedElement === 'greeting' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''
+                  }`}
+                  onClick={() => setSelectedElement('greeting')}
                 >
-                  {/* Email Preview Content will be rendered here */}
-                  <div className="p-6">
-                    <div className="text-center">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                        Email Preview
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-6">
-                        Your email design will appear here. Use the design tools on the left to customize your email.
-                      </p>
-                      <div className="space-y-4">
-                        {currentDesign.content.sections.map((section, index) => (
-                          <div
-                            key={section.id}
-                            className={`p-4 border rounded cursor-pointer transition-all ${
-                              selectedElement === section.id 
-                                ? 'ring-2 ring-blue-500 bg-blue-50' 
-                                : 'hover:border-gray-300'
-                            }`}
-                            onClick={() => setSelectedElement(section.id)}
-                            style={{
-                              ...section.styling,
-                              borderRadius: currentDesign.designSystem.layout.borderRadius
-                            }}
-                          >
-                            <div className="text-sm text-gray-700">
-                              {section.type === 'text' && (
-                                <div>{section.content || 'Text element'}</div>
-                              )}
-                              {section.type === 'image' && (
-                                <div className="text-center">
-                                  {section.content ? (
-                                    <img 
-                                      src={section.content} 
-                                      alt="Email content" 
-                                      className="max-w-full h-auto rounded"
-                                    />
-                                  ) : (
-                                    <div className="bg-gray-200 h-32 rounded flex items-center justify-center">
-                                      Image placeholder
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {section.type === 'button' && (
-                                <div className="text-center">
-                                  <button 
-                                    className="px-6 py-2 rounded font-medium"
-                                    style={{
-                                      backgroundColor: section.styling?.backgroundColor || currentDesign.designSystem.colors.primary.main,
-                                      color: section.styling?.color || currentDesign.designSystem.colors.primary.contrast,
-                                      borderRadius: currentDesign.designSystem.layout.borderRadius
-                                    }}
-                                  >
-                                    {section.content || 'Button text'}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        
-                        {currentDesign.content.sections.length === 0 && (
-                          <div className="text-center py-12 text-gray-500">
-                            <p className="text-sm">No elements added yet.</p>
-                            <p className="text-xs mt-1">Use the Element Library to add content.</p>
-                          </div>
-                        )}
-                      </div>
+                  <h2 style={{ 
+                    fontSize: '24px',
+                    fontWeight: '600',
+                    color: '#1e293b',
+                    margin: '0 0 16px 0'
+                  }}>
+                    Hello! 👋
+                  </h2>
+                </div>
+
+                {/* Custom Message */}
+                {currentDesign.content.customMessage ? (
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 ${
+                      selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
+                    }`}
+                    style={{
+                      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                      borderLeft: '4px solid hsl(347, 91%, 51%)',
+                      borderRadius: '8px',
+                      padding: '20px',
+                      fontSize: '16px',
+                      lineHeight: '1.6',
+                      color: '#475569',
+                      whiteSpace: 'pre-line'
+                    }}
+                    onClick={() => setSelectedElement('custom-message')}
+                  >
+                    {currentDesign.content.customMessage}
+                  </div>
+                ) : (
+                  <div 
+                    className={`p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded text-center cursor-pointer transition-all duration-200 ${
+                      selectedElement === 'custom-message' ? 'ring-2 ring-blue-500' : ''
+                    }`}
+                    onClick={() => setSelectedElement('custom-message')}
+                  >
+                    <p className="text-gray-500">Click to add your custom message</p>
+                  </div>
+                )}
+
+                {/* Promo Code Section */}
+                {currentDesign.content.promoCode ? (
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 ${
+                      selectedElement === 'promo-code' ? 'ring-2 ring-blue-500' : ''
+                    }`}
+                    style={{
+                      background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                      border: '2px dashed #16a34a',
+                      borderRadius: '12px',
+                      padding: '24px',
+                      textAlign: 'center',
+                      margin: '24px 0'
+                    }}
+                    onClick={() => setSelectedElement('promo-code')}
+                  >
+                    <div style={{
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: '#15803d',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      marginBottom: '8px'
+                    }}>
+                      🎁 Your Exclusive Promo Code
+                    </div>
+                    <div style={{
+                      fontFamily: '"Courier New", monospace',
+                      fontSize: '28px',
+                      fontWeight: '800',
+                      color: '#16a34a',
+                      letterSpacing: '2px',
+                      margin: '8px 0'
+                    }}>
+                      {currentDesign.content.promoCode}
                     </div>
                   </div>
+                ) : (
+                  <div 
+                    className={`bg-gray-50 border-2 border-dashed border-gray-300 rounded p-4 text-center cursor-pointer transition-all duration-200 ${
+                      selectedElement === 'promo-code' ? 'ring-2 ring-blue-500' : ''
+                    }`}
+                    onClick={() => setSelectedElement('promo-code')}
+                  >
+                    <p className="text-gray-500">Click to add promo code</p>
+                  </div>
+                )}
+
+                {/* Custom Sections */}
+                {currentDesign.content.sections.map((section) => (
+                  <div
+                    key={section.id}
+                    className={`cursor-pointer transition-all duration-200 ${
+                      selectedElement === section.id ? 'ring-2 ring-blue-500 rounded' : ''
+                    }`}
+                    onClick={() => setSelectedElement(section.id)}
+                    style={{ margin: '16px 0' }}
+                  >
+                    {section.type === 'text' && (
+                      <div style={{ 
+                        color: section.styling?.color || '#374151',
+                        textAlign: section.styling?.textAlign || 'left',
+                        fontSize: section.styling?.fontSize || '16px',
+                        fontWeight: section.styling?.fontWeight || '400',
+                        background: section.styling?.backgroundColor || 'transparent',
+                        borderRadius: section.styling?.backgroundColor && section.styling?.backgroundColor !== 'transparent' 
+                          ? '8px' : '0',
+                        padding: section.styling?.padding || '8px 0',
+                        lineHeight: '1.6'
+                      }}>
+                        {section.content || 'Text content'}
+                      </div>
+                    )}
+                    
+                    {section.type === 'button' && (
+                      <div style={{ textAlign: section.styling?.textAlign || 'center' }}>
+                        <button style={{
+                          backgroundColor: section.styling?.backgroundColor || '#F51042',
+                          color: section.styling?.color || '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontSize: section.styling?.fontSize || '16px',
+                          fontWeight: '600',
+                          padding: '12px 24px',
+                          cursor: 'pointer'
+                        }}>
+                          {section.content || 'Button'}
+                        </button>
+                      </div>
+                    )}
+                    
+                    {section.type === 'image' && (
+                      <div style={{ textAlign: 'center' }}>
+                        <img
+                          src={section.content || 'https://via.placeholder.com/200x120?text=Image'}
+                          alt="Email content"
+                          style={{
+                            width: '200px',
+                            height: '120px',
+                            borderRadius: '8px',
+                            objectFit: 'cover'
+                          }}
+                        />
+                      </div>
+                    )}
+                    
+                    {section.type === 'divider' && (
+                      <hr style={{
+                        border: 'none',
+                        height: '1px',
+                        backgroundColor: '#e2e8f0',
+                        margin: '16px 0'
+                      }} />
+                    )}
+                  </div>
+                ))}
+
+                {/* Order Button */}
+                <div 
+                  className={`transition-all duration-200 ${
+                    selectedElement === 'order-button' ? 'ring-2 ring-blue-500 rounded' : ''
+                  }`}
+                  style={{ textAlign: 'center', margin: '32px 0' }}
+                  onClick={() => setSelectedElement('order-button')}
+                >
+                  <div 
+                    className="inline-block cursor-pointer transition-colors"
+                    style={{ 
+                      background: 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)',
+                      color: '#ffffff',
+                      padding: '14px 28px',
+                      borderRadius: '8px',
+                      fontWeight: '600',
+                      fontSize: '16px',
+                      textDecoration: 'none',
+                      boxShadow: '0 2px 8px hsla(347, 91%, 51%, 0.3)'
+                    }}
+                  >
+                    {currentDesign.content.orderButton?.text || '🌟 Start Shopping Now'}
+                  </div>
                 </div>
+              </div>
+
+              {/* Email Footer - Fixed */}
+              <div style={{ 
+                background: '#f8fafc',
+                padding: '24px 32px',
+                textAlign: 'center',
+                borderTop: '1px solid #e2e8f0'
+              }}>
+                <p style={{
+                  fontSize: '14px',
+                  color: '#64748b',
+                  margin: '0 0 8px 0'
+                }}>
+                  Thank you for being part of the <strong>Local Cooks</strong> community!
+                </p>
+                <p style={{
+                  fontSize: '13px',
+                  color: '#94a3b8',
+                  margin: '0'
+                }}>
+                  <a href="#" style={{ color: 'hsl(347, 91%, 51%)', textDecoration: 'none' }}>Support</a> • 
+                  <a href="#" style={{ color: 'hsl(347, 91%, 51%)', textDecoration: 'none' }}> Privacy Policy</a>
+                </p>
+                <div style={{
+                  height: '1px',
+                  background: 'linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%)',
+                  margin: '16px 0'
+                }}></div>
+                <p style={{
+                  fontSize: '13px',
+                  color: '#94a3b8',
+                  margin: '0'
+                }}>
+                  © {new Date().getFullYear()} Local Cooks Community
+                </p>
               </div>
             </div>
           </div>
