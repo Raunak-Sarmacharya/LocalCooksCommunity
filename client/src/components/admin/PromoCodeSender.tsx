@@ -97,6 +97,7 @@ interface EmailContent {
   sections: EmailSection[];
   promoCode?: string;
   customMessage?: string;
+  greeting?: string;
   email?: string;
   orderButton?: {
     text?: string;
@@ -201,6 +202,7 @@ const PromoCodeSender: React.FC = () => {
       sections: [],
       promoCode: 'SAVE20',
       customMessage: 'We\'re excited to offer you this exclusive discount! Use the promo code below to get amazing savings on your next order.',
+      greeting: 'Hello! 👋',
       email: '',
       orderButton: {
         text: '🌟 Start Shopping Now',
@@ -212,6 +214,20 @@ const PromoCodeSender: React.FC = () => {
           fontWeight: '600',
           padding: '14px 28px',
           borderRadius: '8px',
+          textAlign: 'center'
+        }
+      },
+      header: {
+        title: 'Local Cooks',
+        subtitle: 'Premium Quality Food',
+        styling: {
+          backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+          titleColor: '#ffffff',
+          subtitleColor: '#ffffff',
+          titleFontSize: '32px',
+          subtitleFontSize: '18px',
+          padding: '24px',
+          borderRadius: '0px',
           textAlign: 'center'
         }
       }
@@ -273,6 +289,7 @@ const PromoCodeSender: React.FC = () => {
           email: emailDesign.content.email,
           promoCode: emailDesign.content.promoCode,
           customMessage: emailDesign.content.customMessage,
+          greeting: emailDesign.content.greeting,
           designSystem: emailDesign.designSystem,
           isPremium: true,
           sections: emailDesign.content.sections,
@@ -297,7 +314,8 @@ const PromoCodeSender: React.FC = () => {
             ...prev.content,
             email: '',
             promoCode: '',
-            customMessage: ''
+            customMessage: '',
+            greeting: 'Hello! 👋'
           }
         }));
       } else {
