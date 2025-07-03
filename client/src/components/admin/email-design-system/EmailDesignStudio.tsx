@@ -531,6 +531,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           promoCodeLabel: currentDesign.content.promoCodeLabel,
           customMessage: currentDesign.content.customMessage,
           greeting: currentDesign.content.greeting,
+          promoCodeStyling: currentDesign.content.promoCodeStyling,
           designSystem: currentDesign.designSystem,
           isPremium: true,
           sections: currentDesign.content.sections,
@@ -860,12 +861,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         <Label className="text-sm font-medium text-gray-700">Section Background Color</Label>
                         <Input
                           type="color"
-                          value="#f0fdf4"
+                          value={currentDesign.content.promoCodeStyling?.backgroundColor || "#f0fdf4"}
                           onChange={(e) => {
                             // Update promo code section background through custom styling
                             handleContentUpdate({
                               ...currentDesign.content,
                               promoCodeStyling: {
+                                ...currentDesign.content.promoCodeStyling,
                                 backgroundColor: e.target.value
                               }
                             });
@@ -877,7 +879,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         <Label className="text-sm font-medium text-gray-700">Border Color</Label>
                         <Input
                           type="color"
-                          value="#16a34a"
+                          value={currentDesign.content.promoCodeStyling?.borderColor || "#16a34a"}
                           onChange={(e) => {
                             handleContentUpdate({
                               ...currentDesign.content,
@@ -894,7 +896,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         <Label className="text-sm font-medium text-gray-700">Text Color</Label>
                         <Input
                           type="color"
-                          value="#16a34a"
+                          value={currentDesign.content.promoCodeStyling?.textColor || "#16a34a"}
                           onChange={(e) => {
                             handleContentUpdate({
                               ...currentDesign.content,
@@ -1117,9 +1119,30 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
                   )}
 
-                  {/* Color Customization - Background only for buttons */}
+                  {/* Button Formatting Controls - Alignment, Colors, etc. */}
                   {(selectedElement === 'order-button' || (selectedElement?.startsWith('section-') && currentDesign.content.sections.find(s => s.id === selectedElement)?.type === 'button')) && (
                     <>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700">Button Alignment</Label>
+                        <Select
+                          value={
+                            selectedElement === 'order-button' 
+                              ? currentDesign.content.orderButton?.styling?.textAlign || 'center'
+                              : currentDesign.content.sections.find(s => s.id === selectedElement)?.styling?.textAlign || 'center'
+                          }
+                          onValueChange={(value) => updateElementStyling(selectedElement, 'textAlign', value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="left">Left</SelectItem>
+                            <SelectItem value="center">Center</SelectItem>
+                            <SelectItem value="right">Right</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
                       <div>
                         <Label className="text-sm font-medium text-gray-700">Button Background</Label>
                         <Input
@@ -1278,7 +1301,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     <h2 style={{ 
                       fontSize: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontSize || '24px',
                       fontWeight: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontWeight || '600',
+                      fontStyle: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.fontStyle || 'normal',
                       color: currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.color || '#1e293b',
+                      textAlign: (currentDesign.content.sections.find(s => s.id === 'greeting-section')?.styling?.textAlign || 'left') as React.CSSProperties['textAlign'],
                       margin: '0 0 16px 0'
                     }}>
                       {currentDesign.content.sections.find(s => s.id === 'greeting-section')?.content || "Hello! 👋"}
@@ -1295,6 +1320,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       fontFamily: 'Nunito, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                       fontSize: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontSize || '16px',
                       fontWeight: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontWeight || '400',
+                      fontStyle: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.fontStyle || 'normal',
                       textAlign: (currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.textAlign || 'left') as React.CSSProperties['textAlign'],
                       lineHeight: '1.6',
                       color: currentDesign.content.sections.find(s => s.id === 'custom-message-section')?.styling?.color || '#374151',
@@ -1389,6 +1415,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         textAlign: section.styling?.textAlign || 'left',
                         fontSize: section.styling?.fontSize || '16px',
                         fontWeight: section.styling?.fontWeight || '400',
+                        fontStyle: section.styling?.fontStyle || 'normal',
                         background: section.styling?.backgroundColor || 'transparent',
                         borderRadius: section.styling?.backgroundColor && section.styling?.backgroundColor !== 'transparent' 
                           ? '8px' : '0',

@@ -1715,12 +1715,23 @@ Visit: ${getPromoUrl()}
       letter-spacing: 1px;
       margin-bottom: 8px;
     }
+    .greeting {
+      font-size: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.fontSize || '24px'};
+      font-weight: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.fontWeight || '600'};
+      font-style: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.fontStyle || 'normal'};
+      color: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.color || '#1e293b'};
+      text-align: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.textAlign || 'left'};
+      margin: 0 0 16px 0;
+    }
     .custom-message {
-      font-size: 16px;
+      font-size: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.fontSize || '16px'};
+      font-weight: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.fontWeight || '400'};
+      font-style: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.fontStyle || 'normal'};
+      color: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.color || '#374151'};
+      text-align: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.textAlign || 'left'};
       line-height: 1.6;
       white-space: pre-line; /* Preserves line breaks from admin input */
       margin: 24px 0;
-      color: #374151;
     }
     .custom-header {
       background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
@@ -1786,21 +1797,15 @@ Visit: ${getPromoUrl()}
 </head>
 <body>
   <div class="email-container">
-    ${userData.header?.title || userData.header?.subtitle ? `
-      <div class="custom-header">
-        <img 
-          src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
-          alt="Local Cooks" 
-          style="max-width: 280px; height: auto; display: block; margin: 0 auto${userData.header?.title ? '; margin-bottom: 16px' : ''}"
-        />
-        ${userData.header?.title ? `<h1>${userData.header.title}</h1>` : ''}
-        ${userData.header?.subtitle ? `<p>${userData.header.subtitle}</p>` : ''}
-      </div>
-    ` : `
-      <div class="header">
-        <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-      </div>
-    `}
+    <div class="custom-header">
+      <img 
+        src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
+        alt="Local Cooks" 
+        style="max-width: 280px; height: auto; display: block; margin: 0 auto${userData.header?.title ? '; margin-bottom: 16px' : ''}"
+      />
+      ${userData.header?.title ? `<h1>${userData.header.title}</h1>` : ''}
+      ${userData.header?.subtitle ? `<p>${userData.header.subtitle}</p>` : ''}
+    </div>
     <div class="content">
       ${userData.isPremium && (
         (userData.sections && userData.sections.length > 0) || 
