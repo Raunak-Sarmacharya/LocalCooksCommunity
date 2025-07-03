@@ -1449,6 +1449,7 @@ export const generatePromoCodeEmail = (
     };
     subject?: string;
     previewText?: string;
+    promoCodeLabel?: string;
   }
 ): EmailContent => {
   const supportEmail = getSupportEmail();
@@ -1509,28 +1510,26 @@ export const generatePromoCodeEmail = (
       }
     };
 
-    const borderStyles = {
-      dashed: '2px dashed',
-      solid: '2px solid',
-      dotted: '3px dotted',
-      double: '3px double',
-      none: 'none'
-    };
-
-    const theme = themes[colorTheme as keyof typeof themes] || themes.green;
-    const border = borderStyles[borderStyle as keyof typeof borderStyles] || borderStyles.dashed;
-
-    return {
-      ...theme,
-      border: `${border} ${theme.borderColor}`,
-      boxShadow: borderStyle === 'none' ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
-    };
+    return themes[colorTheme as keyof typeof themes] || themes.green;
   };
 
-  const promoStyle = userData.promoStyle || { colorTheme: 'green', borderStyle: 'dashed' };
-  const styling = getPromoStyling(promoStyle.colorTheme, promoStyle.borderStyle);
+  const styling = getPromoStyling(
+    userData.promoStyle?.colorTheme || 'green',
+    userData.promoStyle?.borderStyle || 'dashed'
+  );
 
-  // Helper function to generate advanced content sections
+  // Define border styles
+  const borderStyles = {
+    solid: `2px solid ${styling.borderColor}`,
+    dashed: `2px dashed ${styling.borderColor}`,
+    dotted: `2px dotted ${styling.borderColor}`,
+    double: `4px double ${styling.borderColor}`,
+    none: 'none'
+  };
+
+  styling.border = borderStyles[userData.promoStyle?.borderStyle as keyof typeof borderStyles] || borderStyles.dashed;
+  styling.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
+
   const generateAdvancedSections = (sections: Array<any> = []) => {
     return sections.map(section => {
       switch (section.type) {
@@ -1679,7 +1678,7 @@ Visit: ${getPromoUrl()}
 `;
   };
 
-  // Dynamic email template with admin-chosen styling
+  // Dynamic email template with admin-chosen styling - EXACTLY matching preview
   const html = `
 <!DOCTYPE html>
 <html>
@@ -1727,8 +1726,8 @@ Visit: ${getPromoUrl()}
     }
     .custom-header {
       background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
-      border-radius: ${userData.header?.styling?.borderRadius || '12px'};
-      padding: ${userData.header?.styling?.padding || '24px'};
+      border-radius: ${userData.header?.styling?.borderRadius || '0px'};
+      padding: ${userData.header?.styling?.padding || '24px 32px'};
       text-align: ${userData.header?.styling?.textAlign || 'center'};
       margin: 0 0 24px 0;
     }
@@ -1747,16 +1746,17 @@ Visit: ${getPromoUrl()}
     }
     .custom-order-button {
       display: inline-block;
-      background: ${userData.orderButton?.styling?.backgroundColor || styling.accentColor};
+      background: ${userData.orderButton?.styling?.backgroundColor || 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)'};
       color: ${userData.orderButton?.styling?.color || '#ffffff'} !important;
       text-decoration: none !important;
-      padding: ${userData.orderButton?.styling?.padding || '12px 24px'};
+      padding: ${userData.orderButton?.styling?.padding || '14px 28px'};
       border-radius: ${userData.orderButton?.styling?.borderRadius || '8px'};
       font-weight: ${userData.orderButton?.styling?.fontWeight || '600'};
       font-size: ${userData.orderButton?.styling?.fontSize || '16px'};
       border: none;
       cursor: pointer;
       transition: all 0.2s ease;
+      box-shadow: 0 2px 8px hsla(347, 91%, 51%, 0.3);
     }
     .usage-steps {
       background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
@@ -1788,10 +1788,15 @@ Visit: ${getPromoUrl()}
 </head>
 <body>
   <div class="email-container">
-    ${userData.header ? `
+    ${userData.header?.title || userData.header?.subtitle ? `
       <div class="custom-header">
-        <h1>${userData.header.title}</h1>
-        <p>${userData.header.subtitle}</p>
+        <img 
+          src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
+          alt="Local Cooks" 
+          style="max-width: 280px; height: auto; display: block; margin: 0 auto${userData.header?.title ? '; margin-bottom: 16px' : ''}"
+        />
+        ${userData.header?.title ? `<h1>${userData.header.title}</h1>` : ''}
+        ${userData.header?.subtitle ? `<p>${userData.header.subtitle}</p>` : ''}
       </div>
     ` : `
       <div class="header">
@@ -1813,7 +1818,7 @@ Visit: ${getPromoUrl()}
         </div>
         
         <div class="promo-code-box">
-          <div class="promo-label">🎁 Your Exclusive Promo Code</div>
+          <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
           <div class="promo-code">${userData.promoCode}</div>
         </div>
         
@@ -1834,7 +1839,7 @@ Visit: ${getPromoUrl()}
         </div>
         
         <div class="promo-code-box">
-          <div class="promo-label">🎁 Your Exclusive Promo Code</div>
+          <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
           <div class="promo-code">${userData.promoCode}</div>
         </div>
         
