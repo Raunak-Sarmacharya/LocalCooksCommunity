@@ -1407,6 +1407,7 @@ export const generatePromoCodeEmail = (
     email: string;
     promoCode: string;
     customMessage: string;
+    greeting?: string;
     promoStyle?: {
       colorTheme: string;
       borderStyle: string;
@@ -1798,9 +1799,14 @@ Visit: ${getPromoUrl()}
       </div>
     `}
     <div class="content">
-      ${userData.isPremium && userData.sections && userData.sections.length > 0 ? `
+      ${userData.isPremium && (
+        (userData.sections && userData.sections.length > 0) || 
+        userData.header || 
+        userData.orderButton?.styling ||
+        userData.designSystem
+      ) ? `
         <!-- Advanced Design Mode with Custom Sections -->
-        <h2 class="greeting">Hello! 👋</h2>
+        <h2 class="greeting">${userData.greeting || 'Hello! 👋'}</h2>
         
         <div class="custom-message">
           ${userData.customMessage}
@@ -1812,7 +1818,7 @@ Visit: ${getPromoUrl()}
         </div>
         
         <!-- Custom sections from advanced design -->
-        ${generateAdvancedSections(userData.sections)}
+        ${generateAdvancedSections(userData.sections || [])}
         
         <div class="cta-container">
           <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
@@ -1821,7 +1827,7 @@ Visit: ${getPromoUrl()}
         </div>
       ` : `
         <!-- Simple Mode (Original Design) -->
-        <h2 class="greeting">Hello! 👋</h2>
+        <h2 class="greeting">${userData.greeting || 'Hello! 👋'}</h2>
         
         <div class="custom-message">
           ${userData.customMessage}
