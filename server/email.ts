@@ -1412,6 +1412,11 @@ export const generatePromoCodeEmail = (
       colorTheme: string;
       borderStyle: string;
     };
+    promoCodeStyling?: {
+      backgroundColor?: string;
+      borderColor?: string;
+      textColor?: string;
+    };
     designSystem?: any;
     isPremium?: boolean;
     sections?: Array<{
@@ -1513,22 +1518,25 @@ export const generatePromoCodeEmail = (
     return themes[colorTheme as keyof typeof themes] || themes.green;
   };
 
-  const styling = getPromoStyling(
+  const baseStyling = getPromoStyling(
     userData.promoStyle?.colorTheme || 'green',
     userData.promoStyle?.borderStyle || 'dashed'
   );
 
   // Define border styles
   const borderStyles = {
-    solid: `2px solid ${styling.borderColor}`,
-    dashed: `2px dashed ${styling.borderColor}`,
-    dotted: `2px dotted ${styling.borderColor}`,
-    double: `4px double ${styling.borderColor}`,
+    solid: `2px solid ${baseStyling.borderColor}`,
+    dashed: `2px dashed ${baseStyling.borderColor}`,
+    dotted: `2px dotted ${baseStyling.borderColor}`,
+    double: `4px double ${baseStyling.borderColor}`,
     none: 'none'
   };
 
-  styling.border = borderStyles[userData.promoStyle?.borderStyle as keyof typeof borderStyles] || borderStyles.dashed;
-  styling.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
+  const styling = {
+    ...baseStyling,
+    border: borderStyles[userData.promoStyle?.borderStyle as keyof typeof borderStyles] || borderStyles.dashed,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+  };
 
   const generateAdvancedSections = (sections: Array<any> = []) => {
     return sections.map(section => {
@@ -1541,6 +1549,7 @@ export const generatePromoCodeEmail = (
               font-size: ${section.styling?.fontSize || '16px'};
               color: ${section.styling?.color || '#374151'};
               font-weight: ${section.styling?.fontWeight || '400'};
+              font-style: ${section.styling?.fontStyle || 'normal'};
               text-align: ${section.styling?.textAlign || 'left'};
               padding: ${paddingValue};
               margin: ${section.styling?.margin || '0'};
@@ -1554,7 +1563,7 @@ export const generatePromoCodeEmail = (
         case 'button':
           return `
             <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
-              <a href="${getPromoUrl()}" style="
+              <a href="${section.styling?.url || getPromoUrl()}" style="
                 display: inline-block;
                 background: ${section.styling?.backgroundColor || styling.accentColor};
                 color: ${section.styling?.color || '#ffffff'} !important;
@@ -1641,15 +1650,7 @@ export const generatePromoCodeEmail = (
             }
           }
           return '';
-        case 'divider':
-          return `
-            <div style="
-              height: ${section.styling?.height || '1px'};
-              background-color: ${section.styling?.backgroundColor || '#e2e8f0'};
-              margin: ${section.styling?.margin || '20px 0'};
-              border: none;
-            "></div>
-          `;
+
         default:
           return '';
       }
@@ -1690,8 +1691,8 @@ Visit: ${getPromoUrl()}
   ${getUniformEmailStyles()}
   <style>
     .promo-code-box {
-      background: ${styling.background};
-      border: ${styling.border};
+      background: ${userData.promoCodeStyling?.backgroundColor || styling.background};
+      border: ${userData.promoCodeStyling?.borderColor ? `2px dashed ${userData.promoCodeStyling.borderColor}` : styling.border};
       border-radius: 12px;
       padding: 24px;
       text-align: center;
@@ -1702,27 +1703,24 @@ Visit: ${getPromoUrl()}
       font-family: 'Courier New', monospace;
       font-size: 28px;
       font-weight: 800;
-      color: ${styling.textColor};
+      color: ${userData.promoCodeStyling?.textColor || styling.textColor};
       letter-spacing: 2px;
       margin: 8px 0;
     }
     .promo-label {
       font-size: 14px;
       font-weight: 600;
-      color: ${styling.accentColor};
+      color: ${userData.promoCodeStyling?.textColor || styling.accentColor};
       text-transform: uppercase;
       letter-spacing: 1px;
       margin-bottom: 8px;
     }
     .custom-message {
-      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      border-left: 4px solid ${styling.accentColor};
-      border-radius: 8px;
-      padding: 20px;
-      margin: 24px 0;
       font-size: 16px;
       line-height: 1.6;
       white-space: pre-line; /* Preserves line breaks from admin input */
+      margin: 24px 0;
+      color: #374151;
     }
     .custom-header {
       background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
@@ -1811,7 +1809,7 @@ Visit: ${getPromoUrl()}
         userData.designSystem
       ) ? `
         <!-- Advanced Design Mode with Custom Sections -->
-        <h2 class="greeting">${userData.greeting || 'Hello! 👋'}</h2>
+        <h2 class="greeting">${userData.sections?.find(s => s.id === 'greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
         
         <div class="custom-message">
           ${userData.customMessage}
@@ -1832,7 +1830,7 @@ Visit: ${getPromoUrl()}
         </div>
       ` : `
         <!-- Simple Mode (Original Design) -->
-        <h2 class="greeting">${userData.greeting || 'Hello! 👋'}</h2>
+        <h2 class="greeting">${userData.sections?.find(s => s.id === 'greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
         
         <div class="custom-message">
           ${userData.customMessage}
