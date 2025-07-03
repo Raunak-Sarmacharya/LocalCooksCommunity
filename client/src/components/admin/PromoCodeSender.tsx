@@ -1,6 +1,6 @@
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Crown } from "lucide-react";
+import { Mail } from "lucide-react";
 import React, { useCallback, useState } from 'react';
 
 // Import design components
@@ -99,6 +99,7 @@ interface EmailContent {
   customMessage?: string;
   greeting?: string;
   email?: string;
+  recipientType?: string;
   orderButton?: {
     text?: string;
     url?: string;
@@ -153,10 +154,10 @@ const PromoCodeSender: React.FC = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   
-  // Single email design state - no more simple/advanced toggle
+  // Single email design state
   const [emailDesign, setEmailDesign] = useState<EmailDesignData>({
-    id: `promo-design-${Date.now()}`,
-    name: 'Promo Email Design',
+    id: `email-design-${Date.now()}`,
+    name: 'Custom Email Template',
     template: null,
     designSystem: {
       typography: {
@@ -197,15 +198,16 @@ const PromoCodeSender: React.FC = () => {
       }
     },
     content: {
-      subject: 'Special Offer Just for You!',
-      previewText: 'Exclusive promo code inside',
+      subject: 'Important Update from Local Cooks',
+      previewText: 'We have exciting news to share with you',
       sections: [],
-      promoCode: 'SAVE20',
-      customMessage: 'We\'re excited to offer you this exclusive discount! Use the promo code below to get amazing savings on your next order.',
+      promoCode: 'WELCOME20',
+      customMessage: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
       greeting: 'Hello! 👋',
       email: '',
+      recipientType: 'customer',
       orderButton: {
-        text: '🌟 Start Shopping Now',
+        text: '🌟 Get Started',
         url: 'https://localcooks.com',
         styling: {
           backgroundColor: '#F51042',
@@ -236,7 +238,7 @@ const PromoCodeSender: React.FC = () => {
       version: '1.0',
       lastModified: new Date(),
       author: 'Admin',
-      tags: ['promo', 'marketing'],
+      tags: ['campaign', 'communication'],
       performance: { openRate: 0, clickRate: 0, conversionRate: 0 }
     }
   });
@@ -251,7 +253,7 @@ const PromoCodeSender: React.FC = () => {
     if (!emailDesign.content.email || !emailDesign.content.promoCode || !emailDesign.content.customMessage) {
       toast({
         title: "Missing Information",
-        description: "Please fill in customer email, promo code, and custom message",
+        description: "Please fill in recipient email, offer code, and message",
         variant: "destructive"
       });
       return;
@@ -260,8 +262,8 @@ const PromoCodeSender: React.FC = () => {
     // Validate required fields before sending
     if (!emailDesign.content.promoCode || emailDesign.content.promoCode.length < 3) {
       toast({
-        title: "Invalid Promo Code",
-        description: "Promo code must be at least 3 characters long",
+        title: "Invalid Offer Code",
+        description: "Offer code must be at least 3 characters long",
         variant: "destructive"
       });
       return;
@@ -269,8 +271,8 @@ const PromoCodeSender: React.FC = () => {
 
     if (!emailDesign.content.customMessage || emailDesign.content.customMessage.length < 10) {
       toast({
-        title: "Invalid Custom Message",
-        description: "Custom message must be at least 10 characters long",
+        title: "Invalid Message",
+        description: "Message must be at least 10 characters long",
         variant: "destructive"
       });
       return;
@@ -290,6 +292,7 @@ const PromoCodeSender: React.FC = () => {
           promoCode: emailDesign.content.promoCode,
           customMessage: emailDesign.content.customMessage,
           greeting: emailDesign.content.greeting,
+          recipientType: emailDesign.content.recipientType,
           designSystem: emailDesign.designSystem,
           isPremium: true,
           sections: emailDesign.content.sections,
@@ -303,8 +306,8 @@ const PromoCodeSender: React.FC = () => {
       if (response.ok) {
         const result = await response.json();
         toast({
-          title: "🎉 Email Sent Successfully!",
-          description: `Promo email sent to ${emailDesign.content.email}`,
+          title: "✅ Email Sent Successfully!",
+          description: `Email sent to ${emailDesign.content.email}`,
         });
         
         // Reset form after successful send
@@ -320,7 +323,7 @@ const PromoCodeSender: React.FC = () => {
         }));
       } else {
         // Get detailed error message from server
-        let errorMessage = "Failed to send promo email";
+        let errorMessage = "Failed to send email";
         try {
           const errorData = await response.json();
           errorMessage = errorData.message || errorData.error || errorMessage;
@@ -332,7 +335,7 @@ const PromoCodeSender: React.FC = () => {
     } catch (error) {
       toast({
         title: "Send Failed",
-        description: error instanceof Error ? error.message : "Failed to send promo email",
+        description: error instanceof Error ? error.message : "Failed to send email",
         variant: "destructive"
       });
     } finally {
@@ -346,11 +349,11 @@ const PromoCodeSender: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle className="text-xl flex items-center text-gray-900">
-            <Crown className="h-6 w-6 mr-2 text-yellow-500" />
-            Premium Email Designer
+            <Mail className="h-6 w-6 mr-2 text-blue-500" />
+            Email Campaign Manager
           </CardTitle>
           <CardDescription>
-            Create beautiful, professional promo emails with our comprehensive design studio
+            Send customized promotional emails to customers and chefs with consistent branding
           </CardDescription>
         </CardHeader>
       </Card>
