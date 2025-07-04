@@ -607,10 +607,19 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     const messageContent = currentDesign.content.message || 
                           currentDesign.content.sections?.['custom-message']?.text || '';
     
+    console.log('Email validation debug:', {
+      messageFromContent: currentDesign.content.message,
+      messageFromSections: currentDesign.content.sections?.['custom-message']?.text,
+      finalMessageContent: messageContent,
+      messageLength: messageContent?.length,
+      promoCode: currentDesign.content.promoCode,
+      email: currentDesign.content.email
+    });
+    
     if (!messageContent || messageContent.length < 10) {
       toast({
         title: "Custom Message Required",
-        description: "Please enter a custom message (at least 10 characters)",
+        description: `Please enter a custom message (at least 10 characters). Current: ${messageContent?.length || 0} characters`,
         variant: "destructive"
       });
       return;

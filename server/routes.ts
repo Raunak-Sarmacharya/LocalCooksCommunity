@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generateStatusChangeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generateStatusChangeEmail, generatePromoCodeEmail, sendEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -1748,6 +1748,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error syncing Firebase user:', error);
       res.status(500).json({ 
         error: 'Failed to sync user', 
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Admin endpoint to send promo emails
+  app.post('/api/admin/send-promo-email', async (req: Request, res: Response) => {
+    try {
+      console.log(`POST /api/admin/send-promo-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
+      
+      // Check if user is authenticated
+      if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
+        console.log('Promo email request - User not authenticated');
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        console.log(`Promo email request - User ${req.user.id} is not admin (role: ${req.user.role})`);
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { 
+        email, 
+        promoCode, 
+        promoCodeLabel, 
+        message, 
+        buttonText, 
+        orderUrl, 
+        subject, 
+        previewText,
+        designSystem,
+        sections,
+        header,
+        customDesign
+      } = req.body;
+
+      console.log('Promo email request - Auth info:', {
+        sessionUserId: req.user?.id,
+        headerUserId: req.headers['user-id'],
+        rawUserId: req.user?.id
+      });
+
+      // Validate required fields
+      if (!email) {
+        console.log('Promo email request - Missing email');
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      if (!promoCode) {
+        console.log('Promo email request - Missing promo code');
+        return res.status(400).json({ error: 'Promo code is required' });
+      }
+
+      if (!message || message.length < 10) {
+        console.log('Promo email request - Invalid message:', { message: message?.substring(0, 50) });
+        return res.status(400).json({ error: 'Message must be at least 10 characters' });
+      }
+
+      console.log('Promo email request - Validation passed, generating email');
+
+      // Generate promo code email
+      const emailContent = generatePromoCodeEmail({
+        email,
+        promoCode,
+        promoCodeLabel: promoCodeLabel || 'Special Offer',
+        customMessage: message,
+        subject: subject || 'Special Offer from Local Cooks',
+        previewText: previewText || 'Don\'t miss out on this exclusive offer',
+        designSystem,
+        sections,
+        header,
+        orderButton: {
+          text: buttonText || 'Get Started',
+          url: orderUrl || 'https://localcooks.com',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }
+        }
+      });
+
+      // Send email
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `promo_email_${email}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        console.log(`Promo email sent successfully to ${email}`);
+        res.json({ 
+          success: true, 
+          message: 'Promo email sent successfully',
+          recipient: email,
+          promoCode
+        });
+      } else {
+        console.error(`Failed to send promo email to ${email}`);
+        res.status(500).json({ 
+          error: 'Failed to send email',
+          message: 'Email service unavailable'
+        });
+      }
+    } catch (error) {
+      console.error('Error sending promo email:', error);
+      res.status(500).json({ 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Test endpoint for admin to test email sending
+  app.post('/api/admin/test-email', async (req: Request, res: Response) => {
+    try {
+      console.log(`POST /api/admin/test-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
+      
+      // Check if user is authenticated
+      if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
+        console.log('Test email request - User not authenticated');
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        console.log(`Test email request - User ${req.user.id} is not admin (role: ${req.user.role})`);
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { email, subject, previewText, sections, header, customDesign } = req.body;
+
+      // Validate required fields
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      console.log('Test email request - Validation passed, generating test email');
+
+      // Generate a simple test email
+      const emailContent = generatePromoCodeEmail({
+        email,
+        promoCode: 'TEST123',
+        promoCodeLabel: 'Test Code',
+        customMessage: 'This is a test email to verify the email system is working correctly.',
+        subject: subject || 'Test Email from Local Cooks',
+        previewText: previewText || 'Test email preview',
+        designSystem: customDesign?.designSystem,
+        sections,
+        header,
+        orderButton: {
+          text: 'Test Button',
+          url: 'https://localcooks.com',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }
+        }
+      });
+
+      // Send test email
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `test_email_${email}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        console.log(`Test email sent successfully to ${email}`);
+        res.json({ 
+          success: true, 
+          message: 'Test email sent successfully',
+          recipient: email
+        });
+      } else {
+        console.error(`Failed to send test email to ${email}`);
+        res.status(500).json({ 
+          error: 'Failed to send email',
+          message: 'Email service unavailable'
+        });
+      }
+    } catch (error) {
+      console.error('Error sending test email:', error);
+      res.status(500).json({ 
+        error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
