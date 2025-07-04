@@ -544,6 +544,7 @@ export function registerFirebaseRoutes(app: Express) {
         email, 
         promoCode, 
         customMessage, 
+        message, 
         promoCodeLabel, 
         greeting, 
         recipientType, 
@@ -560,6 +561,9 @@ export function registerFirebaseRoutes(app: Express) {
         orderUrl
       } = req.body;
 
+      // Handle both customMessage and message fields (different frontend components use different names)
+      const messageContent = customMessage || message;
+
       // Validate required fields
       if (!email) {
         console.log('Promo email request - Missing email');
@@ -571,9 +575,13 @@ export function registerFirebaseRoutes(app: Express) {
         return res.status(400).json({ error: 'Promo code is required' });
       }
 
-      if (!customMessage || customMessage.length < 10) {
-        console.log('Promo email request - Invalid custom message:', { customMessage: customMessage?.substring(0, 50) });
-        return res.status(400).json({ error: 'Custom message must be at least 10 characters' });
+      if (!messageContent || messageContent.length < 10) {
+        console.log('Promo email request - Invalid message:', { 
+          customMessage: customMessage?.substring(0, 50), 
+          message: message?.substring(0, 50),
+          messageContent: messageContent?.substring(0, 50)
+        });
+        return res.status(400).json({ error: 'Message must be at least 10 characters' });
       }
 
       // Validate email format
@@ -593,11 +601,11 @@ export function registerFirebaseRoutes(app: Express) {
         });
       }
 
-      // Validate custom message length
-      if (customMessage.length > 1000) {
+      // Validate message length
+      if (messageContent.length > 1000) {
         return res.status(400).json({
           error: 'Invalid message',
-          message: 'Custom message must be less than 1000 characters'
+          message: 'Message must be less than 1000 characters'
         });
       }
 
@@ -610,7 +618,7 @@ export function registerFirebaseRoutes(app: Express) {
       const emailContent = generatePromoCodeEmail({
         email: email,
         promoCode: promoCode.trim(),
-        customMessage: customMessage.trim(),
+        customMessage: messageContent.trim(),
         greeting: greeting,
         promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
         promoCodeStyling: promoCodeStyling,
@@ -676,6 +684,7 @@ export function registerFirebaseRoutes(app: Express) {
         email, 
         promoCode, 
         customMessage, 
+        message, 
         promoCodeLabel, 
         greeting, 
         designSystem, 
@@ -689,6 +698,9 @@ export function registerFirebaseRoutes(app: Express) {
         promoCodeStyling
       } = req.body;
 
+      // Handle both customMessage and message fields
+      const messageContent = customMessage || message;
+
       console.log(`🔥 Admin ${req.neonUser?.username} testing promo email`);
 
       // Import the email functions
@@ -698,7 +710,7 @@ export function registerFirebaseRoutes(app: Express) {
       const emailContent = generatePromoCodeEmail({
         email: email || 'test@example.com',
         promoCode: promoCode || 'TEST20',
-        customMessage: customMessage || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
+        customMessage: messageContent || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
         greeting: greeting,
         promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
         promoCodeStyling: promoCodeStyling,
@@ -747,6 +759,7 @@ export function registerFirebaseRoutes(app: Express) {
       const { 
         promoCode, 
         customMessage, 
+        message, 
         promoCodeLabel, 
         greeting, 
         designSystem, 
@@ -760,11 +773,14 @@ export function registerFirebaseRoutes(app: Express) {
         promoCodeStyling
       } = req.body;
 
+      // Handle both customMessage and message fields
+      const messageContent = customMessage || message;
+
       // Validate required fields for preview
-      if (!promoCode || !customMessage) {
+      if (!promoCode || !messageContent) {
         return res.status(400).json({
           error: 'Missing required fields',
-          message: 'Promo code and custom message are required for preview'
+          message: 'Promo code and message are required for preview'
         });
       }
 
@@ -777,7 +793,7 @@ export function registerFirebaseRoutes(app: Express) {
       const emailContent = generatePromoCodeEmail({
         email: 'preview@example.com', // Dummy email for preview
         promoCode: promoCode.trim(),
-        customMessage: customMessage.trim(),
+        customMessage: messageContent.trim(),
         greeting: greeting,
         promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
         promoCodeStyling: promoCodeStyling,
