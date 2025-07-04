@@ -1457,12 +1457,27 @@ export const generatePromoCodeEmail = (
     promoCodeLabel?: string;
   }
 ): EmailContent => {
-  const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
+  const supportEmail = getSupportEmail();
+  const defaultPromoStyle = userData.promoStyle || { colorTheme: 'green', borderStyle: 'dashed' };
   
-  const subject = userData.subject || `🎉 Special Promo Code from ${organizationName}`;
-  
-  // Style configurations based on admin choice
+  // Helper function to safely access sections data
+  const getSectionData = (sectionId: string) => {
+    if (!userData.sections) return null;
+    
+    // Handle array format
+    if (Array.isArray(userData.sections)) {
+      return userData.sections.find(s => s.id === sectionId) || null;
+    }
+    
+    // Handle object format
+    if (typeof userData.sections === 'object') {
+      return userData.sections[sectionId] || null;
+    }
+    
+    return null;
+  };
+
   const getPromoStyling = (colorTheme: string, borderStyle: string) => {
     const themes = {
       green: {
@@ -1518,26 +1533,6 @@ export const generatePromoCodeEmail = (
     return themes[colorTheme as keyof typeof themes] || themes.green;
   };
 
-  const baseStyling = getPromoStyling(
-    userData.promoStyle?.colorTheme || 'green',
-    userData.promoStyle?.borderStyle || 'dashed'
-  );
-
-  // Define border styles
-  const borderStyles = {
-    solid: `2px solid ${baseStyling.borderColor}`,
-    dashed: `2px dashed ${baseStyling.borderColor}`,
-    dotted: `2px dotted ${baseStyling.borderColor}`,
-    double: `4px double ${baseStyling.borderColor}`,
-    none: 'none'
-  };
-
-  const styling = {
-    ...baseStyling,
-    border: borderStyles[userData.promoStyle?.borderStyle as keyof typeof borderStyles] || borderStyles.dashed,
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-  };
-
   const generateAdvancedSections = (sections: Array<any> = []) => {
     return sections.map(section => {
       switch (section.type) {
@@ -1565,7 +1560,7 @@ export const generatePromoCodeEmail = (
             <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
               <a href="${section.styling?.url || getPromoUrl()}" style="
                 display: inline-block;
-                background: ${section.styling?.backgroundColor || styling.accentColor};
+                background: ${section.styling?.backgroundColor || defaultPromoStyle.accentColor};
                 color: ${section.styling?.color || '#ffffff'} !important;
                 text-decoration: none !important;
                 padding: ${section.styling?.padding || '12px 24px'};
@@ -1679,15 +1674,15 @@ Visit: ${getPromoUrl()}
 `;
   };
 
-  // Dynamic email template with admin-chosen styling - EXACTLY matching preview
-  const html = `
-<!DOCTYPE html>
-<html>
+  const subject = userData.subject || `🎁 Exclusive Promo Code: ${userData.promoCode}`;
+  const styling = getPromoStyling(defaultPromoStyle.colorTheme, defaultPromoStyle.borderStyle);
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${subject}</title>
-  ${userData.previewText ? `<meta name="description" content="${userData.previewText}">` : ''}
   ${getUniformEmailStyles()}
   <style>
     .promo-code-box {
@@ -1716,19 +1711,19 @@ Visit: ${getPromoUrl()}
       margin-bottom: 8px;
     }
     .greeting {
-      font-size: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.fontSize || '24px'};
-      font-weight: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.fontWeight || '600'};
-      font-style: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.fontStyle || 'normal'};
-      color: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.color || '#1e293b'};
-      text-align: ${userData.sections?.find(s => s.id === 'greeting-section')?.styling?.textAlign || 'left'};
+      font-size: ${getSectionData('greeting-section')?.styling?.fontSize || '24px'};
+      font-weight: ${getSectionData('greeting-section')?.styling?.fontWeight || '600'};
+      font-style: ${getSectionData('greeting-section')?.styling?.fontStyle || 'normal'};
+      color: ${getSectionData('greeting-section')?.styling?.color || '#1e293b'};
+      text-align: ${getSectionData('greeting-section')?.styling?.textAlign || 'left'};
       margin: 0 0 16px 0;
     }
     .custom-message {
-      font-size: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.fontSize || '16px'};
-      font-weight: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.fontWeight || '400'};
-      font-style: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.fontStyle || 'normal'};
-      color: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.color || '#374151'};
-      text-align: ${userData.sections?.find(s => s.id === 'custom-message-section')?.styling?.textAlign || 'left'};
+      font-size: ${getSectionData('custom-message-section')?.styling?.fontSize || '16px'};
+      font-weight: ${getSectionData('custom-message-section')?.styling?.fontWeight || '400'};
+      font-style: ${getSectionData('custom-message-section')?.styling?.fontStyle || 'normal'};
+      color: ${getSectionData('custom-message-section')?.styling?.color || '#374151'};
+      text-align: ${getSectionData('custom-message-section')?.styling?.textAlign || 'left'};
       line-height: 1.6;
       white-space: pre-line; /* Preserves line breaks from admin input */
       margin: 24px 0;
@@ -1808,13 +1803,13 @@ Visit: ${getPromoUrl()}
     </div>
     <div class="content">
       ${userData.isPremium && (
-        (userData.sections && userData.sections.length > 0) || 
+        (userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0)) || 
         userData.header || 
         userData.orderButton?.styling ||
         userData.designSystem
       ) ? `
         <!-- Advanced Design Mode with Custom Sections -->
-        <h2 class="greeting">${userData.sections?.find(s => s.id === 'greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
+        <h2 class="greeting">${getSectionData('greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
         
         <div class="custom-message">
           ${userData.customMessage}
@@ -1826,7 +1821,7 @@ Visit: ${getPromoUrl()}
         </div>
         
         <!-- Custom sections from advanced design -->
-        ${generateAdvancedSections(userData.sections || [])}
+        ${generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : [])}
         
         <div class="cta-container">
           <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
@@ -1835,7 +1830,7 @@ Visit: ${getPromoUrl()}
         </div>
       ` : `
         <!-- Simple Mode (Original Design) -->
-        <h2 class="greeting">${userData.sections?.find(s => s.id === 'greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
+        <h2 class="greeting">${getSectionData('greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
         
         <div class="custom-message">
           ${userData.customMessage}
