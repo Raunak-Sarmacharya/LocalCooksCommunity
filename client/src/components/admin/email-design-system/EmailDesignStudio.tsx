@@ -216,6 +216,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   );
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
 
   // Create default design configuration
   function createDefaultDesign(): EmailDesignData {
@@ -264,7 +265,19 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       content: {
         subject: 'Important Update from Local Cooks',
         previewText: 'We have exciting news to share with you',
-        sections: {},
+        sections: {
+          'custom-message': {
+            id: 'custom-message-section',
+            type: 'custom-message',
+            text: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
+            styling: {
+              fontSize: '16px',
+              color: '#374151',
+              fontWeight: 'normal',
+              textAlign: 'left'
+            }
+          }
+        },
         promoCode: 'WELCOME20',
         promoCodeLabel: '🎁 Special Offer Code',
         message: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
@@ -447,23 +460,26 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   // Update element content
   const updateElementContent = (elementId: string, content: string) => {
     if (elementId === 'custom-message') {
-      handleContentUpdate({ message: content });
-      // Also ensure we have a custom message section for styling
-      const customMessageSection = currentDesign.content.sections['custom-message'];
-      if (!customMessageSection) {
-        const newCustomMessageSection: EmailSection = {
-          id: 'custom-message-section',
-          type: 'custom-message',
-          text: content,
-          styling: {
-            fontSize: '16px',
-            color: '#374151',
-            fontWeight: 'normal',
-            textAlign: 'left'
-          }
-        };
-        handleContentUpdate({ sections: { ...currentDesign.content.sections, 'custom-message': newCustomMessageSection } });
-      }
+      // Ensure both message and section are updated consistently
+      const customMessageSection: EmailSection = {
+        id: 'custom-message-section',
+        type: 'custom-message',
+        text: content,
+        styling: currentDesign.content.sections?.['custom-message']?.styling || {
+          fontSize: '16px',
+          color: '#374151',
+          fontWeight: 'normal',
+          textAlign: 'left'
+        }
+      };
+      
+      handleContentUpdate({ 
+        message: content,
+        sections: { 
+          ...currentDesign.content.sections, 
+          'custom-message': customMessageSection 
+        }
+      });
     } else if (elementId === 'promo-code') {
       handleContentUpdate({ promoCode: content });
     } else if (elementId === 'promo-code-label') {
@@ -519,6 +535,52 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     { id: 'dashed', name: 'Dashed Border', style: { border: '2px dashed #16a34a', borderRadius: '8px' } },
     { id: 'gradient', name: 'Gradient Box', style: { background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderRadius: '8px' } }
   ];
+
+  // Test email functionality
+  const handleTestEmail = async () => {
+    if (!currentDesign.content.email) {
+      toast({
+        title: "Email Required",
+        description: "Please enter a test email address",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsTestingEmail(true);
+    try {
+      const response = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: currentDesign.content.email,
+          subject: currentDesign.content.subject || 'Test Email',
+          previewText: currentDesign.content.previewText || 'Test preview',
+          sections: currentDesign.content.sections,
+          header: currentDesign.content.header,
+          customDesign: currentDesign
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "✅ Test Email Sent!",
+          description: `Test email sent to ${currentDesign.content.email}`
+        });
+      } else {
+        throw new Error('Failed to send test email');
+      }
+    } catch (error) {
+      toast({
+        title: "Test Failed",
+        description: "Could not send test email. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsTestingEmail(false);
+    }
+  };
 
   // Send promo email
   const handleSendPromoEmail = async () => {
@@ -605,26 +667,45 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col">
       {/* Top Header - Email Configuration */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+      <div className="bg-white border-b border-gray-200 shadow-sm px-8 py-5 flex-shrink-0">
         <div className="max-w-7xl mx-auto">
           {/* Header Top Row */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-5">
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <Send className="h-5 w-5 text-white" />
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-xl flex items-center justify-center shadow-lg">
+                  <Send className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900">Email Campaign Studio</h1>
-                  <p className="text-sm text-gray-500">Professional email designer</p>
+                  <h1 className="text-2xl font-bold text-gray-900">Email Campaign Studio</h1>
+                  <p className="text-sm text-gray-600">Professional email designer for world-class campaigns</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm" className="h-9 px-4 border-gray-300">
+            <div className="flex items-center space-x-4">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleTestEmail}
+                disabled={isTestingEmail || !currentDesign.content.email}
+                className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
+              >
+                {isTestingEmail ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4 mr-2" />
+                )}
+                Test Email
+              </Button>
+
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
+              >
                 <Save className="h-4 w-4 mr-2" />
                 Save Template
               </Button>
@@ -632,7 +713,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               <Button 
                 onClick={handleSendPromoEmail}
                 disabled={isSending || !currentDesign.content.email}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white h-9 px-6 font-medium"
+                className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white h-10 px-7 font-medium shadow-lg transition-all duration-200"
               >
                 {isSending ? (
                   <>
@@ -650,45 +731,57 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           </div>
 
           {/* Email Configuration Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
             <div>
-              <Label className="text-sm font-medium text-gray-700 mb-1 block">To</Label>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block flex items-center">
+                <Mail className="h-4 w-4 mr-1 text-gray-500" />
+                To
+              </Label>
               <Input
                 type="email"
                 placeholder="recipient@example.com"
                 value={currentDesign.content.email || ''}
                 onChange={(e) => updateElementContent('customer-email', e.target.value)}
-                className="h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                className="h-10 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
               />
             </div>
 
             <div>
-              <Label className="text-sm font-medium text-gray-700 mb-1 block">Subject Line</Label>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block flex items-center">
+                <Type className="h-4 w-4 mr-1 text-gray-500" />
+                Subject Line
+              </Label>
               <Input
                 placeholder="Enter your subject line"
                 value={currentDesign.content.subject}
                 onChange={(e) => handleContentUpdate({ subject: e.target.value })}
-                className="h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                className="h-10 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
               />
             </div>
 
             <div>
-              <Label className="text-sm font-medium text-gray-700 mb-1 block">Preview Text</Label>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block flex items-center">
+                <Eye className="h-4 w-4 mr-1 text-gray-500" />
+                Preview Text
+              </Label>
               <Input
                 placeholder="Email preview text"
                 value={currentDesign.content.previewText}
                 onChange={(e) => handleContentUpdate({ previewText: e.target.value })}
-                className="h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                className="h-10 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
               />
             </div>
 
             <div>
-              <Label className="text-sm font-medium text-gray-700 mb-1 block">Recipient Type</Label>
+              <Label className="text-sm font-medium text-gray-700 mb-2 block flex items-center">
+                <Target className="h-4 w-4 mr-1 text-gray-500" />
+                Recipient Type
+              </Label>
               <Select
                 value={currentDesign.content.recipientType || 'customer'}
                 onValueChange={(value) => handleContentUpdate({ recipientType: value })}
               >
-                <SelectTrigger className="h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
+                <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -705,33 +798,39 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Dynamic Side Panel */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-          <div className="p-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900 mb-1">
+        <div className="w-80 bg-white border-r border-gray-200 shadow-sm flex flex-col">
+          <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
+            <h2 className="font-semibold text-gray-900 mb-2 flex items-center">
               {selectedElement ? (
                 <>
-                  <Palette className="h-4 w-4 inline mr-2" />
-                  {selectedElement === 'email-header' && 'Header Settings'}
-                  {selectedElement === 'greeting' && 'Greeting Text'}
-                  {selectedElement === 'custom-message' && 'Message Content'}
-                  {selectedElement === 'promo-code' && 'Promo Code'}
-                  {selectedElement === 'promo-code-label' && 'Promo Label'}
-                  {selectedElement === 'order-button' && 'Call-to-Action'}
-                  {selectedElement.startsWith('section-') && 'Custom Element'}
+                  <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mr-3">
+                    <Palette className="h-4 w-4 text-white" />
+                  </div>
+                  <span>
+                    {selectedElement === 'email-header' && 'Header Settings'}
+                    {selectedElement === 'greeting' && 'Greeting Text'}
+                    {selectedElement === 'custom-message' && 'Message Content'}
+                    {selectedElement === 'promo-code' && 'Promo Code'}
+                    {selectedElement === 'promo-code-label' && 'Promo Label'}
+                    {selectedElement === 'order-button' && 'Call-to-Action'}
+                    {selectedElement.startsWith('section-') && 'Custom Element'}
+                  </span>
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4 inline mr-2" />
-                  Add Elements
+                  <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center mr-3">
+                    <Plus className="h-4 w-4 text-white" />
+                  </div>
+                  <span>Add Elements</span>
                 </>
               )}
             </h2>
-            <p className="text-xs text-gray-500">
-              {selectedElement ? 'Customize the selected element' : 'Click an element to edit or add new content'}
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {selectedElement ? 'Customize the selected element with professional controls' : 'Click any element in the preview to edit or add new content'}
             </p>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-5">
             {selectedElement ? (
               <div className="space-y-6">
                 {/* Email Header Settings */}
@@ -943,13 +1042,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
 
                     <div>
-                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Message Text</Label>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Message Text</Label>
                       <Textarea
                         placeholder="Enter your message content..."
-                        value={currentDesign.content.sections?.['custom-message']?.text || currentDesign.content.message || ''}
+                        value={currentDesign.content.sections?.['custom-message']?.text || ''}
                         onChange={(e) => updateElementContent('custom-message', e.target.value)}
-                        className="min-h-[100px] text-sm"
+                        className="min-h-[120px] text-sm resize-none border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                       />
+                      <p className="text-xs text-gray-500 mt-1">Minimum 10 characters required</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -1389,9 +1489,15 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         </div>
 
         {/* Email Preview Area */}
-        <div className="flex-1 bg-gray-100 p-6 overflow-auto">
+        <div className="flex-1 bg-gradient-to-br from-gray-50 to-blue-50 p-8 overflow-auto">
           <div className="max-w-2xl mx-auto">
-            <div className="bg-white shadow-2xl rounded-xl overflow-hidden border border-gray-200">
+            {/* Preview Header */}
+            <div className="mb-6 text-center">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Email Preview</h3>
+              <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
+            </div>
+            
+            <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300">
               {/* Email Header */}
               <div 
                 className={`text-white cursor-pointer transition-all duration-200 relative group ${
@@ -1447,7 +1553,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               </div>
 
               {/* Email Content Body */}
-              <div className="p-8 space-y-6">
+              <div className="p-10 space-y-8 bg-gradient-to-b from-white to-gray-50">
                 {/* Greeting Section */}
                 <div 
                   className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
