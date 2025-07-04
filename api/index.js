@@ -8746,13 +8746,16 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, customMessage, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+    const { email, promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+
+    // Handle both customMessage and message fields (different frontend components use different names)
+    const messageContent = customMessage || message;
 
     // Validate required fields
-    if (!email || !promoCode || !customMessage) {
+    if (!email || !promoCode || !messageContent) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Email, promo code, and custom message are required'
+        message: 'Email, promo code, and message are required'
       });
     }
 
@@ -8773,11 +8776,11 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    // Validate custom message
-    if (customMessage.length < 10 || customMessage.length > 1000) {
+    // Validate message
+    if (messageContent.length < 10 || messageContent.length > 1000) {
       return res.status(400).json({
         error: 'Invalid message',
-        message: 'Custom message must be between 10 and 1000 characters'
+        message: 'Message must be between 10 and 1000 characters'
       });
     }
 
@@ -8790,7 +8793,7 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
     const emailContent = generatePromoCodeEmail({
       email: email,
       promoCode: promoCode.trim(),
-      customMessage: customMessage.trim(),
+      customMessage: messageContent.trim(),
       greeting: greeting,
       promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
       promoCodeStyling: req.body.promoCodeStyling,
@@ -8854,7 +8857,10 @@ app.post('/api/test-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, customMessage, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+    const { email, promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+
+    // Handle both customMessage and message fields
+    const messageContent = customMessage || message;
 
     console.log(`Admin ${user.username} testing promo email`);
 
@@ -8865,7 +8871,7 @@ app.post('/api/test-promo-email', async (req, res) => {
     const emailContent = generatePromoCodeEmail({
       email: email || 'test@example.com',
       promoCode: promoCode || 'TEST20',
-      customMessage: customMessage || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
+      customMessage: messageContent || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
       greeting: greeting,
       promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
       promoCodeStyling: req.body.promoCodeStyling,
@@ -8925,13 +8931,16 @@ app.post('/api/preview-promo-email', async (req, res) => {
       });
     }
 
-    const { promoCode, customMessage, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+    const { promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+
+    // Handle both customMessage and message fields
+    const messageContent = customMessage || message;
 
     // Validate required fields for preview
-    if (!promoCode || !customMessage) {
+    if (!promoCode || !messageContent) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Promo code and custom message are required for preview'
+        message: 'Promo code and message are required for preview'
       });
     }
 
@@ -8944,7 +8953,7 @@ app.post('/api/preview-promo-email', async (req, res) => {
     const emailContent = generatePromoCodeEmail({
       email: 'preview@example.com', // Dummy email for preview
       promoCode: promoCode.trim(),
-      customMessage: customMessage.trim(),
+      customMessage: messageContent.trim(),
       greeting: greeting,
       promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
       promoCodeStyling: req.body.promoCodeStyling,

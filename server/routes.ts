@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generateStatusChangeEmail, generatePromoCodeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -1775,6 +1775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         promoCode, 
         promoCodeLabel, 
         message, 
+        customMessage, 
         buttonText, 
         orderUrl, 
         subject, 
@@ -1784,6 +1785,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         header,
         customDesign
       } = req.body;
+
+      // Handle both customMessage and message fields (different frontend components use different names)
+      const messageContent = customMessage || message;
 
       console.log('Promo email request - Auth info:', {
         sessionUserId: req.user?.id,
@@ -1802,8 +1806,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Promo code is required' });
       }
 
-      if (!message || message.length < 10) {
-        console.log('Promo email request - Invalid message:', { message: message?.substring(0, 50) });
+      if (!messageContent || messageContent.length < 10) {
+        console.log('Promo email request - Invalid message:', { 
+          customMessage: customMessage?.substring(0, 50), 
+          message: message?.substring(0, 50),
+          messageContent: messageContent?.substring(0, 50)
+        });
         return res.status(400).json({ error: 'Message must be at least 10 characters' });
       }
 
@@ -1814,7 +1822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email,
         promoCode,
         promoCodeLabel: promoCodeLabel || 'Special Offer',
-        customMessage: message,
+        customMessage: messageContent,
         subject: subject || 'Special Offer from Local Cooks',
         previewText: previewText || 'Don\'t miss out on this exclusive offer',
         designSystem,
