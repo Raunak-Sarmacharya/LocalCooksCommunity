@@ -535,6 +535,275 @@ export function registerFirebaseRoutes(app: Express) {
     });
   });
 
+  // 🔥 Admin Promo Email Endpoint (Firebase Auth + Admin Role)
+  app.post('/api/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      console.log(`🔥 POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+
+      const { 
+        email, 
+        promoCode, 
+        customMessage, 
+        promoCodeLabel, 
+        greeting, 
+        recipientType, 
+        designSystem, 
+        isPremium, 
+        sections, 
+        orderButton, 
+        header, 
+        subject, 
+        previewText,
+        promoStyle,
+        promoCodeStyling,
+        buttonText,
+        orderUrl
+      } = req.body;
+
+      // Validate required fields
+      if (!email) {
+        console.log('Promo email request - Missing email');
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      if (!promoCode) {
+        console.log('Promo email request - Missing promo code');
+        return res.status(400).json({ error: 'Promo code is required' });
+      }
+
+      if (!customMessage || customMessage.length < 10) {
+        console.log('Promo email request - Invalid custom message:', { customMessage: customMessage?.substring(0, 50) });
+        return res.status(400).json({ error: 'Custom message must be at least 10 characters' });
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          error: 'Invalid email',
+          message: 'Please provide a valid email address'
+        });
+      }
+
+      // Validate promo code (basic validation - alphanumeric, length check)
+      if (promoCode.length < 3 || promoCode.length > 50) {
+        return res.status(400).json({
+          error: 'Invalid promo code',
+          message: 'Promo code must be between 3 and 50 characters'
+        });
+      }
+
+      // Validate custom message length
+      if (customMessage.length > 1000) {
+        return res.status(400).json({
+          error: 'Invalid message',
+          message: 'Custom message must be less than 1000 characters'
+        });
+      }
+
+      console.log(`🔥 Admin ${req.neonUser?.username} sending promo email to ${email} with code: ${promoCode}`);
+
+      // Import the email functions
+      const { sendEmail, generatePromoCodeEmail } = await import('./email');
+
+      // Generate the promo email with custom message and styling
+      const emailContent = generatePromoCodeEmail({
+        email: email,
+        promoCode: promoCode.trim(),
+        customMessage: customMessage.trim(),
+        greeting: greeting,
+        promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+        promoCodeStyling: promoCodeStyling,
+        designSystem: designSystem,
+        isPremium: isPremium || false,
+        sections: sections || [],
+        orderButton: orderButton || {
+          text: buttonText || 'Get Started',
+          url: orderUrl || 'https://localcooks.com',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }
+        },
+        header: header,
+        subject: subject,
+        previewText: previewText,
+        promoCodeLabel: promoCodeLabel
+      });
+
+      // Send the email
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `promo_custom_${email}_${promoCode}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        console.log(`🔥 Promo email sent successfully to ${email} with code ${promoCode}`);
+        return res.status(200).json({
+          message: 'Promo code email sent successfully',
+          email: email,
+          promoCode: promoCode,
+          sentBy: req.neonUser?.username,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error(`🔥 Failed to send promo email to ${email}`);
+        return res.status(500).json({
+          error: 'Email sending failed',
+          message: 'Failed to send promo code email. Please check email configuration.'
+        });
+      }
+
+    } catch (error) {
+      console.error('🔥 Error sending promo email:', error);
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'An error occurred while sending the promo code email'
+      });
+    }
+  });
+
+  // 🔥 Test Promo Email Endpoint (Firebase Auth + Admin Role)
+  app.post('/api/test-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      console.log(`🔥 POST /api/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+
+      const { 
+        email, 
+        promoCode, 
+        customMessage, 
+        promoCodeLabel, 
+        greeting, 
+        designSystem, 
+        isPremium, 
+        sections, 
+        orderButton, 
+        header, 
+        subject, 
+        previewText,
+        promoStyle,
+        promoCodeStyling
+      } = req.body;
+
+      console.log(`🔥 Admin ${req.neonUser?.username} testing promo email`);
+
+      // Import the email functions
+      const { sendEmail, generatePromoCodeEmail } = await import('./email');
+
+      // Generate test promo email with custom message and styling
+      const emailContent = generatePromoCodeEmail({
+        email: email || 'test@example.com',
+        promoCode: promoCode || 'TEST20',
+        customMessage: customMessage || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
+        greeting: greeting,
+        promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+        promoCodeStyling: promoCodeStyling,
+        designSystem: designSystem,
+        isPremium: isPremium || false,
+        sections: sections || [],
+        orderButton: orderButton,
+        header: header,
+        subject: subject,
+        previewText: previewText,
+        promoCodeLabel: promoCodeLabel
+      });
+
+      // Send the email
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `test_promo_custom_${email || 'test'}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        return res.status(200).json({
+          message: 'Test promo email sent successfully',
+          email: email || 'test@example.com',
+          promoCode: promoCode || 'TEST20'
+        });
+      } else {
+        return res.status(500).json({
+          error: 'Test email failed',
+          message: 'Failed to send test promo email'
+        });
+      }
+
+    } catch (error) {
+      console.error('🔥 Error sending test promo email:', error);
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'An error occurred while testing promo email'
+      });
+    }
+  });
+
+  // 🔥 Preview Promo Email Endpoint (Firebase Auth + Admin Role)
+  app.post('/api/preview-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      console.log(`🔥 POST /api/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+
+      const { 
+        promoCode, 
+        customMessage, 
+        promoCodeLabel, 
+        greeting, 
+        designSystem, 
+        isPremium, 
+        sections, 
+        orderButton, 
+        header, 
+        subject, 
+        previewText,
+        promoStyle,
+        promoCodeStyling
+      } = req.body;
+
+      // Validate required fields for preview
+      if (!promoCode || !customMessage) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          message: 'Promo code and custom message are required for preview'
+        });
+      }
+
+      console.log(`🔥 Admin ${req.neonUser?.username} previewing promo email`);
+
+      // Import the email functions
+      const { generatePromoCodeEmail } = await import('./email');
+
+      // Generate promo email content for preview
+      const emailContent = generatePromoCodeEmail({
+        email: 'preview@example.com', // Dummy email for preview
+        promoCode: promoCode.trim(),
+        customMessage: customMessage.trim(),
+        greeting: greeting,
+        promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+        promoCodeStyling: promoCodeStyling,
+        designSystem: designSystem,
+        isPremium: isPremium || false,
+        sections: sections || [],
+        orderButton: orderButton,
+        header: header,
+        subject: subject,
+        previewText: previewText,
+        promoCodeLabel: promoCodeLabel
+      });
+
+      // Return the HTML content directly for preview
+      res.setHeader('Content-Type', 'text/html');
+      return res.status(200).send(emailContent.html || '<p>No HTML content generated</p>');
+
+    } catch (error) {
+      console.error('🔥 Error generating promo email preview:', error);
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'An error occurred while generating email preview'
+      });
+    }
+  });
+
   console.log('🔥 Firebase authentication routes registered successfully');
   console.log('✨ Session-free architecture active - JWT tokens only');
 } 
