@@ -603,7 +603,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       return;
     }
 
-    if (!currentDesign.content.message || currentDesign.content.message.length < 10) {
+    // Check message from both possible sources (message field and sections)
+    const messageContent = currentDesign.content.message || 
+                          currentDesign.content.sections?.['custom-message']?.text || '';
+    
+    if (!messageContent || messageContent.length < 10) {
       toast({
         title: "Custom Message Required",
         description: "Please enter a custom message (at least 10 characters)",
@@ -624,7 +628,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           email: currentDesign.content.email,
           promoCode: currentDesign.content.promoCode,
           promoCodeLabel: currentDesign.content.promoCodeLabel,
-          message: currentDesign.content.message,
+          message: messageContent, // Use the validated message content
           buttonText: currentDesign.content.buttonText,
           orderUrl: currentDesign.content.orderUrl,
           promoCodeStyling: currentDesign.content.promoCodeStyling,
