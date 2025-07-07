@@ -42,27 +42,27 @@ function FormStep() {
         <ProgressIndicator step={currentStep} />
       </div>
 
-      <div className="container mx-auto px-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-6 md:p-8">
-          <h1 className="text-2xl md:text-3xl font-bold mb-6 text-center">Cook Application</h1>
+      <div className="container mx-auto px-3 sm:px-4">
+        <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">Cook Application</h1>
 
           {currentStep === 1 && (
             <div className="fade-in">
-              <p className="text-center mb-8">Please provide your personal information</p>
+              <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Please provide your personal information</p>
               <PersonalInfoForm />
             </div>
           )}
 
           {currentStep === 2 && (
             <div className="fade-in">
-              <p className="text-center mb-8">Select your kitchen preference</p>
+              <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Select your kitchen preference</p>
               <KitchenPreferenceForm />
             </div>
           )}
 
           {currentStep === 3 && (
             <div className="fade-in">
-              <p className="text-center mb-8">Tell us about your food safety certifications</p>
+              <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Tell us about your food safety certifications</p>
               <CertificationsForm />
             </div>
           )}

@@ -856,43 +856,43 @@ export default function ApplicantDashboard() {
       <Header />
       
       {/* Main Dashboard Container */}
-      <main className="pt-20 pb-16 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="pt-16 sm:pt-20 pb-12 sm:pb-16 relative">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
           
           {/* Welcome Header Section */}
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8 mt-4"
+            className="mb-6 sm:mb-8 mt-2 sm:mt-4"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg shadow-lg">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg flex-shrink-0">
                 {user?.displayName ? user.displayName[0]?.toUpperCase() : user?.email?.[0]?.toUpperCase() || "U"}
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
                   Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Applicant'}
                 </h1>
-                <p className="text-gray-500">Manage your applications and training progress</p>
+                <p className="text-sm sm:text-base text-gray-500 truncate">Manage your applications and training progress</p>
               </div>
             </div>
           </motion.div>
 
-          {/* Quick Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {/* Quick Stats Cards - Mobile Optimized */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-blue-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Applications</p>
-                  <p className="text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Applications</p>
+                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
                 </div>
               </div>
             </motion.div>
@@ -901,15 +901,15 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                  <BookOpen className="h-5 w-5 text-green-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Training</p>
-                  <p className="text-sm font-semibold text-gray-900">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Training</p>
+                  <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
                     {microlearningCompletion?.confirmed 
                       ? "Completed" 
                       : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
@@ -925,15 +925,15 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-purple-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Documents</p>
-                  <p className="text-sm font-semibold text-gray-900">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Documents</p>
+                  <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
                     {getDocumentStatus()}
                   </p>
                 </div>
@@ -944,15 +944,15 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-yellow-600" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Status</p>
-                  <p className="text-sm font-semibold text-gray-900">{getApplicationStatus() || "Getting Started"}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Status</p>
+                  <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">{getApplicationStatus() || "Getting Started"}</p>
                 </div>
               </div>
             </motion.div>

@@ -1417,6 +1417,16 @@ export const generatePromoCodeEmail = (
       backgroundColor?: string;
       borderColor?: string;
       textColor?: string;
+      fontSize?: string;
+      fontWeight?: string;
+      labelColor?: string;
+      labelFontSize?: string;
+      labelFontWeight?: string;
+      borderRadius?: string;
+      borderWidth?: string;
+      borderStyle?: string;
+      boxShadow?: string;
+      padding?: string;
     };
     designSystem?: any;
     isPremium?: boolean;
@@ -1488,6 +1498,18 @@ export const generatePromoCodeEmail = (
       backgroundColor?: string;
       borderRadius?: string;
       boxShadow?: string;
+      mobileMaxWidth?: string;
+      mobilePadding?: string;
+      mobileFontScale?: string;
+      mobileButtonSize?: string;
+    };
+    dividers?: {
+      enabled?: boolean;
+      style?: string;
+      color?: string;
+      thickness?: string;
+      margin?: string;
+      opacity?: string;
     };
     subject?: string;
     previewText?: string;
@@ -1720,6 +1742,22 @@ export const generatePromoCodeEmail = (
     }).join('');
   };
   
+  // Generate divider HTML based on settings
+  const generateDivider = () => {
+    if (!userData.dividers?.enabled) return '';
+    
+    return `
+      <div style="margin: ${userData.dividers.margin || '24px 0'};">
+        <hr style="
+          border: none;
+          border-top: ${userData.dividers.thickness || '1px'} ${userData.dividers.style || 'solid'} ${userData.dividers.color || '#e2e8f0'};
+          opacity: ${userData.dividers.opacity || '1'};
+          margin: 0;
+        " />
+      </div>
+    `;
+  };
+  
   // Improved greeting resolution with multiple fallback sources
   const getGreeting = () => {
     // Try to get greeting from sections first
@@ -1784,6 +1822,11 @@ Visit: ${getPromoUrl()}
     /* Override email container styles for customization */
     body { 
       background: ${userData.emailContainer?.backgroundColor || '#f1f5f9'} !important;
+      ${userData.emailContainer?.backgroundImage ? `background-image: url(${userData.emailContainer.backgroundImage}) !important;` : ''}
+      ${userData.emailContainer?.backgroundSize ? `background-size: ${userData.emailContainer.backgroundSize} !important;` : ''}
+      ${userData.emailContainer?.backgroundPosition ? `background-position: ${userData.emailContainer.backgroundPosition} !important;` : ''}
+      ${userData.emailContainer?.backgroundRepeat ? `background-repeat: ${userData.emailContainer.backgroundRepeat} !important;` : ''}
+      ${userData.emailContainer?.backgroundAttachment ? `background-attachment: ${userData.emailContainer.backgroundAttachment} !important;` : ''}
     }
     .email-container { 
       max-width: ${userData.emailContainer?.maxWidth || '600px'} !important; 
@@ -1793,25 +1836,29 @@ Visit: ${getPromoUrl()}
     
     .promo-code-box {
       background: ${userData.promoCodeStyling?.backgroundColor || styling.background};
-      border: ${userData.promoCodeStyling?.borderColor ? `2px dashed ${userData.promoCodeStyling.borderColor}` : styling.border};
-      border-radius: 12px;
-      padding: 24px;
+      border: ${
+        userData.promoCodeStyling?.borderWidth || userData.promoCodeStyling?.borderStyle || userData.promoCodeStyling?.borderColor 
+          ? `${userData.promoCodeStyling?.borderWidth || '2px'} ${userData.promoCodeStyling?.borderStyle || 'dashed'} ${userData.promoCodeStyling?.borderColor || styling.borderColor}`
+          : styling.border
+      };
+      border-radius: ${userData.promoCodeStyling?.borderRadius || '12px'};
+      padding: ${userData.promoCodeStyling?.padding || '24px'};
       text-align: center;
       margin: 24px 0;
-      box-shadow: ${styling.boxShadow};
+      box-shadow: ${userData.promoCodeStyling?.boxShadow || styling.boxShadow};
     }
     .promo-code {
       font-family: 'Courier New', monospace;
-      font-size: 28px;
-      font-weight: 800;
+      font-size: ${userData.promoCodeStyling?.fontSize || '28px'};
+      font-weight: ${userData.promoCodeStyling?.fontWeight || '800'};
       color: ${userData.promoCodeStyling?.textColor || styling.textColor};
       letter-spacing: 2px;
       margin: 8px 0;
     }
     .promo-label {
-      font-size: 14px;
-      font-weight: 600;
-      color: ${userData.promoCodeStyling?.textColor || styling.accentColor};
+      font-size: ${userData.promoCodeStyling?.labelFontSize || '14px'};
+      font-weight: ${userData.promoCodeStyling?.labelFontWeight || '600'};
+      color: ${userData.promoCodeStyling?.labelColor || userData.promoCodeStyling?.textColor || styling.accentColor};
       text-transform: uppercase;
       letter-spacing: 1px;
       margin-bottom: 8px;
@@ -1822,7 +1869,19 @@ Visit: ${getPromoUrl()}
       font-style: ${getSectionData('greeting')?.styling?.fontStyle || getSectionData('greeting-section')?.styling?.fontStyle || 'normal'};
       color: ${getSectionData('greeting')?.styling?.color || getSectionData('greeting-section')?.styling?.color || '#1e293b'};
       text-align: ${getSectionData('greeting')?.styling?.textAlign || getSectionData('greeting-section')?.styling?.textAlign || 'left'};
-      margin: 0 0 16px 0;
+      line-height: ${getSectionData('greeting')?.styling?.lineHeight || getSectionData('greeting-section')?.styling?.lineHeight || '1.6'};
+      letter-spacing: ${getSectionData('greeting')?.styling?.letterSpacing || getSectionData('greeting-section')?.styling?.letterSpacing || 'normal'};
+      text-transform: ${getSectionData('greeting')?.styling?.textTransform || getSectionData('greeting-section')?.styling?.textTransform || 'none'};
+      margin: ${getSectionData('greeting')?.styling?.margin || getSectionData('greeting-section')?.styling?.margin || '0 0 16px 0'};
+      ${getSectionData('greeting')?.styling?.marginTop ? `margin-top: ${getSectionData('greeting')?.styling?.marginTop};` : ''}
+      ${getSectionData('greeting')?.styling?.marginRight ? `margin-right: ${getSectionData('greeting')?.styling?.marginRight};` : ''}
+      ${getSectionData('greeting')?.styling?.marginBottom ? `margin-bottom: ${getSectionData('greeting')?.styling?.marginBottom};` : ''}
+      ${getSectionData('greeting')?.styling?.marginLeft ? `margin-left: ${getSectionData('greeting')?.styling?.marginLeft};` : ''}
+      padding: ${getSectionData('greeting')?.styling?.padding || getSectionData('greeting-section')?.styling?.padding || '0'};
+      ${getSectionData('greeting')?.styling?.paddingTop ? `padding-top: ${getSectionData('greeting')?.styling?.paddingTop};` : ''}
+      ${getSectionData('greeting')?.styling?.paddingRight ? `padding-right: ${getSectionData('greeting')?.styling?.paddingRight};` : ''}
+      ${getSectionData('greeting')?.styling?.paddingBottom ? `padding-bottom: ${getSectionData('greeting')?.styling?.paddingBottom};` : ''}
+      ${getSectionData('greeting')?.styling?.paddingLeft ? `padding-left: ${getSectionData('greeting')?.styling?.paddingLeft};` : ''}
     }
     .custom-message {
       font-size: ${getSectionData('custom-message')?.styling?.fontSize || getSectionData('custom-message-section')?.styling?.fontSize || '16px'};
@@ -1830,12 +1889,28 @@ Visit: ${getPromoUrl()}
       font-style: ${getSectionData('custom-message')?.styling?.fontStyle || getSectionData('custom-message-section')?.styling?.fontStyle || 'normal'};
       color: ${getSectionData('custom-message')?.styling?.color || getSectionData('custom-message-section')?.styling?.color || '#374151'};
       text-align: ${getSectionData('custom-message')?.styling?.textAlign || getSectionData('custom-message-section')?.styling?.textAlign || 'left'};
-      line-height: 1.6;
+      line-height: ${getSectionData('custom-message')?.styling?.lineHeight || getSectionData('custom-message-section')?.styling?.lineHeight || '1.6'};
+      letter-spacing: ${getSectionData('custom-message')?.styling?.letterSpacing || getSectionData('custom-message-section')?.styling?.letterSpacing || 'normal'};
+      text-transform: ${getSectionData('custom-message')?.styling?.textTransform || getSectionData('custom-message-section')?.styling?.textTransform || 'none'};
       white-space: pre-line; /* Preserves line breaks from admin input */
-      margin: 24px 0;
+      margin: ${getSectionData('custom-message')?.styling?.margin || getSectionData('custom-message-section')?.styling?.margin || '24px 0'};
+      ${getSectionData('custom-message')?.styling?.marginTop ? `margin-top: ${getSectionData('custom-message')?.styling?.marginTop};` : ''}
+      ${getSectionData('custom-message')?.styling?.marginRight ? `margin-right: ${getSectionData('custom-message')?.styling?.marginRight};` : ''}
+      ${getSectionData('custom-message')?.styling?.marginBottom ? `margin-bottom: ${getSectionData('custom-message')?.styling?.marginBottom};` : ''}
+      ${getSectionData('custom-message')?.styling?.marginLeft ? `margin-left: ${getSectionData('custom-message')?.styling?.marginLeft};` : ''}
+      padding: ${getSectionData('custom-message')?.styling?.padding || getSectionData('custom-message-section')?.styling?.padding || '0'};
+      ${getSectionData('custom-message')?.styling?.paddingTop ? `padding-top: ${getSectionData('custom-message')?.styling?.paddingTop};` : ''}
+      ${getSectionData('custom-message')?.styling?.paddingRight ? `padding-right: ${getSectionData('custom-message')?.styling?.paddingRight};` : ''}
+      ${getSectionData('custom-message')?.styling?.paddingBottom ? `padding-bottom: ${getSectionData('custom-message')?.styling?.paddingBottom};` : ''}
+      ${getSectionData('custom-message')?.styling?.paddingLeft ? `padding-left: ${getSectionData('custom-message')?.styling?.paddingLeft};` : ''}
     }
     .custom-header {
       background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
+      ${userData.header?.styling?.backgroundImage ? `background-image: url(${userData.header.styling.backgroundImage});` : ''}
+      ${userData.header?.styling?.backgroundSize ? `background-size: ${userData.header.styling.backgroundSize};` : ''}
+      ${userData.header?.styling?.backgroundPosition ? `background-position: ${userData.header.styling.backgroundPosition};` : ''}
+      ${userData.header?.styling?.backgroundRepeat ? `background-repeat: ${userData.header.styling.backgroundRepeat};` : ''}
+      ${userData.header?.styling?.backgroundAttachment ? `background-attachment: ${userData.header.styling.backgroundAttachment};` : ''}
       border-radius: ${userData.header?.styling?.borderRadius || '0px'};
       padding: ${userData.header?.styling?.padding || '24px 32px'};
       text-align: ${userData.header?.styling?.textAlign || 'center'};
@@ -1910,6 +1985,58 @@ Visit: ${getPromoUrl()}
       text-align: ${userData.orderButton?.styling?.textAlign || 'center'};
       margin: 32px 0;
     }
+    
+    /* Mobile-specific styles */
+    @media only screen and (max-width: 600px) {
+      .email-container {
+        max-width: ${userData.emailContainer?.mobileMaxWidth || '100%'} !important;
+        padding: ${userData.emailContainer?.mobilePadding || '16px'} !important;
+      }
+      
+      .greeting, .custom-message {
+        font-size: calc(${getSectionData('greeting')?.styling?.fontSize || '18px'} * ${userData.emailContainer?.mobileFontScale ? parseFloat(userData.emailContainer.mobileFontScale) / 100 : 1}) !important;
+      }
+      
+      .custom-message {
+        font-size: calc(${getSectionData('custom-message')?.styling?.fontSize || '16px'} * ${userData.emailContainer?.mobileFontScale ? parseFloat(userData.emailContainer.mobileFontScale) / 100 : 1}) !important;
+      }
+      
+      .custom-order-button {
+        ${userData.emailContainer?.mobileButtonSize === 'full-width' ? 'width: 100% !important; display: block !important; text-align: center !important;' : ''}
+        ${userData.emailContainer?.mobileButtonSize === 'large' ? 'padding: 16px 32px !important; font-size: 18px !important;' : ''}
+        ${userData.emailContainer?.mobileButtonSize === 'small' ? 'padding: 10px 20px !important; font-size: 14px !important;' : ''}
+      }
+      
+      .promo-code-box {
+        padding: 16px !important;
+        margin: 16px 0 !important;
+      }
+      
+      .promo-code {
+        font-size: calc(${userData.promoCodeStyling?.fontSize || '24px'} * ${userData.emailContainer?.mobileFontScale ? parseFloat(userData.emailContainer.mobileFontScale) / 100 : 1}) !important;
+      }
+      
+      .custom-header {
+        padding: 20px 16px !important;
+      }
+      
+      .custom-header h1 {
+        font-size: calc(${userData.header?.styling?.titleFontSize || '32px'} * ${userData.emailContainer?.mobileFontScale ? parseFloat(userData.emailContainer.mobileFontScale) / 100 : 1}) !important;
+      }
+      
+      .custom-header p {
+        font-size: calc(${userData.header?.styling?.subtitleFontSize || '18px'} * ${userData.emailContainer?.mobileFontScale ? parseFloat(userData.emailContainer.mobileFontScale) / 100 : 1}) !important;
+      }
+      
+      .usage-steps {
+        padding: 16px !important;
+        margin: 16px 0 !important;
+      }
+      
+      .custom-footer {
+        padding: 20px 16px !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1933,14 +2060,20 @@ Visit: ${getPromoUrl()}
         <!-- Advanced Design Mode with Custom Sections -->
         <h2 class="greeting">${finalGreeting}</h2>
         
+        ${generateDivider()}
+        
         <div class="custom-message">
           ${finalMessage}
         </div>
+        
+        ${generateDivider()}
         
         <div class="promo-code-box">
           <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
           <div class="promo-code">${userData.promoCode}</div>
         </div>
+        
+        ${generateDivider()}
         
         <!-- Custom sections from advanced design -->
         ${generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections || {}))}
@@ -1954,14 +2087,20 @@ Visit: ${getPromoUrl()}
         <!-- Simple Mode (Original Design) -->
         <h2 class="greeting">${finalGreeting}</h2>
         
+        ${generateDivider()}
+        
         <div class="custom-message">
           ${finalMessage}
         </div>
+        
+        ${generateDivider()}
         
         <div class="promo-code-box">
           <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
           <div class="promo-code">${userData.promoCode}</div>
         </div>
+        
+        ${generateDivider()}
         
         ${userData.usageSteps?.enabled !== false ? `
           <div class="usage-steps">
@@ -1975,6 +2114,7 @@ Visit: ${getPromoUrl()}
               ]).map(step => `<li>${step}</li>`).join('')}
             </ol>
           </div>
+          ${generateDivider()}
         ` : ''}
         
         <div class="cta-container">

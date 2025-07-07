@@ -96,10 +96,21 @@ interface EmailContent {
   previewText: string;
   sections: EmailSection[];
   promoCode?: string;
+  promoCodeLabel?: string;
   customMessage?: string;
   greeting?: string;
   email?: string;
   recipientType?: string;
+  promoCodeStyling?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    textColor?: string;
+    fontSize?: string;
+    fontWeight?: string;
+    labelColor?: string;
+    labelFontSize?: string;
+    labelFontWeight?: string;
+  };
   orderButton?: {
     text?: string;
     url?: string;
@@ -162,6 +173,14 @@ interface EmailContent {
     backgroundColor?: string;
     borderRadius?: string;
     boxShadow?: string;
+  };
+  dividers?: {
+    enabled?: boolean;
+    style?: string;
+    color?: string;
+    thickness?: string;
+    margin?: string;
+    opacity?: string;
   };
 }
 
@@ -238,10 +257,21 @@ const PromoCodeSender: React.FC = () => {
       previewText: 'We have exciting news to share with you',
       sections: [],
       promoCode: 'WELCOME20',
+      promoCodeLabel: '🎁 Special Offer Code',
       customMessage: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
       greeting: 'Hello! 👋',
       email: '',
       recipientType: 'customer',
+      promoCodeStyling: {
+        backgroundColor: '#f3f4f6',
+        borderColor: '#9ca3af',
+        textColor: '#1f2937',
+        fontSize: '24px',
+        fontWeight: 'bold',
+        labelColor: '#374151',
+        labelFontSize: '16px',
+        labelFontWeight: '600'
+      },
       orderButton: {
         text: '🌟 Get Started',
         url: 'https://localcooks.com',
@@ -309,6 +339,14 @@ const PromoCodeSender: React.FC = () => {
         backgroundColor: '#f1f5f9',
         borderRadius: '12px',
         boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+      },
+      dividers: {
+        enabled: true,
+        style: 'solid',
+        color: '#e2e8f0',
+        thickness: '1px',
+        margin: '24px 0',
+        opacity: '1'
       }
     },
     metadata: {
@@ -375,6 +413,12 @@ const PromoCodeSender: React.FC = () => {
           sections: emailDesign.content.sections,
           orderButton: emailDesign.content.orderButton,
           header: emailDesign.content.header,
+          footer: emailDesign.content.footer,
+          usageSteps: emailDesign.content.usageSteps,
+          emailContainer: emailDesign.content.emailContainer,
+          dividers: emailDesign.content.dividers,
+          promoCodeStyling: emailDesign.content.promoCodeStyling,
+          promoCodeLabel: emailDesign.content.promoCodeLabel,
           subject: emailDesign.content.subject,
           previewText: emailDesign.content.previewText
         }),

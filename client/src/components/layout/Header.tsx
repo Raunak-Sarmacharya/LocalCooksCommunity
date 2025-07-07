@@ -196,10 +196,10 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50">
-      <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+    <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
+      <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
         <Link href="/" className="flex items-center">
-          <Logo className="h-16 w-auto" />
+          <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
         </Link>
 
         <nav className="hidden md:block">
@@ -306,11 +306,12 @@ export default function Header() {
             variant="ghost"
             size="icon"
             onClick={toggleMenu}
+            className="mobile-touch-target mobile-no-tap-highlight p-3 rounded-xl"
           >
             {isMenuOpen ? (
-              <X className="h-6 w-6" />
+              <X className="h-5 w-5 sm:h-6 sm:w-6" />
             ) : (
-              <Menu className="h-6 w-6" />
+              <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
             )}
           </Button>
         </div>
@@ -318,12 +319,13 @@ export default function Header() {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden bg-white p-4 shadow-md">
-          <ul className="space-y-3">
+        <div className="md:hidden bg-white border-t border-gray-200 shadow-lg mobile-momentum-scroll">
+          <div className="container mx-auto px-3 sm:px-4 py-4">
+            <ul className="space-y-3">
             <li>
               <a
                 href="#how-it-works"
-                className="block py-2 hover:text-primary hover-text cursor-pointer"
+                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
                   scrollToSection("how-it-works", e);
                   closeMenu();
@@ -335,7 +337,7 @@ export default function Header() {
             <li>
               <a
                 href="#benefits"
-                className="block py-2 hover:text-primary hover-text cursor-pointer"
+                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
                   scrollToSection("benefits", e);
                   closeMenu();
@@ -347,7 +349,7 @@ export default function Header() {
             <li>
               <a
                 href="#about"
-                className="block py-2 hover:text-primary hover-text cursor-pointer"
+                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
                   scrollToSection("about", e);
                   closeMenu();
@@ -406,7 +408,8 @@ export default function Header() {
                 </Button>
               </li>
             )}
-          </ul>
+            </ul>
+          </div>
         </div>
       )}
     </header>
