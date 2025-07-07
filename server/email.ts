@@ -1461,6 +1461,11 @@ export const generatePromoCodeEmail = (
         padding?: string;
         borderRadius?: string;
         textAlign?: string;
+        backgroundImage?: string;
+        backgroundSize?: string;
+        backgroundPosition?: string;
+        backgroundRepeat?: string;
+        backgroundAttachment?: string;
       };
     };
     footer?: {
@@ -1498,6 +1503,11 @@ export const generatePromoCodeEmail = (
       backgroundColor?: string;
       borderRadius?: string;
       boxShadow?: string;
+      backgroundImage?: string;
+      backgroundSize?: string;
+      backgroundPosition?: string;
+      backgroundRepeat?: string;
+      backgroundAttachment?: string;
       mobileMaxWidth?: string;
       mobilePadding?: string;
       mobileFontScale?: string;
@@ -1650,7 +1660,7 @@ export const generatePromoCodeEmail = (
             <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
               <a href="${section.styling?.url || getPromoUrl()}" style="
                 display: inline-block;
-                background: ${section.styling?.backgroundColor || defaultPromoStyle.accentColor};
+                background: ${section.styling?.backgroundColor || styling.accentColor};
                 color: ${section.styling?.color || '#ffffff'} !important;
                 text-decoration: none !important;
                 padding: ${section.styling?.padding || '12px 24px'};
@@ -1811,6 +1821,32 @@ Visit: ${getPromoUrl()}
   const finalGreeting = getGreeting();
   const finalMessage = getCustomMessage();
 
+  // Generate usage steps section
+  const generateUsageStepsSection = () => {
+    const defaultSteps = [
+      `Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: ${userData.usageSteps?.styling?.linkColor || '#1d4ed8'};">${userData.orderButton?.url || getPromoUrl()}</a>`,
+      'Browse our amazing local cooks and their delicious offerings',
+      'Apply your promo code during checkout',
+      'Enjoy your special offer!'
+    ];
+    
+    const steps = userData.usageSteps?.steps && userData.usageSteps.steps.length > 0 
+      ? userData.usageSteps.steps 
+      : defaultSteps;
+    
+    const stepsHtml = steps.map(step => `<li>${step}</li>`).join('');
+    
+    return `
+      <div class="usage-steps">
+        <h4>${userData.usageSteps?.title || '🚀 How to use your promo code:'}</h4>
+        <ol>
+          ${stepsHtml}
+        </ol>
+      </div>
+      ${generateDivider()}
+    `;
+  };
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1835,47 +1871,46 @@ Visit: ${getPromoUrl()}
     }
     
     .promo-code-box {
-      background: ${userData.promoCodeStyling?.backgroundColor || styling.background};
+      background: ${userData.promoCodeStyling?.backgroundColor || '#f3f4f6'};
       border: ${
         userData.promoCodeStyling?.borderWidth || userData.promoCodeStyling?.borderStyle || userData.promoCodeStyling?.borderColor 
-          ? `${userData.promoCodeStyling?.borderWidth || '2px'} ${userData.promoCodeStyling?.borderStyle || 'dashed'} ${userData.promoCodeStyling?.borderColor || styling.borderColor}`
-          : styling.border
+          ? `${userData.promoCodeStyling?.borderWidth || '2px'} ${userData.promoCodeStyling?.borderStyle || 'dashed'} ${userData.promoCodeStyling?.borderColor || '#9ca3af'}`
+          : '2px dashed #9ca3af'
       };
       border-radius: ${userData.promoCodeStyling?.borderRadius || '12px'};
-      padding: ${userData.promoCodeStyling?.padding || '24px'};
-      text-align: center;
-      margin: 24px 0;
-      box-shadow: ${userData.promoCodeStyling?.boxShadow || styling.boxShadow};
+      padding: ${userData.promoCodeStyling?.padding || '20px'};
+      box-shadow: ${userData.promoCodeStyling?.boxShadow || '0 2px 4px rgba(0,0,0,0.1)'};
+      display: inline-block;
+      min-width: 200px;
     }
     .promo-code {
       font-family: 'Courier New', monospace;
-      font-size: ${userData.promoCodeStyling?.fontSize || '28px'};
-      font-weight: ${userData.promoCodeStyling?.fontWeight || '800'};
-      color: ${userData.promoCodeStyling?.textColor || styling.textColor};
+      font-size: ${userData.promoCodeStyling?.fontSize || '24px'};
+      font-weight: ${userData.promoCodeStyling?.fontWeight || 'bold'};
+      color: ${userData.promoCodeStyling?.textColor || '#1f2937'};
       letter-spacing: 2px;
-      margin: 8px 0;
+      margin: 0;
     }
     .promo-label {
-      font-size: ${userData.promoCodeStyling?.labelFontSize || '14px'};
+      font-size: ${userData.promoCodeStyling?.labelFontSize || '16px'};
       font-weight: ${userData.promoCodeStyling?.labelFontWeight || '600'};
-      color: ${userData.promoCodeStyling?.labelColor || userData.promoCodeStyling?.textColor || styling.accentColor};
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
+      color: ${userData.promoCodeStyling?.labelColor || '#374151'};
+      margin: 0;
+      text-align: center;
     }
     .greeting {
-      font-size: ${getSectionData('greeting')?.styling?.fontSize || getSectionData('greeting-section')?.styling?.fontSize || '24px'};
-      font-weight: ${getSectionData('greeting')?.styling?.fontWeight || getSectionData('greeting-section')?.styling?.fontWeight || '600'};
+      font-size: ${getSectionData('greeting')?.styling?.fontSize || getSectionData('greeting-section')?.styling?.fontSize || '18px'};
+      font-weight: ${getSectionData('greeting')?.styling?.fontWeight || getSectionData('greeting-section')?.styling?.fontWeight || 'normal'};
       font-style: ${getSectionData('greeting')?.styling?.fontStyle || getSectionData('greeting-section')?.styling?.fontStyle || 'normal'};
-      color: ${getSectionData('greeting')?.styling?.color || getSectionData('greeting-section')?.styling?.color || '#1e293b'};
+      color: ${getSectionData('greeting')?.styling?.color || getSectionData('greeting-section')?.styling?.color || '#1f2937'};
       text-align: ${getSectionData('greeting')?.styling?.textAlign || getSectionData('greeting-section')?.styling?.textAlign || 'left'};
       line-height: ${getSectionData('greeting')?.styling?.lineHeight || getSectionData('greeting-section')?.styling?.lineHeight || '1.6'};
       letter-spacing: ${getSectionData('greeting')?.styling?.letterSpacing || getSectionData('greeting-section')?.styling?.letterSpacing || 'normal'};
       text-transform: ${getSectionData('greeting')?.styling?.textTransform || getSectionData('greeting-section')?.styling?.textTransform || 'none'};
-      margin: ${getSectionData('greeting')?.styling?.margin || getSectionData('greeting-section')?.styling?.margin || '0 0 16px 0'};
+      margin: ${getSectionData('greeting')?.styling?.margin || getSectionData('greeting-section')?.styling?.margin || '0'};
       ${getSectionData('greeting')?.styling?.marginTop ? `margin-top: ${getSectionData('greeting')?.styling?.marginTop};` : ''}
       ${getSectionData('greeting')?.styling?.marginRight ? `margin-right: ${getSectionData('greeting')?.styling?.marginRight};` : ''}
-      ${getSectionData('greeting')?.styling?.marginBottom ? `margin-bottom: ${getSectionData('greeting')?.styling?.marginBottom};` : ''}
+      ${getSectionData('greeting')?.styling?.marginBottom ? `margin-bottom: ${getSectionData('greeting')?.styling?.marginBottom || '16px'};` : 'margin-bottom: 16px;'}
       ${getSectionData('greeting')?.styling?.marginLeft ? `margin-left: ${getSectionData('greeting')?.styling?.marginLeft};` : ''}
       padding: ${getSectionData('greeting')?.styling?.padding || getSectionData('greeting-section')?.styling?.padding || '0'};
       ${getSectionData('greeting')?.styling?.paddingTop ? `padding-top: ${getSectionData('greeting')?.styling?.paddingTop};` : ''}
@@ -1885,11 +1920,11 @@ Visit: ${getPromoUrl()}
     }
     .custom-message {
       font-size: ${getSectionData('custom-message')?.styling?.fontSize || getSectionData('custom-message-section')?.styling?.fontSize || '16px'};
-      font-weight: ${getSectionData('custom-message')?.styling?.fontWeight || getSectionData('custom-message-section')?.styling?.fontWeight || '400'};
+      font-weight: ${getSectionData('custom-message')?.styling?.fontWeight || getSectionData('custom-message-section')?.styling?.fontWeight || 'normal'};
       font-style: ${getSectionData('custom-message')?.styling?.fontStyle || getSectionData('custom-message-section')?.styling?.fontStyle || 'normal'};
       color: ${getSectionData('custom-message')?.styling?.color || getSectionData('custom-message-section')?.styling?.color || '#374151'};
       text-align: ${getSectionData('custom-message')?.styling?.textAlign || getSectionData('custom-message-section')?.styling?.textAlign || 'left'};
-      line-height: ${getSectionData('custom-message')?.styling?.lineHeight || getSectionData('custom-message-section')?.styling?.lineHeight || '1.6'};
+      line-height: ${getSectionData('custom-message')?.styling?.lineHeight || getSectionData('custom-message-section')?.styling?.lineHeight || '1.7'};
       letter-spacing: ${getSectionData('custom-message')?.styling?.letterSpacing || getSectionData('custom-message-section')?.styling?.letterSpacing || 'normal'};
       text-transform: ${getSectionData('custom-message')?.styling?.textTransform || getSectionData('custom-message-section')?.styling?.textTransform || 'none'};
       white-space: pre-line; /* Preserves line breaks from admin input */
@@ -1911,7 +1946,12 @@ Visit: ${getPromoUrl()}
       ${userData.header?.styling?.backgroundPosition ? `background-position: ${userData.header.styling.backgroundPosition};` : ''}
       ${userData.header?.styling?.backgroundRepeat ? `background-repeat: ${userData.header.styling.backgroundRepeat};` : ''}
       ${userData.header?.styling?.backgroundAttachment ? `background-attachment: ${userData.header.styling.backgroundAttachment};` : ''}
-      border-radius: ${userData.header?.styling?.borderRadius || '0px'};
+      border-radius: ${
+        userData.header?.styling?.borderRadius || 
+        (userData.emailContainer?.borderRadius ? 
+          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+          '12px 12px 0 0')
+      };
       padding: ${userData.header?.styling?.padding || '24px 32px'};
       text-align: ${userData.header?.styling?.textAlign || 'center'};
       margin: 0 0 24px 0;
@@ -1942,6 +1982,15 @@ Visit: ${getPromoUrl()}
       cursor: pointer;
       transition: all 0.2s ease;
       box-shadow: 0 2px 8px hsla(347, 91%, 51%, 0.3);
+      line-height: 1.4;
+      text-align: center;
+      word-wrap: break-word;
+      word-break: break-word;
+      hyphens: auto;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-height: 48px;
+      vertical-align: middle;
     }
     .usage-steps {
       background: ${userData.usageSteps?.styling?.backgroundColor || 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'};
@@ -1984,6 +2033,8 @@ Visit: ${getPromoUrl()}
     .cta-container {
       text-align: ${userData.orderButton?.styling?.textAlign || 'center'};
       margin: 32px 0;
+      padding: 0 20px;
+      overflow: hidden;
     }
     
     /* Mobile-specific styles */
@@ -1993,7 +2044,7 @@ Visit: ${getPromoUrl()}
         padding: ${userData.emailContainer?.mobilePadding || '16px'} !important;
       }
       
-      .greeting, .custom-message {
+      .greeting {
         font-size: calc(${getSectionData('greeting')?.styling?.fontSize || '18px'} * ${userData.emailContainer?.mobileFontScale ? parseFloat(userData.emailContainer.mobileFontScale) / 100 : 1}) !important;
       }
       
@@ -2002,9 +2053,13 @@ Visit: ${getPromoUrl()}
       }
       
       .custom-order-button {
-        ${userData.emailContainer?.mobileButtonSize === 'full-width' ? 'width: 100% !important; display: block !important; text-align: center !important;' : ''}
-        ${userData.emailContainer?.mobileButtonSize === 'large' ? 'padding: 16px 32px !important; font-size: 18px !important;' : ''}
-        ${userData.emailContainer?.mobileButtonSize === 'small' ? 'padding: 10px 20px !important; font-size: 14px !important;' : ''}
+        ${userData.emailContainer?.mobileButtonSize === 'full-width' ? 'width: calc(100% - 40px) !important; display: block !important; text-align: center !important; margin: 0 auto !important;' : ''}
+        ${userData.emailContainer?.mobileButtonSize === 'large' ? 'padding: 16px 32px !important; font-size: 18px !important; min-height: 56px !important;' : ''}
+        ${userData.emailContainer?.mobileButtonSize === 'small' ? 'padding: 10px 20px !important; font-size: 14px !important; min-height: 40px !important;' : ''}
+        line-height: 1.3 !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        max-width: calc(100% - 40px) !important;
       }
       
       .promo-code-box {
@@ -2062,28 +2117,17 @@ Visit: ${getPromoUrl()}
       
       ${generateDivider()}
       
-      <div class="promo-code-box">
-        <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
-        <div class="promo-code">${userData.promoCode}</div>
+      <div style="text-align: center; margin: 32px 0;">
+        <div class="promo-label" style="margin-bottom: 12px;">${userData.promoCodeLabel || 'Use promo code:'}</div>
+        <div class="promo-code-box">
+          <div class="promo-code">${userData.promoCode}</div>
+        </div>
       </div>
       
       ${generateDivider()}
 
       <!-- Usage Steps Section (Always Show Unless Explicitly Disabled) -->
-      ${userData.usageSteps?.enabled !== false ? `
-        <div class="usage-steps">
-          <h4>${userData.usageSteps?.title || '🚀 How to use your promo code:'}</h4>
-          <ol>
-            ${(userData.usageSteps?.steps || [
-              `Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: ${userData.usageSteps?.styling?.linkColor || '#1d4ed8'};">${userData.orderButton?.url || getPromoUrl()}</a>`,
-              'Browse our amazing local cooks and their delicious offerings',
-              'Apply your promo code during checkout',
-              'Enjoy your special offer!'
-            ]).map(step => `<li>${step}</li>`).join('')}
-          </ol>
-        </div>
-        ${generateDivider()}
-      ` : ''}
+      ${userData.usageSteps?.enabled !== false ? generateUsageStepsSection() : ''}
 
       <!-- Custom Sections (if any) -->
       ${userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0) ? 

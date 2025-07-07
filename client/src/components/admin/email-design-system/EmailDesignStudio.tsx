@@ -125,8 +125,22 @@ interface EmailContent {
   promoCode?: string;
   promoCodeLabel?: string;
   message?: string;
+  greeting?: string;
   buttonText?: string;
   orderUrl?: string;
+  orderButton?: {
+    text?: string;
+    url?: string;
+    styling?: {
+      backgroundColor?: string;
+      color?: string;
+      fontSize?: string;
+      fontWeight?: string;
+      padding?: string;
+      borderRadius?: string;
+      textAlign?: string;
+    };
+  };
   customerName?: string;
   email?: string;
   recipientType?: string;
@@ -223,6 +237,7 @@ interface EmailSection {
   id: string;
   type: string;
   text?: string;
+  content?: string; // Add missing content property
   url?: string;
   styling?: {
     color?: string;
@@ -3132,6 +3147,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                   backgroundPosition: currentDesign.content.header?.styling?.backgroundPosition || 'center center',
                   backgroundRepeat: currentDesign.content.header?.styling?.backgroundRepeat || 'no-repeat',
                   backgroundAttachment: currentDesign.content.header?.styling?.backgroundAttachment || 'scroll',
+                  borderRadius: currentDesign.content.header?.styling?.borderRadius || 
+                    (currentDesign.content.emailContainer?.borderRadius ? 
+                      `${currentDesign.content.emailContainer.borderRadius} ${currentDesign.content.emailContainer.borderRadius} 0 0` : 
+                      '12px 12px 0 0'),
                   padding: currentDesign.content.header?.styling?.padding || '24px 32px',
                   textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                 }}
@@ -3410,7 +3429,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     selectedElement === 'order-button' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
                   }`}
                   onClick={() => setSelectedElement('order-button')}
-                  style={{ textAlign: (currentDesign.content.sections?.['order-button']?.styling?.alignment || 'center') as React.CSSProperties['textAlign'] }}
+                  style={{ 
+                    textAlign: (currentDesign.content.sections?.['order-button']?.styling?.alignment || 'center') as React.CSSProperties['textAlign'],
+                    margin: '32px 0',
+                    padding: '0 20px',
+                    overflow: 'hidden'
+                  }}
                 >
                   {selectedElement !== 'order-button' && (
                     <div className="absolute inset-0 bg-blue-500 bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">
@@ -3433,7 +3457,16 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       fontSize: currentDesign.content.sections?.['order-button']?.styling?.fontSize || '16px',
                       transition: 'all 0.2s ease',
                       border: 'none',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      lineHeight: '1.4',
+                      textAlign: 'center',
+                      wordWrap: 'break-word',
+                      wordBreak: 'break-word',
+                      hyphens: 'auto',
+                      maxWidth: '100%',
+                      boxSizing: 'border-box',
+                      minHeight: '48px',
+                      verticalAlign: 'middle'
                     }}
                   >
                     {currentDesign.content.sections?.['order-button']?.text || currentDesign.content.buttonText || 'Order Now'}
