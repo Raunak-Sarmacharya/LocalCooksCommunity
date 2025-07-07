@@ -737,6 +737,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           previewText: currentDesign.content.previewText || 'Test preview',
           sections: currentDesign.content.sections,
           header: currentDesign.content.header,
+          footer: currentDesign.content.footer, // Add footer
+          usageSteps: currentDesign.content.usageSteps, // Add usage steps
+          emailContainer: currentDesign.content.emailContainer, // Add email container
           customDesign: currentDesign
         })
       });
@@ -761,6 +764,81 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   };
 
   // Send promo email
+  // Save template function
+  const handleSaveTemplate = async () => {
+    try {
+      // Prompt user for template name
+      const templateName = prompt('Enter a name for this template:', `Email Template ${new Date().toLocaleDateString()}`);
+      
+      if (!templateName) {
+        return; // User cancelled
+      }
+      
+      // Create template data
+      const templateData = {
+        id: `template-${Date.now()}`,
+        name: templateName.trim(),
+        design: currentDesign,
+        createdAt: new Date().toISOString(),
+        author: 'Admin'
+      };
+
+      // Save to localStorage as a simple implementation
+      const existingTemplates = JSON.parse(localStorage.getItem('emailTemplates') || '[]');
+      existingTemplates.push(templateData);
+      localStorage.setItem('emailTemplates', JSON.stringify(existingTemplates));
+
+      toast({
+        title: "✅ Template Saved!",
+        description: `Template "${templateName}" has been saved successfully. You can load it from your saved templates.`
+      });
+
+      console.log('Template saved:', templateData);
+    } catch (error) {
+      toast({
+        title: "Save Failed",
+        description: "Failed to save template. Please try again.",
+        variant: "destructive"
+      });
+      console.error('Error saving template:', error);
+    }
+  };
+
+  // Load template function
+  const handleLoadTemplate = (templateId: string) => {
+    try {
+      const existingTemplates = JSON.parse(localStorage.getItem('emailTemplates') || '[]');
+      const template = existingTemplates.find((t: any) => t.id === templateId);
+      
+      if (template) {
+        setCurrentDesign(template.design);
+        onEmailGenerated(template.design);
+        
+        toast({
+          title: "✅ Template Loaded!",
+          description: `Template "${template.name}" has been loaded successfully.`
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Load Failed",
+        description: "Failed to load template. Please try again.",
+        variant: "destructive"
+      });
+      console.error('Error loading template:', error);
+    }
+  };
+
+  // Get saved templates
+  const getSavedTemplates = () => {
+    try {
+      return JSON.parse(localStorage.getItem('emailTemplates') || '[]');
+    } catch (error) {
+      console.error('Error getting saved templates:', error);
+      return [];
+    }
+  };
+
   const handleSendPromoEmail = async () => {
     if (!currentDesign.content.email) {
       toast({
@@ -859,6 +937,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           isPremium: true,
           sections: sectionsArray, // Send as array format
           header: currentDesign.content.header,
+          footer: currentDesign.content.footer, // Add footer
+          usageSteps: currentDesign.content.usageSteps, // Add usage steps
+          emailContainer: currentDesign.content.emailContainer, // Add email container
+          dividers: currentDesign.content.dividers, // Add dividers
           subject: currentDesign.content.subject,
           previewText: currentDesign.content.previewText,
           customDesign: currentDesign // Keep for debugging if needed
@@ -931,6 +1013,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               <Button 
                 variant="outline" 
                 size="sm" 
+                onClick={handleSaveTemplate}
                 className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
               >
                 <Save className="h-4 w-4 mr-2" />
@@ -2897,23 +2980,72 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                  onClick={() => addSection('text')}
-                >
-                  <Type className="h-4 w-4 mr-3 text-gray-400" />
-                  <span className="text-sm">Add Text Block</span>
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                  onClick={() => addSection('button')}
-                >
-                  <Square className="h-4 w-4 mr-3 text-gray-400" />
-                  <span className="text-sm">Add Button</span>
-                </Button>
+              <div className="space-y-4">
+                {/* Saved Templates Section */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                    <div className="w-5 h-5 bg-gradient-to-br from-purple-500 to-purple-600 rounded-md flex items-center justify-center mr-2">
+                      <Save className="h-3 w-3 text-white" />
+                    </div>
+                    Saved Templates
+                  </h4>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {getSavedTemplates().length === 0 ? (
+                      <p className="text-xs text-gray-500 italic py-2">No saved templates yet. Save your current design to get started!</p>
+                    ) : (
+                      getSavedTemplates().map((template: any) => (
+                        <div 
+                          key={template.id}
+                          className="flex items-center justify-between p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-900 truncate">{template.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(template.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 ml-2 hover:bg-blue-100"
+                            onClick={() => handleLoadTemplate(template.id)}
+                            title="Load Template"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Add Elements Section */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                    <div className="w-5 h-5 bg-gradient-to-br from-green-500 to-green-600 rounded-md flex items-center justify-center mr-2">
+                      <Plus className="h-3 w-3 text-white" />
+                    </div>
+                    Add Elements
+                  </h4>
+                  <div className="space-y-3">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                      onClick={() => addSection('text')}
+                    >
+                      <Type className="h-4 w-4 mr-3 text-gray-400" />
+                      <span className="text-sm">Add Text Block</span>
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                      onClick={() => addSection('button')}
+                    >
+                      <Square className="h-4 w-4 mr-3 text-gray-400" />
+                      <span className="text-sm">Add Button</span>
+                    </Button>
+                  </div>
+                </div>
                 
                 <div className="border-t border-gray-200 pt-3 mt-4">
                   <p className="text-xs text-gray-500 mb-3 font-medium">SETTINGS & TOOLS</p>
@@ -2952,50 +3084,34 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           >
             {/* Preview Header */}
             <div className="mb-6 text-center">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Email Preview</h3>
-                  <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
-                </div>
-                
-                {/* Mobile/Desktop Toggle */}
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600">View:</span>
-                  <div className="flex bg-gray-100 rounded-lg p-1">
-                    <button
-                      onClick={() => setPreviewMode('desktop')}
-                      className={`px-3 py-1 text-sm rounded-md transition-all duration-200 flex items-center space-x-1 ${
-                        previewMode === 'desktop'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <Settings className="h-4 w-4" />
-                      <span>Desktop</span>
-                    </button>
-                    <button
-                      onClick={() => setPreviewMode('mobile')}
-                      className={`px-3 py-1 text-sm rounded-md transition-all duration-200 flex items-center space-x-1 ${
-                        previewMode === 'mobile'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <Square className="h-4 w-4" />
-                      <span>Mobile</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                Email Preview
+                {previewMode === 'mobile' && (
+                  <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    📱 Mobile View
+                  </span>
+                )}
+                {previewMode === 'desktop' && (
+                  <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    🖥️ Desktop View
+                  </span>
+                )}
+              </h3>
+              <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
             </div>
             
             <div 
-              className={`bg-white overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300 cursor-pointer ${
+              className={`bg-white overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300 cursor-pointer mx-auto ${
                 selectedElement === 'email-container' ? 'ring-4 ring-purple-400 ring-opacity-50' : ''
               }`}
               style={{
                 boxShadow: currentDesign.content.emailContainer?.boxShadow || '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-                borderRadius: currentDesign.content.emailContainer?.borderRadius || '12px'
+                borderRadius: currentDesign.content.emailContainer?.borderRadius || '12px',
+                maxWidth: previewMode === 'mobile' 
+                  ? currentDesign.content.emailContainer?.mobileMaxWidth || '375px'
+                  : currentDesign.content.emailContainer?.maxWidth || '600px',
+                transform: previewMode === 'mobile' ? 'scale(0.8)' : 'scale(1)',
+                transformOrigin: 'top center'
               }}
               onClick={(e) => {
                 // Only select container if clicking on the background, not child elements
@@ -3509,13 +3625,40 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             </div>
 
             {/* Preview Controls */}
-            <div className="mt-6 flex justify-center space-x-4">
-              <Button variant="outline" size="sm" className="h-8 px-3 text-xs">
-                <Eye className="h-3 w-3 mr-1" />
-                Desktop
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 px-3 text-xs">
-                📱 Mobile
+            <div className="mt-6 flex justify-center items-center space-x-4">
+              {/* View Toggle */}
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-gray-600">View:</span>
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setPreviewMode('desktop')}
+                    className={`px-3 py-1 text-xs rounded-md transition-all duration-200 flex items-center space-x-1 ${
+                      previewMode === 'desktop'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Settings className="h-3 w-3" />
+                    <span>Desktop</span>
+                  </button>
+                  <button
+                    onClick={() => setPreviewMode('mobile')}
+                    className={`px-3 py-1 text-xs rounded-md transition-all duration-200 flex items-center space-x-1 ${
+                      previewMode === 'mobile'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Square className="h-3 w-3" />
+                    <span>Mobile</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Additional Controls */}
+              <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={handleSaveTemplate}>
+                <Save className="h-3 w-3 mr-1" />
+                Save Template
               </Button>
               <Button variant="outline" size="sm" className="h-8 px-3 text-xs">
                 <Download className="h-3 w-3 mr-1" />

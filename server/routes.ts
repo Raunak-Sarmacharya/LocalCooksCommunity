@@ -1776,13 +1776,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         promoCodeLabel, 
         message, 
         customMessage, 
+        greeting,
         buttonText, 
         orderUrl, 
         subject, 
         previewText,
         designSystem,
+        isPremium,
         sections,
         header,
+        footer,
+        usageSteps,
+        emailContainer,
+        dividers,
+        promoCodeStyling,
+        promoStyle,
         customDesign
       } = req.body;
 
@@ -1821,15 +1829,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const emailContent = generatePromoCodeEmail({
         email,
         promoCode,
-        promoCodeLabel: promoCodeLabel || 'Special Offer',
+        promoCodeLabel: promoCodeLabel || '🎁 Special Offer Code For You',
         customMessage: messageContent,
+        greeting: greeting || 'Hi there! 👋',
         subject: subject || 'Special Offer from Local Cooks',
         previewText: previewText || 'Don\'t miss out on this exclusive offer',
         designSystem,
-        sections,
-        header,
+        isPremium: isPremium || true,
+        sections: sections || [],
+        header: header || {
+          title: 'Local Cooks Header',
+          subtitle: 'Premium Quality Food Subheader',
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            titleFontSize: '32px',
+            subtitleFontSize: '18px',
+            padding: '24px',
+            borderRadius: '0px',
+            textAlign: 'center'
+          }
+        },
+        footer: footer || {
+          mainText: 'Thank you for being part of the Local Cooks community!',
+          contactText: 'Questions? Contact us at support@localcooks.com',
+          copyrightText: '© 2024 Local Cooks. All rights reserved.',
+          showContact: true,
+          showCopyright: true,
+          styling: {
+            backgroundColor: '#f8fafc',
+            textColor: '#64748b',
+            linkColor: '#F51042',
+            fontSize: '14px',
+            padding: '24px 32px',
+            textAlign: 'center',
+            borderColor: '#e2e8f0'
+          }
+        },
+        usageSteps: usageSteps || {
+          title: '🚀 How to use your promo code:',
+          steps: [
+            `Visit our website: <a href="${orderUrl || 'https://localcooks.com'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.com'}</a>`,
+            'Browse our amazing local cooks and their delicious offerings',
+            'Apply your promo code during checkout',
+            'Enjoy your special offer!'
+          ],
+          enabled: true,
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderColor: '#93c5fd',
+            titleColor: '#1d4ed8',
+            textColor: '#1e40af',
+            linkColor: '#1d4ed8',
+            padding: '20px',
+            borderRadius: '8px'
+          }
+        },
+        emailContainer: emailContainer || {
+          maxWidth: '600px',
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        },
+        dividers: dividers || {
+          enabled: true,
+          style: 'solid',
+          color: '#e2e8f0',
+          thickness: '1px',
+          margin: '24px 0',
+          opacity: '1'
+        },
+        promoCodeStyling: promoCodeStyling,
+        promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
         orderButton: {
-          text: buttonText || 'Get Started',
+          text: buttonText || '🌟 Start Shopping Now',
           url: orderUrl || 'https://localcooks.com',
           styling: {
             backgroundColor: '#F51042',
@@ -1889,7 +1963,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { email, subject, previewText, sections, header, customDesign } = req.body;
+      const { 
+        email, 
+        subject, 
+        previewText, 
+        sections, 
+        header, 
+        footer,
+        usageSteps,
+        emailContainer,
+        customDesign 
+      } = req.body;
 
       // Validate required fields
       if (!email) {
@@ -1902,15 +1986,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const emailContent = generatePromoCodeEmail({
         email,
         promoCode: 'TEST123',
-        promoCodeLabel: 'Test Code',
+        promoCodeLabel: '🎁 Test Promo Code',
         customMessage: 'This is a test email to verify the email system is working correctly.',
+        greeting: 'Hello! 👋',
         subject: subject || 'Test Email from Local Cooks',
         previewText: previewText || 'Test email preview',
         designSystem: customDesign?.designSystem,
-        sections,
-        header,
+        isPremium: true,
+        sections: sections || [],
+        header: header || {
+          title: 'Local Cooks Header',
+          subtitle: 'Premium Quality Food Subheader',
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            titleFontSize: '32px',
+            subtitleFontSize: '18px',
+            padding: '24px',
+            borderRadius: '0px',
+            textAlign: 'center'
+          }
+        },
+        footer: footer || {
+          mainText: 'Thank you for being part of the Local Cooks community!',
+          contactText: 'Questions? Contact us at support@localcooks.com',
+          copyrightText: '© 2024 Local Cooks. All rights reserved.',
+          showContact: true,
+          showCopyright: true,
+          styling: {
+            backgroundColor: '#f8fafc',
+            textColor: '#64748b',
+            linkColor: '#F51042',
+            fontSize: '14px',
+            padding: '24px 32px',
+            textAlign: 'center',
+            borderColor: '#e2e8f0'
+          }
+        },
+        usageSteps: usageSteps || {
+          title: '🚀 How to use your promo code:',
+          steps: [
+            'Visit our website: <a href="https://localcooks.com" style="color: #1d4ed8;">https://localcooks.com</a>',
+            'Browse our amazing local cooks and their delicious offerings',
+            'Apply your promo code during checkout',
+            'Enjoy your special offer!'
+          ],
+          enabled: true,
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderColor: '#93c5fd',
+            titleColor: '#1d4ed8',
+            textColor: '#1e40af',
+            linkColor: '#1d4ed8',
+            padding: '20px',
+            borderRadius: '8px'
+          }
+        },
+        emailContainer: emailContainer || {
+          maxWidth: '600px',
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        },
+        dividers: {
+          enabled: true,
+          style: 'solid',
+          color: '#e2e8f0',
+          thickness: '1px',
+          margin: '24px 0',
+          opacity: '1'
+        },
+        promoStyle: { colorTheme: 'green', borderStyle: 'dashed' },
         orderButton: {
-          text: 'Test Button',
+          text: '🌟 Test Order Button',
           url: 'https://localcooks.com',
           styling: {
             backgroundColor: '#F51042',

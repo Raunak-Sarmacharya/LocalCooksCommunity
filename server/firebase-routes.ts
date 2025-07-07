@@ -641,10 +641,69 @@ export function registerFirebaseRoutes(app: Express) {
             textAlign: 'center'
           }
         },
-        header: header,
-        footer: footer,
-        usageSteps: usageSteps,
-        emailContainer: emailContainer,
+        header: header || {
+          title: 'Local Cooks Header',
+          subtitle: 'Premium Quality Food Subheader',
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            titleFontSize: '32px',
+            subtitleFontSize: '18px',
+            padding: '24px',
+            borderRadius: '0px',
+            textAlign: 'center'
+          }
+        },
+        footer: footer || {
+          mainText: 'Thank you for being part of the Local Cooks community!',
+          contactText: 'Questions? Contact us at support@localcooks.com',
+          copyrightText: '© 2024 Local Cooks. All rights reserved.',
+          showContact: true,
+          showCopyright: true,
+          styling: {
+            backgroundColor: '#f8fafc',
+            textColor: '#64748b',
+            linkColor: '#F51042',
+            fontSize: '14px',
+            padding: '24px 32px',
+            textAlign: 'center',
+            borderColor: '#e2e8f0'
+          }
+        },
+        usageSteps: usageSteps || {
+          title: '🚀 How to use your promo code:',
+          steps: [
+            `Visit our website: <a href="${orderUrl || 'https://localcooks.com'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.com'}</a>`,
+            'Browse our amazing local cooks and their delicious offerings',
+            'Apply your promo code during checkout',
+            'Enjoy your special offer!'
+          ],
+          enabled: true,
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderColor: '#93c5fd',
+            titleColor: '#1d4ed8',
+            textColor: '#1e40af',
+            linkColor: '#1d4ed8',
+            padding: '20px',
+            borderRadius: '8px'
+          }
+        },
+        emailContainer: emailContainer || {
+          maxWidth: '600px',
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        },
+        dividers: {
+          enabled: true,
+          style: 'solid',
+          color: '#e2e8f0',
+          thickness: '1px',
+          margin: '24px 0',
+          opacity: '1'
+        },
         subject: subject,
         previewText: previewText,
         promoCodeLabel: promoCodeLabel
@@ -727,10 +786,69 @@ export function registerFirebaseRoutes(app: Express) {
         isPremium: isPremium || false,
         sections: sections || [],
         orderButton: orderButton,
-        header: header,
-        footer: footer,
-        usageSteps: usageSteps,
-        emailContainer: emailContainer,
+        header: header || {
+          title: 'Local Cooks Header',
+          subtitle: 'Premium Quality Food Subheader',
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            titleFontSize: '32px',
+            subtitleFontSize: '18px',
+            padding: '24px',
+            borderRadius: '0px',
+            textAlign: 'center'
+          }
+        },
+        footer: footer || {
+          mainText: 'Thank you for being part of the Local Cooks community!',
+          contactText: 'Questions? Contact us at support@localcooks.com',
+          copyrightText: '© 2024 Local Cooks. All rights reserved.',
+          showContact: true,
+          showCopyright: true,
+          styling: {
+            backgroundColor: '#f8fafc',
+            textColor: '#64748b',
+            linkColor: '#F51042',
+            fontSize: '14px',
+            padding: '24px 32px',
+            textAlign: 'center',
+            borderColor: '#e2e8f0'
+          }
+        },
+        usageSteps: usageSteps || {
+          title: '🚀 How to use your promo code:',
+          steps: [
+            'Visit our website: <a href="https://localcooks.com" style="color: #1d4ed8;">https://localcooks.com</a>',
+            'Browse our amazing local cooks and their delicious offerings',
+            'Apply your promo code during checkout',
+            'Enjoy your special offer!'
+          ],
+          enabled: true,
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderColor: '#93c5fd',
+            titleColor: '#1d4ed8',
+            textColor: '#1e40af',
+            linkColor: '#1d4ed8',
+            padding: '20px',
+            borderRadius: '8px'
+          }
+        },
+        emailContainer: emailContainer || {
+          maxWidth: '600px',
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        },
+        dividers: {
+          enabled: true,
+          style: 'solid',
+          color: '#e2e8f0',
+          thickness: '1px',
+          margin: '24px 0',
+          opacity: '1'
+        },
         subject: subject,
         previewText: previewText,
         promoCodeLabel: promoCodeLabel
@@ -832,10 +950,69 @@ export function registerFirebaseRoutes(app: Express) {
             textAlign: 'center'
           }
         },
-        header: header,
-        footer: footer,
-        usageSteps: usageSteps,
-        emailContainer: emailContainer,
+        header: header || {
+          title: 'Local Cooks Header',
+          subtitle: 'Premium Quality Food Subheader',
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+            titleColor: '#ffffff',
+            subtitleColor: '#ffffff',
+            titleFontSize: '32px',
+            subtitleFontSize: '18px',
+            padding: '24px',
+            borderRadius: '0px',
+            textAlign: 'center'
+          }
+        },
+        footer: footer || {
+          mainText: 'Thank you for being part of the Local Cooks community!',
+          contactText: 'Questions? Contact us at support@localcooks.com',
+          copyrightText: '© 2024 Local Cooks. All rights reserved.',
+          showContact: true,
+          showCopyright: true,
+          styling: {
+            backgroundColor: '#f8fafc',
+            textColor: '#64748b',
+            linkColor: '#F51042',
+            fontSize: '14px',
+            padding: '24px 32px',
+            textAlign: 'center',
+            borderColor: '#e2e8f0'
+          }
+        },
+        usageSteps: usageSteps || {
+          title: '🚀 How to use your promo code:',
+          steps: [
+            `Visit our website: <a href="${orderUrl || 'https://localcooks.com'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.com'}</a>`,
+            'Browse our amazing local cooks and their delicious offerings',
+            'Apply your promo code during checkout',
+            'Enjoy your special offer!'
+          ],
+          enabled: true,
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderColor: '#93c5fd',
+            titleColor: '#1d4ed8',
+            textColor: '#1e40af',
+            linkColor: '#1d4ed8',
+            padding: '20px',
+            borderRadius: '8px'
+          }
+        },
+        emailContainer: emailContainer || {
+          maxWidth: '600px',
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        },
+        dividers: {
+          enabled: true,
+          style: 'solid',
+          color: '#e2e8f0',
+          thickness: '1px',
+          margin: '24px 0',
+          opacity: '1'
+        },
         subject: subject,
         previewText: previewText,
         promoCodeLabel: promoCodeLabel
