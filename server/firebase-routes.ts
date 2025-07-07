@@ -752,7 +752,8 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // 🔥 Preview Promo Email Endpoint (Firebase Auth + Admin Role)
-  app.post('/api/preview-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+  app.post('/api/preview-promo-email', requireFirebaseAuthWithUser, requireAdmin, 
+  async (req: Request, res: Response) => {
     try {
       console.log(`🔥 POST /api/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
@@ -770,7 +771,9 @@ export function registerFirebaseRoutes(app: Express) {
         subject, 
         previewText,
         promoStyle,
-        promoCodeStyling
+        promoCodeStyling,
+        buttonText,
+        orderUrl
       } = req.body;
 
       // Handle both customMessage and message fields
@@ -789,18 +792,31 @@ export function registerFirebaseRoutes(app: Express) {
       // Import the email functions
       const { generatePromoCodeEmail } = await import('./email');
 
-      // Generate promo email content for preview
+      // Generate promo email content for preview with same mapping as send endpoint
       const emailContent = generatePromoCodeEmail({
         email: 'preview@example.com', // Dummy email for preview
         promoCode: promoCode.trim(),
         customMessage: messageContent.trim(),
+        message: messageContent.trim(), // Also pass as message for compatibility
         greeting: greeting,
         promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
         promoCodeStyling: promoCodeStyling,
         designSystem: designSystem,
         isPremium: isPremium || false,
         sections: sections || [],
-        orderButton: orderButton,
+        orderButton: orderButton || {
+          text: buttonText || 'Get Started',
+          url: orderUrl || 'https://localcooks.com',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }
+        },
         header: header,
         subject: subject,
         previewText: previewText,

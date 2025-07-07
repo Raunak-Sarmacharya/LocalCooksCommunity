@@ -1406,7 +1406,8 @@ export const generatePromoCodeEmail = (
   userData: {
     email: string;
     promoCode: string;
-    customMessage: string;
+    customMessage?: string;
+    message?: string; // Added to handle both field names
     greeting?: string;
     promoStyle?: {
       colorTheme: string;
@@ -1424,7 +1425,7 @@ export const generatePromoCodeEmail = (
       type: string;
       content: any;
       styling: any;
-    }>;
+    }> | { [key: string]: any }; // Support both array and object formats
     orderButton?: {
       text: string;
       url: string;
@@ -1452,6 +1453,42 @@ export const generatePromoCodeEmail = (
         textAlign?: string;
       };
     };
+    footer?: {
+      mainText?: string;
+      contactText?: string;
+      copyrightText?: string;
+      showContact?: boolean;
+      showCopyright?: boolean;
+      styling?: {
+        backgroundColor?: string;
+        textColor?: string;
+        linkColor?: string;
+        fontSize?: string;
+        padding?: string;
+        textAlign?: string;
+        borderColor?: string;
+      };
+    };
+    usageSteps?: {
+      title?: string;
+      steps?: string[];
+      enabled?: boolean;
+      styling?: {
+        backgroundColor?: string;
+        borderColor?: string;
+        titleColor?: string;
+        textColor?: string;
+        linkColor?: string;
+        padding?: string;
+        borderRadius?: string;
+      };
+    };
+    emailContainer?: {
+      maxWidth?: string;
+      backgroundColor?: string;
+      borderRadius?: string;
+      boxShadow?: string;
+    };
     subject?: string;
     previewText?: string;
     promoCodeLabel?: string;
@@ -1461,18 +1498,24 @@ export const generatePromoCodeEmail = (
   const supportEmail = getSupportEmail();
   const defaultPromoStyle = userData.promoStyle || { colorTheme: 'green', borderStyle: 'dashed' };
   
-  // Helper function to safely access sections data
+  // Handle both customMessage and message fields consistently
+  const messageContent = userData.customMessage || userData.message || '';
+  
+  // Helper function to safely access sections data with improved logic
   const getSectionData = (sectionId: string) => {
     if (!userData.sections) return null;
     
     // Handle array format
     if (Array.isArray(userData.sections)) {
-      return userData.sections.find(s => s.id === sectionId) || null;
+      return userData.sections.find(s => s.id === sectionId || s.id === `${sectionId}-section`) || null;
     }
     
-    // Handle object format
+    // Handle object format - check multiple possible keys
     if (typeof userData.sections === 'object') {
-      return userData.sections[sectionId] || null;
+      return userData.sections[sectionId] || 
+             userData.sections[`${sectionId}-section`] || 
+             userData.sections[sectionId.replace('-section', '')] || 
+             null;
     }
     
     return null;
@@ -1484,53 +1527,78 @@ export const generatePromoCodeEmail = (
         background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
         textColor: '#16a34a',
         accentColor: '#15803d',
-        borderColor: '#16a34a'
+        borderColor: '#16a34a',
+        border: '2px dashed #16a34a',
+        boxShadow: '0 4px 16px rgba(22, 163, 74, 0.15)'
       },
       blue: {
         background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
         textColor: '#2563eb',
         accentColor: '#1d4ed8',
-        borderColor: '#2563eb'
+        borderColor: '#2563eb',
+        border: '2px dashed #2563eb',
+        boxShadow: '0 4px 16px rgba(37, 99, 235, 0.15)'
       },
       purple: {
         background: 'linear-gradient(135deg, #faf5ff 0%, #e9d5ff 100%)',
         textColor: '#7c3aed',
         accentColor: '#6d28d9',
-        borderColor: '#7c3aed'
+        borderColor: '#7c3aed',
+        border: '2px dashed #7c3aed',
+        boxShadow: '0 4px 16px rgba(124, 58, 237, 0.15)'
       },
       red: {
         background: 'linear-gradient(135deg, #fef2f2 0%, #fecaca 100%)',
         textColor: '#dc2626',
         accentColor: '#b91c1c',
-        borderColor: '#dc2626'
+        borderColor: '#dc2626',
+        border: '2px dashed #dc2626',
+        boxShadow: '0 4px 16px rgba(220, 38, 38, 0.15)'
       },
       orange: {
         background: 'linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%)',
         textColor: '#ea580c',
         accentColor: '#c2410c',
-        borderColor: '#ea580c'
+        borderColor: '#ea580c',
+        border: '2px dashed #ea580c',
+        boxShadow: '0 4px 16px rgba(234, 88, 12, 0.15)'
       },
       pink: {
         background: 'linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%)',
         textColor: '#e11d48',
         accentColor: '#be185d',
-        borderColor: '#e11d48'
+        borderColor: '#e11d48',
+        border: '2px dashed #e11d48',
+        boxShadow: '0 4px 16px rgba(225, 29, 72, 0.15)'
       },
       yellow: {
         background: 'linear-gradient(135deg, #fefce8 0%, #fef3c7 100%)',
         textColor: '#ca8a04',
         accentColor: '#a16207',
-        borderColor: '#ca8a04'
+        borderColor: '#ca8a04',
+        border: '2px dashed #ca8a04',
+        boxShadow: '0 4px 16px rgba(202, 138, 4, 0.15)'
       },
       gray: {
         background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
         textColor: '#475569',
         accentColor: '#334155',
-        borderColor: '#475569'
+        borderColor: '#475569',
+        border: '2px dashed #475569',
+        boxShadow: '0 4px 16px rgba(71, 85, 105, 0.15)'
       }
     };
 
-    return themes[colorTheme as keyof typeof themes] || themes.green;
+    const theme = themes[colorTheme as keyof typeof themes] || themes.green;
+    
+    // Apply border style variations
+    if (borderStyle === 'solid') {
+      theme.border = `2px solid ${theme.borderColor}`;
+    } else if (borderStyle === 'dotted') {
+      theme.border = `2px dotted ${theme.borderColor}`;
+    }
+    
+    return theme;
   };
 
   const generateAdvancedSections = (sections: Array<any> = []) => {
@@ -1552,7 +1620,7 @@ export const generatePromoCodeEmail = (
               ${hasBackground ? `background: ${section.styling.backgroundColor};` : ''}
               ${hasBackground ? `border-radius: 8px;` : ''}
             ">
-              ${section.content || ''}
+              ${section.content || section.text || ''}
             </div>
           `;
         case 'button':
@@ -1570,7 +1638,7 @@ export const generatePromoCodeEmail = (
                 border: none;
                 cursor: pointer;
               ">
-                ${section.content || 'Click Here'}
+                ${section.content || section.text || 'Click Here'}
               </a>
             </div>
           `;
@@ -1652,6 +1720,30 @@ export const generatePromoCodeEmail = (
     }).join('');
   };
   
+  // Improved greeting resolution with multiple fallback sources
+  const getGreeting = () => {
+    // Try to get greeting from sections first
+    const greetingSection = getSectionData('greeting') || getSectionData('greeting-section');
+    if (greetingSection?.content || greetingSection?.text) {
+      return greetingSection.content || greetingSection.text;
+    }
+    
+    // Fallback to direct greeting parameter
+    return userData.greeting || 'Hello! 👋';
+  };
+  
+  // Improved message resolution
+  const getCustomMessage = () => {
+    // Try to get message from sections first
+    const messageSection = getSectionData('custom-message') || getSectionData('custom-message-section');
+    if (messageSection?.content || messageSection?.text) {
+      return messageSection.content || messageSection.text;
+    }
+    
+    // Fallback to direct message parameters
+    return messageContent || 'Thank you for being a valued customer!';
+  };
+  
   // Generate plain text version for better deliverability
   const generatePlainText = (email: string, promoCode: string, customMessage: string) => {
     return `Special Promo Code from ${organizationName}
@@ -1676,6 +1768,10 @@ Visit: ${getPromoUrl()}
 
   const subject = userData.subject || `🎁 Exclusive Promo Code: ${userData.promoCode}`;
   const styling = getPromoStyling(defaultPromoStyle.colorTheme, defaultPromoStyle.borderStyle);
+  
+  // Resolve final content values
+  const finalGreeting = getGreeting();
+  const finalMessage = getCustomMessage();
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1685,6 +1781,16 @@ Visit: ${getPromoUrl()}
   <title>${subject}</title>
   ${getUniformEmailStyles()}
   <style>
+    /* Override email container styles for customization */
+    body { 
+      background: ${userData.emailContainer?.backgroundColor || '#f1f5f9'} !important;
+    }
+    .email-container { 
+      max-width: ${userData.emailContainer?.maxWidth || '600px'} !important; 
+      border-radius: ${userData.emailContainer?.borderRadius || '12px'} !important; 
+      box-shadow: ${userData.emailContainer?.boxShadow || '0 4px 20px rgba(0,0,0,0.08)'} !important;
+    }
+    
     .promo-code-box {
       background: ${userData.promoCodeStyling?.backgroundColor || styling.background};
       border: ${userData.promoCodeStyling?.borderColor ? `2px dashed ${userData.promoCodeStyling.borderColor}` : styling.border};
@@ -1711,19 +1817,19 @@ Visit: ${getPromoUrl()}
       margin-bottom: 8px;
     }
     .greeting {
-      font-size: ${getSectionData('greeting-section')?.styling?.fontSize || '24px'};
-      font-weight: ${getSectionData('greeting-section')?.styling?.fontWeight || '600'};
-      font-style: ${getSectionData('greeting-section')?.styling?.fontStyle || 'normal'};
-      color: ${getSectionData('greeting-section')?.styling?.color || '#1e293b'};
-      text-align: ${getSectionData('greeting-section')?.styling?.textAlign || 'left'};
+      font-size: ${getSectionData('greeting')?.styling?.fontSize || getSectionData('greeting-section')?.styling?.fontSize || '24px'};
+      font-weight: ${getSectionData('greeting')?.styling?.fontWeight || getSectionData('greeting-section')?.styling?.fontWeight || '600'};
+      font-style: ${getSectionData('greeting')?.styling?.fontStyle || getSectionData('greeting-section')?.styling?.fontStyle || 'normal'};
+      color: ${getSectionData('greeting')?.styling?.color || getSectionData('greeting-section')?.styling?.color || '#1e293b'};
+      text-align: ${getSectionData('greeting')?.styling?.textAlign || getSectionData('greeting-section')?.styling?.textAlign || 'left'};
       margin: 0 0 16px 0;
     }
     .custom-message {
-      font-size: ${getSectionData('custom-message-section')?.styling?.fontSize || '16px'};
-      font-weight: ${getSectionData('custom-message-section')?.styling?.fontWeight || '400'};
-      font-style: ${getSectionData('custom-message-section')?.styling?.fontStyle || 'normal'};
-      color: ${getSectionData('custom-message-section')?.styling?.color || '#374151'};
-      text-align: ${getSectionData('custom-message-section')?.styling?.textAlign || 'left'};
+      font-size: ${getSectionData('custom-message')?.styling?.fontSize || getSectionData('custom-message-section')?.styling?.fontSize || '16px'};
+      font-weight: ${getSectionData('custom-message')?.styling?.fontWeight || getSectionData('custom-message-section')?.styling?.fontWeight || '400'};
+      font-style: ${getSectionData('custom-message')?.styling?.fontStyle || getSectionData('custom-message-section')?.styling?.fontStyle || 'normal'};
+      color: ${getSectionData('custom-message')?.styling?.color || getSectionData('custom-message-section')?.styling?.color || '#374151'};
+      text-align: ${getSectionData('custom-message')?.styling?.textAlign || getSectionData('custom-message-section')?.styling?.textAlign || 'left'};
       line-height: 1.6;
       white-space: pre-line; /* Preserves line breaks from admin input */
       margin: 24px 0;
@@ -1763,14 +1869,14 @@ Visit: ${getPromoUrl()}
       box-shadow: 0 2px 8px hsla(347, 91%, 51%, 0.3);
     }
     .usage-steps {
-      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-      border: 1px solid #93c5fd;
-      border-radius: 8px;
-      padding: 20px;
+      background: ${userData.usageSteps?.styling?.backgroundColor || 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'};
+      border: 1px solid ${userData.usageSteps?.styling?.borderColor || '#93c5fd'};
+      border-radius: ${userData.usageSteps?.styling?.borderRadius || '8px'};
+      padding: ${userData.usageSteps?.styling?.padding || '20px'};
       margin: 24px 0;
     }
     .usage-steps h4 {
-      color: #1d4ed8;
+      color: ${userData.usageSteps?.styling?.titleColor || '#1d4ed8'};
       font-size: 16px;
       font-weight: 600;
       margin: 0 0 12px 0;
@@ -1778,11 +1884,27 @@ Visit: ${getPromoUrl()}
     .usage-steps ol {
       margin: 0;
       padding-left: 20px;
-      color: #1e40af;
+      color: ${userData.usageSteps?.styling?.textColor || '#1e40af'};
     }
     .usage-steps li {
       margin: 6px 0;
       font-size: 14px;
+    }
+    .custom-footer {
+      background: ${userData.footer?.styling?.backgroundColor || '#f8fafc'};
+      padding: ${userData.footer?.styling?.padding || '24px 32px'};
+      text-align: ${userData.footer?.styling?.textAlign || 'center'};
+      border-top: 1px solid ${userData.footer?.styling?.borderColor || '#e2e8f0'};
+    }
+    .custom-footer .footer-text {
+      font-size: ${userData.footer?.styling?.fontSize || '14px'};
+      color: ${userData.footer?.styling?.textColor || '#64748b'};
+      margin: 0 0 8px 0;
+      line-height: 1.5;
+    }
+    .custom-footer .footer-link {
+      color: ${userData.footer?.styling?.linkColor || '#F51042'};
+      text-decoration: none;
     }
     .cta-container {
       text-align: ${userData.orderButton?.styling?.textAlign || 'center'};
@@ -1809,10 +1931,10 @@ Visit: ${getPromoUrl()}
         userData.designSystem
       ) ? `
         <!-- Advanced Design Mode with Custom Sections -->
-        <h2 class="greeting">${getSectionData('greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
+        <h2 class="greeting">${finalGreeting}</h2>
         
         <div class="custom-message">
-          ${userData.customMessage}
+          ${finalMessage}
         </div>
         
         <div class="promo-code-box">
@@ -1821,7 +1943,7 @@ Visit: ${getPromoUrl()}
         </div>
         
         <!-- Custom sections from advanced design -->
-        ${generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : [])}
+        ${generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections || {}))}
         
         <div class="cta-container">
           <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
@@ -1830,10 +1952,10 @@ Visit: ${getPromoUrl()}
         </div>
       ` : `
         <!-- Simple Mode (Original Design) -->
-        <h2 class="greeting">${getSectionData('greeting-section')?.content || userData.greeting || 'Hello! 👋'}</h2>
+        <h2 class="greeting">${finalGreeting}</h2>
         
         <div class="custom-message">
-          ${userData.customMessage}
+          ${finalMessage}
         </div>
         
         <div class="promo-code-box">
@@ -1841,15 +1963,19 @@ Visit: ${getPromoUrl()}
           <div class="promo-code">${userData.promoCode}</div>
         </div>
         
-        <div class="usage-steps">
-          <h4>🚀 How to use your promo code:</h4>
-          <ol>
-            <li>Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: #1d4ed8;">${userData.orderButton?.url || getPromoUrl()}</a></li>
-            <li>Browse our amazing local cooks and their delicious offerings</li>
-            <li>Apply your promo code during checkout</li>
-            <li>Enjoy your special offer!</li>
-          </ol>
-        </div>
+        ${userData.usageSteps?.enabled !== false ? `
+          <div class="usage-steps">
+            <h4>${userData.usageSteps?.title || '🚀 How to use your promo code:'}</h4>
+            <ol>
+              ${(userData.usageSteps?.steps || [
+                `Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: ${userData.usageSteps?.styling?.linkColor || '#1d4ed8'};">${userData.orderButton?.url || getPromoUrl()}</a>`,
+                'Browse our amazing local cooks and their delicious offerings',
+                'Apply your promo code during checkout',
+                'Enjoy your special offer!'
+              ]).map(step => `<li>${step}</li>`).join('')}
+            </ol>
+          </div>
+        ` : ''}
         
         <div class="cta-container">
           <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
@@ -1860,11 +1986,26 @@ Visit: ${getPromoUrl()}
       
       <div class="divider"></div>
     </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for being part of the <strong>${organizationName}</strong> community!</p>
-      <p class="footer-text">Questions? Contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${new Date().getFullYear()} ${organizationName}</p>
+    <div class="custom-footer">
+      ${userData.footer?.mainText ? `<p class="footer-text"><strong>${userData.footer.mainText}</strong></p>` : `<p class="footer-text">Thank you for being part of the <strong>${organizationName}</strong> community!</p>`}
+      
+      ${userData.footer?.showContact !== false && userData.footer?.contactText ? `
+        <p class="footer-text">
+          ${userData.footer.contactText.includes('@') ? 
+            userData.footer.contactText.replace(/(\S+@\S+)/g, '<a href="mailto:$1" class="footer-link">$1</a>') :
+            userData.footer.contactText
+          }
+        </p>
+      ` : userData.footer?.showContact !== false ? `
+        <p class="footer-text">Questions? Contact us at <a href="mailto:${supportEmail}" class="footer-link">${supportEmail}</a>.</p>
+      ` : ''}
+      
+      ${userData.footer?.showCopyright !== false ? `
+        <div style="height: 1px; background: linear-gradient(90deg, transparent 0%, ${userData.footer?.styling?.borderColor || '#e2e8f0'} 50%, transparent 100%); margin: 16px 0;"></div>
+        <p class="footer-text" style="opacity: 0.8; font-size: ${userData.footer?.styling?.fontSize ? (parseInt(userData.footer.styling.fontSize) - 2) + 'px' : '12px'};">
+          ${userData.footer?.copyrightText || `&copy; ${new Date().getFullYear()} ${organizationName}. All rights reserved.`}
+        </p>
+      ` : ''}
     </div>
   </div>
 </body>
@@ -1873,7 +2014,7 @@ Visit: ${getPromoUrl()}
   return {
     to: userData.email,
     subject,
-    text: generatePlainText(userData.email, userData.promoCode, userData.customMessage),
+    text: generatePlainText(userData.email, userData.promoCode, finalMessage),
     html,
     headers: {
       'X-Priority': '3',
