@@ -94,11 +94,14 @@ interface BrandingConfig {
 interface EmailContent {
   subject: string;
   previewText: string;
-  sections: EmailSection[];
+  sections: { [key: string]: EmailSection }; // Changed from array to object to match EmailDesignStudio
   promoCode?: string;
   promoCodeLabel?: string;
+  message?: string; // Add message property
   customMessage?: string;
   greeting?: string;
+  buttonText?: string; // Add buttonText property
+  orderUrl?: string; // Add orderUrl property
   email?: string;
   recipientType?: string;
   promoCodeStyling?: {
@@ -110,6 +113,11 @@ interface EmailContent {
     labelColor?: string;
     labelFontSize?: string;
     labelFontWeight?: string;
+    borderRadius?: string;
+    borderWidth?: string;
+    borderStyle?: string;
+    boxShadow?: string;
+    padding?: string;
   };
   orderButton?: {
     text?: string;
@@ -136,6 +144,11 @@ interface EmailContent {
       padding?: string;
       borderRadius?: string;
       textAlign?: string;
+      backgroundImage?: string;
+      backgroundSize?: string;
+      backgroundPosition?: string;
+      backgroundRepeat?: string;
+      backgroundAttachment?: string;
     };
   };
   footer?: {
@@ -173,6 +186,15 @@ interface EmailContent {
     backgroundColor?: string;
     borderRadius?: string;
     boxShadow?: string;
+    backgroundImage?: string;
+    backgroundSize?: string;
+    backgroundPosition?: string;
+    backgroundRepeat?: string;
+    backgroundAttachment?: string;
+    mobileMaxWidth?: string;
+    mobilePadding?: string;
+    mobileFontScale?: string;
+    mobileButtonSize?: string;
   };
   dividers?: {
     enabled?: boolean;
@@ -187,8 +209,32 @@ interface EmailContent {
 interface EmailSection {
   id: string;
   type: string;
-  content: any;
-  styling: any;
+  text?: string;
+  content?: string;
+  url?: string;
+  styling?: {
+    color?: string;
+    fontSize?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+    textAlign?: string;
+    backgroundColor?: string;
+    padding?: string;
+    borderRadius?: string;
+    alignment?: string;
+    lineHeight?: string;
+    letterSpacing?: string;
+    textTransform?: string;
+    margin?: string;
+    marginTop?: string;
+    marginRight?: string;
+    marginBottom?: string;
+    marginLeft?: string;
+    paddingTop?: string;
+    paddingRight?: string;
+    paddingBottom?: string;
+    paddingLeft?: string;
+  };
 }
 
 interface EmailMetadata {
@@ -255,7 +301,7 @@ const PromoCodeSender: React.FC = () => {
     content: {
       subject: 'Important Update from Local Cooks',
       previewText: 'We have exciting news to share with you',
-      sections: [],
+      sections: {},
       promoCode: 'WELCOME20',
       promoCodeLabel: '🎁 Special Offer Code',
       customMessage: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
