@@ -2051,78 +2051,52 @@ Visit: ${getPromoUrl()}
       ${userData.header?.subtitle ? `<p>${userData.header.subtitle}</p>` : ''}
     </div>
     <div class="content">
-      ${userData.isPremium && (
-        (userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0)) || 
-        userData.header || 
-        userData.orderButton?.styling ||
-        userData.designSystem
-      ) ? `
-        <!-- Advanced Design Mode with Custom Sections -->
-        <h2 class="greeting">${finalGreeting}</h2>
-        
-        ${generateDivider()}
-        
-        <div class="custom-message">
-          ${finalMessage}
+      <!-- Enhanced Email Design -->
+      <h2 class="greeting">${finalGreeting}</h2>
+      
+      ${generateDivider()}
+      
+      <div class="custom-message">
+        ${finalMessage}
+      </div>
+      
+      ${generateDivider()}
+      
+      <div class="promo-code-box">
+        <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
+        <div class="promo-code">${userData.promoCode}</div>
+      </div>
+      
+      ${generateDivider()}
+
+      <!-- Usage Steps Section (Always Show Unless Explicitly Disabled) -->
+      ${userData.usageSteps?.enabled !== false ? `
+        <div class="usage-steps">
+          <h4>${userData.usageSteps?.title || '🚀 How to use your promo code:'}</h4>
+          <ol>
+            ${(userData.usageSteps?.steps || [
+              `Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: ${userData.usageSteps?.styling?.linkColor || '#1d4ed8'};">${userData.orderButton?.url || getPromoUrl()}</a>`,
+              'Browse our amazing local cooks and their delicious offerings',
+              'Apply your promo code during checkout',
+              'Enjoy your special offer!'
+            ]).map(step => `<li>${step}</li>`).join('')}
+          </ol>
         </div>
-        
         ${generateDivider()}
-        
-        <div class="promo-code-box">
-          <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
-          <div class="promo-code">${userData.promoCode}</div>
-        </div>
-        
-        ${generateDivider()}
-        
-        <!-- Custom sections from advanced design -->
-        ${generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections || {}))}
-        
-        <div class="cta-container">
-          <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
-            ${userData.orderButton?.text || '🌟 Start Shopping Now'}
-          </a>
-        </div>
-      ` : `
-        <!-- Simple Mode (Original Design) -->
-        <h2 class="greeting">${finalGreeting}</h2>
-        
-        ${generateDivider()}
-        
-        <div class="custom-message">
-          ${finalMessage}
-        </div>
-        
-        ${generateDivider()}
-        
-        <div class="promo-code-box">
-          <div class="promo-label">${userData.promoCodeLabel || '🎁 Your Exclusive Promo Code'}</div>
-          <div class="promo-code">${userData.promoCode}</div>
-        </div>
-        
-        ${generateDivider()}
-        
-        ${userData.usageSteps?.enabled !== false ? `
-          <div class="usage-steps">
-            <h4>${userData.usageSteps?.title || '🚀 How to use your promo code:'}</h4>
-            <ol>
-              ${(userData.usageSteps?.steps || [
-                `Visit our website: <a href="${userData.orderButton?.url || getPromoUrl()}" style="color: ${userData.usageSteps?.styling?.linkColor || '#1d4ed8'};">${userData.orderButton?.url || getPromoUrl()}</a>`,
-                'Browse our amazing local cooks and their delicious offerings',
-                'Apply your promo code during checkout',
-                'Enjoy your special offer!'
-              ]).map(step => `<li>${step}</li>`).join('')}
-            </ol>
-          </div>
-          ${generateDivider()}
-        ` : ''}
-        
-        <div class="cta-container">
-          <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
-            ${userData.orderButton?.text || '🌟 Start Shopping Now'}
-          </a>
-        </div>
-      `}
+      ` : ''}
+
+      <!-- Custom Sections (if any) -->
+      ${userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0) ? 
+        generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections)) + generateDivider() 
+        : ''
+      }
+      
+      <!-- Call to Action Button -->
+      <div class="cta-container">
+        <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
+          ${userData.orderButton?.text || '🌟 Start Shopping Now'}
+        </a>
+      </div>
       
       <div class="divider"></div>
     </div>
