@@ -1404,7 +1404,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           alwaysFoodSafeResult = await submitToAlwaysFoodSafe({
             userId,
             userName: user.username,
-            email: `${user.username}@localcooks.com`, // Placeholder email since User type doesn't have email
+            email: `${user.username}@localcooks.ca`, // Placeholder email since User type doesn't have email
             completionDate: new Date(completionDate),
             videoProgress
           });
@@ -1846,31 +1846,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
             subtitleColor: '#ffffff',
             titleFontSize: '32px',
             subtitleFontSize: '18px',
-            padding: '24px',
-            borderRadius: '0px',
-            textAlign: 'center'
-          }
-        },
-        footer: footer || {
-          mainText: 'Thank you for being part of the Local Cooks community!',
-          contactText: 'Questions? Contact us at support@localcooks.com',
-          copyrightText: '© 2024 Local Cooks. All rights reserved.',
-          showContact: true,
-          showCopyright: true,
-          styling: {
-            backgroundColor: '#f8fafc',
-            textColor: '#64748b',
-            linkColor: '#F51042',
-            fontSize: '14px',
-            padding: '24px 32px',
-            textAlign: 'center',
-            borderColor: '#e2e8f0'
-          }
-        },
-        usageSteps: usageSteps || {
-          title: '🚀 How to use your promo code:',
-          steps: [
-            `Visit our website: <a href="${orderUrl || 'https://localcooks.com'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.com'}</a>`,
+                      padding: '24px',
+          borderRadius: '0px',
+          textAlign: 'center'
+        }
+      },
+      footer: footer || {
+        mainText: 'Thank you for being part of the Local Cooks community!',
+        contactText: 'Questions? Contact us at support@localcooks.com',
+        copyrightText: '© 2024 Local Cooks. All rights reserved.',
+        showContact: true,
+        showCopyright: true,
+        styling: {
+          backgroundColor: '#f8fafc',
+          textColor: '#64748b',
+          linkColor: '#F51042',
+          fontSize: '14px',
+          padding: '24px 32px',
+          textAlign: 'center',
+          borderColor: '#e2e8f0'
+        }
+      },
+      usageSteps: usageSteps || {
+        title: '🚀 How to use your promo code:',
+        steps: [
+          `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
             'Browse our amazing local cooks and their delicious offerings',
             'Apply your promo code during checkout',
             'Enjoy your special offer!'
@@ -1904,7 +1904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
         orderButton: {
           text: buttonText || '🌟 Start Shopping Now',
-          url: orderUrl || 'https://localcooks.com',
+          url: orderUrl || 'https://localcooks.ca',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
@@ -2027,7 +2027,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         usageSteps: usageSteps || {
           title: '🚀 How to use your promo code:',
           steps: [
-            'Visit our website: <a href="https://localcooks.com" style="color: #1d4ed8;">https://localcooks.com</a>',
+            'Visit our website: <a href="https://localcooks.ca" style="color: #1d4ed8;">https://localcooks.ca</a>',
             'Browse our amazing local cooks and their delicious offerings',
             'Apply your promo code during checkout',
             'Enjoy your special offer!'
@@ -2060,7 +2060,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         promoStyle: { colorTheme: 'green', borderStyle: 'dashed' },
         orderButton: {
           text: '🌟 Test Order Button',
-          url: 'https://localcooks.com',
+          url: 'https://localcooks.ca',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
