@@ -7,6 +7,19 @@ export default {
     extend: {
       screens: {
         'xs': '475px',
+        'sm': '640px',
+        'md': '768px',
+        'lg': '1024px',
+        'xl': '1280px',
+        '2xl': '1536px',
+        // Mobile-first breakpoints
+        'mobile': {'max': '640px'},
+        'tablet': {'min': '641px', 'max': '1024px'},
+        'desktop': {'min': '1025px'},
+        // Specific mobile ranges
+        'mobile-sm': {'max': '480px'},
+        'mobile-md': {'min': '481px', 'max': '640px'},
+        'mobile-lg': {'min': '641px', 'max': '768px'},
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -106,6 +119,44 @@ export default {
         };
       });
       addUtilities(textShadowUtilities);
+    },
+    // Mobile-first responsive utilities
+    function({ addUtilities }) {
+      const mobileUtilities = {
+        '.mobile-safe-area': {
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          paddingLeft: 'env(safe-area-inset-left)',
+          paddingRight: 'env(safe-area-inset-right)',
+        },
+        '.mobile-touch-target': {
+          minHeight: '44px',
+          minWidth: '44px',
+        },
+        '.mobile-scroll-smooth': {
+          scrollBehavior: 'smooth',
+          '-webkit-overflow-scrolling': 'touch',
+        },
+        '.mobile-tap-highlight': {
+          '-webkit-tap-highlight-color': 'rgba(0, 0, 0, 0.1)',
+        },
+        '.mobile-no-tap-highlight': {
+          '-webkit-tap-highlight-color': 'transparent',
+        },
+        '.mobile-momentum-scroll': {
+          '-webkit-overflow-scrolling': 'touch',
+          overflowY: 'auto',
+        },
+        '.mobile-font-size-adjust': {
+          textSizeAdjust: '100%',
+          '-webkit-text-size-adjust': '100%',
+        },
+        '.mobile-viewport-units': {
+          height: '100vh',
+          height: '100dvh', // Dynamic viewport height for modern browsers
+        },
+      };
+      addUtilities(mobileUtilities);
     }
   ],
 } satisfies Config;

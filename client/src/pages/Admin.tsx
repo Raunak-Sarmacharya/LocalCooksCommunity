@@ -893,24 +893,24 @@ function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Status Tabs */}
+                {/* Status Tabs - Mobile Optimized */}
                 <Tabs defaultValue="all" className="w-full">
-                  <TabsList className="rounded-xl bg-gray-100 p-1">
-                    <TabsTrigger value="all" className="flex items-center gap-2 rounded-lg">
-                      <UserIcon className="h-3.5 w-3.5" />
-                      All ({statusCounts.total})
+                  <TabsList className="rounded-xl bg-gray-100 p-1 grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
+                    <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <UserIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                      <span className="hidden xs:inline">All </span>({statusCounts.total})
                     </TabsTrigger>
-                    <TabsTrigger value="inReview" className="flex items-center gap-2 rounded-lg">
-                      <Clock className="h-3.5 w-3.5 text-yellow-500" />
-                      In Review ({statusCounts.inReview})
+                    <TabsTrigger value="inReview" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-500 flex-shrink-0" />
+                      <span className="hidden xs:inline">Review </span>({statusCounts.inReview})
                     </TabsTrigger>
-                    <TabsTrigger value="approved" className="flex items-center gap-2 rounded-lg">
-                      <CheckCircle className="h-3.5 w-3.5 text-green-500" />
-                      Approved ({statusCounts.approved})
+                    <TabsTrigger value="approved" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500 flex-shrink-0" />
+                      <span className="hidden xs:inline">Approved </span>({statusCounts.approved})
                     </TabsTrigger>
-                    <TabsTrigger value="rejected" className="flex items-center gap-2 rounded-lg">
-                      <XCircle className="h-3.5 w-3.5 text-red-500" />
-                      Rejected ({statusCounts.rejected})
+                    <TabsTrigger value="rejected" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <XCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-red-500 flex-shrink-0" />
+                      <span className="hidden xs:inline">Rejected </span>({statusCounts.rejected})
                     </TabsTrigger>
                   </TabsList>
 

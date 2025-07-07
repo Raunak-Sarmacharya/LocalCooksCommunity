@@ -15,6 +15,7 @@ import {
     Image,
     Italic,
     Mail,
+    Minus,
     Palette,
     Plus,
     RefreshCw,
@@ -138,6 +139,11 @@ interface EmailContent {
     labelColor?: string;
     labelFontSize?: string;
     labelFontWeight?: string;
+    borderRadius?: string;
+    borderWidth?: string;
+    borderStyle?: string;
+    boxShadow?: string;
+    padding?: string;
   };
   header?: {
     title?: string;
@@ -151,6 +157,11 @@ interface EmailContent {
       padding?: string;
       borderRadius?: string;
       textAlign?: string;
+      backgroundImage?: string;
+      backgroundSize?: string;
+      backgroundPosition?: string;
+      backgroundRepeat?: string;
+      backgroundAttachment?: string;
     };
   };
   footer?: {
@@ -188,6 +199,23 @@ interface EmailContent {
     backgroundColor?: string;
     borderRadius?: string;
     boxShadow?: string;
+    backgroundImage?: string;
+    backgroundSize?: string;
+    backgroundPosition?: string;
+    backgroundRepeat?: string;
+    backgroundAttachment?: string;
+    mobileMaxWidth?: string;
+    mobilePadding?: string;
+    mobileFontScale?: string;
+    mobileButtonSize?: string;
+  };
+  dividers?: {
+    enabled?: boolean;
+    style?: string;
+    color?: string;
+    thickness?: string;
+    margin?: string;
+    opacity?: string;
   };
 }
 
@@ -206,6 +234,18 @@ interface EmailSection {
     padding?: string;
     borderRadius?: string;
     alignment?: string;
+    lineHeight?: string;
+    letterSpacing?: string;
+    textTransform?: string;
+    margin?: string;
+    marginTop?: string;
+    marginRight?: string;
+    marginBottom?: string;
+    marginLeft?: string;
+    paddingTop?: string;
+    paddingRight?: string;
+    paddingBottom?: string;
+    paddingLeft?: string;
   };
 }
 
@@ -234,6 +274,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
 
   // Create default design configuration
   function createDefaultDesign(): EmailDesignData {
@@ -311,7 +352,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           fontWeight: 'bold',
           labelColor: '#374151',
           labelFontSize: '16px',
-          labelFontWeight: '600'
+          labelFontWeight: '600',
+          borderRadius: '8px',
+          borderWidth: '2px',
+          borderStyle: 'solid',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          padding: '16px 24px'
         },
         header: {
           title: 'Local Cooks',
@@ -367,6 +413,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           backgroundColor: '#f1f5f9',
           borderRadius: '12px',
           boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+        },
+        dividers: {
+          enabled: true,
+          style: 'solid',
+          color: '#e2e8f0',
+          thickness: '1px',
+          margin: '24px 0',
+          opacity: '1'
         }
       },
       metadata: {
@@ -986,6 +1040,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     {selectedElement === 'promo-code' && 'Promo Code'}
                     {selectedElement === 'promo-code-label' && 'Promo Label'}
                     {selectedElement === 'order-button' && 'Call-to-Action'}
+                    {selectedElement === 'dividers' && 'Divider Styling'}
+                    {selectedElement === 'mobile-settings' && 'Mobile Controls'}
                     {selectedElement.startsWith('section-') && 'Custom Element'}
                   </span>
                 </>
@@ -1099,6 +1155,81 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           ))}
                         </div>
                       </div>
+
+                      <div className="border-t pt-4">
+                        <Label className="text-xs font-medium text-gray-600 mb-3 block">Background Image</Label>
+                        
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Image URL</Label>
+                          <Input
+                            placeholder="https://example.com/image.jpg"
+                            value={currentDesign.content.header?.styling?.backgroundImage || ''}
+                            onChange={(e) => updateElementStyling('email-header', 'backgroundImage', e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div>
+                            <Label className="text-xs font-medium text-gray-600 mb-1 block">Size</Label>
+                            <Select
+                              value={currentDesign.content.header?.styling?.backgroundSize || 'cover'}
+                              onValueChange={(value) => updateElementStyling('email-header', 'backgroundSize', value)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="cover">Cover</SelectItem>
+                                <SelectItem value="contain">Contain</SelectItem>
+                                <SelectItem value="auto">Auto</SelectItem>
+                                <SelectItem value="100% 100%">Stretch</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs font-medium text-gray-600 mb-1 block">Position</Label>
+                            <Select
+                              value={currentDesign.content.header?.styling?.backgroundPosition || 'center center'}
+                              onValueChange={(value) => updateElementStyling('email-header', 'backgroundPosition', value)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="center center">Center</SelectItem>
+                                <SelectItem value="top center">Top</SelectItem>
+                                <SelectItem value="bottom center">Bottom</SelectItem>
+                                <SelectItem value="left center">Left</SelectItem>
+                                <SelectItem value="right center">Right</SelectItem>
+                                <SelectItem value="top left">Top Left</SelectItem>
+                                <SelectItem value="top right">Top Right</SelectItem>
+                                <SelectItem value="bottom left">Bottom Left</SelectItem>
+                                <SelectItem value="bottom right">Bottom Right</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Repeat</Label>
+                          <Select
+                            value={currentDesign.content.header?.styling?.backgroundRepeat || 'no-repeat'}
+                            onValueChange={(value) => updateElementStyling('email-header', 'backgroundRepeat', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="no-repeat">No Repeat</SelectItem>
+                              <SelectItem value="repeat">Repeat</SelectItem>
+                              <SelectItem value="repeat-x">Repeat X</SelectItem>
+                              <SelectItem value="repeat-y">Repeat Y</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1198,6 +1329,152 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </Button>
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Line Height</Label>
+                        <Select
+                          value={currentDesign.content.sections?.greeting?.styling?.lineHeight || '1.5'}
+                          onValueChange={(value) => updateElementStyling('greeting', 'lineHeight', value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1.2">Tight (1.2)</SelectItem>
+                            <SelectItem value="1.4">Snug (1.4)</SelectItem>
+                            <SelectItem value="1.5">Normal (1.5)</SelectItem>
+                            <SelectItem value="1.6">Relaxed (1.6)</SelectItem>
+                            <SelectItem value="1.8">Loose (1.8)</SelectItem>
+                            <SelectItem value="2.0">Double (2.0)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Letter Spacing</Label>
+                        <Select
+                          value={currentDesign.content.sections?.greeting?.styling?.letterSpacing || 'normal'}
+                          onValueChange={(value) => updateElementStyling('greeting', 'letterSpacing', value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="-0.05em">Tighter (-0.05em)</SelectItem>
+                            <SelectItem value="-0.025em">Tight (-0.025em)</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="0.025em">Wide (0.025em)</SelectItem>
+                            <SelectItem value="0.05em">Wider (0.05em)</SelectItem>
+                            <SelectItem value="0.1em">Widest (0.1em)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Text Transform</Label>
+                      <Select
+                        value={currentDesign.content.sections?.greeting?.styling?.textTransform || 'none'}
+                        onValueChange={(value) => updateElementStyling('greeting', 'textTransform', value)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="uppercase">UPPERCASE</SelectItem>
+                          <SelectItem value="lowercase">lowercase</SelectItem>
+                          <SelectItem value="capitalize">Capitalize</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <Label className="text-xs font-medium text-gray-600 mb-3 block">Spacing Controls</Label>
+                      
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Margin</Label>
+                          <Select
+                            value={currentDesign.content.sections?.greeting?.styling?.margin || '0'}
+                            onValueChange={(value) => updateElementStyling('greeting', 'margin', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                              <SelectItem value="48px">XX-Large (48px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Padding</Label>
+                          <Select
+                            value={currentDesign.content.sections?.greeting?.styling?.padding || '0'}
+                            onValueChange={(value) => updateElementStyling('greeting', 'padding', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                              <SelectItem value="48px">XX-Large (48px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Top Margin</Label>
+                          <Select
+                            value={currentDesign.content.sections?.greeting?.styling?.marginTop || '0'}
+                            onValueChange={(value) => updateElementStyling('greeting', 'marginTop', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Bottom Margin</Label>
+                          <Select
+                            value={currentDesign.content.sections?.greeting?.styling?.marginBottom || '16px'}
+                            onValueChange={(value) => updateElementStyling('greeting', 'marginBottom', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1285,6 +1562,152 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             <Icon className="h-3 w-3" />
                           </Button>
                         ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Line Height</Label>
+                        <Select
+                          value={currentDesign.content.sections?.['custom-message']?.styling?.lineHeight || '1.6'}
+                          onValueChange={(value) => updateElementStyling('custom-message', 'lineHeight', value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1.2">Tight (1.2)</SelectItem>
+                            <SelectItem value="1.4">Snug (1.4)</SelectItem>
+                            <SelectItem value="1.5">Normal (1.5)</SelectItem>
+                            <SelectItem value="1.6">Relaxed (1.6)</SelectItem>
+                            <SelectItem value="1.8">Loose (1.8)</SelectItem>
+                            <SelectItem value="2.0">Double (2.0)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Letter Spacing</Label>
+                        <Select
+                          value={currentDesign.content.sections?.['custom-message']?.styling?.letterSpacing || 'normal'}
+                          onValueChange={(value) => updateElementStyling('custom-message', 'letterSpacing', value)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="-0.05em">Tighter (-0.05em)</SelectItem>
+                            <SelectItem value="-0.025em">Tight (-0.025em)</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="0.025em">Wide (0.025em)</SelectItem>
+                            <SelectItem value="0.05em">Wider (0.05em)</SelectItem>
+                            <SelectItem value="0.1em">Widest (0.1em)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Text Transform</Label>
+                      <Select
+                        value={currentDesign.content.sections?.['custom-message']?.styling?.textTransform || 'none'}
+                        onValueChange={(value) => updateElementStyling('custom-message', 'textTransform', value)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="uppercase">UPPERCASE</SelectItem>
+                          <SelectItem value="lowercase">lowercase</SelectItem>
+                          <SelectItem value="capitalize">Capitalize</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <Label className="text-xs font-medium text-gray-600 mb-3 block">Spacing Controls</Label>
+                      
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Margin</Label>
+                          <Select
+                            value={currentDesign.content.sections?.['custom-message']?.styling?.margin || '24px 0'}
+                            onValueChange={(value) => updateElementStyling('custom-message', 'margin', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px 0">Small (8px)</SelectItem>
+                              <SelectItem value="16px 0">Medium (16px)</SelectItem>
+                              <SelectItem value="24px 0">Large (24px)</SelectItem>
+                              <SelectItem value="32px 0">X-Large (32px)</SelectItem>
+                              <SelectItem value="48px 0">XX-Large (48px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Padding</Label>
+                          <Select
+                            value={currentDesign.content.sections?.['custom-message']?.styling?.padding || '0'}
+                            onValueChange={(value) => updateElementStyling('custom-message', 'padding', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                              <SelectItem value="48px">XX-Large (48px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Top Margin</Label>
+                          <Select
+                            value={currentDesign.content.sections?.['custom-message']?.styling?.marginTop || '24px'}
+                            onValueChange={(value) => updateElementStyling('custom-message', 'marginTop', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Bottom Margin</Label>
+                          <Select
+                            value={currentDesign.content.sections?.['custom-message']?.styling?.marginBottom || '0'}
+                            onValueChange={(value) => updateElementStyling('custom-message', 'marginBottom', value)}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">None (0)</SelectItem>
+                              <SelectItem value="8px">Small (8px)</SelectItem>
+                              <SelectItem value="16px">Medium (16px)</SelectItem>
+                              <SelectItem value="24px">Large (24px)</SelectItem>
+                              <SelectItem value="32px">X-Large (32px)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1382,6 +1805,131 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           />
                         ))}
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Border Radius</Label>
+                        <Select
+                          value={currentDesign.content.promoCodeStyling?.borderRadius || '8px'}
+                          onValueChange={(value) => handleContentUpdate({
+                            promoCodeStyling: {
+                              ...currentDesign.content.promoCodeStyling,
+                              borderRadius: value
+                            }
+                          })}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0px">Sharp</SelectItem>
+                            <SelectItem value="4px">Small</SelectItem>
+                            <SelectItem value="8px">Medium</SelectItem>
+                            <SelectItem value="12px">Large</SelectItem>
+                            <SelectItem value="16px">Extra Large</SelectItem>
+                            <SelectItem value="9999px">Pill</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Border Width</Label>
+                        <Select
+                          value={currentDesign.content.promoCodeStyling?.borderWidth || '2px'}
+                          onValueChange={(value) => handleContentUpdate({
+                            promoCodeStyling: {
+                              ...currentDesign.content.promoCodeStyling,
+                              borderWidth: value
+                            }
+                          })}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0px">None</SelectItem>
+                            <SelectItem value="1px">Thin</SelectItem>
+                            <SelectItem value="2px">Medium</SelectItem>
+                            <SelectItem value="3px">Thick</SelectItem>
+                            <SelectItem value="4px">Extra Thick</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Border Style</Label>
+                      <Select
+                        value={currentDesign.content.promoCodeStyling?.borderStyle || 'solid'}
+                        onValueChange={(value) => handleContentUpdate({
+                          promoCodeStyling: {
+                            ...currentDesign.content.promoCodeStyling,
+                            borderStyle: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="solid">Solid</SelectItem>
+                          <SelectItem value="dashed">Dashed</SelectItem>
+                          <SelectItem value="dotted">Dotted</SelectItem>
+                          <SelectItem value="double">Double</SelectItem>
+                          <SelectItem value="none">None</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Box Shadow</Label>
+                      <Select
+                        value={currentDesign.content.promoCodeStyling?.boxShadow || '0 2px 4px rgba(0,0,0,0.1)'}
+                        onValueChange={(value) => handleContentUpdate({
+                          promoCodeStyling: {
+                            ...currentDesign.content.promoCodeStyling,
+                            boxShadow: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="0 1px 2px rgba(0,0,0,0.05)">Subtle</SelectItem>
+                          <SelectItem value="0 2px 4px rgba(0,0,0,0.1)">Small</SelectItem>
+                          <SelectItem value="0 4px 8px rgba(0,0,0,0.12)">Medium</SelectItem>
+                          <SelectItem value="0 8px 16px rgba(0,0,0,0.15)">Large</SelectItem>
+                          <SelectItem value="0 12px 24px rgba(0,0,0,0.2)">Extra Large</SelectItem>
+                          <SelectItem value="0 0 0 1px rgba(0,0,0,0.05)">Outline</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Padding</Label>
+                      <Select
+                        value={currentDesign.content.promoCodeStyling?.padding || '16px 24px'}
+                        onValueChange={(value) => handleContentUpdate({
+                          promoCodeStyling: {
+                            ...currentDesign.content.promoCodeStyling,
+                            padding: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="8px 12px">Compact</SelectItem>
+                          <SelectItem value="12px 16px">Small</SelectItem>
+                          <SelectItem value="16px 24px">Medium</SelectItem>
+                          <SelectItem value="20px 32px">Large</SelectItem>
+                          <SelectItem value="24px 40px">Extra Large</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 )}
@@ -1975,6 +2523,376 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div className="border-t pt-4">
+                      <Label className="text-xs font-medium text-gray-600 mb-3 block">Background Image</Label>
+                      
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Image URL</Label>
+                        <Input
+                          placeholder="https://example.com/background.jpg"
+                          value={currentDesign.content.emailContainer?.backgroundImage || ''}
+                          onChange={(e) => handleContentUpdate({
+                            emailContainer: {
+                              ...currentDesign.content.emailContainer,
+                              backgroundImage: e.target.value
+                            }
+                          })}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Size</Label>
+                          <Select
+                            value={currentDesign.content.emailContainer?.backgroundSize || 'cover'}
+                            onValueChange={(value) => handleContentUpdate({
+                              emailContainer: {
+                                ...currentDesign.content.emailContainer,
+                                backgroundSize: value
+                              }
+                            })}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cover">Cover</SelectItem>
+                              <SelectItem value="contain">Contain</SelectItem>
+                              <SelectItem value="auto">Auto</SelectItem>
+                              <SelectItem value="100% 100%">Stretch</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Position</Label>
+                          <Select
+                            value={currentDesign.content.emailContainer?.backgroundPosition || 'center center'}
+                            onValueChange={(value) => handleContentUpdate({
+                              emailContainer: {
+                                ...currentDesign.content.emailContainer,
+                                backgroundPosition: value
+                              }
+                            })}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="center center">Center</SelectItem>
+                              <SelectItem value="top center">Top</SelectItem>
+                              <SelectItem value="bottom center">Bottom</SelectItem>
+                              <SelectItem value="left center">Left</SelectItem>
+                              <SelectItem value="right center">Right</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Repeat</Label>
+                        <Select
+                          value={currentDesign.content.emailContainer?.backgroundRepeat || 'no-repeat'}
+                          onValueChange={(value) => handleContentUpdate({
+                            emailContainer: {
+                              ...currentDesign.content.emailContainer,
+                              backgroundRepeat: value
+                            }
+                          })}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="no-repeat">No Repeat</SelectItem>
+                            <SelectItem value="repeat">Repeat</SelectItem>
+                            <SelectItem value="repeat-x">Repeat X</SelectItem>
+                            <SelectItem value="repeat-y">Repeat Y</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Mobile Settings */}
+                {selectedElement === 'mobile-settings' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                        <Square className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">Mobile Settings</h3>
+                        <p className="text-xs text-gray-500">Mobile-specific styling controls</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Mobile Container Width</Label>
+                      <Select
+                        value={currentDesign.content.emailContainer?.mobileMaxWidth || '100%'}
+                        onValueChange={(value) => handleContentUpdate({
+                          emailContainer: {
+                            ...currentDesign.content.emailContainer,
+                            mobileMaxWidth: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="100%">Full Width (100%)</SelectItem>
+                          <SelectItem value="95%">95%</SelectItem>
+                          <SelectItem value="90%">90%</SelectItem>
+                          <SelectItem value="350px">350px</SelectItem>
+                          <SelectItem value="320px">320px</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Mobile Padding</Label>
+                      <Select
+                        value={currentDesign.content.emailContainer?.mobilePadding || '16px'}
+                        onValueChange={(value) => handleContentUpdate({
+                          emailContainer: {
+                            ...currentDesign.content.emailContainer,
+                            mobilePadding: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="8px">8px (Tight)</SelectItem>
+                          <SelectItem value="12px">12px (Snug)</SelectItem>
+                          <SelectItem value="16px">16px (Normal)</SelectItem>
+                          <SelectItem value="20px">20px (Relaxed)</SelectItem>
+                          <SelectItem value="24px">24px (Spacious)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Mobile Font Scale</Label>
+                      <Select
+                        value={currentDesign.content.emailContainer?.mobileFontScale || '100%'}
+                        onValueChange={(value) => handleContentUpdate({
+                          emailContainer: {
+                            ...currentDesign.content.emailContainer,
+                            mobileFontScale: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="85%">85% (Smaller)</SelectItem>
+                          <SelectItem value="90%">90% (Small)</SelectItem>
+                          <SelectItem value="100%">100% (Normal)</SelectItem>
+                          <SelectItem value="110%">110% (Large)</SelectItem>
+                          <SelectItem value="120%">120% (Larger)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Mobile Button Size</Label>
+                      <Select
+                        value={currentDesign.content.emailContainer?.mobileButtonSize || 'normal'}
+                        onValueChange={(value) => handleContentUpdate({
+                          emailContainer: {
+                            ...currentDesign.content.emailContainer,
+                            mobileButtonSize: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="small">Small</SelectItem>
+                          <SelectItem value="normal">Normal</SelectItem>
+                          <SelectItem value="large">Large</SelectItem>
+                          <SelectItem value="full-width">Full Width</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-200">
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Preview Tips</Label>
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <p>• Use the mobile/desktop toggle to see both views</p>
+                        <p>• Mobile styles only apply on devices &lt; 600px width</p>
+                        <p>• Test with different email clients for best results</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Divider Settings */}
+                {selectedElement === 'dividers' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
+                        <Minus className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">Divider Styling</h3>
+                        <p className="text-xs text-gray-500">Section separator design</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Enable Dividers</Label>
+                      <Button
+                        variant={currentDesign.content.dividers?.enabled ? "default" : "outline"}
+                        size="sm"
+                        className="w-full h-8"
+                        onClick={() => handleContentUpdate({
+                          dividers: {
+                            ...currentDesign.content.dividers,
+                            enabled: !currentDesign.content.dividers?.enabled
+                          }
+                        })}
+                      >
+                        {currentDesign.content.dividers?.enabled ? 'Enabled' : 'Disabled'}
+                      </Button>
+                    </div>
+
+                    {currentDesign.content.dividers?.enabled && (
+                      <>
+                        <div>
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Divider Style</Label>
+                          <Select
+                            value={currentDesign.content.dividers?.style || 'solid'}
+                            onValueChange={(value) => handleContentUpdate({
+                              dividers: {
+                                ...currentDesign.content.dividers,
+                                style: value
+                              }
+                            })}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="solid">Solid</SelectItem>
+                              <SelectItem value="dashed">Dashed</SelectItem>
+                              <SelectItem value="dotted">Dotted</SelectItem>
+                              <SelectItem value="double">Double</SelectItem>
+                              <SelectItem value="groove">Groove</SelectItem>
+                              <SelectItem value="ridge">Ridge</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs font-medium text-gray-600 mb-1 block">Color</Label>
+                            <div className="grid grid-cols-4 gap-1">
+                              {['#e2e8f0', '#d1d5db', '#9ca3af', '#6b7280', '#dc2626', '#3b82f6', '#10b981', '#f59e0b'].map(color => (
+                                <button
+                                  key={color}
+                                  className={`w-6 h-6 rounded border-2 ${
+                                    currentDesign.content.dividers?.color === color
+                                      ? 'border-blue-500'
+                                      : 'border-gray-200'
+                                  }`}
+                                  style={{ backgroundColor: color }}
+                                  onClick={() => handleContentUpdate({
+                                    dividers: {
+                                      ...currentDesign.content.dividers,
+                                      color: color
+                                    }
+                                  })}
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs font-medium text-gray-600 mb-1 block">Thickness</Label>
+                            <Select
+                              value={currentDesign.content.dividers?.thickness || '1px'}
+                              onValueChange={(value) => handleContentUpdate({
+                                dividers: {
+                                  ...currentDesign.content.dividers,
+                                  thickness: value
+                                }
+                              })}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1px">1px (Thin)</SelectItem>
+                                <SelectItem value="2px">2px (Medium)</SelectItem>
+                                <SelectItem value="3px">3px (Thick)</SelectItem>
+                                <SelectItem value="4px">4px (Extra Thick)</SelectItem>
+                                <SelectItem value="5px">5px (Heavy)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs font-medium text-gray-600 mb-1 block">Spacing</Label>
+                            <Select
+                              value={currentDesign.content.dividers?.margin || '24px 0'}
+                              onValueChange={(value) => handleContentUpdate({
+                                dividers: {
+                                  ...currentDesign.content.dividers,
+                                  margin: value
+                                }
+                              })}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="8px 0">Tight (8px)</SelectItem>
+                                <SelectItem value="16px 0">Snug (16px)</SelectItem>
+                                <SelectItem value="24px 0">Normal (24px)</SelectItem>
+                                <SelectItem value="32px 0">Relaxed (32px)</SelectItem>
+                                <SelectItem value="48px 0">Loose (48px)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs font-medium text-gray-600 mb-1 block">Opacity</Label>
+                            <Select
+                              value={currentDesign.content.dividers?.opacity || '1'}
+                              onValueChange={(value) => handleContentUpdate({
+                                dividers: {
+                                  ...currentDesign.content.dividers,
+                                  opacity: value
+                                }
+                              })}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0.2">20%</SelectItem>
+                                <SelectItem value="0.4">40%</SelectItem>
+                                <SelectItem value="0.6">60%</SelectItem>
+                                <SelectItem value="0.8">80%</SelectItem>
+                                <SelectItem value="1">100%</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1996,6 +2914,18 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                   <Square className="h-4 w-4 mr-3 text-gray-400" />
                   <span className="text-sm">Add Button</span>
                 </Button>
+                
+                <div className="border-t border-gray-200 pt-3 mt-4">
+                  <p className="text-xs text-gray-500 mb-3 font-medium">SETTINGS & TOOLS</p>
+                  <Button 
+                    variant="outline" 
+                    className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
+                    onClick={() => setSelectedElement('mobile-settings')}
+                  >
+                    <Square className="h-4 w-4 mr-3 text-gray-400" />
+                    <span className="text-sm">📱 Mobile Settings</span>
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -2005,19 +2935,58 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         <div 
           className="flex-1 p-8 overflow-auto"
           style={{
-            background: currentDesign.content.emailContainer?.backgroundColor || 'linear-gradient(to bottom right, #f9fafb, #eff6ff)'
+            background: currentDesign.content.emailContainer?.backgroundColor || 'linear-gradient(to bottom right, #f9fafb, #eff6ff)',
+            backgroundImage: currentDesign.content.emailContainer?.backgroundImage ? `url(${currentDesign.content.emailContainer.backgroundImage})` : undefined,
+            backgroundSize: currentDesign.content.emailContainer?.backgroundSize || 'cover',
+            backgroundPosition: currentDesign.content.emailContainer?.backgroundPosition || 'center center',
+            backgroundRepeat: currentDesign.content.emailContainer?.backgroundRepeat || 'no-repeat',
+            backgroundAttachment: currentDesign.content.emailContainer?.backgroundAttachment || 'scroll'
           }}
         >
           <div 
-            className="mx-auto"
+            className="mx-auto transition-all duration-300"
             style={{
-              maxWidth: currentDesign.content.emailContainer?.maxWidth || '600px'
+              maxWidth: previewMode === 'mobile' ? '375px' : (currentDesign.content.emailContainer?.maxWidth || '600px'),
+              transform: previewMode === 'mobile' ? 'scale(0.9)' : 'scale(1)'
             }}
           >
             {/* Preview Header */}
             <div className="mb-6 text-center">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Email Preview</h3>
-              <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Email Preview</h3>
+                  <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
+                </div>
+                
+                {/* Mobile/Desktop Toggle */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">View:</span>
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setPreviewMode('desktop')}
+                      className={`px-3 py-1 text-sm rounded-md transition-all duration-200 flex items-center space-x-1 ${
+                        previewMode === 'desktop'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Desktop</span>
+                    </button>
+                    <button
+                      onClick={() => setPreviewMode('mobile')}
+                      className={`px-3 py-1 text-sm rounded-md transition-all duration-200 flex items-center space-x-1 ${
+                        previewMode === 'mobile'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <Square className="h-4 w-4" />
+                      <span>Mobile</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div 
@@ -2042,6 +3011,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 }`}
                 style={{ 
                   background: currentDesign.content.header?.styling?.backgroundColor || 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)',
+                  backgroundImage: currentDesign.content.header?.styling?.backgroundImage ? `url(${currentDesign.content.header.styling.backgroundImage})` : undefined,
+                  backgroundSize: currentDesign.content.header?.styling?.backgroundSize || 'cover',
+                  backgroundPosition: currentDesign.content.header?.styling?.backgroundPosition || 'center center',
+                  backgroundRepeat: currentDesign.content.header?.styling?.backgroundRepeat || 'no-repeat',
+                  backgroundAttachment: currentDesign.content.header?.styling?.backgroundAttachment || 'scroll',
                   padding: currentDesign.content.header?.styling?.padding || '24px 32px',
                   textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                 }}
@@ -2112,12 +3086,52 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     textAlign: (currentDesign.content.sections?.greeting?.styling?.textAlign || 'left') as React.CSSProperties['textAlign'],
                     fontWeight: currentDesign.content.sections?.greeting?.styling?.fontWeight || 'normal',
                     fontStyle: currentDesign.content.sections?.greeting?.styling?.fontStyle || 'normal',
-                    margin: '0',
-                    lineHeight: '1.6'
+                    lineHeight: currentDesign.content.sections?.greeting?.styling?.lineHeight || '1.6',
+                    letterSpacing: currentDesign.content.sections?.greeting?.styling?.letterSpacing || 'normal',
+                    textTransform: (currentDesign.content.sections?.greeting?.styling?.textTransform || 'none') as React.CSSProperties['textTransform'],
+                    margin: currentDesign.content.sections?.greeting?.styling?.margin || '0',
+                    marginTop: currentDesign.content.sections?.greeting?.styling?.marginTop,
+                    marginRight: currentDesign.content.sections?.greeting?.styling?.marginRight,
+                    marginBottom: currentDesign.content.sections?.greeting?.styling?.marginBottom || '16px',
+                    marginLeft: currentDesign.content.sections?.greeting?.styling?.marginLeft,
+                    padding: currentDesign.content.sections?.greeting?.styling?.padding || '0',
+                    paddingTop: currentDesign.content.sections?.greeting?.styling?.paddingTop,
+                    paddingRight: currentDesign.content.sections?.greeting?.styling?.paddingRight,
+                    paddingBottom: currentDesign.content.sections?.greeting?.styling?.paddingBottom,
+                    paddingLeft: currentDesign.content.sections?.greeting?.styling?.paddingLeft
                   }}>
                     {currentDesign.content.sections?.greeting?.text || `Hi ${currentDesign.content.customerName || '[Customer Name]'},`}
                   </p>
                 </div>
+
+                {/* Divider */}
+                {currentDesign.content.dividers?.enabled && (
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 relative group ${
+                      selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSelectedElement('dividers')}
+                    style={{
+                      margin: currentDesign.content.dividers?.margin || '24px 0',
+                      padding: '8px 0'
+                    }}
+                  >
+                    {selectedElement !== 'dividers' && (
+                      <div className="absolute inset-0 bg-gray-500 bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">
+                        <div className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
+                          Edit dividers
+                        </div>
+                      </div>
+                    )}
+                    
+                    <hr style={{
+                      border: 'none',
+                      borderTop: `${currentDesign.content.dividers?.thickness || '1px'} ${currentDesign.content.dividers?.style || 'solid'} ${currentDesign.content.dividers?.color || '#e2e8f0'}`,
+                      opacity: currentDesign.content.dividers?.opacity || '1',
+                      margin: '0'
+                    }} />
+                  </div>
+                )}
 
                 {/* Custom Message Section */}
                 <div 
@@ -2140,11 +3154,52 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     textAlign: (currentDesign.content.sections?.['custom-message']?.styling?.textAlign || 'left') as React.CSSProperties['textAlign'],
                     fontWeight: currentDesign.content.sections?.['custom-message']?.styling?.fontWeight || 'normal',
                     fontStyle: currentDesign.content.sections?.['custom-message']?.styling?.fontStyle || 'normal',
-                    lineHeight: '1.7'
+                    lineHeight: currentDesign.content.sections?.['custom-message']?.styling?.lineHeight || '1.7',
+                    letterSpacing: currentDesign.content.sections?.['custom-message']?.styling?.letterSpacing || 'normal',
+                    textTransform: (currentDesign.content.sections?.['custom-message']?.styling?.textTransform || 'none') as React.CSSProperties['textTransform'],
+                    margin: currentDesign.content.sections?.['custom-message']?.styling?.margin || '24px 0',
+                    marginTop: currentDesign.content.sections?.['custom-message']?.styling?.marginTop,
+                    marginRight: currentDesign.content.sections?.['custom-message']?.styling?.marginRight,
+                    marginBottom: currentDesign.content.sections?.['custom-message']?.styling?.marginBottom,
+                    marginLeft: currentDesign.content.sections?.['custom-message']?.styling?.marginLeft,
+                    padding: currentDesign.content.sections?.['custom-message']?.styling?.padding || '0',
+                    paddingTop: currentDesign.content.sections?.['custom-message']?.styling?.paddingTop,
+                    paddingRight: currentDesign.content.sections?.['custom-message']?.styling?.paddingRight,
+                    paddingBottom: currentDesign.content.sections?.['custom-message']?.styling?.paddingBottom,
+                    paddingLeft: currentDesign.content.sections?.['custom-message']?.styling?.paddingLeft
                   }} dangerouslySetInnerHTML={{ 
                     __html: (currentDesign.content.sections?.['custom-message']?.text || currentDesign.content.message || 'We have an exclusive offer just for you!').replace(/\n/g, '<br/>') 
                   }} />
                 </div>
+
+                {/* Divider */}
+                {currentDesign.content.dividers?.enabled && (
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 relative group ${
+                      selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSelectedElement('dividers')}
+                    style={{
+                      margin: currentDesign.content.dividers?.margin || '24px 0',
+                      padding: '8px 0'
+                    }}
+                  >
+                    {selectedElement !== 'dividers' && (
+                      <div className="absolute inset-0 bg-gray-500 bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">
+                        <div className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
+                          Edit dividers
+                        </div>
+                      </div>
+                    )}
+                    
+                    <hr style={{
+                      border: 'none',
+                      borderTop: `${currentDesign.content.dividers?.thickness || '1px'} ${currentDesign.content.dividers?.style || 'solid'} ${currentDesign.content.dividers?.color || '#e2e8f0'}`,
+                      opacity: currentDesign.content.dividers?.opacity || '1',
+                      margin: '0'
+                    }} />
+                  </div>
+                )}
 
                 {/* Promo Code Section */}
                 <div 
@@ -2184,9 +3239,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     
                     <div style={{
                       backgroundColor: currentDesign.content.promoCodeStyling?.backgroundColor || '#f3f4f6',
-                      border: `2px dashed ${currentDesign.content.promoCodeStyling?.borderColor || '#9ca3af'}`,
-                      borderRadius: '12px',
-                      padding: '20px',
+                      border: `${currentDesign.content.promoCodeStyling?.borderWidth || '2px'} ${currentDesign.content.promoCodeStyling?.borderStyle || 'dashed'} ${currentDesign.content.promoCodeStyling?.borderColor || '#9ca3af'}`,
+                      borderRadius: currentDesign.content.promoCodeStyling?.borderRadius || '12px',
+                      padding: currentDesign.content.promoCodeStyling?.padding || '20px',
+                      boxShadow: currentDesign.content.promoCodeStyling?.boxShadow || '0 2px 4px rgba(0,0,0,0.1)',
                       display: 'inline-block',
                       minWidth: '200px'
                     }}>
@@ -2202,6 +3258,35 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Divider */}
+                {currentDesign.content.dividers?.enabled && (
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 relative group ${
+                      selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSelectedElement('dividers')}
+                    style={{
+                      margin: currentDesign.content.dividers?.margin || '24px 0',
+                      padding: '8px 0'
+                    }}
+                  >
+                    {selectedElement !== 'dividers' && (
+                      <div className="absolute inset-0 bg-gray-500 bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">
+                        <div className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
+                          Edit dividers
+                        </div>
+                      </div>
+                    )}
+                    
+                    <hr style={{
+                      border: 'none',
+                      borderTop: `${currentDesign.content.dividers?.thickness || '1px'} ${currentDesign.content.dividers?.style || 'solid'} ${currentDesign.content.dividers?.color || '#e2e8f0'}`,
+                      opacity: currentDesign.content.dividers?.opacity || '1',
+                      margin: '0'
+                    }} />
+                  </div>
+                )}
 
                 {/* CTA Button Section */}
                 <div 

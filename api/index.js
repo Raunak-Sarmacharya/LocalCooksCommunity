@@ -8815,6 +8815,9 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
         }
       },
       header: header,
+      footer: req.body.footer,
+      usageSteps: req.body.usageSteps,
+      emailContainer: req.body.emailContainer,
       subject: subject,
       previewText: previewText,
       promoCodeLabel: promoCodeLabel
@@ -8906,6 +8909,9 @@ app.post('/api/test-promo-email', async (req, res) => {
         }
       },
       header: header,
+      footer: req.body.footer,
+      usageSteps: req.body.usageSteps,
+      emailContainer: req.body.emailContainer,
       subject: subject,
       previewText: previewText,
       promoCodeLabel: promoCodeLabel
@@ -9001,6 +9007,9 @@ app.post('/api/preview-promo-email', async (req, res) => {
         }
       },
       header: header,
+      footer: req.body.footer,
+      usageSteps: req.body.usageSteps,
+      emailContainer: req.body.emailContainer,
       subject: subject,
       previewText: previewText,
       promoCodeLabel: promoCodeLabel
