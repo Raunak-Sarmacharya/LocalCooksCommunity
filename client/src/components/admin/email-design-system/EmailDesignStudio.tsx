@@ -1,51 +1,32 @@
-import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { Slider } from '@/components/ui/slider'
-import { Switch } from '@/components/ui/switch'
-import { 
-  Mail, 
-  Send, 
-  Save, 
-  Palette, 
-  Type, 
-  Square, 
-  Plus, 
-  Eye, 
-  Settings, 
-  Copy, 
-  Edit3,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  Bold,
-  Italic,
-  Underline,
-  Link,
-  Image,
-  Trash2,
-  Move,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
-  Target,
-  Zap,
-  Download,
-  Upload,
-  RefreshCw,
-  Check,
-  X,
-  Info,
-  AlertCircle,
-  HelpCircle
+import { Textarea } from '@/components/ui/textarea'
+import { useToast } from "@/hooks/use-toast"
+import {
+    AlignCenter,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    Download,
+    Edit3,
+    Eye,
+    Image,
+    Italic,
+    Mail,
+    Palette,
+    Plus,
+    RefreshCw,
+    Save,
+    Send,
+    Settings,
+    Square,
+    Target,
+    Trash2,
+    Type
 } from 'lucide-react'
-import { useToast } from "@/hooks/use-toast";
+import React, { useState } from 'react'
 
 interface EmailDesignStudioProps {
   onEmailGenerated: (emailData: EmailDesignData) => void;
@@ -171,6 +152,42 @@ interface EmailContent {
       borderRadius?: string;
       textAlign?: string;
     };
+  };
+  footer?: {
+    mainText?: string;
+    contactText?: string;
+    copyrightText?: string;
+    showContact?: boolean;
+    showCopyright?: boolean;
+    styling?: {
+      backgroundColor?: string;
+      textColor?: string;
+      linkColor?: string;
+      fontSize?: string;
+      padding?: string;
+      textAlign?: string;
+      borderColor?: string;
+    };
+  };
+  usageSteps?: {
+    title?: string;
+    steps?: string[];
+    enabled?: boolean;
+    styling?: {
+      backgroundColor?: string;
+      borderColor?: string;
+      titleColor?: string;
+      textColor?: string;
+      linkColor?: string;
+      padding?: string;
+      borderRadius?: string;
+    };
+  };
+  emailContainer?: {
+    maxWidth?: string;
+    backgroundColor?: string;
+    borderRadius?: string;
+    boxShadow?: string;
   };
 }
 
@@ -309,6 +326,47 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             borderRadius: '0px',
             textAlign: 'center'
           }
+        },
+        footer: {
+          mainText: 'Thank you for being part of the Local Cooks community!',
+          contactText: 'Questions? Contact us at support@localcooks.com',
+          copyrightText: '© 2024 Local Cooks. All rights reserved.',
+          showContact: true,
+          showCopyright: true,
+          styling: {
+            backgroundColor: '#f8fafc',
+            textColor: '#64748b',
+            linkColor: '#F51042',
+            fontSize: '14px',
+            padding: '24px 32px',
+            textAlign: 'center',
+            borderColor: '#e2e8f0'
+          }
+        },
+        usageSteps: {
+          title: '🚀 How to use your promo code:',
+          steps: [
+            'Visit our website: https://localcooks.com',
+            'Browse our amazing local cooks and their delicious offerings',
+            'Apply your promo code during checkout',
+            'Enjoy your special offer!'
+          ],
+          enabled: true,
+          styling: {
+            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+            borderColor: '#93c5fd',
+            titleColor: '#1d4ed8',
+            textColor: '#1e40af',
+            linkColor: '#1d4ed8',
+            padding: '20px',
+            borderRadius: '8px'
+          }
+        },
+        emailContainer: {
+          maxWidth: '600px',
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
         }
       },
       metadata: {
@@ -439,6 +497,37 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         };
         handleContentUpdate({ sections: { ...currentDesign.content.sections, 'custom-message': newCustomMessageSection } });
       }
+    } else if (elementId === 'order-button') {
+      const orderButtonSection = currentDesign.content.sections['order-button'];
+      if (orderButtonSection) {
+        const updatedSections = {
+          ...currentDesign.content.sections,
+          'order-button': {
+            ...orderButtonSection,
+            styling: {
+              ...orderButtonSection.styling,
+              [property]: value
+            }
+          }
+        };
+        handleContentUpdate({ sections: updatedSections });
+      } else {
+        const newOrderButtonSection: EmailSection = {
+          id: 'order-button-section',
+          type: 'order-button',
+          text: currentDesign.content.buttonText || 'Get Started',
+          url: currentDesign.content.orderUrl || 'https://localcooks.com',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            textAlign: 'center',
+            [property]: value
+          }
+        };
+        handleContentUpdate({ sections: { ...currentDesign.content.sections, 'order-button': newOrderButtonSection } });
+      }
     } else {
       const section = currentDesign.content.sections[elementId];
       if (section) {
@@ -512,7 +601,42 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         handleContentUpdate({ sections: { ...currentDesign.content.sections, greeting: newGreetingSection } });
       }
     } else if (elementId === 'order-button') {
-      handleContentUpdate({ buttonText: content });
+      // Update both buttonText and order-button section for consistency
+      const orderButtonSection = currentDesign.content.sections['order-button'];
+      if (orderButtonSection) {
+        const updatedSections = {
+          ...currentDesign.content.sections,
+          'order-button': {
+            ...orderButtonSection,
+            text: content
+          }
+        };
+        handleContentUpdate({ 
+          buttonText: content,
+          sections: updatedSections
+        });
+      } else {
+        const newOrderButtonSection: EmailSection = {
+          id: 'order-button-section',
+          type: 'order-button',
+          text: content,
+          url: currentDesign.content.orderUrl || 'https://localcooks.com',
+          styling: {
+            backgroundColor: '#F51042',
+            color: '#ffffff',
+            fontSize: '16px',
+            fontWeight: '600',
+            textAlign: 'center'
+          }
+        };
+        handleContentUpdate({ 
+          buttonText: content,
+          sections: { 
+            ...currentDesign.content.sections, 
+            'order-button': newOrderButtonSection 
+          }
+        });
+      }
     } else {
       const section = currentDesign.content.sections[elementId];
       if (section) {
@@ -604,12 +728,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     }
 
     // Check message from both possible sources (message field and sections)
-    const messageContent = currentDesign.content.message || 
-                          currentDesign.content.sections?.['custom-message']?.text || '';
+    const messageFromSections = currentDesign.content.sections?.['custom-message']?.text || 
+                                currentDesign.content.sections?.['custom-message-section']?.text || '';
+    const messageContent = currentDesign.content.message || messageFromSections;
     
     console.log('Email validation debug:', {
       messageFromContent: currentDesign.content.message,
-      messageFromSections: currentDesign.content.sections?.['custom-message']?.text,
+      messageFromSections: messageFromSections,
       finalMessageContent: messageContent,
       messageLength: messageContent?.length,
       promoCode: currentDesign.content.promoCode,
@@ -627,6 +752,37 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
     setIsSending(true);
     try {
+      // Convert sections from object format to array format for backend consistency
+      const sectionsArray = currentDesign.content.sections ? 
+        Object.entries(currentDesign.content.sections).map(([key, section]) => ({
+          id: key,
+          type: section.type || 'text',
+          content: section.text || section.content || '',
+          text: section.text || section.content || '', // Add both for compatibility
+          styling: section.styling || {}
+        })) : [];
+
+      // Get greeting from sections or direct field
+      const greetingFromSections = currentDesign.content.sections?.['greeting']?.text || 
+                                   currentDesign.content.sections?.['greeting-section']?.text || '';
+      const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! 👋';
+
+      // Prepare order button data with proper fallbacks
+      const orderButton = {
+        text: currentDesign.content.buttonText || currentDesign.content.orderButton?.text || '🌟 Get Started',
+        url: currentDesign.content.orderUrl || currentDesign.content.orderButton?.url || 'https://localcooks.com',
+        styling: {
+          backgroundColor: '#F51042',
+          color: '#ffffff',
+          fontSize: '16px',
+          fontWeight: '600',
+          padding: '14px 28px',
+          borderRadius: '8px',
+          textAlign: 'center',
+          ...currentDesign.content.orderButton?.styling
+        }
+      };
+
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
         headers: { 
@@ -637,17 +793,21 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           email: currentDesign.content.email,
           promoCode: currentDesign.content.promoCode,
           promoCodeLabel: currentDesign.content.promoCodeLabel,
-          message: messageContent, // Use the validated message content
-          buttonText: currentDesign.content.buttonText,
-          orderUrl: currentDesign.content.orderUrl,
+          customMessage: messageContent, // Use customMessage (preferred by backend)
+          message: messageContent, // Also send as message for compatibility
+          greeting: finalGreeting,
+          buttonText: orderButton.text,
+          orderUrl: orderButton.url,
+          orderButton: orderButton,
           promoCodeStyling: currentDesign.content.promoCodeStyling,
+          promoStyle: { colorTheme: 'green', borderStyle: 'dashed' }, // Add default promo style
           designSystem: currentDesign.designSystem,
           isPremium: true,
-          sections: currentDesign.content.sections,
+          sections: sectionsArray, // Send as array format
           header: currentDesign.content.header,
           subject: currentDesign.content.subject,
           previewText: currentDesign.content.previewText,
-          customDesign: currentDesign
+          customDesign: currentDesign // Keep for debugging if needed
         })
       });
 
@@ -1477,6 +1637,346 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Footer Settings */}
+                {selectedElement === 'footer' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg flex items-center justify-center">
+                        <Settings className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">Footer</h3>
+                        <p className="text-xs text-gray-500">Email footer content</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Main Text</Label>
+                      <Textarea
+                        placeholder="Thank you message..."
+                        value={currentDesign.content.footer?.mainText || ''}
+                        onChange={(e) => handleContentUpdate({
+                          footer: {
+                            ...currentDesign.content.footer,
+                            mainText: e.target.value
+                          }
+                        })}
+                        className="min-h-[60px] text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Contact Text</Label>
+                      <Input
+                        placeholder="Questions? Contact us at..."
+                        value={currentDesign.content.footer?.contactText || ''}
+                        onChange={(e) => handleContentUpdate({
+                          footer: {
+                            ...currentDesign.content.footer,
+                            contactText: e.target.value
+                          }
+                        })}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Copyright Text</Label>
+                      <Input
+                        placeholder="© 2024 Company Name"
+                        value={currentDesign.content.footer?.copyrightText || ''}
+                        onChange={(e) => handleContentUpdate({
+                          footer: {
+                            ...currentDesign.content.footer,
+                            copyrightText: e.target.value
+                          }
+                        })}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Background Color</Label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {['#f8fafc', '#f1f5f9', '#e2e8f0', '#fef7f7', '#f0fdf4', '#fffbeb'].map(color => (
+                            <button
+                              key={color}
+                              className={`w-6 h-6 rounded border-2 ${
+                                currentDesign.content.footer?.styling?.backgroundColor === color
+                                  ? 'border-blue-500'
+                                  : 'border-gray-200'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => handleContentUpdate({
+                                footer: {
+                                  ...currentDesign.content.footer,
+                                  styling: {
+                                    ...currentDesign.content.footer?.styling,
+                                    backgroundColor: color
+                                  }
+                                }
+                              })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Text Color</Label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {['#64748b', '#374151', '#1f2937', '#6b7280', '#9ca3af', '#d1d5db'].map(color => (
+                            <button
+                              key={color}
+                              className={`w-6 h-6 rounded border-2 ${
+                                currentDesign.content.footer?.styling?.textColor === color
+                                  ? 'border-blue-500'
+                                  : 'border-gray-200'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => handleContentUpdate({
+                                footer: {
+                                  ...currentDesign.content.footer,
+                                  styling: {
+                                    ...currentDesign.content.footer?.styling,
+                                    textColor: color
+                                  }
+                                }
+                              })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Usage Steps Settings */}
+                {selectedElement === 'usage-steps' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                        <Target className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">Usage Steps</h3>
+                        <p className="text-xs text-gray-500">How to use instructions</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Title</Label>
+                      <Input
+                        placeholder="How to use your promo code:"
+                        value={currentDesign.content.usageSteps?.title || ''}
+                        onChange={(e) => handleContentUpdate({
+                          usageSteps: {
+                            ...currentDesign.content.usageSteps,
+                            title: e.target.value
+                          }
+                        })}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-2 block">Steps</Label>
+                      {(currentDesign.content.usageSteps?.steps || []).map((step, index) => (
+                        <div key={index} className="flex space-x-2 mb-2">
+                          <Input
+                            placeholder={`Step ${index + 1}`}
+                            value={step}
+                            onChange={(e) => {
+                              const updatedSteps = [...(currentDesign.content.usageSteps?.steps || [])];
+                              updatedSteps[index] = e.target.value;
+                              handleContentUpdate({
+                                usageSteps: {
+                                  ...currentDesign.content.usageSteps,
+                                  steps: updatedSteps
+                                }
+                              });
+                            }}
+                            className="h-8 text-sm flex-1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const updatedSteps = [...(currentDesign.content.usageSteps?.steps || [])];
+                              updatedSteps.splice(index, 1);
+                              handleContentUpdate({
+                                usageSteps: {
+                                  ...currentDesign.content.usageSteps,
+                                  steps: updatedSteps
+                                }
+                              });
+                            }}
+                            className="h-8 w-8 p-0 text-red-600"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const updatedSteps = [...(currentDesign.content.usageSteps?.steps || []), 'New step'];
+                          handleContentUpdate({
+                            usageSteps: {
+                              ...currentDesign.content.usageSteps,
+                              steps: updatedSteps
+                            }
+                          });
+                        }}
+                        className="h-8 text-xs"
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Add Step
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Background</Label>
+                        <div className="grid grid-cols-2 gap-1">
+                          {['linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'].map((gradient, index) => (
+                            <button
+                              key={index}
+                              className={`w-full h-6 rounded border-2 ${
+                                currentDesign.content.usageSteps?.styling?.backgroundColor === gradient
+                                  ? 'border-blue-500'
+                                  : 'border-gray-200'
+                              }`}
+                              style={{ background: gradient }}
+                              onClick={() => handleContentUpdate({
+                                usageSteps: {
+                                  ...currentDesign.content.usageSteps,
+                                  styling: {
+                                    ...currentDesign.content.usageSteps?.styling,
+                                    backgroundColor: gradient
+                                  }
+                                }
+                              })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Border Color</Label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {['#93c5fd', '#86efac', '#fbbf24'].map(color => (
+                            <button
+                              key={color}
+                              className={`w-6 h-6 rounded border-2 ${
+                                currentDesign.content.usageSteps?.styling?.borderColor === color
+                                  ? 'border-blue-500'
+                                  : 'border-gray-200'
+                              }`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => handleContentUpdate({
+                                usageSteps: {
+                                  ...currentDesign.content.usageSteps,
+                                  styling: {
+                                    ...currentDesign.content.usageSteps?.styling,
+                                    borderColor: color
+                                  }
+                                }
+                              })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Email Container Settings */}
+                {selectedElement === 'email-container' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <Square className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-gray-900">Email Container</h3>
+                        <p className="text-xs text-gray-500">Overall email styling</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Max Width</Label>
+                      <Select
+                        value={currentDesign.content.emailContainer?.maxWidth || '600px'}
+                        onValueChange={(value) => handleContentUpdate({
+                          emailContainer: {
+                            ...currentDesign.content.emailContainer,
+                            maxWidth: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="500px">500px (Narrow)</SelectItem>
+                          <SelectItem value="600px">600px (Standard)</SelectItem>
+                          <SelectItem value="700px">700px (Wide)</SelectItem>
+                          <SelectItem value="800px">800px (Extra Wide)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Background Color</Label>
+                      <div className="grid grid-cols-4 gap-1">
+                        {['#f1f5f9', '#f8fafc', '#fff', '#fef7f7', '#f0fdf4', '#fffbeb', '#f3f4f6', '#e5e7eb'].map(color => (
+                          <button
+                            key={color}
+                            className={`w-6 h-6 rounded border-2 ${
+                              currentDesign.content.emailContainer?.backgroundColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                            }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => handleContentUpdate({
+                              emailContainer: {
+                                ...currentDesign.content.emailContainer,
+                                backgroundColor: color
+                              }
+                            })}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Border Radius</Label>
+                      <Select
+                        value={currentDesign.content.emailContainer?.borderRadius || '12px'}
+                        onValueChange={(value) => handleContentUpdate({
+                          emailContainer: {
+                            ...currentDesign.content.emailContainer,
+                            borderRadius: value
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0px">0px (Square)</SelectItem>
+                          <SelectItem value="6px">6px (Subtle)</SelectItem>
+                          <SelectItem value="12px">12px (Standard)</SelectItem>
+                          <SelectItem value="16px">16px (Rounded)</SelectItem>
+                          <SelectItem value="24px">24px (Very Rounded)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
@@ -1502,15 +2002,39 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         </div>
 
         {/* Email Preview Area */}
-        <div className="flex-1 bg-gradient-to-br from-gray-50 to-blue-50 p-8 overflow-auto">
-          <div className="max-w-2xl mx-auto">
+        <div 
+          className="flex-1 p-8 overflow-auto"
+          style={{
+            background: currentDesign.content.emailContainer?.backgroundColor || 'linear-gradient(to bottom right, #f9fafb, #eff6ff)'
+          }}
+        >
+          <div 
+            className="mx-auto"
+            style={{
+              maxWidth: currentDesign.content.emailContainer?.maxWidth || '600px'
+            }}
+          >
             {/* Preview Header */}
             <div className="mb-6 text-center">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Email Preview</h3>
               <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
             </div>
             
-            <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300">
+            <div 
+              className={`bg-white overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300 cursor-pointer ${
+                selectedElement === 'email-container' ? 'ring-4 ring-purple-400 ring-opacity-50' : ''
+              }`}
+              style={{
+                boxShadow: currentDesign.content.emailContainer?.boxShadow || '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                borderRadius: currentDesign.content.emailContainer?.borderRadius || '12px'
+              }}
+              onClick={(e) => {
+                // Only select container if clicking on the background, not child elements
+                if (e.target === e.currentTarget) {
+                  setSelectedElement('email-container');
+                }
+              }}
+            >
               {/* Email Header */}
               <div 
                 className={`text-white cursor-pointer transition-all duration-200 relative group ${
@@ -1767,18 +2291,134 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
                   ))}
 
+                {/* Usage Steps Section */}
+                {currentDesign.content.usageSteps?.enabled && (
+                  <div 
+                    className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
+                      selectedElement === 'usage-steps' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSelectedElement('usage-steps')}
+                  >
+                    {selectedElement !== 'usage-steps' && (
+                      <div className="absolute inset-0 bg-blue-500 bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-lg">
+                        <div className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
+                          Edit usage steps
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div style={{
+                      background: currentDesign.content.usageSteps?.styling?.backgroundColor || 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                      border: `1px solid ${currentDesign.content.usageSteps?.styling?.borderColor || '#93c5fd'}`,
+                      borderRadius: currentDesign.content.usageSteps?.styling?.borderRadius || '8px',
+                      padding: currentDesign.content.usageSteps?.styling?.padding || '20px',
+                      margin: '24px 0'
+                    }}>
+                      <h4 style={{
+                        color: currentDesign.content.usageSteps?.styling?.titleColor || '#1d4ed8',
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        margin: '0 0 12px 0'
+                      }}>
+                        {currentDesign.content.usageSteps?.title || '🚀 How to use your promo code:'}
+                      </h4>
+                      <ol style={{
+                        margin: '0',
+                        paddingLeft: '20px',
+                        color: currentDesign.content.usageSteps?.styling?.textColor || '#1e40af'
+                      }}>
+                        {(currentDesign.content.usageSteps?.steps || []).map((step, index) => (
+                          <li key={index} style={{
+                            margin: '6px 0',
+                            fontSize: '14px'
+                          }}>
+                            {step}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
+                )}
+
                 {/* Footer */}
-                <div className="mt-12 pt-6 border-t border-gray-200">
-                  <p style={{
-                    fontSize: '12px',
-                    color: '#9ca3af',
-                    textAlign: 'center',
-                    margin: '0',
-                    lineHeight: '1.5'
+                <div 
+                  className={`mt-12 pt-6 cursor-pointer transition-all duration-200 relative group ${
+                    selectedElement === 'footer' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                  }`}
+                  style={{
+                    backgroundColor: currentDesign.content.footer?.styling?.backgroundColor || '#f8fafc',
+                    padding: currentDesign.content.footer?.styling?.padding || '24px 32px',
+                    borderTop: `1px solid ${currentDesign.content.footer?.styling?.borderColor || '#e2e8f0'}`,
+                    borderRadius: '0 0 12px 12px',
+                    margin: '0 -40px -40px -40px'
+                  }}
+                  onClick={() => setSelectedElement('footer')}
+                >
+                  {selectedElement !== 'footer' && (
+                    <div className="absolute inset-0 bg-blue-500 bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <div className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
+                        Edit footer
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div style={{
+                    textAlign: (currentDesign.content.footer?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                   }}>
-                    © 2024 Local Cooks Community. All rights reserved.<br/>
-                    This email was sent to {currentDesign.content.email || '[customer-email]'}
-                  </p>
+                    {currentDesign.content.footer?.mainText && (
+                      <p style={{
+                        fontSize: currentDesign.content.footer?.styling?.fontSize || '14px',
+                        color: currentDesign.content.footer?.styling?.textColor || '#64748b',
+                        margin: '0 0 8px 0',
+                        fontWeight: '600'
+                      }}>
+                        {currentDesign.content.footer.mainText}
+                      </p>
+                    )}
+                    
+                    {currentDesign.content.footer?.showContact && currentDesign.content.footer?.contactText && (
+                      <p style={{
+                        fontSize: currentDesign.content.footer?.styling?.fontSize || '14px',
+                        color: currentDesign.content.footer?.styling?.textColor || '#64748b',
+                        margin: '0 0 8px 0'
+                      }}>
+                        {currentDesign.content.footer.contactText.includes('@') ? (
+                          <>
+                            {currentDesign.content.footer.contactText.split('@')[0]}
+                            <a 
+                              href={`mailto:${currentDesign.content.footer.contactText.split(' ').pop()}`}
+                              style={{ 
+                                color: currentDesign.content.footer?.styling?.linkColor || '#F51042',
+                                textDecoration: 'none'
+                              }}
+                            >
+                              @{currentDesign.content.footer.contactText.split('@')[1]}
+                            </a>
+                          </>
+                        ) : (
+                          currentDesign.content.footer.contactText
+                        )}
+                      </p>
+                    )}
+                    
+                    {currentDesign.content.footer?.showCopyright && currentDesign.content.footer?.copyrightText && (
+                      <>
+                        <div style={{
+                          height: '1px',
+                          background: `linear-gradient(90deg, transparent 0%, ${currentDesign.content.footer?.styling?.borderColor || '#e2e8f0'} 50%, transparent 100%)`,
+                          margin: '16px 0'
+                        }} />
+                        <p style={{
+                          fontSize: (parseInt(currentDesign.content.footer?.styling?.fontSize || '14px') - 2) + 'px',
+                          color: currentDesign.content.footer?.styling?.textColor || '#64748b',
+                          margin: '0',
+                          opacity: 0.8
+                        }}>
+                          {currentDesign.content.footer.copyrightText}
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

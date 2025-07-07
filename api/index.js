@@ -8794,13 +8794,26 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       email: email,
       promoCode: promoCode.trim(),
       customMessage: messageContent.trim(),
+      message: messageContent.trim(), // Also pass as message for compatibility
       greeting: greeting,
       promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
       promoCodeStyling: req.body.promoCodeStyling,
       designSystem: designSystem,
       isPremium: isPremium || false,
       sections: sections || [],
-      orderButton: orderButton,
+      orderButton: orderButton || {
+        text: 'Get Started',
+        url: 'https://localcooks.com',
+        styling: {
+          backgroundColor: '#F51042',
+          color: '#ffffff',
+          fontSize: '16px',
+          fontWeight: '600',
+          padding: '12px 24px',
+          borderRadius: '8px',
+          textAlign: 'center'
+        }
+      },
       header: header,
       subject: subject,
       previewText: previewText,
@@ -8872,13 +8885,26 @@ app.post('/api/test-promo-email', async (req, res) => {
       email: email || 'test@example.com',
       promoCode: promoCode || 'TEST20',
       customMessage: messageContent || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
+      message: messageContent || 'This is a test promo code email from the admin panel. Thank you for being an amazing customer!',
       greeting: greeting,
       promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
       promoCodeStyling: req.body.promoCodeStyling,
       designSystem: designSystem,
       isPremium: isPremium || false,
       sections: sections || [],
-      orderButton: orderButton,
+      orderButton: orderButton || {
+        text: 'Get Started',
+        url: 'https://localcooks.com',
+        styling: {
+          backgroundColor: '#F51042',
+          color: '#ffffff',
+          fontSize: '16px',
+          fontWeight: '600',
+          padding: '12px 24px',
+          borderRadius: '8px',
+          textAlign: 'center'
+        }
+      },
       header: header,
       subject: subject,
       previewText: previewText,
@@ -8954,13 +8980,26 @@ app.post('/api/preview-promo-email', async (req, res) => {
       email: 'preview@example.com', // Dummy email for preview
       promoCode: promoCode.trim(),
       customMessage: messageContent.trim(),
+      message: messageContent.trim(),
       greeting: greeting,
       promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
       promoCodeStyling: req.body.promoCodeStyling,
       designSystem: designSystem,
       isPremium: isPremium || false,
       sections: sections || [],
-      orderButton: orderButton,
+      orderButton: orderButton || {
+        text: 'Get Started',
+        url: 'https://localcooks.com',
+        styling: {
+          backgroundColor: '#F51042',
+          color: '#ffffff',
+          fontSize: '16px',
+          fontWeight: '600',
+          padding: '12px 24px',
+          borderRadius: '8px',
+          textAlign: 'center'
+        }
+      },
       header: header,
       subject: subject,
       previewText: previewText,
