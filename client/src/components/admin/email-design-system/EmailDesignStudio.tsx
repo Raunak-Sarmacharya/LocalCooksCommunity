@@ -355,7 +355,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         promoCodeLabel: '🎁 Special Offer Code',
         message: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
         buttonText: '🌟 Get Started',
-        orderUrl: 'https://localcooks.com',
+        orderUrl: 'https://localcooks.ca',
         customerName: 'Valued Customer',
         email: '',
         recipientType: 'customer',
@@ -407,7 +407,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         usageSteps: {
           title: '🚀 How to use your promo code:',
           steps: [
-            'Visit our website: https://localcooks.com',
+            'Visit our website: https://localcooks.ca',
             'Browse our amazing local cooks and their delicious offerings',
             'Apply your promo code during checkout',
             'Enjoy your special offer!'
@@ -585,7 +585,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           id: 'order-button-section',
           type: 'order-button',
           text: currentDesign.content.buttonText || 'Get Started',
-          url: currentDesign.content.orderUrl || 'https://localcooks.com',
+          url: currentDesign.content.orderUrl || 'https://localcooks.ca',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
@@ -689,7 +689,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           id: 'order-button-section',
           type: 'order-button',
           text: content,
-          url: currentDesign.content.orderUrl || 'https://localcooks.com',
+          url: currentDesign.content.orderUrl || 'https://localcooks.ca',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
@@ -914,19 +914,20 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                    currentDesign.content.sections?.['greeting-section']?.text || '';
       const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! 👋';
 
-      // Prepare order button data with proper fallbacks
+      // Prepare order button data with proper fallbacks (prioritize sections data for consistency)
       const orderButton = {
-        text: currentDesign.content.buttonText || currentDesign.content.orderButton?.text || '🌟 Get Started',
-        url: currentDesign.content.orderUrl || currentDesign.content.orderButton?.url || 'https://localcooks.com',
+        text: currentDesign.content.sections?.['order-button']?.text || currentDesign.content.buttonText || currentDesign.content.orderButton?.text || '🌟 Get Started',
+        url: currentDesign.content.sections?.['order-button']?.url || currentDesign.content.orderUrl || currentDesign.content.orderButton?.url || 'https://localcooks.ca',
         styling: {
-          backgroundColor: '#F51042',
-          color: '#ffffff',
+          backgroundColor: currentDesign.content.sections?.['order-button']?.styling?.backgroundColor || '#F51042',
+          color: currentDesign.content.sections?.['order-button']?.styling?.color || '#ffffff',
           fontSize: '16px',
           fontWeight: '600',
           padding: '14px 28px',
           borderRadius: '8px',
           textAlign: 'center',
-          ...currentDesign.content.orderButton?.styling
+          ...currentDesign.content.orderButton?.styling,
+          ...currentDesign.content.sections?.['order-button']?.styling
         }
       };
 

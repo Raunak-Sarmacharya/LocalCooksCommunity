@@ -320,7 +320,7 @@ const PromoCodeSender: React.FC = () => {
       },
       orderButton: {
         text: '🌟 Get Started',
-        url: 'https://localcooks.com',
+        url: 'https://localcooks.ca',
         styling: {
           backgroundColor: '#F51042',
           color: '#ffffff',
@@ -364,7 +364,7 @@ const PromoCodeSender: React.FC = () => {
       usageSteps: {
         title: '🚀 How to use your promo code:',
         steps: [
-          'Visit our website: https://localcooks.com',
+          'Visit our website: https://localcooks.ca',
           'Browse our amazing local cooks and their delicious offerings',
           'Apply your promo code during checkout',
           'Enjoy your special offer!'

@@ -630,7 +630,7 @@ export function registerFirebaseRoutes(app: Express) {
         sections: sections || [],
         orderButton: orderButton || {
           text: buttonText || 'Get Started',
-          url: orderUrl || 'https://localcooks.com',
+          url: orderUrl || 'https://localcooks.ca',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
@@ -674,7 +674,7 @@ export function registerFirebaseRoutes(app: Express) {
         usageSteps: usageSteps || {
           title: '🚀 How to use your promo code:',
           steps: [
-            `Visit our website: <a href="${orderUrl || 'https://localcooks.com'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.com'}</a>`,
+            `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
             'Browse our amazing local cooks and their delicious offerings',
             'Apply your promo code during checkout',
             'Enjoy your special offer!'
@@ -819,7 +819,7 @@ export function registerFirebaseRoutes(app: Express) {
         usageSteps: usageSteps || {
           title: '🚀 How to use your promo code:',
           steps: [
-            'Visit our website: <a href="https://localcooks.com" style="color: #1d4ed8;">https://localcooks.com</a>',
+            'Visit our website: <a href="https://localcooks.ca" style="color: #1d4ed8;">https://localcooks.ca</a>',
             'Browse our amazing local cooks and their delicious offerings',
             'Apply your promo code during checkout',
             'Enjoy your special offer!'
@@ -939,7 +939,7 @@ export function registerFirebaseRoutes(app: Express) {
         sections: sections || [],
         orderButton: orderButton || {
           text: buttonText || 'Get Started',
-          url: orderUrl || 'https://localcooks.com',
+          url: orderUrl || 'https://localcooks.ca',
           styling: {
             backgroundColor: '#F51042',
             color: '#ffffff',
@@ -983,7 +983,7 @@ export function registerFirebaseRoutes(app: Express) {
         usageSteps: usageSteps || {
           title: '🚀 How to use your promo code:',
           steps: [
-            `Visit our website: <a href="${orderUrl || 'https://localcooks.com'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.com'}</a>`,
+            `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
             'Browse our amazing local cooks and their delicious offerings',
             'Apply your promo code during checkout',
             'Enjoy your special offer!'
