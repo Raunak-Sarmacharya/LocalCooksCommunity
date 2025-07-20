@@ -25,7 +25,7 @@ import {
   Type
 } from 'lucide-react'
 import React, { useState } from 'react'
-import { UserSelector } from '../../ui/UserSelector'
+import { SimpleUserSelector } from '../../ui/SimpleUserSelector'
 
 interface User {
   id: number;
@@ -959,7 +959,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 <Mail className="h-4 w-4 mr-1 text-gray-500" />
                 Recipients
               </Label>
-              <UserSelector
+              <SimpleUserSelector
                 selectedUsers={selectedUsers}
                 onUsersChange={(users) => {
                   setSelectedUsers(users);
