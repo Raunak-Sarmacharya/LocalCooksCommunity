@@ -30,7 +30,7 @@ const UnsubscribePage: React.FC = () => {
 
   const handleUnsubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.email) {
       toast({
         title: "Email Required",
@@ -95,7 +95,7 @@ const UnsubscribePage: React.FC = () => {
           </CardHeader>
           <CardContent className="p-8 text-center">
             <p className="text-gray-700 mb-6">
-              We've received your unsubscribe request and will process it within 24 hours. 
+              We've received your unsubscribe request and will process it within 24 hours.
               You may receive one final confirmation email.
             </p>
             <p className="text-sm text-gray-600 mb-6">
@@ -104,7 +104,7 @@ const UnsubscribePage: React.FC = () => {
                 localcooks@localcook.shop
               </a>
             </p>
-            <Button 
+            <Button
               onClick={() => setLocation('/')}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
@@ -122,10 +122,10 @@ const UnsubscribePage: React.FC = () => {
       <Card className="w-full max-w-md mx-auto shadow-xl">
         <CardHeader className="text-center bg-gradient-to-r from-red-500 to-red-600 text-white rounded-t-lg">
           <div className="flex justify-center mb-4">
-            <img 
-              src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
-              alt="Local Cooks" 
-              className="h-18 w-auto"
+            <img
+              src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png"
+              alt="Local Cooks"
+              className="h-16 w-auto"
             />
           </div>
           <CardDescription className="text-red-100">
