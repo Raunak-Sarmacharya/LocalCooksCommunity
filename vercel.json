@@ -5,6 +5,10 @@
   "devCommand": "npm run dev",
   "rewrites": [
     {
+      "source": "/api/unsubscribe",
+      "destination": "/api/unsubscribe.js"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.js"
     },
@@ -16,6 +20,10 @@
   "functions": {
     "api/index.js": {
       "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/unsubscribe.js": {
+      "memory": 512,
       "maxDuration": 10
     }
   }
