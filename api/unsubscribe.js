@@ -9,58 +9,46 @@ try {
       connectionString: process.env.DATABASE_URL,
       max: 1
     });
+
+    // Create unsubscribe_requests table if it doesn't exist
+    pool.query(`
+      CREATE TABLE IF NOT EXISTS unsubscribe_requests (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        reason VARCHAR(255),
+        feedback TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `).catch(err => {
+      console.log('Table creation skipped (may already exist):', err.message);
+    });
   }
 } catch (error) {
   console.error('Database connection error:', error);
 }
 
-// Email sending function using SMTP (same as server)
-async function sendEmail(emailContent, options = {}) {
+// Use the same email functionality as promo emails
+async function sendEmailUsingServerFunction(emailContent, options = {}) {
   try {
-    // Check if email configuration is available
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
-      return false;
-    }
+    // Import the same email function used by promo emails
+    const { sendEmail } = await import('../server/email.js');
 
-    // Import nodemailer dynamically
-    const nodemailer = await import('nodemailer');
-
-    // Create transporter with same config as server
-    const transporter = nodemailer.default.createTransporter({
-      host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
-      port: parseInt(process.env.EMAIL_PORT || '587'),
-      secure: process.env.EMAIL_SECURE === 'true',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-
-    // Enhanced from address
-    const fromName = process.env.EMAIL_ORGANIZATION || 'Local Cooks Community';
-    const fromEmail = process.env.EMAIL_FROM || `${fromName} <${process.env.EMAIL_USER}>`;
-
-    const mailOptions = {
-      from: fromEmail,
+    console.log('📧 Sending email using server email function:', {
       to: emailContent.to,
       subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
-      headers: {
-        'List-Unsubscribe': `<mailto:${process.env.EMAIL_UNSUBSCRIBE || 'localcooks@localcook.shop'}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        'X-Mailer': 'Local Cooks Community',
-        'Organization': fromName
-      }
-    };
+      trackingId: options.trackingId
+    });
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully:', result.messageId);
-    return true;
+    // Use the same sendEmail function as promo emails
+    const result = await sendEmail(emailContent, options);
+
+    if (result) {
+      console.log('✅ Email sent successfully via server function');
+    } else {
+      console.error('❌ Email sending failed via server function');
+    }
+
+    return result;
   } catch (error) {
     console.error('Email sending error:', error);
     return false;
@@ -124,6 +112,19 @@ export default async function handler(req, res) {
 
     console.log(`✅ Processing unsubscribe request for: ${email}`);
 
+    // Store unsubscribe request in database
+    if (pool) {
+      try {
+        await pool.query(
+          'INSERT INTO unsubscribe_requests (email, reason, feedback, created_at) VALUES ($1, $2, $3, NOW())',
+          [email, reason || 'Not specified', feedback || null]
+        );
+        console.log('✅ Unsubscribe request stored in database');
+      } catch (dbError) {
+        console.log('Database storage failed:', dbError.message);
+      }
+    }
+
     // Create unsubscribe notification email content
     const unsubscribeNotificationContent = {
       to: 'localcooks@localcook.shop',
@@ -182,7 +183,7 @@ export default async function handler(req, res) {
     };
 
     // Send notification email to admin
-    const emailSent = await sendEmail(unsubscribeNotificationContent, {
+    const emailSent = await sendEmailUsingServerFunction(unsubscribeNotificationContent, {
       trackingId: `unsubscribe_${email}_${Date.now()}`
     });
 
@@ -261,7 +262,7 @@ export default async function handler(req, res) {
     };
 
     // Send confirmation to user
-    await sendEmail(userConfirmationContent, {
+    await sendEmailUsingServerFunction(userConfirmationContent, {
       trackingId: `unsubscribe_confirmation_${email}_${Date.now()}`
     });
 
