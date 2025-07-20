@@ -693,3 +693,9 @@ button, .button, a[role="button"], [type="button"], [type="submit"] {
     transform: scale(0.98);
   }
 }
+
+/* Email Design Studio - Brand Header */
+.email-header-brand {
+  background: linear-gradient(135deg, #F51042 0%, #FF5470 100%) !important;
+  background-color: #F51042 !important;
+}
