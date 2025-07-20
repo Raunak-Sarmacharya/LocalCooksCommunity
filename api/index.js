@@ -8898,16 +8898,21 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    const { email, recipients, promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+    const { email, recipients, customEmails, emailMode, promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
 
     // Handle both customMessage and message fields (different frontend components use different names)
     const messageContent = customMessage || message;
 
-    // Handle recipients - support both single email and multiple recipients
+    // Handle recipients - support both database users and custom emails
     let emailList = [];
-    if (recipients && Array.isArray(recipients) && recipients.length > 0) {
+    if (emailMode === 'custom' && customEmails && Array.isArray(customEmails) && customEmails.length > 0) {
+      // Custom email mode - use the provided email addresses
+      emailList = customEmails.map(email => ({ email: email, name: 'Valued Customer' }));
+    } else if (recipients && Array.isArray(recipients) && recipients.length > 0) {
+      // Database mode - use selected users
       emailList = recipients;
     } else if (email) {
+      // Fallback to single email
       emailList = [{ email: email, name: 'Recipient' }];
     }
 

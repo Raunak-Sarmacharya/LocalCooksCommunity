@@ -1948,9 +1948,26 @@ Visit: ${getPromoUrl()}
           `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
           '12px 12px 0 0')
       };
+      -webkit-border-radius: ${
+        userData.header?.styling?.borderRadius || 
+        (userData.emailContainer?.borderRadius ? 
+          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+          '12px 12px 0 0')
+      };
+      -moz-border-radius: ${
+        userData.header?.styling?.borderRadius || 
+        (userData.emailContainer?.borderRadius ? 
+          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+          '12px 12px 0 0')
+      };
+      border-top-left-radius: ${userData.emailContainer?.borderRadius || '12px'};
+      border-top-right-radius: ${userData.emailContainer?.borderRadius || '12px'};
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
       padding: ${userData.header?.styling?.padding || '24px 32px'};
       text-align: ${userData.header?.styling?.textAlign || 'center'};
       margin: 0 0 24px 0;
+      overflow: hidden;
     }
     .custom-header h1 {
       color: ${userData.header?.styling?.titleColor || '#ffffff'};
@@ -2069,6 +2086,31 @@ Visit: ${getPromoUrl()}
       
       .custom-header {
         padding: 20px 16px !important;
+        border-radius: ${
+          userData.header?.styling?.borderRadius || 
+          (userData.emailContainer?.borderRadius ? 
+            `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+            '12px 12px 0 0')
+        } !important;
+        -webkit-border-radius: ${
+          userData.header?.styling?.borderRadius || 
+          (userData.emailContainer?.borderRadius ? 
+            `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+            '12px 12px 0 0')
+        } !important;
+        -moz-border-radius: ${
+          userData.header?.styling?.borderRadius || 
+          (userData.emailContainer?.borderRadius ? 
+            `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+            '12px 12px 0 0')
+        } !important;
+        border-top-left-radius: ${
+          userData.emailContainer?.borderRadius || '12px'
+        } !important;
+        border-top-right-radius: ${
+          userData.emailContainer?.borderRadius || '12px'
+        } !important;
+        overflow: hidden !important;
       }
       
       .custom-header h1 {
@@ -2088,18 +2130,67 @@ Visit: ${getPromoUrl()}
         padding: 20px 16px !important;
       }
     }
+    
+    /* Additional mobile email client compatibility */
+    @media screen and (max-width: 480px) {
+      .custom-header {
+        border-radius: ${userData.emailContainer?.borderRadius || '12px'} ${userData.emailContainer?.borderRadius || '12px'} 0 0 !important;
+        -webkit-border-top-left-radius: ${userData.emailContainer?.borderRadius || '12px'} !important;
+        -webkit-border-top-right-radius: ${userData.emailContainer?.borderRadius || '12px'} !important;
+        -webkit-border-bottom-left-radius: 0 !important;
+        -webkit-border-bottom-right-radius: 0 !important;
+      }
+    }
+    
+    /* Gmail mobile app specific fixes */
+    u + .body .custom-header {
+      border-radius: ${userData.emailContainer?.borderRadius || '12px'} ${userData.emailContainer?.borderRadius || '12px'} 0 0 !important;
+    }
+    
+    /* Outlook mobile app specific fixes */
+    .ExternalClass .custom-header {
+      border-radius: ${userData.emailContainer?.borderRadius || '12px'} ${userData.emailContainer?.borderRadius || '12px'} 0 0 !important;
+    }
   </style>
 </head>
 <body>
   <div class="email-container">
-    <div class="custom-header">
+    <div class="custom-header" style="
+      background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
+      border-radius: ${
+        userData.header?.styling?.borderRadius || 
+        (userData.emailContainer?.borderRadius ? 
+          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+          '12px 12px 0 0')
+      };
+      -webkit-border-radius: ${
+        userData.header?.styling?.borderRadius || 
+        (userData.emailContainer?.borderRadius ? 
+          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+          '12px 12px 0 0')
+      };
+      -moz-border-radius: ${
+        userData.header?.styling?.borderRadius || 
+        (userData.emailContainer?.borderRadius ? 
+          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
+          '12px 12px 0 0')
+      };
+      border-top-left-radius: ${userData.emailContainer?.borderRadius || '12px'};
+      border-top-right-radius: ${userData.emailContainer?.borderRadius || '12px'};
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      padding: ${userData.header?.styling?.padding || '24px 32px'};
+      text-align: ${userData.header?.styling?.textAlign || 'center'};
+      margin: 0 0 24px 0;
+      overflow: hidden;
+    ">
       <img 
         src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
         alt="Local Cooks" 
         style="max-width: 280px; height: auto; display: block; margin: 0 auto${userData.header?.title ? '; margin-bottom: 16px' : ''}"
       />
-      ${userData.header?.title ? `<h1>${userData.header.title}</h1>` : ''}
-      ${userData.header?.subtitle ? `<p>${userData.header.subtitle}</p>` : ''}
+      ${userData.header?.title ? `<h1 style="color: ${userData.header?.styling?.titleColor || '#ffffff'}; font-size: ${userData.header?.styling?.titleFontSize || '32px'}; font-weight: 700; margin: 0 0 8px 0; line-height: 1.2;">${userData.header.title}</h1>` : ''}
+      ${userData.header?.subtitle ? `<p style="color: ${userData.header?.styling?.subtitleColor || '#ffffff'}; font-size: ${userData.header?.styling?.subtitleFontSize || '18px'}; margin: 0; opacity: 0.9;">${userData.header.subtitle}</p>` : ''}
     </div>
     <div class="content">
       <!-- Enhanced Email Design -->
