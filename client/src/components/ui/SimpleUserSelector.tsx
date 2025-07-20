@@ -106,7 +106,9 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
 
   // Handle user selection from database
   const handleUserSelect = (user: User) => {
-    if (selectedUsers.length < maxUsers) {
+    console.log('User selected:', user);
+    const totalRecipients = selectedUsers.length + selectedRecipients.length;
+    if (totalRecipients < maxUsers) {
       onUsersChange([...selectedUsers, user]);
       setSearchTerm('');
       setIsDropdownOpen(false);
@@ -145,6 +147,12 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
     if (e.key === 'Enter') {
       e.preventDefault();
       
+      // If dropdown is open and there are available users, select the first one
+      if (isDropdownOpen && availableUsers.length > 0) {
+        handleUserSelect(availableUsers[0]);
+        return;
+      }
+      
       // If it looks like an email and custom emails are allowed, add as custom email
       if (allowCustomEmails && isValidEmail(searchTerm.trim())) {
         handleCustomEmailAdd();
@@ -168,7 +176,8 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.user-selector-dropdown')) {
+      const container = target.closest('.simple-user-selector');
+      if (!container) {
         setIsDropdownOpen(false);
       }
     };
@@ -188,7 +197,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
                                !selectedRecipients.some(recipient => recipient.email === searchTerm.trim());
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative simple-user-selector ${className}`}>
       {/* Selected Recipients Display */}
       {(selectedUsers.length > 0 || selectedRecipients.length > 0) && (
         <div className="flex flex-wrap gap-2 mb-3">
@@ -243,7 +252,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
           value={searchTerm}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyPress}
           placeholder={placeholder}
           className="pr-8"
           disabled={selectedUsers.length + selectedRecipients.length >= maxUsers}
@@ -252,7 +261,10 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
 
       {/* Dropdown */}
       {isDropdownOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+        <div 
+          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
           {isLoading ? (
             <div className="p-3 text-center text-gray-500">
               Loading users...
@@ -293,7 +305,11 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
                   <div
                     key={user.id}
                     className="p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                    onClick={() => handleUserSelect(user)}
+                    onClick={(e) => {
+                      console.log('User clicked:', user, e);
+                      e.stopPropagation();
+                      handleUserSelect(user);
+                    }}
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
