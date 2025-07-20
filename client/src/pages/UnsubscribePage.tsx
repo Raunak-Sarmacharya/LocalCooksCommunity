@@ -125,24 +125,14 @@ const UnsubscribePage: React.FC = () => {
             <img 
               src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
               alt="Local Cooks" 
-              className="h-12 w-auto"
+              className="h-18 w-auto"
             />
           </div>
-          <CardTitle className="text-2xl font-bold">Local Cooks</CardTitle>
           <CardDescription className="text-red-100">
             Unsubscribe from our emails
           </CardDescription>
         </CardHeader>
         <CardContent className="p-8">
-          <div className="text-center mb-6">
-            <p className="text-gray-700 text-lg mb-2">
-              Are you sure you want to unsubscribe from our emails?
-            </p>
-            <p className="text-gray-600 text-sm">
-              We'll miss you! But we understand if you need to step away.
-            </p>
-          </div>
-
           <form onSubmit={handleUnsubscribe} className="space-y-4">
             <div>
               <Label htmlFor="email" className="text-sm font-medium text-gray-700">
