@@ -509,6 +509,12 @@ export const EmailCanvasDesigner: React.FC<EmailCanvasDesignerProps> = ({
   };
 
   const handleHeaderStylingChange = (property: string, value: string) => {
+    // Prevent changes to header background color to maintain brand consistency
+    if (property === 'backgroundColor') {
+      console.log('Header background color changes are disabled to maintain brand consistency');
+      return;
+    }
+    
     onContentUpdate({ 
       header: {
         ...currentDesign.content.header,
@@ -1446,13 +1452,19 @@ export const EmailCanvasDesigner: React.FC<EmailCanvasDesignerProps> = ({
                 <div className="space-y-3 border-t pt-3">
                   <h4 className="font-medium text-gray-900">Header Styling</h4>
                   
-                  {/* Background */}
-                  <GradientColorPicker
-                    value={currentDesign.content.header?.styling?.backgroundColor || currentDesign.designSystem.colors.gradients.primary}
-                    onChange={(value) => handleHeaderStylingChange('backgroundColor', value)}
-                    label="Background"
-                    allowSolid={true}
-                  />
+                  {/* Background - Fixed Brand Color */}
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Background</Label>
+                    <div className="mt-1 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div 
+                        className="w-full h-8 rounded-md border-2 border-red-300"
+                        style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}
+                      />
+                      <p className="text-xs text-red-700 mt-2">
+                        <strong>Brand Color:</strong> Header uses your Local Cooks brand color for consistent branding.
+                      </p>
+                    </div>
+                  </div>
 
                   {/* Title Color */}
                   <div>

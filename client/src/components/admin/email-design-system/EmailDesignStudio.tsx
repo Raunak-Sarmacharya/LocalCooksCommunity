@@ -5,27 +5,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from "@/hooks/use-toast"
 import {
-    AlignCenter,
-    AlignLeft,
-    AlignRight,
-    Bold,
-    Download,
-    Edit3,
-    Eye,
-    Image,
-    Italic,
-    Mail,
-    Minus,
-    Palette,
-    Plus,
-    RefreshCw,
-    Save,
-    Send,
-    Settings,
-    Square,
-    Target,
-    Trash2,
-    Type
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Download,
+  Edit3,
+  Eye,
+  Image,
+  Italic,
+  Mail,
+  Minus,
+  Palette,
+  Plus,
+  RefreshCw,
+  Save,
+  Send,
+  Settings,
+  Square,
+  Target,
+  Trash2,
+  Type
 } from 'lucide-react'
 import React, { useState } from 'react'
 
@@ -450,6 +450,17 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
   // Handle content updates
   const handleContentUpdate = (content: Partial<EmailContent>) => {
+    // Ensure header always uses brand color
+    if (content.header) {
+      content.header = {
+        ...content.header,
+        styling: {
+          ...content.header.styling,
+          backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' // Always enforce brand color
+        }
+      };
+    }
+    
     setCurrentDesign(prev => ({
       ...prev,
       content: { ...prev.content, ...content }
@@ -498,6 +509,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   // Update element styling
   const updateElementStyling = (elementId: string, property: string, value: string) => {
     if (elementId === 'email-header') {
+      // Prevent changes to header background color to maintain brand consistency
+      if (property === 'backgroundColor') {
+        console.log('Header background color changes are disabled to maintain brand consistency');
+        return;
+      }
+      
       const headerStyling = currentDesign.content.header?.styling || {};
       handleContentUpdate({
         header: {
@@ -826,12 +843,27 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       const template = existingTemplates.find((t: any) => t.id === templateId);
       
       if (template) {
-        setCurrentDesign(template.design);
-        onEmailGenerated(template.design);
+        // Ensure loaded template always uses brand color for header
+        const designWithBrandColor = {
+          ...template.design,
+          content: {
+            ...template.design.content,
+            header: {
+              ...template.design.content.header,
+              styling: {
+                ...template.design.content.header?.styling,
+                backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' // Always enforce brand color
+              }
+            }
+          }
+        };
+        
+        setCurrentDesign(designWithBrandColor);
+        onEmailGenerated(designWithBrandColor);
         
         toast({
           title: "✅ Template Loaded!",
-          description: `Template "${template.name}" has been loaded successfully.`
+          description: `Template "${template.name}" has been loaded successfully with brand colors applied.`
         });
       }
     } catch (error) {
@@ -1207,26 +1239,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                       <div>
                         <Label className="text-xs font-medium text-gray-600 mb-2 block">Background</Label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {[
-                            'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
-                            'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
-                            'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                            'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
-                            'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                            '#1F2937'
-                          ].map((gradient, index) => (
-                            <button
-                              key={index}
-                              className={`w-full h-8 rounded-md border-2 transition-all ${
-                                currentDesign.content.header?.styling?.backgroundColor === gradient
-                                  ? 'border-blue-500 ring-2 ring-blue-200'
-                                  : 'border-gray-200 hover:border-gray-300'
-                              }`}
-                              style={{ background: gradient }}
-                              onClick={() => updateElementStyling('email-header', 'backgroundColor', gradient)}
-                            />
-                          ))}
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <div 
+                            className="w-full h-8 rounded-md border-2 border-red-300"
+                            style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}
+                          />
+                          <p className="text-xs text-red-700 mt-2">
+                            <strong>Brand Color:</strong> Header uses your Local Cooks brand color for consistent branding.
+                          </p>
                         </div>
                       </div>
 
@@ -3142,7 +3162,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                   selectedElement === 'email-header' ? 'ring-4 ring-blue-400 ring-opacity-50' : ''
                 }`}
                 style={{ 
-                  background: currentDesign.content.header?.styling?.backgroundColor || 'linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%)',
+                  background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)', // Always use brand color
                   backgroundImage: currentDesign.content.header?.styling?.backgroundImage ? `url(${currentDesign.content.header.styling.backgroundImage})` : undefined,
                   backgroundSize: currentDesign.content.header?.styling?.backgroundSize || 'cover',
                   backgroundPosition: currentDesign.content.header?.styling?.backgroundPosition || 'center center',
