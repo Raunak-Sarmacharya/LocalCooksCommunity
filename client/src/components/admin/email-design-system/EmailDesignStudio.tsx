@@ -38,6 +38,15 @@ interface User {
   displayText: string;
 }
 
+// Extended interface to support both database users and custom emails
+interface Recipient {
+  id: string; // Use email as ID for custom emails, user.id for database users
+  email: string;
+  name: string;
+  isCustomEmail: boolean; // Flag to distinguish custom emails from database users
+  role?: string; // Only for database users
+}
+
 interface EmailDesignStudioProps {
   onEmailGenerated: (emailData: EmailDesignData) => void;
   initialDesign?: EmailDesignData;
@@ -305,13 +314,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   const [selectedUsers, setSelectedUsers] = useState<User[]>(
     initialDesign?.content?.recipients || []
   );
-  const [newEmail, setNewEmail] = useState('');
-
-  // Email validation helper
-  const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  const [selectedRecipients, setSelectedRecipients] = useState<Recipient[]>([]);
 
   // Create default design configuration
   function createDefaultDesign(): EmailDesignData {
@@ -776,13 +779,26 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   // Send promo email
 
   const handleSendPromoEmail = async () => {
-    if (selectedUsers.length === 0) {
-      toast({
-        title: "Recipients Required",
-        description: "Please select users to send the email to",
-        variant: "destructive"
-      });
-      return;
+    // Validate based on email mode
+    if (currentDesign.content.emailMode === 'database') {
+      if (selectedUsers.length === 0) {
+        toast({
+          title: "Recipients Required",
+          description: "Please select users to send the email to",
+          variant: "destructive"
+        });
+        return;
+      }
+    } else {
+      // Custom email mode validation
+      if (!currentDesign.content.customEmails || currentDesign.content.customEmails.length === 0) {
+        toast({
+          title: "Recipients Required",
+          description: "Please add at least one email address",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     // Validate required fields before sending
@@ -852,10 +868,15 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         }
       };
 
-      // Prepare recipients list
-      const recipients = selectedUsers.length > 0 
-        ? selectedUsers.map(user => ({ email: user.email, name: user.fullName }))
-        : [{ email: currentDesign.content.email, name: 'Recipient' }];
+      // Prepare recipients list - combine database users and custom emails
+      const recipients = [
+        // Database users
+        ...selectedUsers.map(user => ({ email: user.email, name: user.fullName })),
+        // Custom email recipients
+        ...selectedRecipients
+          .filter(recipient => recipient.isCustomEmail)
+          .map(recipient => ({ email: recipient.email, name: recipient.name }))
+      ];
 
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
@@ -865,6 +886,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
           recipients: recipients,
+          customEmails: currentDesign.content.customEmails,
+          emailMode: currentDesign.content.emailMode,
           email: currentDesign.content.email, // Keep for backward compatibility
           promoCode: currentDesign.content.promoCode,
           promoCodeLabel: currentDesign.content.promoCodeLabel,
@@ -949,7 +972,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
               <Button
                 onClick={handleSendPromoEmail}
-                disabled={isSending || selectedUsers.length === 0}
+                disabled={isSending || (selectedUsers.length === 0 && selectedRecipients.length === 0)}
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white h-10 px-7 font-medium shadow-lg transition-all duration-200"
               >
                 {isSending ? (
@@ -975,102 +998,32 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 Recipients
               </Label>
               
-              {/* Database Users Mode */}
-              {currentDesign.content.emailMode === 'database' && (
-                <SimpleUserSelector
-                  selectedUsers={selectedUsers}
-                  onUsersChange={(users) => {
-                    setSelectedUsers(users);
-                    // Update the email content with selected users
-                    handleContentUpdate({ 
-                      recipients: users,
-                      email: users.length > 0 ? users[0].email : '' // Keep first email for backward compatibility
-                    });
-                  }}
-                  placeholder="Search and select users by name or email..."
-                  maxUsers={50}
-                  className="w-full"
-                />
-              )}
-              
-              {/* Custom Emails Mode */}
-              {currentDesign.content.emailMode === 'custom' && (
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Enter email address"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          if (newEmail.trim() && isValidEmail(newEmail.trim())) {
-                            const emails = currentDesign.content.customEmails || [];
-                            if (!emails.includes(newEmail.trim())) {
-                              handleContentUpdate({ 
-                                customEmails: [...emails, newEmail.trim()] 
-                              });
-                              setNewEmail('');
-                            }
-                          }
-                        }
-                      }}
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        if (newEmail.trim() && isValidEmail(newEmail.trim())) {
-                          const emails = currentDesign.content.customEmails || [];
-                          if (!emails.includes(newEmail.trim())) {
-                            handleContentUpdate({ 
-                              customEmails: [...emails, newEmail.trim()] 
-                            });
-                            setNewEmail('');
-                          }
-                        }
-                      }}
-                      disabled={!newEmail.trim() || !isValidEmail(newEmail.trim())}
-                      size="sm"
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  
-                  {/* Display added emails */}
-                  {(currentDesign.content.customEmails || []).length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs text-gray-600">Added Emails:</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {(currentDesign.content.customEmails || []).map((email, index) => (
-                          <Badge
-                            key={index}
-                            variant="secondary"
-                            className="flex items-center gap-1 px-2 py-1"
-                          >
-                            <Mail className="w-3 h-3" />
-                            <span className="text-xs">{email}</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
-                              onClick={() => {
-                                const emails = currentDesign.content.customEmails || [];
-                                handleContentUpdate({ 
-                                  customEmails: emails.filter((_, i) => i !== index) 
-                                });
-                              }}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              <SimpleUserSelector
+                selectedUsers={selectedUsers}
+                onUsersChange={(users) => {
+                  setSelectedUsers(users);
+                  // Update the email content with selected users
+                  handleContentUpdate({ 
+                    recipients: users,
+                    email: users.length > 0 ? users[0].email : '' // Keep first email for backward compatibility
+                  });
+                }}
+                selectedRecipients={selectedRecipients}
+                onRecipientsChange={(recipients) => {
+                  setSelectedRecipients(recipients);
+                  // Extract custom emails from recipients
+                  const customEmails = recipients
+                    .filter(recipient => recipient.isCustomEmail)
+                    .map(recipient => recipient.email);
+                  handleContentUpdate({ 
+                    customEmails: customEmails
+                  });
+                }}
+                placeholder="Search users by name or email, or type a custom email..."
+                maxUsers={50}
+                className="w-full"
+                allowCustomEmails={true}
+              />
             </div>
 
             <div>

@@ -1774,6 +1774,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email, 
         customEmails,
         emailMode,
+        recipients,
         promoCode, 
         promoCodeLabel, 
         message, 
@@ -1805,17 +1806,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawUserId: req.user?.id
       });
 
-      // Validate required fields based on email mode
-      if (emailMode === 'custom') {
-        if (!customEmails || !Array.isArray(customEmails) || customEmails.length === 0) {
-          console.log('Promo email request - Missing custom emails');
-          return res.status(400).json({ error: 'At least one email address is required' });
-        }
-      } else {
-        if (!email) {
-          console.log('Promo email request - Missing email');
-          return res.status(400).json({ error: 'Email is required' });
-        }
+      // Determine target emails - support both old and new formats
+      let targetEmails: string[] = [];
+      
+      if (recipients && Array.isArray(recipients) && recipients.length > 0) {
+        // New unified format - extract emails from recipients array
+        targetEmails = recipients.map((recipient: any) => 
+          typeof recipient === 'string' ? recipient : recipient.email
+        ).filter(Boolean);
+      } else if (emailMode === 'custom' && customEmails && Array.isArray(customEmails)) {
+        // Old custom email format
+        targetEmails = customEmails;
+      } else if (email) {
+        // Old single email format
+        targetEmails = [email];
+      }
+
+      // Validate that we have at least one email
+      if (targetEmails.length === 0) {
+        console.log('Promo email request - No valid email addresses provided');
+        return res.status(400).json({ error: 'At least one email address is required' });
       }
 
       if (!promoCode) {
@@ -1834,8 +1844,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('Promo email request - Validation passed, generating email');
 
-      // Determine target emails
-      const targetEmails = emailMode === 'custom' ? customEmails : [email];
       console.log(`Promo email request - Sending to ${targetEmails.length} recipient(s)`);
 
       // Send emails to all recipients
@@ -1953,7 +1961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } catch (error) {
           console.error(`Error sending promo email to ${targetEmail}:`, error);
-          results.push({ email: targetEmail, status: 'failed', error: error.message });
+          results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
           failureCount++;
         }
       }
