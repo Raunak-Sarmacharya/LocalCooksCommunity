@@ -12,19 +12,15 @@ import {
   Bold,
   Download,
   Edit3,
-  Eye,
   Image,
   Italic,
   Mail,
   Minus,
   Palette,
   Plus,
-  RefreshCw,
-  Save,
   Send,
   Settings,
   Square,
-  Target,
   Trash2,
   Type
 } from 'lucide-react'
@@ -155,7 +151,6 @@ interface EmailContent {
   customerName?: string;
   email?: string;
   recipients?: User[];
-  recipientType?: string;
   promoCodeStyling?: {
     backgroundColor?: string;
     borderColor?: string;
@@ -300,7 +295,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   );
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [isTestingEmail, setIsTestingEmail] = useState(false);
+
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [selectedUsers, setSelectedUsers] = useState<User[]>(
     initialDesign?.content?.recipients || []
@@ -374,7 +369,6 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         customerName: 'Valued Customer',
         email: '',
         recipients: [],
-        recipientType: 'customer',
         promoCodeStyling: {
           backgroundColor: '#f3f4f6',
           borderColor: '#9ca3af',
@@ -762,159 +756,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     { id: 'gradient', name: 'Gradient Box', style: { background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)', borderRadius: '8px' } }
   ];
 
-  // Test email functionality
-  const handleTestEmail = async () => {
-    if (selectedUsers.length === 0 && !currentDesign.content.email) {
-      toast({
-        title: "Recipients Required",
-        description: "Please select users or enter a test email address",
-        variant: "destructive"
-      });
-      return;
-    }
 
-    setIsTestingEmail(true);
-    try {
-      // Prepare recipients list
-      const recipients = selectedUsers.length > 0 
-        ? selectedUsers.map(user => ({ email: user.email, name: user.fullName }))
-        : [{ email: currentDesign.content.email, name: 'Test User' }];
-
-      const response = await fetch('/api/admin/test-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          recipients: recipients,
-          email: currentDesign.content.email, // Keep for backward compatibility
-          subject: currentDesign.content.subject || 'Test Email',
-          previewText: currentDesign.content.previewText || 'Test preview',
-          sections: currentDesign.content.sections,
-          header: currentDesign.content.header,
-          footer: currentDesign.content.footer,
-          usageSteps: currentDesign.content.usageSteps,
-          emailContainer: currentDesign.content.emailContainer,
-          customDesign: currentDesign
-        })
-      });
-
-      if (response.ok) {
-        const recipientCount = recipients.length;
-        const recipientText = recipientCount === 1 
-          ? recipients[0].email 
-          : `${recipientCount} recipients`;
-        
-        toast({
-          title: "✅ Test Email Sent!",
-          description: `Test email sent to ${recipientText}`
-        });
-      } else {
-        throw new Error('Failed to send test email');
-      }
-    } catch (error) {
-      toast({
-        title: "Test Failed",
-        description: "Could not send test email. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsTestingEmail(false);
-    }
-  };
 
   // Send promo email
-  // Save template function
-  const handleSaveTemplate = async () => {
-    try {
-      // Prompt user for template name
-      const templateName = prompt('Enter a name for this template:', `Email Template ${new Date().toLocaleDateString()}`);
-
-      if (!templateName) {
-        return; // User cancelled
-      }
-
-      // Create template data
-      const templateData = {
-        id: `template-${Date.now()}`,
-        name: templateName.trim(),
-        design: currentDesign,
-        createdAt: new Date().toISOString(),
-        author: 'Admin'
-      };
-
-      // Save to localStorage as a simple implementation
-      const existingTemplates = JSON.parse(localStorage.getItem('emailTemplates') || '[]');
-      existingTemplates.push(templateData);
-      localStorage.setItem('emailTemplates', JSON.stringify(existingTemplates));
-
-      toast({
-        title: "✅ Template Saved!",
-        description: `Template "${templateName}" has been saved successfully. You can load it from your saved templates.`
-      });
-
-      console.log('Template saved:', templateData);
-    } catch (error) {
-      toast({
-        title: "Save Failed",
-        description: "Failed to save template. Please try again.",
-        variant: "destructive"
-      });
-      console.error('Error saving template:', error);
-    }
-  };
-
-  // Load template function
-  const handleLoadTemplate = (templateId: string) => {
-    try {
-      const existingTemplates = JSON.parse(localStorage.getItem('emailTemplates') || '[]');
-      const template = existingTemplates.find((t: any) => t.id === templateId);
-
-      if (template) {
-        // Ensure loaded template always uses brand color for header
-        const designWithBrandColor = {
-          ...template.design,
-          content: {
-            ...template.design.content,
-            header: {
-              ...template.design.content.header,
-              styling: {
-                ...template.design.content.header?.styling,
-                backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' // Always enforce brand color
-              }
-            }
-          }
-        };
-
-        setCurrentDesign(designWithBrandColor);
-        onEmailGenerated(designWithBrandColor);
-
-        toast({
-          title: "✅ Template Loaded!",
-          description: `Template "${template.name}" has been loaded successfully with brand colors applied.`
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Load Failed",
-        description: "Failed to load template. Please try again.",
-        variant: "destructive"
-      });
-      console.error('Error loading template:', error);
-    }
-  };
-
-  // Get saved templates
-  const getSavedTemplates = () => {
-    try {
-      return JSON.parse(localStorage.getItem('emailTemplates') || '[]');
-    } catch (error) {
-      console.error('Error getting saved templates:', error);
-      return [];
-    }
-  };
 
   const handleSendPromoEmail = async () => {
-    if (selectedUsers.length === 0 && !currentDesign.content.email) {
+    if (selectedUsers.length === 0) {
       toast({
         title: "Recipients Required",
         description: "Please select users to send the email to",
@@ -1081,34 +928,13 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             </div>
 
             <div className="flex items-center space-x-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTestEmail}
-                disabled={isTestingEmail || (selectedUsers.length === 0 && !currentDesign.content.email)}
-                className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
-              >
-                {isTestingEmail ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Eye className="h-4 w-4 mr-2" />
-                )}
-                Test Email
-              </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveTemplate}
-                className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save Template
-              </Button>
+
+
 
               <Button
                 onClick={handleSendPromoEmail}
-                disabled={isSending || (selectedUsers.length === 0 && !currentDesign.content.email)}
+                disabled={isSending || selectedUsers.length === 0}
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white h-10 px-7 font-medium shadow-lg transition-all duration-200"
               >
                 {isSending ? (
@@ -1175,25 +1001,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               />
             </div>
 
-            <div>
-              <Label className="text-sm font-medium text-gray-700 mb-2 block flex items-center">
-                <Target className="h-4 w-4 mr-1 text-gray-500" />
-                Recipient Type
-              </Label>
-              <Select
-                value={currentDesign.content.recipientType || 'customer'}
-                onValueChange={(value) => handleContentUpdate({ recipientType: value })}
-              >
-                <SelectTrigger className="h-10 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="customer">🛍️ Customer</SelectItem>
-                  <SelectItem value="chef">👨‍🍳 Chef/Cook</SelectItem>
-                  <SelectItem value="general">📧 General</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
           </div>
         </div>
       </div>
@@ -3055,43 +2863,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Saved Templates Section */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                    <div className="w-5 h-5 bg-gradient-to-br from-purple-500 to-purple-600 rounded-md flex items-center justify-center mr-2">
-                      <Save className="h-3 w-3 text-white" />
-                    </div>
-                    Saved Templates
-                  </h4>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {getSavedTemplates().length === 0 ? (
-                      <p className="text-xs text-gray-500 italic py-2">No saved templates yet. Save your current design to get started!</p>
-                    ) : (
-                      getSavedTemplates().map((template: any) => (
-                        <div
-                          key={template.id}
-                          className="flex items-center justify-between p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-gray-900 truncate">{template.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(template.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 ml-2 hover:bg-blue-100"
-                            onClick={() => handleLoadTemplate(template.id)}
-                            title="Load Template"
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+
 
                 {/* Add Elements Section */}
                 <div>
@@ -3734,10 +3506,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               </div>
 
               {/* Additional Controls */}
-              <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={handleSaveTemplate}>
-                <Save className="h-3 w-3 mr-1" />
-                Save Template
-              </Button>
+
               <Button variant="outline" size="sm" className="h-8 px-3 text-xs">
                 <Download className="h-3 w-3 mr-1" />
                 Export
