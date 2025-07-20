@@ -8722,6 +8722,158 @@ app.post("/api/debug-google-registration", async (req, res) => {
 });
 
 // Admin endpoint to send promo code emails
+// Admin endpoint to send test emails
+app.post('/api/admin/test-email', async (req, res) => {
+  // Check if user is authenticated via session
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
+
+  console.log('Test email request - Auth info:', {
+    sessionUserId: req.session.userId,
+    headerUserId: req.headers['x-user-id'],
+    rawUserId: rawUserId
+  });
+
+  if (!rawUserId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    // Check if the user is an admin
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only administrators can send test emails'
+      });
+    }
+
+    const { email, recipients, subject, previewText, sections, header, footer, usageSteps, emailContainer, customDesign } = req.body;
+
+    // Handle recipients - support both single email and multiple recipients
+    let emailList = [];
+    if (recipients && Array.isArray(recipients) && recipients.length > 0) {
+      emailList = recipients;
+    } else if (email) {
+      emailList = [{ email: email, name: 'Test User' }];
+    }
+
+    // Validate required fields
+    if (emailList.length === 0) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'Recipients are required'
+      });
+    }
+
+    // Validate email formats
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const recipient of emailList) {
+      if (!emailRegex.test(recipient.email)) {
+        return res.status(400).json({
+          error: 'Invalid email',
+          message: `Please provide a valid email address: ${recipient.email}`
+        });
+      }
+    }
+
+    console.log(`Admin ${user.username} sending test email to ${emailList.length} recipients`);
+
+    // Import the email functions
+    const { sendEmail, generatePromoCodeEmail } = await import('../server/email.js');
+
+    // Send test emails to all recipients
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const recipient of emailList) {
+      try {
+        // Generate test email content
+        const emailContent = generatePromoCodeEmail({
+          email: recipient.email,
+          customerName: recipient.name || 'Test User',
+          promoCode: 'TEST123',
+          customMessage: 'This is a test email from the Local Cooks admin panel. If you receive this, the email system is working correctly!',
+          message: 'This is a test email from the Local Cooks admin panel.',
+          greeting: 'Hello!',
+          promoStyle: { colorTheme: 'blue', borderStyle: 'solid' },
+          promoCodeStyling: customDesign?.content?.promoCodeStyling,
+          designSystem: customDesign?.designSystem,
+          isPremium: true,
+          sections: sections || [],
+          orderButton: {
+            text: 'Test Button',
+            url: 'https://localcooks.ca',
+            styling: {
+              backgroundColor: '#F51042',
+              color: '#ffffff',
+              fontSize: '16px',
+              fontWeight: '600',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              textAlign: 'center'
+            }
+          },
+          header: header,
+          footer: footer,
+          usageSteps: usageSteps,
+          emailContainer: emailContainer,
+          subject: subject || 'Test Email from Local Cooks',
+          previewText: previewText || 'This is a test email',
+          promoCodeLabel: '🧪 Test Code'
+        });
+
+        // Send the email
+        const emailSent = await sendEmail(emailContent, {
+          trackingId: `test_email_${recipient.email}_${Date.now()}`
+        });
+
+        if (emailSent) {
+          console.log(`Test email sent successfully to ${recipient.email}`);
+          results.push({ email: recipient.email, status: 'success' });
+          successCount++;
+        } else {
+          console.error(`Failed to send test email to ${recipient.email}`);
+          results.push({ email: recipient.email, status: 'failed', error: 'Email sending failed' });
+          failureCount++;
+        }
+      } catch (error) {
+        console.error(`Error sending test email to ${recipient.email}:`, error);
+        results.push({ email: recipient.email, status: 'failed', error: error.message });
+        failureCount++;
+      }
+    }
+
+    // Return results
+    if (successCount > 0) {
+      return res.status(200).json({
+        message: `Test emails sent: ${successCount} successful, ${failureCount} failed`,
+        results: results,
+        sentBy: user.username,
+        timestamp: new Date().toISOString(),
+        summary: {
+          total: emailList.length,
+          successful: successCount,
+          failed: failureCount
+        }
+      });
+    } else {
+      return res.status(500).json({
+        error: 'All test email sending failed',
+        message: 'Failed to send test emails to any recipients.',
+        results: results
+      });
+    }
+
+  } catch (error) {
+    console.error('Error sending test email:', error);
+    return res.status(500).json({
+      error: 'Server error',
+      message: 'An error occurred while sending test email'
+    });
+  }
+});
+
 app.post('/api/admin/send-promo-email', async (req, res) => {
   // Check if user is authenticated via session
   const rawUserId = req.session.userId || req.headers['x-user-id'];
@@ -8746,26 +8898,36 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    const { email, promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
+    const { email, recipients, promoCode, customMessage, message, promoStyle, designSystem, isPremium, sections, orderButton, header, subject, previewText, greeting, promoCodeLabel } = req.body;
 
     // Handle both customMessage and message fields (different frontend components use different names)
     const messageContent = customMessage || message;
 
+    // Handle recipients - support both single email and multiple recipients
+    let emailList = [];
+    if (recipients && Array.isArray(recipients) && recipients.length > 0) {
+      emailList = recipients;
+    } else if (email) {
+      emailList = [{ email: email, name: 'Recipient' }];
+    }
+
     // Validate required fields
-    if (!email || !promoCode || !messageContent) {
+    if (emailList.length === 0 || !promoCode || !messageContent) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Email, promo code, and message are required'
+        message: 'Recipients, promo code, and message are required'
       });
     }
 
-    // Validate email format
+    // Validate email formats
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        error: 'Invalid email',
-        message: 'Please provide a valid email address'
-      });
+    for (const recipient of emailList) {
+      if (!emailRegex.test(recipient.email)) {
+        return res.status(400).json({
+          error: 'Invalid email',
+          message: `Please provide a valid email address: ${recipient.email}`
+        });
+      }
     }
 
     // Validate promo code (basic validation - alphanumeric, length check)
@@ -8784,64 +8946,93 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       });
     }
 
-    console.log(`Admin ${user.username} sending promo email to ${email} with code: ${promoCode}`);
+    console.log(`Admin ${user.username} sending promo email to ${emailList.length} recipients with code: ${promoCode}`);
 
     // Import the email functions
     const { sendEmail, generatePromoCodeEmail } = await import('../server/email.js');
 
-    // Generate the promo email with custom message and styling
-    const emailContent = generatePromoCodeEmail({
-      email: email,
-      promoCode: promoCode.trim(),
-      customMessage: messageContent.trim(),
-      message: messageContent.trim(), // Also pass as message for compatibility
-      greeting: greeting,
-      promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
-      promoCodeStyling: req.body.promoCodeStyling,
-      designSystem: designSystem,
-      isPremium: isPremium || false,
-      sections: sections || [],
-      orderButton: orderButton || {
-        text: 'Get Started',
-        url: 'https://localcooks.com',
-        styling: {
-          backgroundColor: '#F51042',
-          color: '#ffffff',
-          fontSize: '16px',
-          fontWeight: '600',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          textAlign: 'center'
+    // Send emails to all recipients
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const recipient of emailList) {
+      try {
+        // Generate the promo email with custom message and styling for each recipient
+        const emailContent = generatePromoCodeEmail({
+          email: recipient.email,
+          customerName: recipient.name || 'Valued Customer',
+          promoCode: promoCode.trim(),
+          customMessage: messageContent.trim(),
+          message: messageContent.trim(), // Also pass as message for compatibility
+          greeting: greeting,
+          promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+          promoCodeStyling: req.body.promoCodeStyling,
+          designSystem: designSystem,
+          isPremium: isPremium || false,
+          sections: sections || [],
+          orderButton: orderButton || {
+            text: 'Get Started',
+            url: 'https://localcooks.com',
+            styling: {
+              backgroundColor: '#F51042',
+              color: '#ffffff',
+              fontSize: '16px',
+              fontWeight: '600',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              textAlign: 'center'
+            }
+          },
+          header: header,
+          footer: req.body.footer,
+          usageSteps: req.body.usageSteps,
+          emailContainer: req.body.emailContainer,
+          subject: subject,
+          previewText: previewText,
+          promoCodeLabel: promoCodeLabel
+        });
+
+        // Send the email
+        const emailSent = await sendEmail(emailContent, {
+          trackingId: `promo_custom_${recipient.email}_${promoCode}_${Date.now()}`
+        });
+
+        if (emailSent) {
+          console.log(`Promo email sent successfully to ${recipient.email} with code ${promoCode}`);
+          results.push({ email: recipient.email, status: 'success' });
+          successCount++;
+        } else {
+          console.error(`Failed to send promo email to ${recipient.email}`);
+          results.push({ email: recipient.email, status: 'failed', error: 'Email sending failed' });
+          failureCount++;
         }
-      },
-      header: header,
-      footer: req.body.footer,
-      usageSteps: req.body.usageSteps,
-      emailContainer: req.body.emailContainer,
-      subject: subject,
-      previewText: previewText,
-      promoCodeLabel: promoCodeLabel
-    });
+      } catch (error) {
+        console.error(`Error sending promo email to ${recipient.email}:`, error);
+        results.push({ email: recipient.email, status: 'failed', error: error.message });
+        failureCount++;
+      }
+    }
 
-    // Send the email
-    const emailSent = await sendEmail(emailContent, {
-      trackingId: `promo_custom_${email}_${promoCode}_${Date.now()}`
-    });
-
-    if (emailSent) {
-      console.log(`Promo email sent successfully to ${email} with code ${promoCode}`);
+    // Return results
+    if (successCount > 0) {
       return res.status(200).json({
-        message: 'Promo code email sent successfully',
-        email: email,
+        message: `Promo code emails sent: ${successCount} successful, ${failureCount} failed`,
+        results: results,
         promoCode: promoCode,
         sentBy: user.username,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        summary: {
+          total: emailList.length,
+          successful: successCount,
+          failed: failureCount
+        }
       });
     } else {
-      console.error(`Failed to send promo email to ${email}`);
       return res.status(500).json({
-        error: 'Email sending failed',
-        message: 'Failed to send promo code email. Please check email configuration.'
+        error: 'All email sending failed',
+        message: 'Failed to send promo code emails to any recipients.',
+        results: results
       });
     }
 

@@ -29,6 +29,16 @@ import {
   Type
 } from 'lucide-react'
 import React, { useState } from 'react'
+import { UserSelector } from '../../ui/UserSelector'
+
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  fullName: string;
+  role: string;
+  displayText: string;
+}
 
 interface EmailDesignStudioProps {
   onEmailGenerated: (emailData: EmailDesignData) => void;
@@ -144,6 +154,7 @@ interface EmailContent {
   };
   customerName?: string;
   email?: string;
+  recipients?: User[];
   recipientType?: string;
   promoCodeStyling?: {
     backgroundColor?: string;
@@ -291,6 +302,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
+  const [selectedUsers, setSelectedUsers] = useState<User[]>(
+    initialDesign?.content?.recipients || []
+  );
 
   // Create default design configuration
   function createDefaultDesign(): EmailDesignData {
@@ -359,6 +373,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         orderUrl: 'https://localcooks.ca',
         customerName: 'Valued Customer',
         email: '',
+        recipients: [],
         recipientType: 'customer',
         promoCodeStyling: {
           backgroundColor: '#f3f4f6',
@@ -749,10 +764,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
   // Test email functionality
   const handleTestEmail = async () => {
-    if (!currentDesign.content.email) {
+    if (selectedUsers.length === 0 && !currentDesign.content.email) {
       toast({
-        title: "Email Required",
-        description: "Please enter a test email address",
+        title: "Recipients Required",
+        description: "Please select users or enter a test email address",
         variant: "destructive"
       });
       return;
@@ -760,27 +775,38 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
     setIsTestingEmail(true);
     try {
+      // Prepare recipients list
+      const recipients = selectedUsers.length > 0 
+        ? selectedUsers.map(user => ({ email: user.email, name: user.fullName }))
+        : [{ email: currentDesign.content.email, name: 'Test User' }];
+
       const response = await fetch('/api/admin/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          email: currentDesign.content.email,
+          recipients: recipients,
+          email: currentDesign.content.email, // Keep for backward compatibility
           subject: currentDesign.content.subject || 'Test Email',
           previewText: currentDesign.content.previewText || 'Test preview',
           sections: currentDesign.content.sections,
           header: currentDesign.content.header,
-          footer: currentDesign.content.footer, // Add footer
-          usageSteps: currentDesign.content.usageSteps, // Add usage steps
-          emailContainer: currentDesign.content.emailContainer, // Add email container
+          footer: currentDesign.content.footer,
+          usageSteps: currentDesign.content.usageSteps,
+          emailContainer: currentDesign.content.emailContainer,
           customDesign: currentDesign
         })
       });
 
       if (response.ok) {
+        const recipientCount = recipients.length;
+        const recipientText = recipientCount === 1 
+          ? recipients[0].email 
+          : `${recipientCount} recipients`;
+        
         toast({
           title: "✅ Test Email Sent!",
-          description: `Test email sent to ${currentDesign.content.email}`
+          description: `Test email sent to ${recipientText}`
         });
       } else {
         throw new Error('Failed to send test email');
@@ -888,10 +914,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   };
 
   const handleSendPromoEmail = async () => {
-    if (!currentDesign.content.email) {
+    if (selectedUsers.length === 0 && !currentDesign.content.email) {
       toast({
-        title: "Email Required",
-        description: "Please enter a test email address",
+        title: "Recipients Required",
+        description: "Please select users to send the email to",
         variant: "destructive"
       });
       return;
@@ -964,6 +990,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         }
       };
 
+      // Prepare recipients list
+      const recipients = selectedUsers.length > 0 
+        ? selectedUsers.map(user => ({ email: user.email, name: user.fullName }))
+        : [{ email: currentDesign.content.email, name: 'Recipient' }];
+
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
         headers: {
@@ -971,7 +1002,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         },
         credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
-          email: currentDesign.content.email,
+          recipients: recipients,
+          email: currentDesign.content.email, // Keep for backward compatibility
           promoCode: currentDesign.content.promoCode,
           promoCodeLabel: currentDesign.content.promoCodeLabel,
           customMessage: messageContent, // Use customMessage (preferred by backend)
@@ -998,9 +1030,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
       if (response.ok) {
         const result = await response.json();
+        const recipientCount = recipients.length;
+        const recipientText = recipientCount === 1 
+          ? recipients[0].email 
+          : `${recipientCount} recipients`;
+        
         toast({
           title: "✅ Promo Email Sent!",
-          description: `Promo email sent to ${currentDesign.content.email}`
+          description: `Promo email sent to ${recipientText}`
         });
       } else {
         // Get detailed error message from server
@@ -1048,7 +1085,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handleTestEmail}
-                disabled={isTestingEmail || !currentDesign.content.email}
+                disabled={isTestingEmail || (selectedUsers.length === 0 && !currentDesign.content.email)}
                 className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
               >
                 {isTestingEmail ? (
@@ -1071,7 +1108,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
               <Button
                 onClick={handleSendPromoEmail}
-                disabled={isSending || !currentDesign.content.email}
+                disabled={isSending || (selectedUsers.length === 0 && !currentDesign.content.email)}
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white h-10 px-7 font-medium shadow-lg transition-all duration-200"
               >
                 {isSending ? (
@@ -1091,17 +1128,24 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
           {/* Email Configuration Row */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-            <div>
+            <div className="lg:col-span-2">
               <Label className="text-sm font-medium text-gray-700 mb-2 block flex items-center">
                 <Mail className="h-4 w-4 mr-1 text-gray-500" />
-                To
+                Recipients
               </Label>
-              <Input
-                type="email"
-                placeholder="recipient@example.com"
-                value={currentDesign.content.email || ''}
-                onChange={(e) => updateElementContent('customer-email', e.target.value)}
-                className="h-10 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+              <UserSelector
+                selectedUsers={selectedUsers}
+                onUsersChange={(users) => {
+                  setSelectedUsers(users);
+                  // Update the email content with selected users
+                  handleContentUpdate({ 
+                    recipients: users,
+                    email: users.length > 0 ? users[0].email : '' // Keep first email for backward compatibility
+                  });
+                }}
+                placeholder="Search and select users by name or email..."
+                maxUsers={50}
+                className="w-full"
               />
             </div>
 
