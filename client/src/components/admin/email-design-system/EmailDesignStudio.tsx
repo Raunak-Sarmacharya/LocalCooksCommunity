@@ -8,6 +8,7 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  ArrowLeft,
   Bold,
   Download,
   Edit3,
@@ -1158,9 +1159,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         {/* Dynamic Side Panel */}
         <div className="w-80 bg-white border-r border-gray-200 shadow-sm flex flex-col">
           <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-blue-50">
-            <h2 className="font-semibold text-gray-900 mb-2 flex items-center">
+            <h2 className="font-semibold text-gray-900 mb-2 flex items-center justify-between">
               {selectedElement ? (
-                <>
+                <div className="flex items-center">
                   <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mr-3">
                     <Palette className="h-4 w-4 text-white" />
                   </div>
@@ -1175,14 +1176,27 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     {selectedElement === 'mobile-settings' && 'Mobile Controls'}
                     {selectedElement.startsWith('section-') && 'Custom Element'}
                   </span>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center">
                   <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center mr-3">
                     <Plus className="h-4 w-4 text-white" />
                   </div>
                   <span>Add Elements</span>
-                </>
+                </div>
+              )}
+              
+              {/* Back Button */}
+              {selectedElement && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedElement(null)}
+                  className="flex items-center space-x-1 text-gray-600 hover:text-gray-800 hover:bg-gray-100"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm">Back</span>
+                </Button>
               )}
             </h2>
             <p className="text-xs text-gray-600 leading-relaxed">

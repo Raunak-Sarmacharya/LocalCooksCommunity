@@ -12,6 +12,7 @@ import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocume
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
+import { handleUnsubscribeRequest } from "./unsubscribe";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -2115,6 +2116,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: 'Failed to update welcome status' });
     }
   });
+
+  // Unsubscribe endpoint - public endpoint for email unsubscribe requests
+  app.post('/api/unsubscribe', handleUnsubscribeRequest);
 
   const httpServer = createServer(app);
   return httpServer;

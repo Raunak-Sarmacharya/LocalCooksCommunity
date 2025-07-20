@@ -34,6 +34,7 @@ const Microlearning = lazy(() => import("@/pages/Microlearning"));
 const MicrolearningOverview = lazy(() => import("@/pages/MicrolearningOverview"));
 const MicrolearningPlayer = lazy(() => import("@/pages/MicrolearningPlayer"));
 const EmailVerificationTest = lazy(() => import("@/components/EmailVerificationTest"));
+const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
 
 // Loading component
 const LoadingSpinner = () => (
@@ -58,6 +59,7 @@ function Router() {
         <Route path="/password-reset" component={PasswordReset} />
         <Route path="/terms" component={Terms} />
         <Route path="/privacy" component={Privacy} />
+        <Route path="/unsubscribe" component={UnsubscribePage} />
         <Route path="/welcome-test">
           <WelcomeScreen onComplete={() => console.log('Welcome test completed')} />
         </Route>
