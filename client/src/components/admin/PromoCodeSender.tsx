@@ -406,7 +406,21 @@ const PromoCodeSender: React.FC = () => {
 
   // Handle email design update
   const handleEmailDesignUpdate = useCallback((updatedDesign: EmailDesignData) => {
-    setEmailDesign(updatedDesign);
+    // Ensure header always uses brand color
+    const designWithBrandColor = {
+      ...updatedDesign,
+      content: {
+        ...updatedDesign.content,
+        header: {
+          ...updatedDesign.content.header,
+          styling: {
+            ...updatedDesign.content.header?.styling,
+            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' // Always enforce brand color
+          }
+        }
+      }
+    };
+    setEmailDesign(designWithBrandColor);
   }, []);
 
   // Send email function
