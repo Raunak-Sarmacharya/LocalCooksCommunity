@@ -46,6 +46,9 @@ app.use((req, res, next) => {
   // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication
   registerFirebaseRoutes(app);
   
+  // Register traditional routes (includes unsubscribe endpoint)
+  await registerRoutes(app);
+  
   // Create HTTP server for Firebase-only architecture
   const { createServer } = await import('http');
   const server = createServer(app);
