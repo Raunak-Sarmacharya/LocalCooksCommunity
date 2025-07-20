@@ -12,6 +12,7 @@ import {
   Bold,
   Download,
   Edit3,
+  Eye,
   Image,
   Italic,
   Mail,
@@ -21,6 +22,7 @@ import {
   Send,
   Settings,
   Square,
+  Target,
   Trash2,
   Type
 } from 'lucide-react'
