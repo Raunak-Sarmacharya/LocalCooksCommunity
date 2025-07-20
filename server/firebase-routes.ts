@@ -755,7 +755,7 @@ export function registerFirebaseRoutes(app: Express) {
           }
         } catch (error) {
           console.error(`🔥 Error sending promo email to ${targetEmail}:`, error);
-          results.push({ email: targetEmail, status: 'failed', error: error.message });
+          results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
           failureCount++;
         }
       }

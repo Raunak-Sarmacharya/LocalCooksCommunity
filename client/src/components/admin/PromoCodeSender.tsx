@@ -1,7 +1,6 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, User } from "lucide-react";
+import { Mail } from "lucide-react";
 import React, { useCallback, useState } from 'react';
 
 // Import design components
@@ -432,36 +431,14 @@ const PromoCodeSender: React.FC = () => {
 
   // Send email function
   const sendEmail = async () => {
-    // Validate based on email mode
-    if (emailDesign.content.emailMode === 'database') {
-      // Database mode validation
-      if (!emailDesign.content.email || !emailDesign.content.promoCode || !emailDesign.content.customMessage) {
-        toast({
-          title: "Missing Information",
-          description: "Please fill in recipient email, offer code, and message",
-          variant: "destructive"
-        });
-        return;
-      }
-    } else {
-      // Custom email mode validation
-      if (!emailDesign.content.customEmails || emailDesign.content.customEmails.length === 0) {
-        toast({
-          title: "Missing Information",
-          description: "Please add at least one email address",
-          variant: "destructive"
-        });
-        return;
-      }
-      
-      if (!emailDesign.content.promoCode || !emailDesign.content.customMessage) {
-        toast({
-          title: "Missing Information",
-          description: "Please fill in offer code and message",
-          variant: "destructive"
-        });
-        return;
-      }
+    // Validate that we have required fields
+    if (!emailDesign.content.promoCode || !emailDesign.content.customMessage) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in offer code and message",
+        variant: "destructive"
+      });
+      return;
     }
 
     // Validate required fields before sending
@@ -494,8 +471,6 @@ const PromoCodeSender: React.FC = () => {
         credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
           email: emailDesign.content.email,
-          customEmails: emailDesign.content.customEmails,
-          emailMode: emailDesign.content.emailMode,
           promoCode: emailDesign.content.promoCode,
           customMessage: emailDesign.content.customMessage,
           greeting: emailDesign.content.greeting,
@@ -518,10 +493,9 @@ const PromoCodeSender: React.FC = () => {
 
       if (response.ok) {
         const result = await response.json();
-        const recipientCount = emailDesign.content.emailMode === 'database' ? 1 : emailDesign.content.customEmails?.length || 0;
         toast({
           title: "✅ Email Sent Successfully!",
-          description: `Email sent to ${recipientCount} recipient(s)`,
+          description: `Email sent successfully`,
         });
         
         // Reset form after successful send
@@ -530,7 +504,6 @@ const PromoCodeSender: React.FC = () => {
           content: {
             ...prev.content,
             email: '',
-            customEmails: [],
             promoCode: '',
             customMessage: '',
             greeting: 'Hello! 👋'
@@ -573,41 +546,7 @@ const PromoCodeSender: React.FC = () => {
         </CardHeader>
       </Card>
 
-      {/* Email Mode Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Recipient Selection</CardTitle>
-          <CardDescription>
-            Choose how you want to select email recipients
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex space-x-4">
-            <Button
-              variant={emailDesign.content.emailMode === 'database' ? 'default' : 'outline'}
-              onClick={() => setEmailDesign(prev => ({
-                ...prev,
-                content: { ...prev.content, emailMode: 'database' }
-              }))}
-              className="flex-1"
-            >
-              <User className="h-4 w-4 mr-2" />
-              Database Users
-            </Button>
-            <Button
-              variant={emailDesign.content.emailMode === 'custom' ? 'default' : 'outline'}
-              onClick={() => setEmailDesign(prev => ({
-                ...prev,
-                content: { ...prev.content, emailMode: 'custom' }
-              }))}
-              className="flex-1"
-            >
-              <Mail className="h-4 w-4 mr-2" />
-              Custom Emails
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+
 
       {/* Email Design Studio */}
       <EmailDesignStudio
