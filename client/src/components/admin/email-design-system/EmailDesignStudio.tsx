@@ -460,12 +460,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         }
       };
     }
-    
+
     setCurrentDesign(prev => ({
       ...prev,
       content: { ...prev.content, ...content }
     }));
-    
+
     // Notify parent component
     onEmailGenerated({
       ...currentDesign,
@@ -509,12 +509,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
   // Update element styling
   const updateElementStyling = (elementId: string, property: string, value: string) => {
     if (elementId === 'email-header') {
-      // Prevent changes to header background color to maintain brand consistency
-      if (property === 'backgroundColor') {
-        console.log('Header background color changes are disabled to maintain brand consistency');
+      // Prevent changes to header background color and image to maintain brand consistency
+      if (property === 'backgroundColor' || property === 'backgroundImage') {
+        console.log('Header background changes are disabled to maintain brand consistency');
         return;
       }
-      
+
       const headerStyling = currentDesign.content.header?.styling || {};
       handleContentUpdate({
         header: {
@@ -647,12 +647,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           textAlign: 'left'
         }
       };
-      
-      handleContentUpdate({ 
+
+      handleContentUpdate({
         message: content,
-        sections: { 
-          ...currentDesign.content.sections, 
-          'custom-message': customMessageSection 
+        sections: {
+          ...currentDesign.content.sections,
+          'custom-message': customMessageSection
         }
       });
     } else if (elementId === 'promo-code') {
@@ -697,7 +697,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             text: content
           }
         };
-        handleContentUpdate({ 
+        handleContentUpdate({
           buttonText: content,
           sections: updatedSections
         });
@@ -715,11 +715,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             textAlign: 'center'
           }
         };
-        handleContentUpdate({ 
+        handleContentUpdate({
           buttonText: content,
-          sections: { 
-            ...currentDesign.content.sections, 
-            'order-button': newOrderButtonSection 
+          sections: {
+            ...currentDesign.content.sections,
+            'order-button': newOrderButtonSection
           }
         });
       }
@@ -801,11 +801,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     try {
       // Prompt user for template name
       const templateName = prompt('Enter a name for this template:', `Email Template ${new Date().toLocaleDateString()}`);
-      
+
       if (!templateName) {
         return; // User cancelled
       }
-      
+
       // Create template data
       const templateData = {
         id: `template-${Date.now()}`,
@@ -841,7 +841,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     try {
       const existingTemplates = JSON.parse(localStorage.getItem('emailTemplates') || '[]');
       const template = existingTemplates.find((t: any) => t.id === templateId);
-      
+
       if (template) {
         // Ensure loaded template always uses brand color for header
         const designWithBrandColor = {
@@ -857,10 +857,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             }
           }
         };
-        
+
         setCurrentDesign(designWithBrandColor);
         onEmailGenerated(designWithBrandColor);
-        
+
         toast({
           title: "✅ Template Loaded!",
           description: `Template "${template.name}" has been loaded successfully with brand colors applied.`
@@ -907,10 +907,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     }
 
     // Check message from both possible sources (message field and sections)
-    const messageFromSections = currentDesign.content.sections?.['custom-message']?.text || 
-                                currentDesign.content.sections?.['custom-message-section']?.text || '';
+    const messageFromSections = currentDesign.content.sections?.['custom-message']?.text ||
+      currentDesign.content.sections?.['custom-message-section']?.text || '';
     const messageContent = currentDesign.content.message || messageFromSections;
-    
+
     console.log('Email validation debug:', {
       messageFromContent: currentDesign.content.message,
       messageFromSections: messageFromSections,
@@ -919,7 +919,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       promoCode: currentDesign.content.promoCode,
       email: currentDesign.content.email
     });
-    
+
     if (!messageContent || messageContent.length < 10) {
       toast({
         title: "Custom Message Required",
@@ -932,7 +932,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
     setIsSending(true);
     try {
       // Convert sections from object format to array format for backend consistency
-      const sectionsArray = currentDesign.content.sections ? 
+      const sectionsArray = currentDesign.content.sections ?
         Object.entries(currentDesign.content.sections).map(([key, section]) => ({
           id: key,
           type: section.type || 'text',
@@ -942,8 +942,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         })) : [];
 
       // Get greeting from sections or direct field
-      const greetingFromSections = currentDesign.content.sections?.['greeting']?.text || 
-                                   currentDesign.content.sections?.['greeting-section']?.text || '';
+      const greetingFromSections = currentDesign.content.sections?.['greeting']?.text ||
+        currentDesign.content.sections?.['greeting-section']?.text || '';
       const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! 👋';
 
       // Prepare order button data with proper fallbacks (prioritize sections data for consistency)
@@ -965,7 +965,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json'
         },
         credentials: 'include', // Essential for session-based admin auth
@@ -1043,9 +1043,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             </div>
 
             <div className="flex items-center space-x-4">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleTestEmail}
                 disabled={isTestingEmail || !currentDesign.content.email}
                 className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
@@ -1058,9 +1058,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 Test Email
               </Button>
 
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleSaveTemplate}
                 className="h-10 px-5 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200"
               >
@@ -1068,7 +1068,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 Save Template
               </Button>
 
-              <Button 
+              <Button
                 onClick={handleSendPromoEmail}
                 disabled={isSending || !currentDesign.content.email}
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white h-10 px-7 font-medium shadow-lg transition-all duration-200"
@@ -1240,7 +1240,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       <div>
                         <Label className="text-xs font-medium text-gray-600 mb-2 block">Background</Label>
                         <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                          <div 
+                          <div
                             className="w-full h-8 rounded-md border-2 border-red-300"
                             style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}
                           />
@@ -1262,11 +1262,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                               key={value}
                               variant="outline"
                               size="sm"
-                              className={`h-8 w-10 p-0 ${
-                                currentDesign.content.header?.styling?.textAlign === value
-                                  ? 'bg-blue-100 border-blue-300'
-                                  : ''
-                              }`}
+                              className={`h-8 w-10 p-0 ${currentDesign.content.header?.styling?.textAlign === value
+                                ? 'bg-blue-100 border-blue-300'
+                                : ''
+                                }`}
                               onClick={() => updateElementStyling('email-header', 'textAlign', value)}
                             >
                               <Icon className="h-3 w-3" />
@@ -1277,15 +1276,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                       <div className="border-t pt-4">
                         <Label className="text-xs font-medium text-gray-600 mb-3 block">Background Image</Label>
-                        
+
                         <div>
-                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Image URL</Label>
-                          <Input
-                            placeholder="https://example.com/image.jpg"
-                            value={currentDesign.content.header?.styling?.backgroundImage || ''}
-                            onChange={(e) => updateElementStyling('email-header', 'backgroundImage', e.target.value)}
-                            className="h-8 text-sm"
-                          />
+                          <Label className="text-xs font-medium text-gray-600 mb-1 block">Background Image</Label>
+                          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-xs text-red-700">
+                              <strong>Disabled:</strong> Background images are disabled for the header to maintain brand consistency.
+                            </p>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 mt-3">
@@ -1383,11 +1381,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#1f2937', '#374151', '#6b7280', '#dc2626', '#3b82f6', '#10b981'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.sections?.greeting?.styling?.color === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.sections?.greeting?.styling?.color === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => updateElementStyling('greeting', 'color', color)}
                             />
@@ -1421,12 +1418,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         <Button
                           variant="outline"
                           size="sm"
-                          className={`h-8 w-10 p-0 ${
-                            currentDesign.content.sections?.greeting?.styling?.fontWeight === 'bold'
-                              ? 'bg-blue-100 border-blue-300'
-                              : ''
-                          }`}
-                          onClick={() => updateElementStyling('greeting', 'fontWeight', 
+                          className={`h-8 w-10 p-0 ${currentDesign.content.sections?.greeting?.styling?.fontWeight === 'bold'
+                            ? 'bg-blue-100 border-blue-300'
+                            : ''
+                            }`}
+                          onClick={() => updateElementStyling('greeting', 'fontWeight',
                             currentDesign.content.sections?.greeting?.styling?.fontWeight === 'bold' ? 'normal' : 'bold'
                           )}
                         >
@@ -1435,12 +1431,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         <Button
                           variant="outline"
                           size="sm"
-                          className={`h-8 w-10 p-0 ${
-                            currentDesign.content.sections?.greeting?.styling?.fontStyle === 'italic'
-                              ? 'bg-blue-100 border-blue-300'
-                              : ''
-                          }`}
-                          onClick={() => updateElementStyling('greeting', 'fontStyle', 
+                          className={`h-8 w-10 p-0 ${currentDesign.content.sections?.greeting?.styling?.fontStyle === 'italic'
+                            ? 'bg-blue-100 border-blue-300'
+                            : ''
+                            }`}
+                          onClick={() => updateElementStyling('greeting', 'fontStyle',
                             currentDesign.content.sections?.greeting?.styling?.fontStyle === 'italic' ? 'normal' : 'italic'
                           )}
                         >
@@ -1511,7 +1506,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                     <div className="border-t pt-4">
                       <Label className="text-xs font-medium text-gray-600 mb-3 block">Spacing Controls</Label>
-                      
+
                       <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
                           <Label className="text-xs font-medium text-gray-600 mb-1 block">Margin</Label>
@@ -1628,11 +1623,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#374151', '#1f2937', '#6b7280', '#dc2626', '#3b82f6', '#10b981'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.sections?.['custom-message']?.styling?.color === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.sections?.['custom-message']?.styling?.color === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => updateElementStyling('custom-message', 'color', color)}
                             />
@@ -1671,11 +1665,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             key={value}
                             variant="outline"
                             size="sm"
-                            className={`h-8 w-10 p-0 ${
-                              currentDesign.content.sections?.['custom-message']?.styling?.textAlign === value
-                                ? 'bg-blue-100 border-blue-300'
-                                : ''
-                            }`}
+                            className={`h-8 w-10 p-0 ${currentDesign.content.sections?.['custom-message']?.styling?.textAlign === value
+                              ? 'bg-blue-100 border-blue-300'
+                              : ''
+                              }`}
                             onClick={() => updateElementStyling('custom-message', 'textAlign', value)}
                           >
                             <Icon className="h-3 w-3" />
@@ -1746,7 +1739,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                     <div className="border-t pt-4">
                       <Label className="text-xs font-medium text-gray-600 mb-3 block">Spacing Controls</Label>
-                      
+
                       <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
                           <Label className="text-xs font-medium text-gray-600 mb-1 block">Margin</Label>
@@ -1862,11 +1855,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#f3f4f6', '#fef3c7', '#dbeafe', '#ecfdf5', '#fce7f3', '#e0e7ff'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.promoCodeStyling?.backgroundColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.promoCodeStyling?.backgroundColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => handleContentUpdate({
                                 promoCodeStyling: {
@@ -1885,11 +1877,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#9ca3af', '#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.promoCodeStyling?.borderColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.promoCodeStyling?.borderColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => handleContentUpdate({
                                 promoCodeStyling: {
@@ -1909,11 +1900,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         {['#1f2937', '#374151', '#dc2626', '#3b82f6', '#10b981', '#8b5cf6'].map(color => (
                           <button
                             key={color}
-                            className={`w-6 h-6 rounded border-2 ${
-                              currentDesign.content.promoCodeStyling?.textColor === color
-                                ? 'border-blue-500'
-                                : 'border-gray-200'
-                            }`}
+                            className={`w-6 h-6 rounded border-2 ${currentDesign.content.promoCodeStyling?.textColor === color
+                              ? 'border-blue-500'
+                              : 'border-gray-200'
+                              }`}
                             style={{ backgroundColor: color }}
                             onClick={() => handleContentUpdate({
                               promoCodeStyling: {
@@ -2083,11 +2073,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#374151', '#1f2937', '#6b7280', '#dc2626', '#3b82f6', '#10b981'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.promoCodeStyling?.labelColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.promoCodeStyling?.labelColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => handleContentUpdate({
                                 promoCodeStyling: {
@@ -2177,11 +2166,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#dc2626', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.sections?.['order-button']?.styling?.backgroundColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.sections?.['order-button']?.styling?.backgroundColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => updateElementStyling('order-button', 'backgroundColor', color)}
                             />
@@ -2195,11 +2183,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#ffffff', '#1f2937', '#374151'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.sections?.['order-button']?.styling?.color === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.sections?.['order-button']?.styling?.color === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => updateElementStyling('order-button', 'color', color)}
                             />
@@ -2220,11 +2207,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             key={value}
                             variant="outline"
                             size="sm"
-                            className={`h-8 w-10 p-0 ${
-                              currentDesign.content.sections?.['order-button']?.styling?.alignment === value
-                                ? 'bg-blue-100 border-blue-300'
-                                : ''
-                            }`}
+                            className={`h-8 w-10 p-0 ${currentDesign.content.sections?.['order-button']?.styling?.alignment === value
+                              ? 'bg-blue-100 border-blue-300'
+                              : ''
+                              }`}
                             onClick={() => updateElementStyling('order-button', 'alignment', value)}
                           >
                             <Icon className="h-3 w-3" />
@@ -2370,11 +2356,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#f8fafc', '#f1f5f9', '#e2e8f0', '#fef7f7', '#f0fdf4', '#fffbeb'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.footer?.styling?.backgroundColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.footer?.styling?.backgroundColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => handleContentUpdate({
                                 footer: {
@@ -2396,11 +2381,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#64748b', '#374151', '#1f2937', '#6b7280', '#9ca3af', '#d1d5db'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.footer?.styling?.textColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.footer?.styling?.textColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => handleContentUpdate({
                                 footer: {
@@ -2511,11 +2495,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'].map((gradient, index) => (
                             <button
                               key={index}
-                              className={`w-full h-6 rounded border-2 ${
-                                currentDesign.content.usageSteps?.styling?.backgroundColor === gradient
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-full h-6 rounded border-2 ${currentDesign.content.usageSteps?.styling?.backgroundColor === gradient
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ background: gradient }}
                               onClick={() => handleContentUpdate({
                                 usageSteps: {
@@ -2537,11 +2520,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           {['#93c5fd', '#86efac', '#fbbf24'].map(color => (
                             <button
                               key={color}
-                              className={`w-6 h-6 rounded border-2 ${
-                                currentDesign.content.usageSteps?.styling?.borderColor === color
-                                  ? 'border-blue-500'
-                                  : 'border-gray-200'
-                              }`}
+                              className={`w-6 h-6 rounded border-2 ${currentDesign.content.usageSteps?.styling?.borderColor === color
+                                ? 'border-blue-500'
+                                : 'border-gray-200'
+                                }`}
                               style={{ backgroundColor: color }}
                               onClick={() => handleContentUpdate({
                                 usageSteps: {
@@ -2602,11 +2584,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         {['#f1f5f9', '#f8fafc', '#fff', '#fef7f7', '#f0fdf4', '#fffbeb', '#f3f4f6', '#e5e7eb'].map(color => (
                           <button
                             key={color}
-                            className={`w-6 h-6 rounded border-2 ${
-                              currentDesign.content.emailContainer?.backgroundColor === color
-                                ? 'border-blue-500'
-                                : 'border-gray-200'
-                            }`}
+                            className={`w-6 h-6 rounded border-2 ${currentDesign.content.emailContainer?.backgroundColor === color
+                              ? 'border-blue-500'
+                              : 'border-gray-200'
+                              }`}
                             style={{ backgroundColor: color }}
                             onClick={() => handleContentUpdate({
                               emailContainer: {
@@ -2645,7 +2626,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                     <div className="border-t pt-4">
                       <Label className="text-xs font-medium text-gray-600 mb-3 block">Background Image</Label>
-                      
+
                       <div>
                         <Label className="text-xs font-medium text-gray-600 mb-1 block">Image URL</Label>
                         <Input
@@ -2919,11 +2900,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                               {['#e2e8f0', '#d1d5db', '#9ca3af', '#6b7280', '#dc2626', '#3b82f6', '#10b981', '#f59e0b'].map(color => (
                                 <button
                                   key={color}
-                                  className={`w-6 h-6 rounded border-2 ${
-                                    currentDesign.content.dividers?.color === color
-                                      ? 'border-blue-500'
-                                      : 'border-gray-200'
-                                  }`}
+                                  className={`w-6 h-6 rounded border-2 ${currentDesign.content.dividers?.color === color
+                                    ? 'border-blue-500'
+                                    : 'border-gray-200'
+                                    }`}
                                   style={{ backgroundColor: color }}
                                   onClick={() => handleContentUpdate({
                                     dividers: {
@@ -3030,7 +3010,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       <p className="text-xs text-gray-500 italic py-2">No saved templates yet. Save your current design to get started!</p>
                     ) : (
                       getSavedTemplates().map((template: any) => (
-                        <div 
+                        <div
                           key={template.id}
                           className="flex items-center justify-between p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200"
                         >
@@ -3064,16 +3044,16 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     Add Elements
                   </h4>
                   <div className="space-y-3">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
                       onClick={() => addSection('text')}
                     >
                       <Type className="h-4 w-4 mr-3 text-gray-400" />
                       <span className="text-sm">Add Text Block</span>
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
                       onClick={() => addSection('button')}
                     >
@@ -3082,11 +3062,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </Button>
                   </div>
                 </div>
-                
+
                 <div className="border-t border-gray-200 pt-3 mt-4">
                   <p className="text-xs text-gray-500 mb-3 font-medium">SETTINGS & TOOLS</p>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="w-full justify-start h-10 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50"
                     onClick={() => setSelectedElement('mobile-settings')}
                   >
@@ -3100,7 +3080,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         </div>
 
         {/* Email Preview Area */}
-        <div 
+        <div
           className="flex-1 p-8 overflow-auto"
           style={{
             background: currentDesign.content.emailContainer?.backgroundColor || 'linear-gradient(to bottom right, #f9fafb, #eff6ff)',
@@ -3111,7 +3091,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
             backgroundAttachment: currentDesign.content.emailContainer?.backgroundAttachment || 'scroll'
           }}
         >
-          <div 
+          <div
             className="mx-auto transition-all duration-300"
             style={{
               maxWidth: previewMode === 'mobile' ? '375px' : (currentDesign.content.emailContainer?.maxWidth || '600px'),
@@ -3135,15 +3115,14 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               </h3>
               <p className="text-sm text-gray-600">Real-time preview of your email campaign</p>
             </div>
-            
-            <div 
-              className={`bg-white overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300 cursor-pointer mx-auto ${
-                selectedElement === 'email-container' ? 'ring-4 ring-purple-400 ring-opacity-50' : ''
-              }`}
+
+            <div
+              className={`bg-white overflow-hidden border border-gray-200 transform hover:shadow-2xl transition-all duration-300 cursor-pointer mx-auto ${selectedElement === 'email-container' ? 'ring-4 ring-purple-400 ring-opacity-50' : ''
+                }`}
               style={{
                 boxShadow: currentDesign.content.emailContainer?.boxShadow || '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
                 borderRadius: currentDesign.content.emailContainer?.borderRadius || '12px',
-                maxWidth: previewMode === 'mobile' 
+                maxWidth: previewMode === 'mobile'
                   ? currentDesign.content.emailContainer?.mobileMaxWidth || '375px'
                   : currentDesign.content.emailContainer?.maxWidth || '600px',
                 transform: previewMode === 'mobile' ? 'scale(0.8)' : 'scale(1)',
@@ -3157,20 +3136,20 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               }}
             >
               {/* Email Header */}
-              <div 
-                className={`text-white cursor-pointer transition-all duration-200 relative group ${
-                  selectedElement === 'email-header' ? 'ring-4 ring-blue-400 ring-opacity-50' : ''
-                }`}
-                style={{ 
-                  background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)', // Always use brand color
-                  backgroundImage: currentDesign.content.header?.styling?.backgroundImage ? `url(${currentDesign.content.header.styling.backgroundImage})` : undefined,
+              <div
+                className={`text-white cursor-pointer transition-all duration-200 relative group email-header-brand ${selectedElement === 'email-header' ? 'ring-4 ring-blue-400 ring-opacity-50' : ''
+                  }`}
+                style={{
+                  // Force brand color regardless of any other settings
+                  backgroundColor: '#F51042',
+                  backgroundImage: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
                   backgroundSize: currentDesign.content.header?.styling?.backgroundSize || 'cover',
                   backgroundPosition: currentDesign.content.header?.styling?.backgroundPosition || 'center center',
                   backgroundRepeat: currentDesign.content.header?.styling?.backgroundRepeat || 'no-repeat',
                   backgroundAttachment: currentDesign.content.header?.styling?.backgroundAttachment || 'scroll',
-                  borderRadius: currentDesign.content.header?.styling?.borderRadius || 
-                    (currentDesign.content.emailContainer?.borderRadius ? 
-                      `${currentDesign.content.emailContainer.borderRadius} ${currentDesign.content.emailContainer.borderRadius} 0 0` : 
+                  borderRadius: currentDesign.content.header?.styling?.borderRadius ||
+                    (currentDesign.content.emailContainer?.borderRadius ?
+                      `${currentDesign.content.emailContainer.borderRadius} ${currentDesign.content.emailContainer.borderRadius} 0 0` :
                       '12px 12px 0 0'),
                   padding: currentDesign.content.header?.styling?.padding || '24px 32px',
                   textAlign: (currentDesign.content.header?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
@@ -3184,10 +3163,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     </div>
                   </div>
                 )}
-                
-                <img 
-                  src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" 
-                  alt="Local Cooks" 
+
+                <img
+                  src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png"
+                  alt="Local Cooks"
                   style={{
                     maxWidth: '280px',
                     height: 'auto',
@@ -3222,10 +3201,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
               {/* Email Content Body */}
               <div className="p-10 space-y-8 bg-gradient-to-b from-white to-gray-50">
                 {/* Greeting Section */}
-                <div 
-                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
-                    selectedElement === 'greeting' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
+                <div
+                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${selectedElement === 'greeting' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
                   onClick={() => setSelectedElement('greeting')}
                 >
                   {selectedElement !== 'greeting' && (
@@ -3235,7 +3213,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     </div>
                   )}
-                  
+
                   <p style={{
                     fontSize: currentDesign.content.sections?.greeting?.styling?.fontSize || '18px',
                     color: currentDesign.content.sections?.greeting?.styling?.color || '#1f2937',
@@ -3262,10 +3240,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                 {/* Divider */}
                 {currentDesign.content.dividers?.enabled && (
-                  <div 
-                    className={`cursor-pointer transition-all duration-200 relative group ${
-                      selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
-                    }`}
+                  <div
+                    className={`cursor-pointer transition-all duration-200 relative group ${selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
+                      }`}
                     onClick={() => setSelectedElement('dividers')}
                     style={{
                       margin: currentDesign.content.dividers?.margin || '24px 0',
@@ -3279,7 +3256,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </div>
                       </div>
                     )}
-                    
+
                     <hr style={{
                       border: 'none',
                       borderTop: `${currentDesign.content.dividers?.thickness || '1px'} ${currentDesign.content.dividers?.style || 'solid'} ${currentDesign.content.dividers?.color || '#e2e8f0'}`,
@@ -3290,10 +3267,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 )}
 
                 {/* Custom Message Section */}
-                <div 
-                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
-                    selectedElement === 'custom-message' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
+                <div
+                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${selectedElement === 'custom-message' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
                   onClick={() => setSelectedElement('custom-message')}
                 >
                   {selectedElement !== 'custom-message' && (
@@ -3303,7 +3279,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     </div>
                   )}
-                  
+
                   <div style={{
                     fontSize: currentDesign.content.sections?.['custom-message']?.styling?.fontSize || '16px',
                     color: currentDesign.content.sections?.['custom-message']?.styling?.color || '#374151',
@@ -3323,17 +3299,16 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     paddingRight: currentDesign.content.sections?.['custom-message']?.styling?.paddingRight,
                     paddingBottom: currentDesign.content.sections?.['custom-message']?.styling?.paddingBottom,
                     paddingLeft: currentDesign.content.sections?.['custom-message']?.styling?.paddingLeft
-                  }} dangerouslySetInnerHTML={{ 
-                    __html: (currentDesign.content.sections?.['custom-message']?.text || currentDesign.content.message || 'We have an exclusive offer just for you!').replace(/\n/g, '<br/>') 
+                  }} dangerouslySetInnerHTML={{
+                    __html: (currentDesign.content.sections?.['custom-message']?.text || currentDesign.content.message || 'We have an exclusive offer just for you!').replace(/\n/g, '<br/>')
                   }} />
                 </div>
 
                 {/* Divider */}
                 {currentDesign.content.dividers?.enabled && (
-                  <div 
-                    className={`cursor-pointer transition-all duration-200 relative group ${
-                      selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
-                    }`}
+                  <div
+                    className={`cursor-pointer transition-all duration-200 relative group ${selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
+                      }`}
                     onClick={() => setSelectedElement('dividers')}
                     style={{
                       margin: currentDesign.content.dividers?.margin || '24px 0',
@@ -3347,7 +3322,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </div>
                       </div>
                     )}
-                    
+
                     <hr style={{
                       border: 'none',
                       borderTop: `${currentDesign.content.dividers?.thickness || '1px'} ${currentDesign.content.dividers?.style || 'solid'} ${currentDesign.content.dividers?.color || '#e2e8f0'}`,
@@ -3358,10 +3333,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 )}
 
                 {/* Promo Code Section */}
-                <div 
-                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
-                    selectedElement === 'promo-code' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
+                <div
+                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${selectedElement === 'promo-code' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
                   onClick={() => setSelectedElement('promo-code')}
                 >
                   {selectedElement !== 'promo-code' && (
@@ -3371,12 +3345,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     </div>
                   )}
-                  
+
                   <div style={{ textAlign: 'center', margin: '32px 0' }}>
-                    <div 
-                      className={`cursor-pointer transition-all duration-200 relative group ${
-                        selectedElement === 'promo-code-label' ? 'ring-2 ring-blue-400' : ''
-                      }`}
+                    <div
+                      className={`cursor-pointer transition-all duration-200 relative group ${selectedElement === 'promo-code-label' ? 'ring-2 ring-blue-400' : ''
+                        }`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedElement('promo-code-label');
@@ -3392,7 +3365,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         {currentDesign.content.promoCodeLabel || 'Use promo code:'}
                       </p>
                     </div>
-                    
+
                     <div style={{
                       backgroundColor: currentDesign.content.promoCodeStyling?.backgroundColor || '#f3f4f6',
                       border: `${currentDesign.content.promoCodeStyling?.borderWidth || '2px'} ${currentDesign.content.promoCodeStyling?.borderStyle || 'dashed'} ${currentDesign.content.promoCodeStyling?.borderColor || '#9ca3af'}`,
@@ -3417,10 +3390,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                 {/* Divider */}
                 {currentDesign.content.dividers?.enabled && (
-                  <div 
-                    className={`cursor-pointer transition-all duration-200 relative group ${
-                      selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
-                    }`}
+                  <div
+                    className={`cursor-pointer transition-all duration-200 relative group ${selectedElement === 'dividers' ? 'ring-2 ring-gray-400 bg-gray-50' : 'hover:bg-gray-50'
+                      }`}
                     onClick={() => setSelectedElement('dividers')}
                     style={{
                       margin: currentDesign.content.dividers?.margin || '24px 0',
@@ -3434,7 +3406,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </div>
                       </div>
                     )}
-                    
+
                     <hr style={{
                       border: 'none',
                       borderTop: `${currentDesign.content.dividers?.thickness || '1px'} ${currentDesign.content.dividers?.style || 'solid'} ${currentDesign.content.dividers?.color || '#e2e8f0'}`,
@@ -3445,12 +3417,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 )}
 
                 {/* CTA Button Section */}
-                <div 
-                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
-                    selectedElement === 'order-button' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
+                <div
+                  className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${selectedElement === 'order-button' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
                   onClick={() => setSelectedElement('order-button')}
-                  style={{ 
+                  style={{
                     textAlign: (currentDesign.content.sections?.['order-button']?.styling?.alignment || 'center') as React.CSSProperties['textAlign'],
                     margin: '32px 0',
                     padding: '0 20px',
@@ -3464,7 +3435,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     </div>
                   )}
-                  
+
                   <a
                     href={currentDesign.content.sections?.['order-button']?.url || currentDesign.content.orderUrl || '#'}
                     style={{
@@ -3498,11 +3469,10 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 {currentDesign.content.sections && Object.entries(currentDesign.content.sections)
                   .filter(([key]) => key.startsWith('section-'))
                   .map(([sectionId, section]) => (
-                    <div 
+                    <div
                       key={sectionId}
-                      className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
-                        selectedElement === sectionId ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
+                      className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${selectedElement === sectionId ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                        }`}
                       onClick={() => setSelectedElement(sectionId)}
                     >
                       {selectedElement !== sectionId && (
@@ -3512,7 +3482,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           </div>
                         </div>
                       )}
-                      
+
                       {section.type === 'text' && (
                         <div style={{
                           fontSize: section.styling?.fontSize || '16px',
@@ -3523,7 +3493,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           lineHeight: '1.6'
                         }} dangerouslySetInnerHTML={{ __html: (section.text || 'New text block').replace(/\n/g, '<br/>') }} />
                       )}
-                      
+
                       {section.type === 'button' && (
                         <div style={{ textAlign: (section.styling?.alignment || 'center') as React.CSSProperties['textAlign'] }}>
                           <a
@@ -3548,10 +3518,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
 
                 {/* Usage Steps Section */}
                 {currentDesign.content.usageSteps?.enabled && (
-                  <div 
-                    className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${
-                      selectedElement === 'usage-steps' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                    }`}
+                  <div
+                    className={`cursor-pointer transition-all duration-200 relative group rounded-lg p-3 -m-3 ${selectedElement === 'usage-steps' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                      }`}
                     onClick={() => setSelectedElement('usage-steps')}
                   >
                     {selectedElement !== 'usage-steps' && (
@@ -3561,7 +3530,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </div>
                       </div>
                     )}
-                    
+
                     <div style={{
                       background: currentDesign.content.usageSteps?.styling?.backgroundColor || 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
                       border: `1px solid ${currentDesign.content.usageSteps?.styling?.borderColor || '#93c5fd'}`,
@@ -3596,10 +3565,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 )}
 
                 {/* Footer */}
-                <div 
-                  className={`mt-12 pt-6 cursor-pointer transition-all duration-200 relative group ${
-                    selectedElement === 'footer' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
+                <div
+                  className={`mt-12 pt-6 cursor-pointer transition-all duration-200 relative group ${selectedElement === 'footer' ? 'ring-2 ring-blue-400 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
                   style={{
                     backgroundColor: currentDesign.content.footer?.styling?.backgroundColor || '#f8fafc',
                     padding: currentDesign.content.footer?.styling?.padding || '24px 32px',
@@ -3616,7 +3584,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     </div>
                   )}
-                  
+
                   <div style={{
                     textAlign: (currentDesign.content.footer?.styling?.textAlign || 'center') as React.CSSProperties['textAlign']
                   }}>
@@ -3630,7 +3598,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         {currentDesign.content.footer.mainText}
                       </p>
                     )}
-                    
+
                     {currentDesign.content.footer?.showContact && currentDesign.content.footer?.contactText && (
                       <p style={{
                         fontSize: currentDesign.content.footer?.styling?.fontSize || '14px',
@@ -3640,9 +3608,9 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         {currentDesign.content.footer.contactText.includes('@') ? (
                           <>
                             {currentDesign.content.footer.contactText.split('@')[0]}
-                            <a 
+                            <a
                               href={`mailto:${currentDesign.content.footer.contactText.split(' ').pop()}`}
-                              style={{ 
+                              style={{
                                 color: currentDesign.content.footer?.styling?.linkColor || '#F51042',
                                 textDecoration: 'none'
                               }}
@@ -3655,7 +3623,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         )}
                       </p>
                     )}
-                    
+
                     {currentDesign.content.footer?.showCopyright && currentDesign.content.footer?.copyrightText && (
                       <>
                         <div style={{
@@ -3686,22 +3654,20 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                 <div className="flex bg-gray-100 rounded-lg p-1">
                   <button
                     onClick={() => setPreviewMode('desktop')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all duration-200 flex items-center space-x-1 ${
-                      previewMode === 'desktop'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    className={`px-3 py-1 text-xs rounded-md transition-all duration-200 flex items-center space-x-1 ${previewMode === 'desktop'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                      }`}
                   >
                     <Settings className="h-3 w-3" />
                     <span>Desktop</span>
                   </button>
                   <button
                     onClick={() => setPreviewMode('mobile')}
-                    className={`px-3 py-1 text-xs rounded-md transition-all duration-200 flex items-center space-x-1 ${
-                      previewMode === 'mobile'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
+                    className={`px-3 py-1 text-xs rounded-md transition-all duration-200 flex items-center space-x-1 ${previewMode === 'mobile'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                      }`}
                   >
                     <Square className="h-3 w-3" />
                     <span>Mobile</span>
