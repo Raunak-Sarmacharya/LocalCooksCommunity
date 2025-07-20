@@ -542,6 +542,8 @@ export function registerFirebaseRoutes(app: Express) {
 
       const { 
         email, 
+        customEmails,
+        emailMode,
         promoCode, 
         customMessage, 
         message, 
@@ -567,10 +569,17 @@ export function registerFirebaseRoutes(app: Express) {
       // Handle both customMessage and message fields (different frontend components use different names)
       const messageContent = customMessage || message;
 
-      // Validate required fields
-      if (!email) {
-        console.log('Promo email request - Missing email');
-        return res.status(400).json({ error: 'Email is required' });
+      // Validate required fields based on email mode
+      if (emailMode === 'custom') {
+        if (!customEmails || !Array.isArray(customEmails) || customEmails.length === 0) {
+          console.log('Promo email request - Missing custom emails');
+          return res.status(400).json({ error: 'At least one email address is required' });
+        }
+      } else {
+        if (!email) {
+          console.log('Promo email request - Missing email');
+          return res.status(400).json({ error: 'Email is required' });
+        }
       }
 
       if (!promoCode) {
@@ -589,11 +598,23 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({
-          error: 'Invalid email',
-          message: 'Please provide a valid email address'
-        });
+      if (emailMode === 'custom') {
+        // Validate all custom emails
+        for (const customEmail of customEmails) {
+          if (!emailRegex.test(customEmail)) {
+            return res.status(400).json({
+              error: 'Invalid email',
+              message: `Please provide a valid email address: ${customEmail}`
+            });
+          }
+        }
+      } else {
+        if (!emailRegex.test(email)) {
+          return res.status(400).json({
+            error: 'Invalid email',
+            message: 'Please provide a valid email address'
+          });
+        }
       }
 
       // Validate promo code (basic validation - alphanumeric, length check)
@@ -612,122 +633,152 @@ export function registerFirebaseRoutes(app: Express) {
         });
       }
 
-      console.log(`🔥 Admin ${req.neonUser?.username} sending promo email to ${email} with code: ${promoCode}`);
+      // Determine target emails
+      const targetEmails = emailMode === 'custom' ? customEmails : [email];
+      console.log(`🔥 Admin ${req.neonUser?.username} sending promo email to ${targetEmails.length} recipient(s) with code: ${promoCode}`);
 
       // Import the email functions
       const { sendEmail, generatePromoCodeEmail } = await import('./email');
 
-      // Generate the promo email with custom message and styling
-      const emailContent = generatePromoCodeEmail({
-        email: email,
-        promoCode: promoCode.trim(),
-        customMessage: messageContent.trim(),
-        greeting: greeting,
-        promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
-        promoCodeStyling: promoCodeStyling,
-        designSystem: designSystem,
-        isPremium: isPremium || false,
-        sections: sections || [],
-        orderButton: orderButton || {
-          text: buttonText || 'Get Started',
-          url: orderUrl || 'https://localcooks.ca',
-          styling: {
-            backgroundColor: '#F51042',
-            color: '#ffffff',
-            fontSize: '16px',
-            fontWeight: '600',
-            padding: '12px 24px',
-            borderRadius: '8px',
-            textAlign: 'center'
-          }
-        },
-        header: header || {
-          title: 'Local Cooks Header',
-          subtitle: 'Premium Quality Food Subheader',
-          styling: {
-            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
-            titleColor: '#ffffff',
-            subtitleColor: '#ffffff',
-            titleFontSize: '32px',
-            subtitleFontSize: '18px',
-            padding: '24px',
-            borderRadius: '0px',
-            textAlign: 'center'
-          }
-        },
-        footer: footer || {
-          mainText: 'Thank you for being part of the Local Cooks community!',
-          contactText: 'Questions? Contact us at support@localcooks.com',
-          copyrightText: '© 2024 Local Cooks. All rights reserved.',
-          showContact: true,
-          showCopyright: true,
-          styling: {
-            backgroundColor: '#f8fafc',
-            textColor: '#64748b',
-            linkColor: '#F51042',
-            fontSize: '14px',
-            padding: '24px 32px',
-            textAlign: 'center',
-            borderColor: '#e2e8f0'
-          }
-        },
-        usageSteps: usageSteps || {
-          title: '🚀 How to use your promo code:',
-          steps: [
-            `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
-            'Browse our amazing local cooks and their delicious offerings',
-            'Apply your promo code during checkout',
-            'Enjoy your special offer!'
-          ],
-          enabled: true,
-          styling: {
-            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-            borderColor: '#93c5fd',
-            titleColor: '#1d4ed8',
-            textColor: '#1e40af',
-            linkColor: '#1d4ed8',
-            padding: '20px',
-            borderRadius: '8px'
-          }
-        },
-        emailContainer: emailContainer || {
-          maxWidth: '600px',
-          backgroundColor: '#f1f5f9',
-          borderRadius: '12px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
-        },
-        dividers: {
-          enabled: true,
-          style: 'solid',
-          color: '#e2e8f0',
-          thickness: '1px',
-          margin: '24px 0',
-          opacity: '1'
-        },
-        subject: subject,
-        previewText: previewText,
-        promoCodeLabel: promoCodeLabel
-      });
+      // Send emails to all recipients
+      const results = [];
+      let successCount = 0;
+      let failureCount = 0;
 
-      // Send the email
-      const emailSent = await sendEmail(emailContent, {
-        trackingId: `promo_custom_${email}_${promoCode}_${Date.now()}`
-      });
+      for (const targetEmail of targetEmails) {
+        try {
+          // Generate the promo email with custom message and styling for each recipient
+          const emailContent = generatePromoCodeEmail({
+            email: targetEmail,
+            promoCode: promoCode.trim(),
+            customMessage: messageContent.trim(),
+            greeting: greeting,
+            promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+            promoCodeStyling: promoCodeStyling,
+            designSystem: designSystem,
+            isPremium: isPremium || false,
+            sections: sections || [],
+            orderButton: orderButton || {
+              text: buttonText || 'Get Started',
+              url: orderUrl || 'https://localcooks.ca',
+              styling: {
+                backgroundColor: '#F51042',
+                color: '#ffffff',
+                fontSize: '16px',
+                fontWeight: '600',
+                padding: '12px 24px',
+                borderRadius: '8px',
+                textAlign: 'center'
+              }
+            },
+            header: header || {
+              title: 'Local Cooks Header',
+              subtitle: 'Premium Quality Food Subheader',
+              styling: {
+                backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+                titleColor: '#ffffff',
+                subtitleColor: '#ffffff',
+                titleFontSize: '32px',
+                subtitleFontSize: '18px',
+                padding: '24px',
+                borderRadius: '0px',
+                textAlign: 'center'
+              }
+            },
+            footer: footer || {
+              mainText: 'Thank you for being part of the Local Cooks community!',
+              contactText: 'Questions? Contact us at support@localcooks.com',
+              copyrightText: '© 2024 Local Cooks. All rights reserved.',
+              showContact: true,
+              showCopyright: true,
+              styling: {
+                backgroundColor: '#f8fafc',
+                textColor: '#64748b',
+                linkColor: '#F51042',
+                fontSize: '14px',
+                padding: '24px 32px',
+                textAlign: 'center',
+                borderColor: '#e2e8f0'
+              }
+            },
+            usageSteps: usageSteps || {
+              title: '🚀 How to use your promo code:',
+              steps: [
+                `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
+                'Browse our amazing local cooks and their delicious offerings',
+                'Apply your promo code during checkout',
+                'Enjoy your special offer!'
+              ],
+              enabled: true,
+              styling: {
+                backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                borderColor: '#93c5fd',
+                titleColor: '#1d4ed8',
+                textColor: '#1e40af',
+                linkColor: '#1d4ed8',
+                padding: '20px',
+                borderRadius: '8px'
+              }
+            },
+            emailContainer: emailContainer || {
+              maxWidth: '600px',
+              backgroundColor: '#f1f5f9',
+              borderRadius: '12px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+            },
+            dividers: {
+              enabled: true,
+              style: 'solid',
+              color: '#e2e8f0',
+              thickness: '1px',
+              margin: '24px 0',
+              opacity: '1'
+            },
+            subject: subject,
+            previewText: previewText,
+            promoCodeLabel: promoCodeLabel
+          });
 
-      if (emailSent) {
-        console.log(`🔥 Promo email sent successfully to ${email} with code ${promoCode}`);
+          // Send the email
+          const emailSent = await sendEmail(emailContent, {
+            trackingId: `promo_custom_${targetEmail}_${promoCode}_${Date.now()}`
+          });
+
+          if (emailSent) {
+            console.log(`🔥 Promo email sent successfully to ${targetEmail} with code ${promoCode}`);
+            results.push({ email: targetEmail, status: 'success' });
+            successCount++;
+          } else {
+            console.error(`🔥 Failed to send promo email to ${targetEmail}`);
+            results.push({ email: targetEmail, status: 'failed', error: 'Email sending failed' });
+            failureCount++;
+          }
+        } catch (error) {
+          console.error(`🔥 Error sending promo email to ${targetEmail}:`, error);
+          results.push({ email: targetEmail, status: 'failed', error: error.message });
+          failureCount++;
+        }
+      }
+
+      // Return results
+      if (successCount > 0) {
         return res.status(200).json({
-          message: 'Promo code email sent successfully',
-          email: email,
+          message: `Promo code emails sent: ${successCount} successful, ${failureCount} failed`,
+          results: results,
           promoCode: promoCode,
           sentBy: req.neonUser?.username,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          summary: {
+            total: targetEmails.length,
+            successful: successCount,
+            failed: failureCount
+          }
         });
       } else {
-        console.error(`🔥 Failed to send promo email to ${email}`);
         return res.status(500).json({
-          error: 'Email sending failed',
-          message: 'Failed to send promo code email. Please check email configuration.'
+          error: 'All email sending failed',
+          message: 'Failed to send promo code emails to any recipients.',
+          results: results
         });
       }
 
