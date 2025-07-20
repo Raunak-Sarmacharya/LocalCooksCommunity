@@ -345,12 +345,8 @@ const getOrganizationName = (): string => {
 
 // Get unsubscribe email from environment or generate from domain
 const getUnsubscribeEmail = (): string => {
-  if (process.env.EMAIL_UNSUBSCRIBE) {
-    return process.env.EMAIL_UNSUBSCRIBE;
-  }
-  
-  const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
-  return `unsubscribe@${domain}`;
+  // Use the specific email address for unsubscribe requests
+  return 'localcooks@localcook.shop';
 };
 
 // Helper function to get support email based on configured domain
@@ -2164,6 +2160,17 @@ Visit: ${getPromoUrl()}
           ${userData.footer?.copyrightText || `&copy; ${new Date().getFullYear()} ${organizationName}. All rights reserved.`}
         </p>
       ` : ''}
+      
+      <!-- Unsubscribe Link -->
+      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid ${userData.footer?.styling?.borderColor || '#e2e8f0'};">
+        <p style="text-align: center; font-size: 11px; color: #6b7280; margin: 0;">
+          Don't want to receive these emails? 
+          <a href="${getWebsiteUrl()}/unsubscribe?email=${encodeURIComponent(userData.email)}" 
+             style="color: #F51042; text-decoration: underline;">
+            Unsubscribe here
+          </a>
+        </p>
+      </div>
     </div>
   </div>
 </body>
