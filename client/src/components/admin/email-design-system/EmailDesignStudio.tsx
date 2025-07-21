@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -1806,7 +1807,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                     {/* Show styling options only when toggle is ON */}
                     {currentDesign.content.includePromoSection && (
                       <div className="grid grid-cols-2 gap-3">
-                      <div>
+                        <div>
                         <Label className="text-xs font-medium text-gray-600 mb-1 block">Background</Label>
                         <div className="grid grid-cols-3 gap-1">
                           {['#f3f4f6', '#fef3c7', '#dbeafe', '#ecfdf5', '#fce7f3', '#e0e7ff'].map(color => (
@@ -1997,7 +1998,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </SelectContent>
                       </Select>
                     </div>
-                      </div>
+                  </div>
                     )}
                   </div>
                 )}
