@@ -1,8 +1,8 @@
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -1769,11 +1769,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                               : "General company email without promo code"}
                           </p>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-3">
                           <span className={`text-xs ${!currentDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
                             OFF
                           </span>
-                          <Switch
+                          <Checkbox
                             checked={currentDesign.content.includePromoSection || false}
                             onCheckedChange={(checked) => {
                               handleContentUpdate({
@@ -1783,6 +1783,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                 promoCodeLabel: checked ? currentDesign.content.promoCodeLabel : ''
                               });
                             }}
+                            className="h-5 w-5"
                           />
                           <span className={`text-xs ${currentDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
                             ON
