@@ -608,7 +608,7 @@ export function registerFirebaseRoutes(app: Express) {
       console.log(`🔥 Admin ${req.neonUser?.username} sending ${emailType} email to ${targetEmails.length} recipient(s)`);
 
       // Import the email functions
-      const { sendEmail, generateFlexibleEmail } = await import('./email');
+      const { sendEmail, generatePromoCodeEmail } = await import('./email');
 
       // Send emails to all recipients
       const results: Array<{ email: string; status: string; error?: string }> = [];
@@ -618,25 +618,24 @@ export function registerFirebaseRoutes(app: Express) {
       for (const targetEmail of targetEmails) {
         try {
           // Generate flexible email for each recipient
-          const emailContent = generateFlexibleEmail({
+          const emailContent = generatePromoCodeEmail({
             email: targetEmail,
-            emailType,
             promoCode,
-            promoCodeLabel: promoCodeLabel || (emailType === 'promotional' ? '🎁 Special Offer Code For You' : undefined),
+            promoCodeLabel: promoCodeLabel || '🎁 Special Offer Code For You',
             customMessage: messageContent,
             greeting: greeting || 'Hello! 👋',
-            subject: subject || (emailType === 'promotional' ? `🎁 Special Offer: ${promoCode}` : 'Important Update from Local Cooks'),
+            subject: subject || `🎁 Special Offer: ${promoCode}`,
             previewText,
             header: header || {
-              title: emailType === 'promotional' ? 'Special Offer Just For You!' : 'Local Cooks Community',
-              subtitle: emailType === 'promotional' ? 'Don\'t miss out on this exclusive deal' : 'Connecting local cooks with food lovers'
+              title: 'Special Offer Just For You!',
+              subtitle: 'Don\'t miss out on this exclusive deal'
             },
             footer,
-            orderButton: emailType === 'promotional' ? (orderButton || {
+            orderButton: orderButton || {
               text: '🌟 Start Shopping Now',
               url: 'https://localcooks.ca'
-            }) : orderButton,
-            usageSteps: emailType === 'promotional' ? (usageSteps || {
+            },
+            usageSteps: usageSteps || {
               enabled: true,
               title: '🚀 How to use your offer:',
               steps: [
@@ -645,7 +644,7 @@ export function registerFirebaseRoutes(app: Express) {
                 promoCode ? 'Apply your promo code during checkout' : 'Complete your order',
                 'Enjoy your special offer!'
               ]
-            }) : usageSteps,
+            },
             emailContainer: emailContainer || {
               maxWidth: '600px',
               backgroundColor: '#f1f5f9',
@@ -656,13 +655,12 @@ export function registerFirebaseRoutes(app: Express) {
             dividers,
             promoCodeStyling,
             promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
-            sections,
-            customDesign
+            sections
           });
 
           // Send email
           const emailSent = await sendEmail(emailContent, {
-            trackingId: `${emailType}_email_${targetEmail}_${Date.now()}`
+            trackingId: `promo_email_${targetEmail}_${Date.now()}`
           });
 
           if (emailSent) {

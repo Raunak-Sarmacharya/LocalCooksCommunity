@@ -1804,9 +1804,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     )}
 
-                    {/* Show styling options only when toggle is ON */}
-                    {currentDesign.content.includePromoSection && (
-                      <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                         <div>
                         <Label className="text-xs font-medium text-gray-600 mb-1 block">Background</Label>
                         <div className="grid grid-cols-3 gap-1">
@@ -1861,7 +1859,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                             className={`w-6 h-6 rounded border-2 ${currentDesign.content.promoCodeStyling?.textColor === color
                               ? 'border-blue-500'
                               : 'border-gray-200'
-                              }`}
+                            }`}
                             style={{ backgroundColor: color }}
                             onClick={() => handleContentUpdate({
                               promoCodeStyling: {
@@ -1998,8 +1996,6 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                    )}
                   </div>
                 )}
 
