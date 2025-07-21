@@ -3,15 +3,15 @@ import { Express, Request, Response } from 'express';
 import { fromZodError } from 'zod-validation-error';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-    requireAdmin,
-    requireFirebaseAuthWithUser,
-    verifyFirebaseAuth
+  requireAdmin,
+  requireFirebaseAuthWithUser,
+  verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
 
 export function registerFirebaseRoutes(app: Express) {
-  
+
   // 🔥 Firebase User Registration Endpoint
   // This is called during registration to create new users
   app.post('/api/firebase-register-user', verifyFirebaseAuth, async (req: Request, res: Response) => {
@@ -25,7 +25,7 @@ export function registerFirebaseRoutes(app: Express) {
       // Check if user already exists
       const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
       if (existingUser) {
-        return res.status(409).json({ 
+        return res.status(409).json({
           error: 'User already exists',
           message: 'This account is already registered. Please sign in instead.',
           user: {
@@ -46,8 +46,8 @@ export function registerFirebaseRoutes(app: Express) {
         role: role || 'applicant'
       });
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         user: {
           id: user.id,
           username: user.username,
@@ -58,8 +58,8 @@ export function registerFirebaseRoutes(app: Express) {
       });
     } catch (error) {
       console.error('Error registering Firebase user:', error);
-      res.status(500).json({ 
-        error: 'Failed to create account', 
+      res.status(500).json({
+        error: 'Failed to create account',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
@@ -78,11 +78,11 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Get Firebase Admin instance
       const firebaseApp = initializeFirebaseAdmin();
-      
+
       if (!firebaseApp) {
         console.error('Firebase Admin not initialized');
-        return res.status(500).json({ 
-          message: "Password reset service unavailable. Please try again later." 
+        return res.status(500).json({
+          message: "Password reset service unavailable. Please try again later."
         });
       }
 
@@ -90,19 +90,19 @@ export function registerFirebaseRoutes(app: Express) {
         // Get auth instance using modular SDK
         const { getAuth } = await import('firebase-admin/auth');
         const auth = getAuth(firebaseApp);
-        
+
         // Check if user exists in Firebase
         const userRecord = await auth.getUserByEmail(email);
         console.log(`✅ Firebase user found: ${userRecord.uid}`);
 
         // Check if this user exists in our Neon database and is email/password user
         const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
-        
+
         if (!neonUser) {
           console.log(`❌ User not found in Neon DB for Firebase UID: ${userRecord.uid}`);
           // Don't reveal if user exists or not for security
-          return res.status(200).json({ 
-            message: "If an account with this email exists, you will receive a password reset link." 
+          return res.status(200).json({
+            message: "If an account with this email exists, you will receive a password reset link."
           });
         }
 
@@ -110,8 +110,8 @@ export function registerFirebaseRoutes(app: Express) {
         // Firebase OAuth users (Google, etc.) should use their OAuth provider's password reset
         if (!neonUser.password || neonUser.password === '') {
           console.log(`❌ User ${userRecord.uid} is OAuth user, no password reset needed`);
-          return res.status(400).json({ 
-            message: "This account uses Google/OAuth sign-in. Please use 'Sign in with Google' or contact your OAuth provider to reset your password." 
+          return res.status(400).json({
+            message: "This account uses Google/OAuth sign-in. Please use 'Sign in with Google' or contact your OAuth provider to reset your password."
           });
         }
 
@@ -126,8 +126,8 @@ export function registerFirebaseRoutes(app: Express) {
 
         // Optionally send custom email here or let Firebase handle it
         // For now, let Firebase send the default email
-        
-        return res.status(200).json({ 
+
+        return res.status(200).json({
           message: "If an account with this email exists, you will receive a password reset link.",
           resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined // Only show in dev
         });
@@ -136,21 +136,21 @@ export function registerFirebaseRoutes(app: Express) {
         if (firebaseError.code === 'auth/user-not-found') {
           console.log(`❌ Firebase user not found: ${email}`);
           // Don't reveal if user exists or not for security
-          return res.status(200).json({ 
-            message: "If an account with this email exists, you will receive a password reset link." 
+          return res.status(200).json({
+            message: "If an account with this email exists, you will receive a password reset link."
           });
         } else {
           console.error(`❌ Firebase error:`, firebaseError);
-          return res.status(500).json({ 
-            message: "Error processing password reset request. Please try again later." 
+          return res.status(500).json({
+            message: "Error processing password reset request. Please try again later."
           });
         }
       }
 
     } catch (error) {
       console.error("Error in Firebase forgot password:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
@@ -173,11 +173,11 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Get Firebase Admin instance
       const firebaseApp = initializeFirebaseAdmin();
-      
+
       if (!firebaseApp) {
         console.error('Firebase Admin not initialized');
-        return res.status(500).json({ 
-          message: "Password reset service unavailable. Please try again later." 
+        return res.status(500).json({
+          message: "Password reset service unavailable. Please try again later."
         });
       }
 
@@ -185,7 +185,7 @@ export function registerFirebaseRoutes(app: Express) {
         // Get auth instance using modular SDK
         const { getAuth } = await import('firebase-admin/auth');
         const auth = getAuth(firebaseApp);
-        
+
         // Verify the reset code and get the email
         const email = await (auth as any).verifyPasswordResetCode(oobCode);
         console.log(`✅ Password reset code verified for: ${email}`);
@@ -197,12 +197,12 @@ export function registerFirebaseRoutes(app: Express) {
         // Update the password hash in our Neon database for consistency
         const userRecord = await auth.getUserByEmail(email);
         const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
-        
+
         if (neonUser) {
           // Hash the new password and update in Neon DB
           const bcrypt = require('bcryptjs');
           const hashedPassword = await bcrypt.hash(newPassword, 12);
-          
+
           // Update using raw query since password might not be in schema
           const { pool } = await import('./db');
           if (pool) {
@@ -214,28 +214,28 @@ export function registerFirebaseRoutes(app: Express) {
           }
         }
 
-        return res.status(200).json({ 
-          message: "Password reset successfully. You can now log in with your new password." 
+        return res.status(200).json({
+          message: "Password reset successfully. You can now log in with your new password."
         });
 
       } catch (firebaseError: any) {
         console.error(`❌ Firebase password reset error:`, firebaseError);
-        
+
         if (firebaseError.code === 'auth/invalid-action-code') {
           return res.status(400).json({ message: "Invalid or expired reset code" });
         } else if (firebaseError.code === 'auth/weak-password') {
           return res.status(400).json({ message: "Password is too weak. Please choose a stronger password." });
         } else {
-          return res.status(500).json({ 
-            message: "Error resetting password. Please try again later." 
+          return res.status(500).json({
+            message: "Error resetting password. Please try again later."
           });
         }
       }
 
     } catch (error) {
       console.error("Error in Firebase reset password:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
@@ -255,8 +255,8 @@ export function registerFirebaseRoutes(app: Express) {
         // Check if user already exists
         const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
         if (existingUser) {
-          return res.json({ 
-            success: true, 
+          return res.json({
+            success: true,
             user: {
               id: existingUser.id,
               username: existingUser.username,
@@ -276,8 +276,8 @@ export function registerFirebaseRoutes(app: Express) {
           role: role || 'applicant'
         });
 
-        return res.json({ 
-          success: true, 
+        return res.json({
+          success: true,
           user: {
             id: user.id,
             username: user.username,
@@ -290,14 +290,14 @@ export function registerFirebaseRoutes(app: Express) {
       // For sign-in (not registration), only sync if user already exists
       const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
       if (!existingUser) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'User not found',
           message: 'This account is not registered with Local Cooks. Please create an account first.'
         });
       }
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         user: {
           id: existingUser.id,
           username: existingUser.username,
@@ -307,8 +307,8 @@ export function registerFirebaseRoutes(app: Express) {
       });
     } catch (error) {
       console.error('Error syncing Firebase user:', error);
-      res.status(500).json({ 
-        error: 'Failed to sync user', 
+      res.status(500).json({
+        error: 'Failed to sync user',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }
@@ -319,7 +319,7 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       // req.neonUser is now populated by middleware with Neon user data
       // req.firebaseUser contains Firebase auth data
-      
+
       res.json({
         neonUser: {
           id: req.neonUser!.id,
@@ -348,10 +348,10 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Get user from database by Firebase UID
       const user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
-      
+
       if (!user) {
         // Do NOT auto-create for sign-in - return 404 to indicate user needs to register
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'User not found',
           message: 'This account is not registered with Local Cooks. Please create an account first.'
         });
@@ -380,7 +380,7 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Get user from database by Firebase UID
       const user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
-      
+
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -417,14 +417,14 @@ export function registerFirebaseRoutes(app: Express) {
 
       const application = await firebaseStorage.createApplication(applicationData);
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         application,
         message: 'Application submitted successfully'
       });
     } catch (error) {
       console.error('Error creating application:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to create application',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -436,7 +436,7 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       // Get applications for the authenticated Neon user
       const applications = await firebaseStorage.getApplicationsByUserId(req.neonUser!.id);
-      
+
       console.log(`📋 Retrieved ${applications.length} applications: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
 
       res.json(applications);
@@ -450,7 +450,7 @@ export function registerFirebaseRoutes(app: Express) {
   app.get('/api/firebase/admin/applications', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
       const applications = await firebaseStorage.getAllApplications();
-      
+
       console.log(`👑 Admin ${req.firebaseUser!.uid} requested all applications`);
 
       res.json(applications);
@@ -465,7 +465,7 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       // This demonstrates the translation pattern:
       // Firebase UID → Neon User ID → Data from multiple tables
-      
+
       const userId = req.neonUser!.id; // Neon user ID
       const firebaseUid = req.firebaseUser!.uid; // Firebase UID
 
@@ -535,30 +535,204 @@ export function registerFirebaseRoutes(app: Express) {
     });
   });
 
-  // 🔥 Admin Promo Email Endpoint (Firebase Auth + Admin Role)
+  // 🔥 Admin Flexible Email Endpoint (Firebase Auth + Admin Role)
+  app.post('/api/admin/send-company-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      console.log(`🔥 POST /api/admin/send-company-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+
+      const {
+        emailType = 'general', // 'promotional', 'general', 'announcement', 'newsletter'
+        emailMode,
+        recipients,
+        promoCode, // Optional for non-promotional emails
+        promoCodeLabel,
+        message,
+        customMessage,
+        greeting,
+        subject,
+        previewText,
+        header,
+        footer,
+        orderButton,
+        usageSteps,
+        emailContainer,
+        dividers,
+        promoCodeStyling,
+        promoStyle,
+        sections,
+        customDesign
+      } = req.body;
+
+      // Validate required fields
+      const messageContent = customMessage || message;
+      if (!messageContent || messageContent.length < 10) {
+        console.log('🔥 Company email request - Invalid message:', {
+          customMessage: customMessage?.substring(0, 50),
+          message: message?.substring(0, 50),
+          messageLength: messageContent?.length
+        });
+        return res.status(400).json({ error: 'Message content is required (minimum 10 characters)' });
+      }
+
+      // For promotional emails, require promo code
+      if (emailType === 'promotional' && !promoCode) {
+        console.log('🔥 Company email request - Missing promo code for promotional email');
+        return res.status(400).json({ error: 'Promo code is required for promotional emails' });
+      }
+
+      // Parse recipients
+      let targetEmails: string[] = [];
+      if (emailMode === 'all') {
+        // Get all user emails from database
+        try {
+          const result = await pool.query('SELECT email FROM users WHERE email IS NOT NULL AND email != \'\'');
+          targetEmails = result.rows.map(row => row.email);
+        } catch (error) {
+          console.error('🔥 Error fetching user emails:', error);
+          return res.status(500).json({ error: 'Failed to fetch user emails' });
+        }
+      } else if (emailMode === 'custom' && recipients) {
+        const customEmails = recipients.split(',').map((email: string) => email.trim()).filter((email: string) => email.length > 0);
+        targetEmails = customEmails;
+      } else {
+        return res.status(400).json({ error: 'Invalid email mode or recipients' });
+      }
+
+      // Validate that we have at least one email
+      if (targetEmails.length === 0) {
+        console.log('🔥 Company email request - No valid email addresses provided');
+        return res.status(400).json({ error: 'At least one email address is required' });
+      }
+
+      console.log(`🔥 Admin ${req.neonUser?.username} sending ${emailType} email to ${targetEmails.length} recipient(s)`);
+
+      // Import the email functions
+      const { sendEmail, generateFlexibleEmail } = await import('./email');
+
+      // Send emails to all recipients
+      const results: Array<{ email: string; status: string; error?: string }> = [];
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (const targetEmail of targetEmails) {
+        try {
+          // Generate flexible email for each recipient
+          const emailContent = generateFlexibleEmail({
+            email: targetEmail,
+            emailType,
+            promoCode,
+            promoCodeLabel: promoCodeLabel || (emailType === 'promotional' ? '🎁 Special Offer Code For You' : undefined),
+            customMessage: messageContent,
+            greeting: greeting || 'Hello! 👋',
+            subject: subject || (emailType === 'promotional' ? `🎁 Special Offer: ${promoCode}` : 'Important Update from Local Cooks'),
+            previewText,
+            header: header || {
+              title: emailType === 'promotional' ? 'Special Offer Just For You!' : 'Local Cooks Community',
+              subtitle: emailType === 'promotional' ? 'Don\'t miss out on this exclusive deal' : 'Connecting local cooks with food lovers'
+            },
+            footer,
+            orderButton: emailType === 'promotional' ? (orderButton || {
+              text: '🌟 Start Shopping Now',
+              url: 'https://localcooks.ca'
+            }) : orderButton,
+            usageSteps: emailType === 'promotional' ? (usageSteps || {
+              enabled: true,
+              title: '🚀 How to use your offer:',
+              steps: [
+                `Visit our website: <a href="https://localcooks.ca" style="color: #1d4ed8;">https://localcooks.ca</a>`,
+                'Browse our amazing local cooks and their delicious offerings',
+                promoCode ? 'Apply your promo code during checkout' : 'Complete your order',
+                'Enjoy your special offer!'
+              ]
+            }) : usageSteps,
+            emailContainer: emailContainer || {
+              maxWidth: '600px',
+              backgroundColor: '#f1f5f9',
+              borderRadius: '12px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              opacity: '1'
+            },
+            dividers,
+            promoCodeStyling,
+            promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+            sections,
+            customDesign
+          });
+
+          // Send email
+          const emailSent = await sendEmail(emailContent, {
+            trackingId: `${emailType}_email_${targetEmail}_${Date.now()}`
+          });
+
+          if (emailSent) {
+            console.log(`🔥 ${emailType} email sent successfully to ${targetEmail}`);
+            results.push({ email: targetEmail, status: 'success' });
+            successCount++;
+          } else {
+            console.error(`🔥 Failed to send ${emailType} email to ${targetEmail}`);
+            results.push({ email: targetEmail, status: 'failed', error: 'Email sending failed' });
+            failureCount++;
+          }
+        } catch (error) {
+          console.error(`🔥 Error sending ${emailType} email to ${targetEmail}:`, error);
+          results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
+          failureCount++;
+        }
+      }
+
+      // Return results
+      if (successCount > 0) {
+        res.json({
+          success: true,
+          message: `${emailType} emails sent: ${successCount} successful, ${failureCount} failed`,
+          emailType,
+          results: results,
+          summary: {
+            total: targetEmails.length,
+            successful: successCount,
+            failed: failureCount
+          }
+        });
+      } else {
+        res.status(500).json({
+          error: 'All email sending failed',
+          message: `Failed to send ${emailType} emails to any recipients.`,
+          results: results
+        });
+      }
+    } catch (error) {
+      console.error('🔥 Error sending company email:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+    }
+  });
+
+  // 🔥 Admin Promo Email Endpoint (Firebase Auth + Admin Role) - Backward Compatibility
   app.post('/api/admin/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
       console.log(`🔥 POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
-      const { 
-        email, 
+      const {
+        email,
         customEmails,
         emailMode,
-        promoCode, 
-        customMessage, 
-        message, 
-        promoCodeLabel, 
-        greeting, 
-        recipientType, 
-        designSystem, 
-        isPremium, 
-        sections, 
-        orderButton, 
-        header, 
+        promoCode,
+        customMessage,
+        message,
+        promoCodeLabel,
+        greeting,
+        recipientType,
+        designSystem,
+        isPremium,
+        sections,
+        orderButton,
+        header,
         footer,
         usageSteps,
         emailContainer,
-        subject, 
+        subject,
         previewText,
         promoStyle,
         promoCodeStyling,
@@ -588,8 +762,8 @@ export function registerFirebaseRoutes(app: Express) {
       }
 
       if (!messageContent || messageContent.length < 10) {
-        console.log('Promo email request - Invalid message:', { 
-          customMessage: customMessage?.substring(0, 50), 
+        console.log('Promo email request - Invalid message:', {
+          customMessage: customMessage?.substring(0, 50),
           message: message?.substring(0, 50),
           messageContent: messageContent?.substring(0, 50)
         });
@@ -796,22 +970,22 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       console.log(`🔥 POST /api/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
-      const { 
-        email, 
-        promoCode, 
-        customMessage, 
-        message, 
-        promoCodeLabel, 
-        greeting, 
-        designSystem, 
-        isPremium, 
-        sections, 
-        orderButton, 
-        header, 
+      const {
+        email,
+        promoCode,
+        customMessage,
+        message,
+        promoCodeLabel,
+        greeting,
+        designSystem,
+        isPremium,
+        sections,
+        orderButton,
+        header,
         footer,
         usageSteps,
         emailContainer,
-        subject, 
+        subject,
         previewText,
         promoStyle,
         promoCodeStyling
@@ -933,154 +1107,154 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // 🔥 Preview Promo Email Endpoint (Firebase Auth + Admin Role)
-  app.post('/api/preview-promo-email', requireFirebaseAuthWithUser, requireAdmin, 
-  async (req: Request, res: Response) => {
-    try {
-      console.log(`🔥 POST /api/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+  app.post('/api/preview-promo-email', requireFirebaseAuthWithUser, requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        console.log(`🔥 POST /api/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
 
-      const { 
-        promoCode, 
-        customMessage, 
-        message, 
-        promoCodeLabel, 
-        greeting, 
-        designSystem, 
-        isPremium, 
-        sections, 
-        orderButton, 
-        header, 
-        footer,
-        usageSteps,
-        emailContainer,
-        subject, 
-        previewText,
-        promoStyle,
-        promoCodeStyling,
-        buttonText,
-        orderUrl
-      } = req.body;
+        const {
+          promoCode,
+          customMessage,
+          message,
+          promoCodeLabel,
+          greeting,
+          designSystem,
+          isPremium,
+          sections,
+          orderButton,
+          header,
+          footer,
+          usageSteps,
+          emailContainer,
+          subject,
+          previewText,
+          promoStyle,
+          promoCodeStyling,
+          buttonText,
+          orderUrl
+        } = req.body;
 
-      // Handle both customMessage and message fields
-      const messageContent = customMessage || message;
+        // Handle both customMessage and message fields
+        const messageContent = customMessage || message;
 
-      // Validate required fields for preview
-      if (!promoCode || !messageContent) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          message: 'Promo code and message are required for preview'
+        // Validate required fields for preview
+        if (!promoCode || !messageContent) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Promo code and message are required for preview'
+          });
+        }
+
+        console.log(`🔥 Admin ${req.neonUser?.username} previewing promo email`);
+
+        // Import the email functions
+        const { generatePromoCodeEmail } = await import('./email');
+
+        // Generate promo email content for preview with same mapping as send endpoint
+        const emailContent = generatePromoCodeEmail({
+          email: 'preview@example.com', // Dummy email for preview
+          promoCode: promoCode.trim(),
+          customMessage: messageContent.trim(),
+          message: messageContent.trim(), // Also pass as message for compatibility
+          greeting: greeting,
+          promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+          promoCodeStyling: promoCodeStyling,
+          designSystem: designSystem,
+          isPremium: isPremium || false,
+          sections: sections || [],
+          orderButton: orderButton || {
+            text: buttonText || 'Get Started',
+            url: orderUrl || 'https://localcooks.ca',
+            styling: {
+              backgroundColor: '#F51042',
+              color: '#ffffff',
+              fontSize: '16px',
+              fontWeight: '600',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              textAlign: 'center'
+            }
+          },
+          header: header || {
+            title: 'Local Cooks Header',
+            subtitle: 'Premium Quality Food Subheader',
+            styling: {
+              backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
+              titleColor: '#ffffff',
+              subtitleColor: '#ffffff',
+              titleFontSize: '32px',
+              subtitleFontSize: '18px',
+              padding: '24px',
+              borderRadius: '0px',
+              textAlign: 'center'
+            }
+          },
+          footer: footer || {
+            mainText: 'Thank you for being part of the Local Cooks community!',
+            contactText: 'Questions? Contact us at support@localcooks.com',
+            copyrightText: '© 2024 Local Cooks. All rights reserved.',
+            showContact: true,
+            showCopyright: true,
+            styling: {
+              backgroundColor: '#f8fafc',
+              textColor: '#64748b',
+              linkColor: '#F51042',
+              fontSize: '14px',
+              padding: '24px 32px',
+              textAlign: 'center',
+              borderColor: '#e2e8f0'
+            }
+          },
+          usageSteps: usageSteps || {
+            title: '🚀 How to use your promo code:',
+            steps: [
+              `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
+              'Browse our amazing local cooks and their delicious offerings',
+              'Apply your promo code during checkout',
+              'Enjoy your special offer!'
+            ],
+            enabled: true,
+            styling: {
+              backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+              borderColor: '#93c5fd',
+              titleColor: '#1d4ed8',
+              textColor: '#1e40af',
+              linkColor: '#1d4ed8',
+              padding: '20px',
+              borderRadius: '8px'
+            }
+          },
+          emailContainer: emailContainer || {
+            maxWidth: '600px',
+            backgroundColor: '#f1f5f9',
+            borderRadius: '12px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
+          },
+          dividers: {
+            enabled: true,
+            style: 'solid',
+            color: '#e2e8f0',
+            thickness: '1px',
+            margin: '24px 0',
+            opacity: '1'
+          },
+          subject: subject,
+          previewText: previewText,
+          promoCodeLabel: promoCodeLabel
+        });
+
+        // Return the HTML content directly for preview
+        res.setHeader('Content-Type', 'text/html');
+        return res.status(200).send(emailContent.html || '<p>No HTML content generated</p>');
+
+      } catch (error) {
+        console.error('🔥 Error generating promo email preview:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          message: 'An error occurred while generating email preview'
         });
       }
-
-      console.log(`🔥 Admin ${req.neonUser?.username} previewing promo email`);
-
-      // Import the email functions
-      const { generatePromoCodeEmail } = await import('./email');
-
-      // Generate promo email content for preview with same mapping as send endpoint
-      const emailContent = generatePromoCodeEmail({
-        email: 'preview@example.com', // Dummy email for preview
-        promoCode: promoCode.trim(),
-        customMessage: messageContent.trim(),
-        message: messageContent.trim(), // Also pass as message for compatibility
-        greeting: greeting,
-        promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
-        promoCodeStyling: promoCodeStyling,
-        designSystem: designSystem,
-        isPremium: isPremium || false,
-        sections: sections || [],
-        orderButton: orderButton || {
-          text: buttonText || 'Get Started',
-          url: orderUrl || 'https://localcooks.ca',
-          styling: {
-            backgroundColor: '#F51042',
-            color: '#ffffff',
-            fontSize: '16px',
-            fontWeight: '600',
-            padding: '12px 24px',
-            borderRadius: '8px',
-            textAlign: 'center'
-          }
-        },
-        header: header || {
-          title: 'Local Cooks Header',
-          subtitle: 'Premium Quality Food Subheader',
-          styling: {
-            backgroundColor: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)',
-            titleColor: '#ffffff',
-            subtitleColor: '#ffffff',
-            titleFontSize: '32px',
-            subtitleFontSize: '18px',
-            padding: '24px',
-            borderRadius: '0px',
-            textAlign: 'center'
-          }
-        },
-        footer: footer || {
-          mainText: 'Thank you for being part of the Local Cooks community!',
-          contactText: 'Questions? Contact us at support@localcooks.com',
-          copyrightText: '© 2024 Local Cooks. All rights reserved.',
-          showContact: true,
-          showCopyright: true,
-          styling: {
-            backgroundColor: '#f8fafc',
-            textColor: '#64748b',
-            linkColor: '#F51042',
-            fontSize: '14px',
-            padding: '24px 32px',
-            textAlign: 'center',
-            borderColor: '#e2e8f0'
-          }
-        },
-        usageSteps: usageSteps || {
-          title: '🚀 How to use your promo code:',
-          steps: [
-            `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
-            'Browse our amazing local cooks and their delicious offerings',
-            'Apply your promo code during checkout',
-            'Enjoy your special offer!'
-          ],
-          enabled: true,
-          styling: {
-            backgroundColor: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-            borderColor: '#93c5fd',
-            titleColor: '#1d4ed8',
-            textColor: '#1e40af',
-            linkColor: '#1d4ed8',
-            padding: '20px',
-            borderRadius: '8px'
-          }
-        },
-        emailContainer: emailContainer || {
-          maxWidth: '600px',
-          backgroundColor: '#f1f5f9',
-          borderRadius: '12px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.08)'
-        },
-        dividers: {
-          enabled: true,
-          style: 'solid',
-          color: '#e2e8f0',
-          thickness: '1px',
-          margin: '24px 0',
-          opacity: '1'
-        },
-        subject: subject,
-        previewText: previewText,
-        promoCodeLabel: promoCodeLabel
-      });
-
-      // Return the HTML content directly for preview
-      res.setHeader('Content-Type', 'text/html');
-      return res.status(200).send(emailContent.html || '<p>No HTML content generated</p>');
-
-    } catch (error) {
-      console.error('🔥 Error generating promo email preview:', error);
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: 'An error occurred while generating email preview'
-      });
-    }
-  });
+    });
 
   console.log('🔥 Firebase authentication routes registered successfully');
   console.log('✨ Session-free architecture active - JWT tokens only');

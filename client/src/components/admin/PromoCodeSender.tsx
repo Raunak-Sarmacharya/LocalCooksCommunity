@@ -97,6 +97,7 @@ interface EmailContent {
   sections: { [key: string]: EmailSection }; // Changed from array to object to match EmailDesignStudio
   promoCode?: string;
   promoCodeLabel?: string;
+  includePromoCode?: boolean; // Toggle for promo code section
   message?: string; // Add message property
   customMessage?: string;
   greeting?: string;
@@ -307,6 +308,7 @@ const PromoCodeSender: React.FC = () => {
       sections: {},
       promoCode: 'WELCOME20',
       promoCodeLabel: '🎁 Special Offer Code',
+      includePromoCode: true, // Toggle for promo code section
       customMessage: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
       greeting: 'Hello! 👋',
       email: '',
@@ -442,7 +444,8 @@ const PromoCodeSender: React.FC = () => {
     }
 
     // Validate required fields before sending
-    if (!emailDesign.content.promoCode || emailDesign.content.promoCode.length < 3) {
+    // Only validate promo code if it's included
+    if (emailDesign.content.includePromoCode && (!emailDesign.content.promoCode || emailDesign.content.promoCode.length < 3)) {
       toast({
         title: "Invalid Offer Code",
         description: "Offer code must be at least 3 characters long",
@@ -471,7 +474,7 @@ const PromoCodeSender: React.FC = () => {
         credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
           email: emailDesign.content.email,
-          promoCode: emailDesign.content.promoCode,
+          promoCode: emailDesign.content.includePromoCode ? emailDesign.content.promoCode : '',
           customMessage: emailDesign.content.customMessage,
           greeting: emailDesign.content.greeting,
           recipientType: emailDesign.content.recipientType,
@@ -505,6 +508,7 @@ const PromoCodeSender: React.FC = () => {
             ...prev.content,
             email: '',
             promoCode: '',
+            includePromoCode: true,
             customMessage: '',
             greeting: 'Hello! 👋'
           }
