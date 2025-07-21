@@ -1783,7 +1783,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                 promoCodeLabel: checked ? currentDesign.content.promoCodeLabel : ''
                               });
                             }}
-                            className="h-4 w-4"
+                            className="h-4 w-4 flex-shrink-0"
+                            style={{ minWidth: '16px', minHeight: '16px', maxWidth: '16px', maxHeight: '16px' }}
                           />
                           <span className={`text-xs ${currentDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
                             ON
