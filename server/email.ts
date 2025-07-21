@@ -1431,6 +1431,7 @@ export const generatePromoCodeEmail = (
       type: string;
       content: any;
       styling: any;
+
     }> | { [key: string]: any }; // Support both array and object formats
     orderButton?: {
       text: string;
@@ -1548,6 +1549,8 @@ export const generatePromoCodeEmail = (
     
     return null;
   };
+
+
 
   const getPromoStyling = (colorTheme: string, borderStyle: string) => {
     const themes = {
@@ -2204,14 +2207,15 @@ Visit: ${getPromoUrl()}
       
       ${generateDivider()}
       
-      <div style="text-align: center; margin: 32px 0;">
-        <div class="promo-label" style="margin-bottom: 12px;">${userData.promoCodeLabel || 'Use promo code:'}</div>
-        <div class="promo-code-box">
-          <div class="promo-code">${userData.promoCode}</div>
+      ${userData.promoCode ? `
+        <div style="text-align: center; margin: 32px 0;">
+          <div class="promo-label" style="margin-bottom: 12px;">${userData.promoCodeLabel || 'Use promo code:'}</div>
+          <div class="promo-code-box">
+            <div class="promo-code">${userData.promoCode}</div>
+          </div>
         </div>
-      </div>
-      
-      ${generateDivider()}
+        ${generateDivider()}
+      ` : ''}
 
       <!-- Usage Steps Section (Always Show Unless Explicitly Disabled) -->
       ${userData.usageSteps?.enabled !== false ? generateUsageStepsSection() : ''}

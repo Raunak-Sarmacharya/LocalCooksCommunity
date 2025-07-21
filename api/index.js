@@ -8874,6 +8874,198 @@ app.post('/api/admin/test-email', async (req, res) => {
   }
 });
 
+// Admin endpoint to send flexible company emails (promotional or general)
+app.post('/api/admin/send-company-email', async (req, res) => {
+  // Check if user is authenticated via session
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
+  const userId = parseInt(rawUserId);
+
+  console.log(`POST /api/admin/send-company-email - User ID: ${userId}`);
+
+  if (!userId) {
+    console.log('Company email request - User not authenticated');
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    // Check if user is admin
+    const userResult = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0 || userResult.rows[0].role !== 'admin') {
+      console.log(`Company email request - User ${userId} is not admin`);
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const {
+      emailType = 'general', // 'promotional', 'general', 'announcement', 'newsletter'
+      emailMode,
+      recipients,
+      promoCode, // Optional for non-promotional emails
+      promoCodeLabel, 
+      message, 
+      customMessage, 
+      greeting,
+      subject,
+      previewText,
+      header,
+      footer,
+      orderButton,
+      usageSteps,
+      emailContainer,
+      dividers,
+      promoCodeStyling,
+      promoStyle,
+      sections,
+      customDesign
+    } = req.body;
+
+    // Validate required fields
+    const messageContent = customMessage || message;
+    if (!messageContent || messageContent.length < 10) {
+      console.log('Company email request - Invalid message:', { 
+        customMessage: customMessage?.substring(0, 50), 
+        message: message?.substring(0, 50),
+        messageLength: messageContent?.length 
+      });
+      return res.status(400).json({ error: 'Message content is required (minimum 10 characters)' });
+    }
+
+    // For promotional emails, require promo code
+    if (emailType === 'promotional' && !promoCode) {
+      console.log('Company email request - Missing promo code for promotional email');
+      return res.status(400).json({ error: 'Promo code is required for promotional emails' });
+    }
+
+    // Parse recipients
+    let targetEmails = [];
+    if (emailMode === 'all') {
+      // Get all user emails from database
+      try {
+        const result = await pool.query('SELECT email FROM users WHERE email IS NOT NULL AND email != \'\'');
+        targetEmails = result.rows.map(row => row.email);
+      } catch (error) {
+        console.error('Error fetching user emails:', error);
+        return res.status(500).json({ error: 'Failed to fetch user emails' });
+      }
+    } else if (emailMode === 'custom' && recipients) {
+      const customEmails = recipients.split(',').map(email => email.trim()).filter(email => email.length > 0);
+      targetEmails = customEmails;
+    } else {
+      return res.status(400).json({ error: 'Invalid email mode or recipients' });
+    }
+
+    // Validate that we have at least one email
+    if (targetEmails.length === 0) {
+      console.log('Company email request - No valid email addresses provided');
+      return res.status(400).json({ error: 'At least one email address is required' });
+    }
+
+    console.log('Company email request - Validation passed, generating email');
+    console.log(`Company email request - Sending to ${targetEmails.length} recipient(s)`);
+
+    // Import the email functions
+    const { sendEmail, generateFlexibleEmail } = await import('../server/email.js');
+
+    // Send emails to all recipients
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const targetEmail of targetEmails) {
+      try {
+        // Generate flexible email for each recipient
+        const emailContent = generateFlexibleEmail({
+          email: targetEmail,
+          emailType,
+          promoCode,
+          promoCodeLabel: promoCodeLabel || (emailType === 'promotional' ? '🎁 Special Offer Code For You' : undefined),
+          customMessage: messageContent,
+          greeting: greeting || 'Hello! 👋',
+          subject: subject || (emailType === 'promotional' ? `🎁 Special Offer: ${promoCode}` : 'Important Update from Local Cooks'),
+          previewText,
+          header: header || {
+            title: emailType === 'promotional' ? 'Special Offer Just For You!' : 'Local Cooks Community',
+            subtitle: emailType === 'promotional' ? 'Don\'t miss out on this exclusive deal' : 'Connecting local cooks with food lovers'
+          },
+          footer,
+          orderButton: emailType === 'promotional' ? (orderButton || {
+            text: '🌟 Start Shopping Now',
+            url: 'https://localcooks.ca'
+          }) : orderButton,
+          usageSteps: emailType === 'promotional' ? (usageSteps || {
+            enabled: true,
+            title: '🚀 How to use your offer:',
+            steps: [
+              `Visit our website: <a href="https://localcooks.ca" style="color: #1d4ed8;">https://localcooks.ca</a>`,
+              'Browse our amazing local cooks and their delicious offerings',
+              promoCode ? 'Apply your promo code during checkout' : 'Complete your order',
+              'Enjoy your special offer!'
+            ]
+          }) : usageSteps,
+          emailContainer: emailContainer || {
+            maxWidth: '600px',
+            backgroundColor: '#f1f5f9',
+            borderRadius: '12px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+            opacity: '1'
+          },
+          dividers,
+          promoCodeStyling,
+          promoStyle: promoStyle || { colorTheme: 'green', borderStyle: 'dashed' },
+          sections,
+          customDesign
+        });
+
+        // Send email
+        const emailSent = await sendEmail(emailContent, {
+          trackingId: `${emailType}_email_${targetEmail}_${Date.now()}`
+        });
+
+        if (emailSent) {
+          console.log(`${emailType} email sent successfully to ${targetEmail}`);
+          results.push({ email: targetEmail, status: 'success' });
+          successCount++;
+        } else {
+          console.error(`Failed to send ${emailType} email to ${targetEmail}`);
+          results.push({ email: targetEmail, status: 'failed', error: 'Email sending failed' });
+          failureCount++;
+        }
+      } catch (error) {
+        console.error(`Error sending ${emailType} email to ${targetEmail}:`, error);
+        results.push({ email: targetEmail, status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
+        failureCount++;
+      }
+    }
+
+    // Return results
+    if (successCount > 0) {
+      res.json({ 
+        success: true, 
+        message: `${emailType} emails sent: ${successCount} successful, ${failureCount} failed`,
+        emailType,
+        results: results,
+        summary: {
+          total: targetEmails.length,
+          successful: successCount,
+          failed: failureCount
+        }
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'All email sending failed',
+        message: `Failed to send ${emailType} emails to any recipients.`,
+        results: results
+      });
+    }
+  } catch (error) {
+    console.error('Error sending company email:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
+});
+
+// Legacy promo email endpoint for backward compatibility
 app.post('/api/admin/send-promo-email', async (req, res) => {
   // Check if user is authenticated via session
   const rawUserId = req.session.userId || req.headers['x-user-id'];
