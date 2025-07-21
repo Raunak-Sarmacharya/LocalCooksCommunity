@@ -9109,10 +9109,18 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
     }
 
     // Validate required fields
-    if (emailList.length === 0 || !promoCode || !messageContent) {
+    if (emailList.length === 0 || !messageContent) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Recipients, promo code, and message are required'
+        message: 'Recipients and message are required'
+      });
+    }
+
+    // Validate promo code if provided
+    if (promoCode && promoCode.length > 0 && promoCode.length < 3) {
+      return res.status(400).json({
+        error: 'Invalid promo code',
+        message: 'Promo code must be at least 3 characters long if provided'
       });
     }
 
@@ -9357,10 +9365,18 @@ app.post('/api/preview-promo-email', async (req, res) => {
     const messageContent = customMessage || message;
 
     // Validate required fields for preview
-    if (!promoCode || !messageContent) {
+    if (!messageContent) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Promo code and message are required for preview'
+        message: 'Message is required for preview'
+      });
+    }
+
+    // Validate promo code if provided
+    if (promoCode && promoCode.length > 0 && promoCode.length < 3) {
+      return res.status(400).json({
+        error: 'Invalid promo code',
+        message: 'Promo code must be at least 3 characters long if provided'
       });
     }
 

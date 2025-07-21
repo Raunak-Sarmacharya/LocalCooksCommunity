@@ -1,4 +1,5 @@
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
 import React, { useCallback, useState } from 'react';
@@ -97,7 +98,8 @@ interface EmailContent {
   sections: { [key: string]: EmailSection }; // Changed from array to object to match EmailDesignStudio
   promoCode?: string;
   promoCodeLabel?: string;
-  includePromoCode?: boolean; // Toggle for promo code section
+  includePromoSection?: boolean; // Toggle for promo code section
+
   message?: string; // Add message property
   customMessage?: string;
   greeting?: string;
@@ -308,7 +310,7 @@ const PromoCodeSender: React.FC = () => {
       sections: {},
       promoCode: 'WELCOME20',
       promoCodeLabel: '🎁 Special Offer Code',
-      includePromoCode: true, // Toggle for promo code section
+      includePromoSection: true, // Toggle for promo code section
       customMessage: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
       greeting: 'Hello! 👋',
       email: '',
@@ -443,12 +445,11 @@ const PromoCodeSender: React.FC = () => {
       return;
     }
 
-    // Validate required fields before sending
-    // Only validate promo code if it's included
-    if (emailDesign.content.includePromoCode && (!emailDesign.content.promoCode || emailDesign.content.promoCode.length < 3)) {
+    // Validate promo code only if promo section is enabled
+    if (emailDesign.content.includePromoSection && (!emailDesign.content.promoCode || emailDesign.content.promoCode.length < 3)) {
       toast({
         title: "Invalid Offer Code",
-        description: "Offer code must be at least 3 characters long",
+        description: "Offer code is required and must be at least 3 characters long when promo section is enabled",
         variant: "destructive"
       });
       return;
@@ -474,7 +475,7 @@ const PromoCodeSender: React.FC = () => {
         credentials: 'include', // Essential for session-based admin auth
         body: JSON.stringify({
           email: emailDesign.content.email,
-          promoCode: emailDesign.content.includePromoCode ? emailDesign.content.promoCode : '',
+          promoCode: emailDesign.content.includePromoSection ? (emailDesign.content.promoCode || '') : '',
           customMessage: emailDesign.content.customMessage,
           greeting: emailDesign.content.greeting,
           recipientType: emailDesign.content.recipientType,
@@ -508,7 +509,7 @@ const PromoCodeSender: React.FC = () => {
             ...prev.content,
             email: '',
             promoCode: '',
-            includePromoCode: true,
+            includePromoSection: true,
             customMessage: '',
             greeting: 'Hello! 👋'
           }
@@ -550,7 +551,44 @@ const PromoCodeSender: React.FC = () => {
         </CardHeader>
       </Card>
 
-
+      {/* Email Type Toggle */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Email Type</CardTitle>
+              <CardDescription>
+                {emailDesign.content.includePromoSection 
+                  ? "Promotional email with promo code section" 
+                  : "General company email without promo code"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span className={`text-sm ${!emailDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
+                General Email
+              </span>
+              <Switch
+                checked={emailDesign.content.includePromoSection || false}
+                onCheckedChange={(checked) => {
+                  setEmailDesign(prev => ({
+                    ...prev,
+                    content: {
+                      ...prev.content,
+                      includePromoSection: checked,
+                      // Reset promo code when disabling
+                      promoCode: checked ? prev.content.promoCode : '',
+                      promoCodeLabel: checked ? prev.content.promoCodeLabel : ''
+                    }
+                  }));
+                }}
+              />
+              <span className={`text-sm ${emailDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
+                Promotional Email
+              </span>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Email Design Studio */}
       <EmailDesignStudio

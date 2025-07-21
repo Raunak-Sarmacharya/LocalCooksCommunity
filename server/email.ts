@@ -27,7 +27,7 @@ const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
 // Create a transporter with enhanced configuration for Vercel serverless
 const createTransporter = (config: EmailConfig) => {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-  
+
   return nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -62,11 +62,11 @@ const getEmailConfig = (): EmailConfig => {
   // Force direct SMTP if environment variable is set (bypasses MailChannels)
   const forceDirectSMTP = process.env.FORCE_DIRECT_SMTP === 'true';
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-  
+
   if (forceDirectSMTP && isProduction) {
     console.log('🔄 Forcing direct SMTP connection (bypassing MailChannels)');
   }
-  
+
   return {
     host: process.env.EMAIL_HOST || 'smtp.hostinger.com',
     port: parseInt(process.env.EMAIL_PORT || '587'),
@@ -82,21 +82,21 @@ const getEmailConfig = (): EmailConfig => {
 export const sendEmail = async (content: EmailContent, options?: { trackingId?: string }): Promise<boolean> => {
   const startTime = Date.now();
   let transporter: any = null;
-  
+
   try {
     // Check for duplicate emails if trackingId is provided
     if (options?.trackingId) {
       const lastSent = recentEmails.get(options.trackingId);
       const now = Date.now();
-      
+
       if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
         console.log(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
         return true; // Return true to avoid breaking existing code
       }
-      
+
       // Update the tracking map with current timestamp
       recentEmails.set(options.trackingId, now);
-      
+
       // Cleanup old entries every 10 minutes to prevent memory leaks
       if (recentEmails.size > 100) {
         const cutoffTime = now - DUPLICATE_PREVENTION_WINDOW;
@@ -105,7 +105,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         });
       }
     }
-    
+
     // Check if email configuration is available
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
@@ -114,7 +114,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
 
     const config = getEmailConfig();
     const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-    
+
     console.log('📧 COMPREHENSIVE EMAIL SEND INITIATED:', {
       to: content.to,
       subject: content.subject,
@@ -150,7 +150,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
           const timeout = setTimeout(() => {
             reject(new Error('SMTP verification timeout'));
           }, 10000); // 10s timeout
-          
+
           transporter.verify((error: any, success: any) => {
             clearTimeout(timeout);
             if (error) {
@@ -228,11 +228,11 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
     let info;
     let attempts = 0;
     const maxAttempts = 2; // Allow one retry for better reliability
-    
+
     while (attempts < maxAttempts) {
       attempts++;
       console.log(`📧 Attempt ${attempts}/${maxAttempts} sending email to ${content.to}`);
-      
+
       try {
         const emailPromise = transporter.sendMail(mailOptions);
         const timeoutPromise = new Promise((_, reject) => {
@@ -240,17 +240,17 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
         });
 
         info = await Promise.race([emailPromise, timeoutPromise]);
-        
+
         // If successful, break out of retry loop
         console.log(`✅ Email sent successfully on attempt ${attempts}`);
         break;
       } catch (attemptError) {
         console.warn(`⚠️ Attempt ${attempts} failed for ${content.to}:`, attemptError instanceof Error ? attemptError.message : String(attemptError));
-        
+
         if (attempts >= maxAttempts) {
           throw attemptError; // Re-throw on final attempt
         }
-        
+
         // Wait briefly before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
       }
@@ -285,7 +285,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       trackingId: options?.trackingId,
       isProduction: process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
     });
-    
+
     if (error instanceof Error) {
       console.error('Error details:', error.message);
       if ('code' in error) {
@@ -315,7 +315,7 @@ const getDomainFromEmail = (email: string): string => {
   if (process.env.EMAIL_DOMAIN) {
     return process.env.EMAIL_DOMAIN;
   }
-  
+
   // Extract from EMAIL_FROM if available
   if (process.env.EMAIL_FROM) {
     const match = process.env.EMAIL_FROM.match(/<([^>]+)>/);
@@ -327,13 +327,13 @@ const getDomainFromEmail = (email: string): string => {
       }
     }
   }
-  
+
   // Extract from EMAIL_USER as fallback
   const match = email.match(/@(.+)$/);
   if (match) {
     return match[1];
   }
-  
+
   // Default fallback
   return 'localcooks.community';
 };
@@ -666,7 +666,7 @@ export const generateFullVerificationEmail = (
   }
 ): EmailContent => {
   const { username, password } = generateVendorCredentials(userData.fullName, userData.phone);
-  
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -766,7 +766,7 @@ export const generateApplicationWithDocumentsEmail = (
   }
 ): EmailContent => {
   const supportEmail = getSupportEmail();
-  
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -816,7 +816,7 @@ export const generateApplicationWithoutDocumentsEmail = (
   }
 ): EmailContent => {
   const supportEmail = getSupportEmail();
-  
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -977,9 +977,9 @@ Visit: ${getWebsiteUrl()}
 export async function sendApplicationReceivedEmail(applicationData: any) {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
-  
+
   const subject = `Application Received - ${organizationName}`;
-  
+
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -1041,22 +1041,22 @@ If you have any questions, contact us at ${supportEmail}
 © ${new Date().getFullYear()} ${organizationName}
 `;
 
-     return sendEmail({
-     to: applicationData.email,
-     subject,
-     html: htmlContent,
-     text: textContent
-   });
- }
+  return sendEmail({
+    to: applicationData.email,
+    subject,
+    html: htmlContent,
+    text: textContent
+  });
+}
 // Removed unused sendApplicationApprovedEmail function - was causing duplicate emails
 // Full verification emails are now handled by generateFullVerificationEmail only
- 
- export async function sendApplicationRejectedEmail(applicationData: any, reason?: string) {
+
+export async function sendApplicationRejectedEmail(applicationData: any, reason?: string) {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
-  
+
   const subject = `Application Update - ${organizationName}`;
-  
+
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -1125,13 +1125,13 @@ If you have any questions, contact us at ${supportEmail}
 © ${new Date().getFullYear()} ${organizationName}
 `;
 
-     return sendEmail({
-     to: applicationData.email,
-     subject,
-     html: htmlContent,
-     text: textContent
-   });
- }
+  return sendEmail({
+    to: applicationData.email,
+    subject,
+    html: htmlContent,
+    text: textContent
+  });
+}
 
 // Generate password reset email with unified design
 export const generatePasswordResetEmail = (
@@ -1306,16 +1306,16 @@ const getWebsiteUrl = (): string => {
   if (process.env.BASE_URL) {
     return process.env.BASE_URL;
   }
-  
+
   // For production, use the actual domain
   const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
   if (domain && domain !== 'auto-sync.local') {
     return `https://${domain}`;
   }
-  
+
   // Fallback for development
-  return process.env.NODE_ENV === 'production' 
-    ? 'https://local-cooks-community.vercel.app' 
+  return process.env.NODE_ENV === 'production'
+    ? 'https://local-cooks-community.vercel.app'
     : 'http://localhost:5000';
 };
 
@@ -1526,27 +1526,27 @@ export const generatePromoCodeEmail = (
   const organizationName = getOrganizationName();
   const supportEmail = getSupportEmail();
   const defaultPromoStyle = userData.promoStyle || { colorTheme: 'green', borderStyle: 'dashed' };
-  
+
   // Handle both customMessage and message fields consistently
   const messageContent = userData.customMessage || userData.message || '';
-  
+
   // Helper function to safely access sections data with improved logic
   const getSectionData = (sectionId: string) => {
     if (!userData.sections) return null;
-    
+
     // Handle array format
     if (Array.isArray(userData.sections)) {
       return userData.sections.find(s => s.id === sectionId || s.id === `${sectionId}-section`) || null;
     }
-    
+
     // Handle object format - check multiple possible keys
     if (typeof userData.sections === 'object') {
-      return userData.sections[sectionId] || 
-             userData.sections[`${sectionId}-section`] || 
-             userData.sections[sectionId.replace('-section', '')] || 
-             null;
+      return userData.sections[sectionId] ||
+        userData.sections[`${sectionId}-section`] ||
+        userData.sections[sectionId.replace('-section', '')] ||
+        null;
     }
-    
+
     return null;
   };
 
@@ -1621,14 +1621,14 @@ export const generatePromoCodeEmail = (
     };
 
     const theme = themes[colorTheme as keyof typeof themes] || themes.green;
-    
+
     // Apply border style variations
     if (borderStyle === 'solid') {
       theme.border = `2px solid ${theme.borderColor}`;
     } else if (borderStyle === 'dotted') {
       theme.border = `2px dotted ${theme.borderColor}`;
     }
-    
+
     return theme;
   };
 
@@ -1676,7 +1676,7 @@ export const generatePromoCodeEmail = (
         case 'image':
           if (section.content) {
             const hasOverlay = section.overlay?.enabled && section.overlay?.text;
-            
+
             if (hasOverlay) {
               return `
                 <div style="text-align: ${section.styling?.textAlign || 'center'}; margin: 20px 0;">
@@ -1750,11 +1750,11 @@ export const generatePromoCodeEmail = (
       }
     }).join('');
   };
-  
+
   // Generate divider HTML based on settings
   const generateDivider = () => {
     if (!userData.dividers?.enabled) return '';
-    
+
     return `
       <div style="margin: ${userData.dividers.margin || '24px 0'};">
         <hr style="
@@ -1766,7 +1766,7 @@ export const generatePromoCodeEmail = (
       </div>
     `;
   };
-  
+
   // Improved greeting resolution with multiple fallback sources
   const getGreeting = () => {
     // Try to get greeting from sections first
@@ -1774,11 +1774,11 @@ export const generatePromoCodeEmail = (
     if (greetingSection?.content || greetingSection?.text) {
       return greetingSection.content || greetingSection.text;
     }
-    
+
     // Fallback to direct greeting parameter
     return userData.greeting || 'Hello! 👋';
   };
-  
+
   // Improved message resolution
   const getCustomMessage = () => {
     // Try to get message from sections first
@@ -1786,14 +1786,15 @@ export const generatePromoCodeEmail = (
     if (messageSection?.content || messageSection?.text) {
       return messageSection.content || messageSection.text;
     }
-    
+
     // Fallback to direct message parameters
     return messageContent || 'Thank you for being a valued customer!';
   };
-  
+
   // Generate plain text version for better deliverability
   const generatePlainText = (email: string, promoCode: string, customMessage: string) => {
-    return `Special Promo Code from ${organizationName}
+    if (promoCode) {
+      return `Special Promo Code from ${organizationName}
 
 ${customMessage}
 
@@ -1811,11 +1812,24 @@ ${organizationName} Team
 
 Visit: ${getPromoUrl()}
 `;
+    } else {
+      return `Message from ${organizationName}
+
+${customMessage}
+
+Questions? Contact us at ${supportEmail}
+
+Best regards,
+${organizationName} Team
+
+Visit: ${getPromoUrl()}
+`;
+    }
   };
 
-  const subject = userData.subject || `🎁 Exclusive Promo Code: ${userData.promoCode}`;
+  const subject = userData.subject || (userData.promoCode ? `🎁 Exclusive Promo Code: ${userData.promoCode}` : 'Important Update from Local Cooks Community');
   const styling = getPromoStyling(defaultPromoStyle.colorTheme, defaultPromoStyle.borderStyle);
-  
+
   // Resolve final content values
   const finalGreeting = getGreeting();
   const finalMessage = getCustomMessage();
@@ -1828,13 +1842,13 @@ Visit: ${getPromoUrl()}
       'Apply your promo code during checkout',
       'Enjoy your special offer!'
     ];
-    
-    const steps = userData.usageSteps?.steps && userData.usageSteps.steps.length > 0 
-      ? userData.usageSteps.steps 
+
+    const steps = userData.usageSteps?.steps && userData.usageSteps.steps.length > 0
+      ? userData.usageSteps.steps
       : defaultSteps;
-    
+
     const stepsHtml = steps.map(step => `<li>${step}</li>`).join('');
-    
+
     return `
       <div class="usage-steps">
         <h4>${userData.usageSteps?.title || '🚀 How to use your promo code:'}</h4>
@@ -1871,11 +1885,10 @@ Visit: ${getPromoUrl()}
     
     .promo-code-box {
       background: ${userData.promoCodeStyling?.backgroundColor || '#f3f4f6'};
-      border: ${
-        userData.promoCodeStyling?.borderWidth || userData.promoCodeStyling?.borderStyle || userData.promoCodeStyling?.borderColor 
-          ? `${userData.promoCodeStyling?.borderWidth || '2px'} ${userData.promoCodeStyling?.borderStyle || 'dashed'} ${userData.promoCodeStyling?.borderColor || '#9ca3af'}`
-          : '2px dashed #9ca3af'
-      };
+      border: ${userData.promoCodeStyling?.borderWidth || userData.promoCodeStyling?.borderStyle || userData.promoCodeStyling?.borderColor
+      ? `${userData.promoCodeStyling?.borderWidth || '2px'} ${userData.promoCodeStyling?.borderStyle || 'dashed'} ${userData.promoCodeStyling?.borderColor || '#9ca3af'}`
+      : '2px dashed #9ca3af'
+    };
       border-radius: ${userData.promoCodeStyling?.borderRadius || '12px'};
       padding: ${userData.promoCodeStyling?.padding || '20px'};
       box-shadow: ${userData.promoCodeStyling?.boxShadow || '0 2px 4px rgba(0,0,0,0.1)'};
@@ -1945,24 +1958,21 @@ Visit: ${getPromoUrl()}
       ${userData.header?.styling?.backgroundPosition ? `background-position: ${userData.header.styling.backgroundPosition};` : ''}
       ${userData.header?.styling?.backgroundRepeat ? `background-repeat: ${userData.header.styling.backgroundRepeat};` : ''}
       ${userData.header?.styling?.backgroundAttachment ? `background-attachment: ${userData.header.styling.backgroundAttachment};` : ''}
-      border-radius: ${
-        userData.header?.styling?.borderRadius || 
-        (userData.emailContainer?.borderRadius ? 
-          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-          '12px 12px 0 0')
-      };
-      -webkit-border-radius: ${
-        userData.header?.styling?.borderRadius || 
-        (userData.emailContainer?.borderRadius ? 
-          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-          '12px 12px 0 0')
-      };
-      -moz-border-radius: ${
-        userData.header?.styling?.borderRadius || 
-        (userData.emailContainer?.borderRadius ? 
-          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-          '12px 12px 0 0')
-      };
+      border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    };
+      -webkit-border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    };
+      -moz-border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    };
       border-top-left-radius: ${userData.emailContainer?.borderRadius || '12px'};
       border-top-right-radius: ${userData.emailContainer?.borderRadius || '12px'};
       border-bottom-left-radius: 0;
@@ -2089,30 +2099,25 @@ Visit: ${getPromoUrl()}
       
       .custom-header {
         padding: 20px 16px !important;
-        border-radius: ${
-          userData.header?.styling?.borderRadius || 
-          (userData.emailContainer?.borderRadius ? 
-            `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-            '12px 12px 0 0')
-        } !important;
-        -webkit-border-radius: ${
-          userData.header?.styling?.borderRadius || 
-          (userData.emailContainer?.borderRadius ? 
-            `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-            '12px 12px 0 0')
-        } !important;
-        -moz-border-radius: ${
-          userData.header?.styling?.borderRadius || 
-          (userData.emailContainer?.borderRadius ? 
-            `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-            '12px 12px 0 0')
-        } !important;
-        border-top-left-radius: ${
-          userData.emailContainer?.borderRadius || '12px'
-        } !important;
-        border-top-right-radius: ${
-          userData.emailContainer?.borderRadius || '12px'
-        } !important;
+        border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    } !important;
+        -webkit-border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    } !important;
+        -moz-border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    } !important;
+        border-top-left-radius: ${userData.emailContainer?.borderRadius || '12px'
+    } !important;
+        border-top-right-radius: ${userData.emailContainer?.borderRadius || '12px'
+    } !important;
         overflow: hidden !important;
       }
       
@@ -2160,24 +2165,21 @@ Visit: ${getPromoUrl()}
   <div class="email-container">
     <div class="custom-header" style="
       background: ${userData.header?.styling?.backgroundColor || 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)'};
-      border-radius: ${
-        userData.header?.styling?.borderRadius || 
-        (userData.emailContainer?.borderRadius ? 
-          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-          '12px 12px 0 0')
-      };
-      -webkit-border-radius: ${
-        userData.header?.styling?.borderRadius || 
-        (userData.emailContainer?.borderRadius ? 
-          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-          '12px 12px 0 0')
-      };
-      -moz-border-radius: ${
-        userData.header?.styling?.borderRadius || 
-        (userData.emailContainer?.borderRadius ? 
-          `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` : 
-          '12px 12px 0 0')
-      };
+      border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    };
+      -webkit-border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    };
+      -moz-border-radius: ${userData.header?.styling?.borderRadius ||
+    (userData.emailContainer?.borderRadius ?
+      `${userData.emailContainer.borderRadius} ${userData.emailContainer.borderRadius} 0 0` :
+      '12px 12px 0 0')
+    };
       border-top-left-radius: ${userData.emailContainer?.borderRadius || '12px'};
       border-top-right-radius: ${userData.emailContainer?.borderRadius || '12px'};
       border-bottom-left-radius: 0;
@@ -2221,10 +2223,10 @@ Visit: ${getPromoUrl()}
       ${userData.usageSteps?.enabled !== false ? generateUsageStepsSection() : ''}
 
       <!-- Custom Sections (if any) -->
-      ${userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0) ? 
-        generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections)) + generateDivider() 
-        : ''
-      }
+      ${userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0) ?
+      generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections)) + generateDivider()
+      : ''
+    }
       
       <!-- Call to Action Button -->
       <div class="cta-container">
@@ -2240,10 +2242,10 @@ Visit: ${getPromoUrl()}
       
       ${userData.footer?.showContact !== false && userData.footer?.contactText ? `
         <p class="footer-text">
-          ${userData.footer.contactText.includes('@') ? 
-            userData.footer.contactText.replace(/(\S+@\S+)/g, '<a href="mailto:$1" class="footer-link">$1</a>') :
-            userData.footer.contactText
-          }
+          ${userData.footer.contactText.includes('@') ?
+        userData.footer.contactText.replace(/(\S+@\S+)/g, '<a href="mailto:$1" class="footer-link">$1</a>') :
+        userData.footer.contactText
+      }
         </p>
       ` : userData.footer?.showContact !== false ? `
         <p class="footer-text">Questions? Contact us at <a href="mailto:${supportEmail}" class="footer-link">${supportEmail}</a>.</p>
