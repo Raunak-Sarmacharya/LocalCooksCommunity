@@ -1,5 +1,4 @@
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
 import React, { useCallback, useState } from 'react';
@@ -551,44 +550,7 @@ const PromoCodeSender: React.FC = () => {
         </CardHeader>
       </Card>
 
-      {/* Email Type Toggle */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg">Email Type</CardTitle>
-              <CardDescription>
-                {emailDesign.content.includePromoSection 
-                  ? "Promotional email with promo code section" 
-                  : "General company email without promo code"}
-              </CardDescription>
-            </div>
-            <div className="flex items-center space-x-3">
-              <span className={`text-sm ${!emailDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
-                General Email
-              </span>
-              <Switch
-                checked={emailDesign.content.includePromoSection || false}
-                onCheckedChange={(checked) => {
-                  setEmailDesign(prev => ({
-                    ...prev,
-                    content: {
-                      ...prev.content,
-                      includePromoSection: checked,
-                      // Reset promo code when disabling
-                      promoCode: checked ? prev.content.promoCode : '',
-                      promoCodeLabel: checked ? prev.content.promoCodeLabel : ''
-                    }
-                  }));
-                }}
-              />
-              <span className={`text-sm ${emailDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
-                Promotional Email
-              </span>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+
 
       {/* Email Design Studio */}
       <EmailDesignStudio

@@ -142,6 +142,7 @@ interface EmailContent {
   sections: { [key: string]: EmailSection };
   promoCode?: string;
   promoCodeLabel?: string;
+  includePromoSection?: boolean;
   message?: string;
   greeting?: string;
   buttonText?: string;
@@ -378,6 +379,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         },
         promoCode: 'WELCOME20',
         promoCodeLabel: '🎁 Special Offer Code',
+        includePromoSection: true,
         message: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
         buttonText: '🌟 Get Started',
         orderUrl: 'https://localcooks.ca',
@@ -801,11 +803,11 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       }
     }
 
-    // Validate required fields before sending
-    if (!currentDesign.content.promoCode) {
+    // Validate promo code only if promo section is enabled
+    if (currentDesign.content.includePromoSection && !currentDesign.content.promoCode) {
       toast({
         title: "Promo Code Required",
-        description: "Please enter a promo code",
+        description: "Please enter a promo code when promo section is enabled",
         variant: "destructive"
       });
       return;
@@ -889,7 +891,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           customEmails: currentDesign.content.customEmails,
           emailMode: currentDesign.content.emailMode,
           email: currentDesign.content.email, // Keep for backward compatibility
-          promoCode: currentDesign.content.promoCode,
+          promoCode: currentDesign.content.includePromoSection ? currentDesign.content.promoCode : '',
           promoCodeLabel: currentDesign.content.promoCodeLabel,
           customMessage: messageContent, // Use customMessage (preferred by backend)
           message: messageContent, // Also send as message for compatibility
@@ -1755,17 +1757,55 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                       </div>
                     </div>
 
-                    <div>
-                      <Label className="text-xs font-medium text-gray-600 mb-1 block">Promo Code</Label>
-                      <Input
-                        placeholder="SAVE20"
-                        value={currentDesign.content.promoCode || ''}
-                        onChange={(e) => updateElementContent('promo-code', e.target.value)}
-                        className="h-8 text-sm font-mono"
-                      />
+                    {/* Promo Section Toggle */}
+                    <div className="bg-gray-50 rounded-lg p-3 border">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium text-gray-900">Include Promo Code Section</Label>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {currentDesign.content.includePromoSection 
+                              ? "Promotional email with promo code" 
+                              : "General company email without promo code"}
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-xs ${!currentDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
+                            OFF
+                          </span>
+                          <Switch
+                            checked={currentDesign.content.includePromoSection || false}
+                            onCheckedChange={(checked) => {
+                              handleContentUpdate({
+                                includePromoSection: checked,
+                                // Reset promo code when disabling
+                                promoCode: checked ? currentDesign.content.promoCode : '',
+                                promoCodeLabel: checked ? currentDesign.content.promoCodeLabel : ''
+                              });
+                            }}
+                          />
+                          <span className={`text-xs ${currentDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
+                            ON
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* Show promo code fields only when toggle is ON */}
+                    {currentDesign.content.includePromoSection && (
+                      <div>
+                        <Label className="text-xs font-medium text-gray-600 mb-1 block">Promo Code</Label>
+                        <Input
+                          placeholder="SAVE20"
+                          value={currentDesign.content.promoCode || ''}
+                          onChange={(e) => updateElementContent('promo-code', e.target.value)}
+                          className="h-8 text-sm font-mono"
+                        />
+                      </div>
+                    )}
+
+                    {/* Show styling options only when toggle is ON */}
+                    {currentDesign.content.includePromoSection && (
+                      <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs font-medium text-gray-600 mb-1 block">Background</Label>
                         <div className="grid grid-cols-3 gap-1">
@@ -1957,6 +1997,8 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                         </SelectContent>
                       </Select>
                     </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
