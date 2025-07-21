@@ -9135,8 +9135,8 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
       }
     }
 
-    // Validate promo code (basic validation - alphanumeric, length check)
-    if (promoCode.length < 3 || promoCode.length > 50) {
+    // Validate promo code only if provided (basic validation - alphanumeric, length check)
+    if (promoCode && promoCode.length > 0 && (promoCode.length < 3 || promoCode.length > 50)) {
       return res.status(400).json({
         error: 'Invalid promo code',
         message: 'Promo code must be between 3 and 50 characters'
