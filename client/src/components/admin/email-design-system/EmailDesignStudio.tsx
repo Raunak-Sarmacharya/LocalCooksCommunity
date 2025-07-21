@@ -1783,7 +1783,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                                 promoCodeLabel: checked ? currentDesign.content.promoCodeLabel : ''
                               });
                             }}
-                            className="h-5 w-5"
+                            className="h-4 w-4"
                           />
                           <span className={`text-xs ${currentDesign.content.includePromoSection ? 'font-medium text-gray-900' : 'text-gray-500'}`}>
                             ON
