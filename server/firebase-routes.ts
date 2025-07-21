@@ -1,11 +1,12 @@
 import { insertApplicationSchema } from '@shared/schema';
 import { Express, Request, Response } from 'express';
 import { fromZodError } from 'zod-validation-error';
+import { pool } from './db';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-  requireAdmin,
-  requireFirebaseAuthWithUser,
-  verifyFirebaseAuth
+    requireAdmin,
+    requireFirebaseAuthWithUser,
+    verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
@@ -756,9 +757,10 @@ export function registerFirebaseRoutes(app: Express) {
         }
       }
 
-      if (!promoCode) {
-        console.log('Promo email request - Missing promo code');
-        return res.status(400).json({ error: 'Promo code is required' });
+      // Promo code is now optional - if empty, it will be a general company email
+      if (promoCode && promoCode.length > 0 && promoCode.length < 3) {
+        console.log('🔥 Promo email request - Invalid promo code length');
+        return res.status(400).json({ error: 'Promo code must be at least 3 characters long if provided' });
       }
 
       if (!messageContent || messageContent.length < 10) {

@@ -1828,9 +1828,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'At least one email address is required' });
       }
 
-      if (!promoCode) {
-        console.log('Promo email request - Missing promo code');
-        return res.status(400).json({ error: 'Promo code is required' });
+      // Promo code is now optional - if empty, it will be a general company email
+      if (promoCode && promoCode.length > 0 && promoCode.length < 3) {
+        console.log('Promo email request - Invalid promo code length');
+        return res.status(400).json({ error: 'Promo code must be at least 3 characters long if provided' });
       }
 
       if (!messageContent || messageContent.length < 10) {
