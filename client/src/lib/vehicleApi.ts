@@ -94,7 +94,7 @@ export class VehicleAPIClient {
   /**
    * Get all available vehicle makes from local backend (cached)
    */
-  static async getMakes(): Promise<VehicleMake[]> {
+  static async getMakes(signal?: AbortSignal): Promise<VehicleMake[]> {
     // Check cache first
     const cachedMakes = vehicleCache.getMakes();
     if (cachedMakes) {
@@ -102,7 +102,7 @@ export class VehicleAPIClient {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/makes`);
+      const response = await fetch(`${API_BASE_URL}/makes`, { signal });
       if (!response.ok) {
         throw new Error(`Failed to fetch vehicle makes: ${response.status}`);
       }
@@ -114,6 +114,9 @@ export class VehicleAPIClient {
       vehicleCache.setMakes(makes);
       return makes;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error; // Re-throw abort errors
+      }
       console.error('Error fetching vehicle makes:', error);
       throw error;
     }
@@ -122,7 +125,7 @@ export class VehicleAPIClient {
   /**
    * Get models for a specific make from local backend (cached)
    */
-  static async getModelsForMake(makeId: number): Promise<VehicleModel[]> {
+  static async getModelsForMake(makeId: number, signal?: AbortSignal): Promise<VehicleModel[]> {
     // Check cache first
     const cachedModels = vehicleCache.getModels(makeId);
     if (cachedModels) {
@@ -130,7 +133,7 @@ export class VehicleAPIClient {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/models/${makeId}`);
+      const response = await fetch(`${API_BASE_URL}/models/${makeId}`, { signal });
       if (!response.ok) {
         throw new Error(`Failed to fetch vehicle models: ${response.status}`);
       }
@@ -142,6 +145,9 @@ export class VehicleAPIClient {
       vehicleCache.setModels(makeId, models);
       return models;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error; // Re-throw abort errors
+      }
       console.error('Error fetching vehicle models:', error);
       throw error;
     }
@@ -150,7 +156,7 @@ export class VehicleAPIClient {
   /**
    * Get available years for a specific make from local backend (cached)
    */
-  static async getYears(makeId: number): Promise<number[]> {
+  static async getYears(makeId: number, signal?: AbortSignal): Promise<number[]> {
     // Check cache first
     const cachedYears = vehicleCache.getYears(makeId);
     if (cachedYears) {
@@ -158,7 +164,7 @@ export class VehicleAPIClient {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/years/${makeId}`);
+      const response = await fetch(`${API_BASE_URL}/years/${makeId}`, { signal });
       if (!response.ok) {
         throw new Error(`Failed to fetch vehicle years: ${response.status}`);
       }
@@ -170,6 +176,9 @@ export class VehicleAPIClient {
       vehicleCache.setYears(makeId, years);
       return years;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error; // Re-throw abort errors
+      }
       console.error('Error fetching vehicle years:', error);
       throw error;
     }
@@ -178,7 +187,7 @@ export class VehicleAPIClient {
   /**
    * Get makes for a specific vehicle type from local backend (cached)
    */
-  static async getMakesForVehicleType(vehicleType: string): Promise<VehicleMake[]> {
+  static async getMakesForVehicleType(vehicleType: string, signal?: AbortSignal): Promise<VehicleMake[]> {
     // Check cache first
     const cachedMakes = vehicleCache.getMakesForType(vehicleType);
     if (cachedMakes) {
@@ -186,7 +195,7 @@ export class VehicleAPIClient {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/makes/type/${encodeURIComponent(vehicleType)}`);
+      const response = await fetch(`${API_BASE_URL}/makes/type/${encodeURIComponent(vehicleType)}`, { signal });
       if (!response.ok) {
         throw new Error(`Failed to fetch makes for vehicle type: ${response.status}`);
       }
@@ -198,6 +207,9 @@ export class VehicleAPIClient {
       vehicleCache.setMakesForType(vehicleType, makes);
       return makes;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error; // Re-throw abort errors
+      }
       console.error('Error fetching makes for vehicle type:', error);
       throw error;
     }
