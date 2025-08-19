@@ -48,49 +48,57 @@ export default function DeliveryPartnerVehicleForm() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [yearsLoading, setYearsLoading] = useState(false);
 
+  // Cache status state
+  const [cacheStatus, setCacheStatus] = useState({
+    isPreloaded: false,
+    makesCount: 0,
+    modelsCount: 0,
+    lastFetch: 0,
+    cacheAge: 0
+  });
+
   // Refs for request cancellation
   const makesRequestRef = useRef<AbortController | null>(null);
   const modelsRequestRef = useRef<AbortController | null>(null);
   const yearsRequestRef = useRef<AbortController | null>(null);
 
-  // Preload vehicle data on component mount
+  // Update cache status periodically
   useEffect(() => {
-    // Simple initialization - no need for complex preloading
-    console.log('Vehicle form initialized');
+    const updateCacheStatus = () => {
+      setCacheStatus(VehicleAPIClient.getCacheStatus());
+    };
+
+    updateCacheStatus();
+    const interval = setInterval(updateCacheStatus, 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  // Load vehicle makes on component mount (only once)
+  // Preload vehicle data on component mount (only once)
   useEffect(() => {
-    const loadMakes = async () => {
-      // Cancel any existing request
-      if (makesRequestRef.current) {
-        makesRequestRef.current.abort();
-      }
-      
-      const controller = new AbortController();
-      makesRequestRef.current = controller;
-      
+    const preloadData = async () => {
       try {
-        setMakesLoading(true);
-        setError(null);
-        const makesData = await VehicleAPIClient.getMakes(controller.signal);
+        console.log('🚗 Preloading vehicle data on form mount...');
+        await VehicleAPIClient.preloadVehicleData();
         
-        // Check if request was cancelled
-        if (controller.signal.aborted) return;
-        
-        setMakes(makesData);
+        // After preload, load makes for the current vehicle type
+        if (formData.vehicleType) {
+          await loadMakesForType(formData.vehicleType);
+        } else {
+          await loadMakes();
+        }
       } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
-        console.error('Failed to load vehicle makes:', error);
-        setError('Failed to load vehicle makes. Please try again.');
-      } finally {
-        if (!controller.signal.aborted) {
-          setMakesLoading(false);
+        console.error('Failed to preload vehicle data:', error);
+        // Fallback to loading makes directly
+        if (formData.vehicleType) {
+          await loadMakesForType(formData.vehicleType);
+        } else {
+          await loadMakes();
         }
       }
     };
 
-    loadMakes();
+    preloadData();
 
     // Cleanup function
     return () => {
@@ -100,63 +108,116 @@ export default function DeliveryPartnerVehicleForm() {
     };
   }, []);
 
+  // Manual preload trigger for debugging/testing
+  const handleManualPreload = async () => {
+    try {
+      setMakesLoading(true);
+      setError(null);
+      console.log('🚗 Manual preload triggered...');
+      await VehicleAPIClient.preloadVehicleData();
+      
+      // After preload, load makes for the current vehicle type
+      if (formData.vehicleType) {
+        await loadMakesForType(formData.vehicleType);
+      } else {
+        await loadMakes();
+      }
+    } catch (error) {
+      console.error('Manual preload failed:', error);
+      setError('Failed to preload vehicle data. Please try again.');
+    } finally {
+      setMakesLoading(false);
+    }
+  };
+
+  // Load vehicle makes on component mount (only once)
+  const loadMakes = async () => {
+    // Cancel any existing request
+    if (makesRequestRef.current) {
+      makesRequestRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    makesRequestRef.current = controller;
+    
+    try {
+      setMakesLoading(true);
+      setError(null);
+      const makesData = await VehicleAPIClient.getMakes(controller.signal);
+      
+      // Check if request was cancelled
+      if (controller.signal.aborted) return;
+      
+      setMakes(makesData);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
+      console.error('Failed to load vehicle makes:', error);
+      setError('Failed to load vehicle makes. Please try again.');
+    } finally {
+      if (!controller.signal.aborted) {
+        setMakesLoading(false);
+      }
+    }
+  };
+
+  // Load makes filtered by vehicle type when vehicle type changes
+  const loadMakesForType = async (vehicleType: string) => {
+    // Cancel any existing request
+    if (makesRequestRef.current) {
+      makesRequestRef.current.abort();
+    }
+    
+    const controller = new AbortController();
+    makesRequestRef.current = controller;
+    
+    try {
+      setMakesLoading(true);
+      setError(null);
+      const makesData = await VehicleAPIClient.getMakesForVehicleType(vehicleType, controller.signal);
+      
+      // Check if request was cancelled
+      if (controller.signal.aborted) return;
+      
+      setMakes(makesData);
+      // Reset make selection when vehicle type changes
+      setSelectedMakeId(null);
+      updateFormData({ 
+        vehicleMake: '', 
+        vehicleModel: '', 
+        vehicleYear: undefined 
+      });
+      setModels([]);
+      setYears([]);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
+      console.error('Failed to load makes for vehicle type:', error);
+      // Fallback to all makes if type-specific loading fails
+      try {
+        const fallbackController = new AbortController();
+        makesRequestRef.current = fallbackController;
+        
+        const allMakes = await VehicleAPIClient.getMakes(fallbackController.signal);
+        
+        if (fallbackController.signal.aborted) return;
+        
+        setMakes(allMakes);
+      } catch (fallbackError) {
+        if (fallbackError instanceof Error && fallbackError.name === 'AbortError') return;
+        console.error('Fallback to all makes also failed:', fallbackError);
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setMakesLoading(false);
+      }
+    }
+  };
+
   // Load makes filtered by vehicle type when vehicle type changes
   useEffect(() => {
     if (formData.vehicleType) {
-      const loadMakesForType = async () => {
-        // Cancel any existing request
-        if (makesRequestRef.current) {
-          makesRequestRef.current.abort();
-        }
-        
-        const controller = new AbortController();
-        makesRequestRef.current = controller;
-        
-        try {
-          setMakesLoading(true);
-          setError(null);
-          const makesData = await VehicleAPIClient.getMakesForVehicleType(formData.vehicleType!, controller.signal);
-          
-          // Check if request was cancelled
-          if (controller.signal.aborted) return;
-          
-          setMakes(makesData);
-          // Reset make selection when vehicle type changes
-          setSelectedMakeId(null);
-          updateFormData({ 
-            vehicleMake: '', 
-            vehicleModel: '', 
-            vehicleYear: undefined 
-          });
-          setModels([]);
-          setYears([]);
-        } catch (error) {
-          if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
-          console.error('Failed to load makes for vehicle type:', error);
-          // Fallback to all makes if type-specific loading fails
-          try {
-            const fallbackController = new AbortController();
-            makesRequestRef.current = fallbackController;
-            
-            const allMakes = await VehicleAPIClient.getMakes(fallbackController.signal);
-            
-            if (fallbackController.signal.aborted) return;
-            
-            setMakes(allMakes);
-          } catch (fallbackError) {
-            if (fallbackError instanceof Error && fallbackError.name === 'AbortError') return;
-            console.error('Fallback to all makes also failed:', fallbackError);
-          }
-        } finally {
-          if (!controller.signal.aborted) {
-            setMakesLoading(false);
-          }
-        }
-      };
-
-      loadMakesForType();
+      loadMakesForType(formData.vehicleType);
     }
-  }, [formData.vehicleType, updateFormData]);
+  }, [formData.vehicleType]);
 
   // Load years when make is selected (debounced to avoid rapid API calls)
   const debouncedMakeId = useDebounce(selectedMakeId, 300);
@@ -348,6 +409,44 @@ export default function DeliveryPartnerVehicleForm() {
       transition={{ duration: 0.3 }}
     >
       <div className="space-y-6">
+        {/* Vehicle Data Status and Manual Preload */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${cacheStatus.isPreloaded ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+              <span className="text-sm font-medium text-blue-800">
+                Vehicle Data Status
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleManualPreload}
+              disabled={makesLoading}
+              className="text-xs"
+            >
+              {makesLoading ? "Loading..." : "🔄 Refresh Data"}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs text-blue-600">
+              {cacheStatus.isPreloaded 
+                ? "Vehicle data is preloaded and cached for fast access."
+                : "Vehicle data is being loaded. This may take a moment on first visit."
+              }
+              {makesLoading && " Currently loading..."}
+            </p>
+            <div className="flex items-center space-x-2 text-xs">
+              <span className="text-blue-600">Makes: {cacheStatus.makesCount}</span>
+              <span className="text-blue-600">Models: {cacheStatus.modelsCount}</span>
+              <span className={`${cacheStatus.isPreloaded ? 'text-green-600' : 'text-yellow-600'}`}>
+                {cacheStatus.isPreloaded ? '✓ Cached' : '⏳ Loading...'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-sm text-red-700">{error}</p>
