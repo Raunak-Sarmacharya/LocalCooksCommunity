@@ -1,4 +1,4 @@
-import { applications, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
+import { applications, deliveryPartnerApplications, microlearningCompletions, users, videoProgress, type Application, type DeliveryPartnerApplication, type InsertApplication, type InsertDeliveryPartnerApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDeliveryPartnerApplicationStatus, type UpdateDeliveryPartnerDocuments, type UpdateDeliveryPartnerDocumentVerification, type UpdateDocumentVerification, type User } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { and, eq } from "drizzle-orm";
 import session from "express-session";
@@ -46,6 +46,17 @@ export interface IStorage {
   getMicrolearningCompletion(userId: number): Promise<any | undefined>;
   updateVideoProgress(progressData: any): Promise<void>;
   createMicrolearningCompletion(completionData: any): Promise<any>;
+
+  // Delivery Partner Application-related methods
+  getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]>;
+  getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined>;
+  getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]>;
+  createDeliveryPartnerApplication(application: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication>;
+  updateDeliveryPartnerApplicationStatus(update: UpdateDeliveryPartnerApplicationStatus): Promise<DeliveryPartnerApplication | undefined>;
+  updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined>;
+  updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDeliveryPartnerDocumentVerification): Promise<DeliveryPartnerApplication | undefined>;
+  updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined>;
+  updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined>;
 
   // Session store for authentication
   sessionStore: session.Store;
@@ -367,6 +378,139 @@ export class MemStorage implements IStorage {
   async createMicrolearningCompletion(completionData: any): Promise<any> {
     this.microlearningCompletions.set(completionData.userId, completionData);
     return completionData;
+  }
+
+  // Delivery Partner Application-related methods
+  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
+    return Array.from(this.applications.values()).filter(
+      (app): app is DeliveryPartnerApplication => app.type === 'delivery_partner'
+    );
+  }
+
+  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
+    return this.applications.get(id);
+  }
+
+  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
+    return Array.from(this.applications.values()).filter(
+      (application) => application.userId === userId && application.type === 'delivery_partner'
+    );
+  }
+
+  async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
+    const id = this.applicationCurrentId++;
+    const now = new Date();
+
+    // Create application with properly typed userId (null if not provided)
+    const application: DeliveryPartnerApplication = {
+      id,
+      userId: insertApplication.userId || null,
+      fullName: insertApplication.fullName,
+      email: insertApplication.email,
+      phone: insertApplication.phone,
+      type: 'delivery_partner',
+      status: "inReview",
+      
+      // Initialize document verification fields
+      foodSafetyLicenseUrl: insertApplication.foodSafetyLicenseUrl || null,
+      foodEstablishmentCertUrl: insertApplication.foodEstablishmentCertUrl || null,
+      foodSafetyLicenseStatus: "pending",
+      foodEstablishmentCertStatus: "pending",
+      documentsAdminFeedback: null,
+      documentsReviewedBy: null,
+      documentsReviewedAt: null,
+      
+      createdAt: now,
+    };
+
+    this.applications.set(id, application);
+    return application;
+  }
+
+  async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise<DeliveryPartnerApplication | undefined> {
+    const application = this.applications.get(update.id);
+
+    if (!application) {
+      return undefined;
+    }
+
+    // Clean up documents if application is being cancelled
+    if (update.status === "cancelled") {
+      // No specific document cleanup for delivery partner applications yet
+    }
+
+    const updatedApplication: DeliveryPartnerApplication = {
+      ...application,
+      status: update.status,
+    };
+
+    this.applications.set(update.id, updatedApplication);
+    return updatedApplication;
+  }
+
+  async updateDeliveryPartnerApplicationDocuments(update: UpdateApplicationDocuments): Promise<DeliveryPartnerApplication | undefined> {
+    const application = this.applications.get(update.id);
+
+    if (!application) {
+      return undefined;
+    }
+
+    const updatedApplication: DeliveryPartnerApplication = {
+      ...application,
+      ...update,
+      // Reset document status to pending when new documents are uploaded
+      ...(update.foodSafetyLicenseUrl && { foodSafetyLicenseStatus: "pending" }),
+      ...(update.foodEstablishmentCertUrl && { foodEstablishmentCertStatus: "pending" }),
+    };
+
+    this.applications.set(update.id, updatedApplication);
+    return updatedApplication;
+  }
+
+  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
+    const application = this.applications.get(update.id);
+
+    if (!application) {
+      return undefined;
+    }
+
+    const updatedApplication: DeliveryPartnerApplication = {
+      ...application,
+      ...update,
+      documentsReviewedAt: new Date(),
+    };
+
+    this.applications.set(update.id, updatedApplication);
+    return updatedApplication;
+  }
+
+  async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    
+    if (!user) {
+      return undefined;
+    }
+
+    const updatedUser: User = {
+      ...user,
+      isVerified,
+    };
+
+    this.users.set(userId, updatedUser);
+    return updatedUser;
+  }
+
+  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return undefined;
+    }
+    const updatedUser: User = {
+      ...user,
+      applicationType: applicationType,
+    };
+    this.users.set(userId, updatedUser);
+    return updatedUser;
   }
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {
@@ -724,6 +868,107 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return inserted;
     }
+  }
+
+  // Delivery Partner Application-related methods
+  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
+    return await db.select().from(deliveryPartnerApplications);
+  }
+
+  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
+    const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
+    return application || undefined;
+  }
+
+  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
+    return await db.select().from(deliveryPartnerApplications).where(and(eq(deliveryPartnerApplications.userId, userId)));
+  }
+
+  async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
+    const now = new Date();
+
+    const [application] = await db
+      .insert(deliveryPartnerApplications)
+      .values({
+        ...insertApplication,
+        status: "inReview",
+        createdAt: now,
+      })
+      .returning();
+
+    return application;
+  }
+
+  async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise<DeliveryPartnerApplication | undefined> {
+    const { id, status } = update;
+
+    // Fetch the application before updating
+    const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
+
+    // Clean up documents if application is being cancelled
+    if (application && status === "cancelled") {
+      // No specific document cleanup for delivery partner applications yet
+    }
+
+    const [updatedApplication] = await db
+      .update(deliveryPartnerApplications)
+      .set({ status })
+      .where(eq(deliveryPartnerApplications.id, id))
+      .returning();
+
+    return updatedApplication || undefined;
+  }
+
+  async updateDeliveryPartnerApplicationDocuments(update: UpdateApplicationDocuments): Promise<DeliveryPartnerApplication | undefined> {
+    const { id, ...updateData } = update;
+
+    const [updatedApplication] = await db
+      .update(deliveryPartnerApplications)
+      .set({
+        ...updateData,
+        // Reset document status to pending when new documents are uploaded
+        ...(updateData.foodSafetyLicenseUrl && { foodSafetyLicenseStatus: "pending" }),
+        ...(updateData.foodEstablishmentCertUrl && { foodEstablishmentCertStatus: "pending" }),
+      })
+      .where(eq(deliveryPartnerApplications.id, id))
+      .returning();
+
+    return updatedApplication || undefined;
+  }
+
+  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
+    const { id, ...updateData } = update;
+
+    const [updatedApplication] = await db
+      .update(deliveryPartnerApplications)
+      .set({
+        ...updateData,
+        documentsReviewedAt: new Date(),
+      })
+      .where(eq(deliveryPartnerApplications.id, id))
+      .returning();
+
+    return updatedApplication || undefined;
+  }
+
+  async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ isVerified })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return updatedUser || undefined;
+  }
+
+  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ applicationType })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return updatedUser || undefined;
   }
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {

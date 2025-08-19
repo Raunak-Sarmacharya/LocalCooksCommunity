@@ -16,6 +16,14 @@ export default function CTASection() {
     }
   };
 
+  const handleDeliveryPartnerClick = () => {
+    if (!user) {
+      navigate(`/auth?redirect=/delivery-partner-apply`);
+    } else {
+      navigate('/delivery-partner-apply');
+    }
+  };
+
   const getPrimaryButtonText = () => {
     return getButtonText("Start an Application");
   };
@@ -36,6 +44,14 @@ export default function CTASection() {
     }
   };
 
+  const getDeliveryPartnerDescription = () => {
+    if (user?.role === "admin") {
+      return "Manage both chef and delivery partner applications.";
+    } else {
+      return "Or become a delivery partner and help bring delicious food to our community.";
+    }
+  };
+
   return (
     <section className="py-12 md:py-16 px-4 bg-light-gray">
       <div className="container mx-auto text-center">
@@ -44,7 +60,7 @@ export default function CTASection() {
           {getDescriptionText()}
         </p>
 
-        <div className="flex justify-center gap-4 flex-wrap">
+        <div className="flex justify-center gap-4 flex-wrap mb-6">
           <Button
             onClick={handlePrimaryClick}
             disabled={isLoading}
@@ -53,6 +69,22 @@ export default function CTASection() {
             {isLoading ? "Loading..." : getPrimaryButtonText()}
           </Button>
         </div>
+
+        {/* Delivery Partner CTA - Only show for non-admin users */}
+        {user?.role !== "admin" && (
+          <div className="mt-8">
+            <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
+              {getDeliveryPartnerDescription()}
+            </p>
+            <Button
+              onClick={handleDeliveryPartnerClick}
+              variant="outline"
+              className="border-2 border-primary text-primary hover:bg-primary hover:text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow transition-all duration-300"
+            >
+              Become a Delivery Partner
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

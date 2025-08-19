@@ -17,6 +17,12 @@ export const userRoleEnum = pgEnum('user_role', ['admin', 'applicant']);
 // Define an enum for document verification status
 export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
 
+// Define an enum for application types
+export const applicationTypeEnum = pgEnum('application_type', ['chef', 'delivery_partner']);
+
+// Define an enum for vehicle types (4-wheeled vehicles only)
+export const vehicleTypeEnum = pgEnum('vehicle_type', ['car', 'suv', 'truck', 'van']);
+
 // Define users table (for both admins and applicants)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -28,9 +34,10 @@ export const users = pgTable("users", {
   firebaseUid: text("firebase_uid").unique(),
   isVerified: boolean("is_verified").default(false).notNull(),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
+  applicationType: applicationTypeEnum("application_type"), // NEW: tracks whether user is chef or delivery partner
 });
 
-// Define the applications table
+// Define the applications table (for chefs)
 export const applications = pgTable("applications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
@@ -52,6 +59,47 @@ export const applications = pgTable("applications", {
   documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
   documentsReviewedAt: timestamp("documents_reviewed_at"),
   
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Define the delivery partner applications table (NEW)
+export const deliveryPartnerApplications = pgTable("delivery_partner_applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  address: text("address").notNull(),
+  city: text("city").notNull(),
+  province: text("province").notNull(),
+  postalCode: text("postal_code").notNull(),
+  
+  // Vehicle details
+  vehicleType: vehicleTypeEnum("vehicle_type").notNull(),
+  vehicleMake: text("vehicle_make").notNull(),
+  vehicleModel: text("vehicle_model").notNull(),
+  vehicleYear: integer("vehicle_year").notNull(),
+  licensePlate: text("license_plate").notNull(),
+  
+  // Document uploads
+  driversLicenseUrl: text("drivers_license_url"),
+  vehicleRegistrationUrl: text("vehicle_registration_url"),
+  insuranceUrl: text("insurance_url"),
+  backgroundCheckUrl: text("background_check_url"),
+  
+  // Document verification status
+  driversLicenseStatus: documentVerificationStatusEnum("drivers_license_status").default("pending"),
+  vehicleRegistrationStatus: documentVerificationStatusEnum("vehicle_registration_status").default("pending"),
+  insuranceStatus: documentVerificationStatusEnum("insurance_status").default("pending"),
+  backgroundCheckStatus: documentVerificationStatusEnum("background_check_status").default("pending"),
+  
+  // Admin fields
+  documentsAdminFeedback: text("documents_admin_feedback"),
+  documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
+  documentsReviewedAt: timestamp("documents_reviewed_at"),
+  
+  feedback: text("feedback"),
+  status: applicationStatusEnum("status").default("inReview").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -181,3 +229,74 @@ export type MicrolearningCompletion = typeof microlearningCompletions.$inferSele
 export type InsertMicrolearningCompletion = z.infer<typeof insertMicrolearningCompletionSchema>;
 export type VideoProgress = typeof videoProgress.$inferSelect;
 export type InsertVideoProgress = z.infer<typeof insertVideoProgressSchema>;
+
+// Delivery Partner Application Schemas and Types
+export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliveryPartnerApplications, {
+  fullName: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  phone: z.string().regex(/^\+?[0-9\s\(\)-]{10,15}$/, "Please enter a valid phone number"),
+  address: z.string().min(5, "Address must be at least 5 characters"),
+  city: z.string().min(2, "City must be at least 2 characters"),
+  province: z.string().min(2, "Province must be at least 2 characters"),
+  postalCode: z.string().regex(/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/, "Please enter a valid Canadian postal code"),
+  vehicleType: z.enum(["car", "suv", "truck", "van"]),
+  vehicleMake: z.string().min(1, "Vehicle make is required"),
+  vehicleModel: z.string().min(1, "Vehicle model is required"),
+  vehicleYear: z.number().min(1900).max(new Date().getFullYear() + 1, "Please enter a valid vehicle year"),
+  licensePlate: z.string().min(1, "License plate is required"),
+  userId: z.number().optional(),
+  // Document fields are optional during initial application submission
+  driversLicenseUrl: z.string().optional(),
+  vehicleRegistrationUrl: z.string().optional(),
+  insuranceUrl: z.string().optional(),
+  backgroundCheckUrl: z.string().optional(),
+}).omit({ 
+  id: true, 
+  status: true, 
+  createdAt: true,
+  documentsAdminFeedback: true,
+  documentsReviewedBy: true,
+  documentsReviewedAt: true,
+  // Document status fields are managed by admin
+  driversLicenseStatus: true,
+  vehicleRegistrationStatus: true,
+  insuranceStatus: true,
+  backgroundCheckStatus: true,
+});
+
+export const updateDeliveryPartnerApplicationStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["inReview", "approved", "rejected", "cancelled"]),
+});
+
+export const updateDeliveryPartnerDocumentsSchema = z.object({
+  id: z.number(),
+  driversLicenseUrl: z.string().optional(),
+  vehicleRegistrationUrl: z.string().optional(),
+  insuranceUrl: z.string().optional(),
+  backgroundCheckUrl: z.string().optional(),
+});
+
+export const updateDeliveryPartnerDocumentVerificationSchema = z.object({
+  id: z.number(),
+  driversLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  vehicleRegistrationStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  insuranceStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  backgroundCheckStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  documentsAdminFeedback: z.string().optional(),
+  documentsReviewedBy: z.number().optional(),
+});
+
+// Update user schema to include application type
+export const updateUserApplicationTypeSchema = z.object({
+  userId: z.number(),
+  applicationType: z.enum(["chef", "delivery_partner"]),
+});
+
+// Define delivery partner types
+export type DeliveryPartnerApplication = typeof deliveryPartnerApplications.$inferSelect;
+export type InsertDeliveryPartnerApplication = z.infer<typeof insertDeliveryPartnerApplicationSchema>;
+export type UpdateDeliveryPartnerApplicationStatus = z.infer<typeof updateDeliveryPartnerApplicationStatusSchema>;
+export type UpdateDeliveryPartnerDocuments = z.infer<typeof updateDeliveryPartnerDocumentsSchema>;
+export type UpdateDeliveryPartnerDocumentVerification = z.infer<typeof updateDeliveryPartnerDocumentVerificationSchema>;
+export type UpdateUserApplicationType = z.infer<typeof updateUserApplicationTypeSchema>;

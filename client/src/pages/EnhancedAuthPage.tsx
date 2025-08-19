@@ -1,6 +1,7 @@
 import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import RoleSelectionScreen from "@/components/auth/RoleSelectionScreen";
 import VerificationDebug from "@/components/auth/VerificationDebug";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -20,6 +21,7 @@ export default function EnhancedAuthPage() {
   const [userMeta, setUserMeta] = useState<any>(null);
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showRoleSelection, setShowRoleSelection] = useState(false);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
 
@@ -144,6 +146,14 @@ export default function EnhancedAuthPage() {
             // Show welcome screen if user is verified but hasn't seen welcome
             if (userData.is_verified && !userData.has_seen_welcome) {
               console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
+              
+              // Check if user needs to select a role first
+              if (!userData.application_type) {
+                console.log('🎯 ROLE SELECTION REQUIRED - User needs to choose role');
+                setShowRoleSelection(true);
+                return; // Don't proceed with redirect, let the render logic handle role selection
+              }
+              
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
@@ -246,6 +256,28 @@ export default function EnhancedAuthPage() {
     }
   };
 
+  // Handle role selection completion
+  const handleRoleSelected = async (role: 'chef' | 'delivery_partner') => {
+    try {
+      console.log(`🎯 ROLE SELECTED: ${role}`);
+      
+      // Update local user meta
+      if (userMeta) {
+        setUserMeta({
+          ...userMeta,
+          application_type: role
+        });
+      }
+      
+      // Show welcome screen after role selection
+      setShowRoleSelection(false);
+    } catch (error) {
+      console.error('❌ Error handling role selection:', error);
+      // Still proceed to welcome screen
+      setShowRoleSelection(false);
+    }
+  };
+
   // Redirect logic for authenticated users after login attempt
   useEffect(() => {
     if (redirectTimeoutRef.current) {
@@ -289,6 +321,11 @@ export default function EnhancedAuthPage() {
   // Show welcome screen if user is verified but hasn't seen welcome
   if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+  }
+
+  // Show role selection screen if user is verified but hasn't selected a role
+  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.application_type && showRoleSelection) {
+    return <RoleSelectionScreen onRoleSelected={handleRoleSelected} />;
   }
 
   // Show the main auth form
