@@ -3,7 +3,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { usePerformanceMonitor } from "@/hooks/use-performance-monitor";
 import VehicleAPIClient, { VehicleMake, VehicleModel } from "@/lib/vehicleApi";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,8 +15,6 @@ const VEHICLE_TYPES = [
   { value: "truck", label: "Truck" },
   { value: "van", label: "Van" }
 ];
-
-const CURRENT_YEAR = new Date().getFullYear();
 
 // Debounce hook for search inputs
 function useDebounce<T>(value: T, delay: number): T {
@@ -38,13 +35,11 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export default function DeliveryPartnerVehicleForm() {
   const { formData, updateFormData, goToNextStep, goToPreviousStep, canGoToNextStep } = useDeliveryPartnerForm();
-  const performanceMonitor = usePerformanceMonitor();
   
   // State for vehicle data from API
   const [makes, setMakes] = useState<VehicleMake[]>([]);
   const [models, setModels] = useState<VehicleModel[]>([]);
   const [years, setYears] = useState<number[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedMakeId, setSelectedMakeId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -60,21 +55,9 @@ export default function DeliveryPartnerVehicleForm() {
 
   // Preload vehicle data on component mount
   useEffect(() => {
-    const preloadData = async () => {
-      try {
-        performanceMonitor.startApiCall();
-        // Preload makes in the background
-        await VehicleAPIClient.preloadVehicleData();
-        performanceMonitor.endApiCall();
-        performanceMonitor.recordUserInteraction('Data preloaded');
-      } catch (error) {
-        console.error('Failed to preload vehicle data:', error);
-        performanceMonitor.endApiCall();
-      }
-    };
-
-    preloadData();
-  }, [performanceMonitor]);
+    // Simple initialization - no need for complex preloading
+    console.log('Vehicle form initialized');
+  }, []);
 
   // Load vehicle makes on component mount (only once)
   useEffect(() => {
@@ -90,20 +73,16 @@ export default function DeliveryPartnerVehicleForm() {
       try {
         setMakesLoading(true);
         setError(null);
-        performanceMonitor.startApiCall();
         const makesData = await VehicleAPIClient.getMakes(controller.signal);
         
         // Check if request was cancelled
         if (controller.signal.aborted) return;
         
-        performanceMonitor.endApiCall();
         setMakes(makesData);
-        performanceMonitor.recordUserInteraction('Makes loaded');
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
         console.error('Failed to load vehicle makes:', error);
         setError('Failed to load vehicle makes. Please try again.');
-        performanceMonitor.endApiCall();
       } finally {
         if (!controller.signal.aborted) {
           setMakesLoading(false);
@@ -119,7 +98,7 @@ export default function DeliveryPartnerVehicleForm() {
         makesRequestRef.current.abort();
       }
     };
-  }, [performanceMonitor]);
+  }, []);
 
   // Load makes filtered by vehicle type when vehicle type changes
   useEffect(() => {
@@ -136,13 +115,11 @@ export default function DeliveryPartnerVehicleForm() {
         try {
           setMakesLoading(true);
           setError(null);
-          performanceMonitor.startApiCall();
           const makesData = await VehicleAPIClient.getMakesForVehicleType(formData.vehicleType!, controller.signal);
           
           // Check if request was cancelled
           if (controller.signal.aborted) return;
           
-          performanceMonitor.endApiCall();
           setMakes(makesData);
           // Reset make selection when vehicle type changes
           setSelectedMakeId(null);
@@ -153,27 +130,22 @@ export default function DeliveryPartnerVehicleForm() {
           });
           setModels([]);
           setYears([]);
-          performanceMonitor.recordUserInteraction(`Makes filtered for ${formData.vehicleType}`);
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
           console.error('Failed to load makes for vehicle type:', error);
-          performanceMonitor.endApiCall();
           // Fallback to all makes if type-specific loading fails
           try {
             const fallbackController = new AbortController();
             makesRequestRef.current = fallbackController;
             
-            performanceMonitor.startApiCall();
             const allMakes = await VehicleAPIClient.getMakes(fallbackController.signal);
             
             if (fallbackController.signal.aborted) return;
             
-            performanceMonitor.endApiCall();
             setMakes(allMakes);
           } catch (fallbackError) {
             if (fallbackError instanceof Error && fallbackError.name === 'AbortError') return;
             console.error('Fallback to all makes also failed:', fallbackError);
-            performanceMonitor.endApiCall();
           }
         } finally {
           if (!controller.signal.aborted) {
@@ -184,7 +156,7 @@ export default function DeliveryPartnerVehicleForm() {
 
       loadMakesForType();
     }
-  }, [formData.vehicleType, updateFormData, performanceMonitor]);
+  }, [formData.vehicleType, updateFormData]);
 
   // Load years when make is selected (debounced to avoid rapid API calls)
   const debouncedMakeId = useDebounce(selectedMakeId, 300);
@@ -202,7 +174,6 @@ export default function DeliveryPartnerVehicleForm() {
         try {
           setYearsLoading(true);
           setError(null);
-          performanceMonitor.startApiCall();
           
           // Clear any existing years first
           setYears([]);
@@ -212,22 +183,17 @@ export default function DeliveryPartnerVehicleForm() {
           // Check if request was cancelled
           if (controller.signal.aborted) return;
           
-          performanceMonitor.endApiCall();
-          
           if (yearsData && yearsData.length > 0) {
             console.log(`📅 Loaded ${yearsData.length} years for make ID ${debouncedMakeId}:`, yearsData);
             setYears(yearsData);
-            performanceMonitor.recordUserInteraction(`Years loaded: ${yearsData.length} years available`);
           } else {
             console.warn(`⚠️ No years found for make ID ${debouncedMakeId}`);
             setError('No years available for this make. Please try a different make.');
-            performanceMonitor.recordUserInteraction('No years found for selected make');
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
           console.error('Failed to load vehicle years:', error);
           setError('Failed to load vehicle years. Please try selecting a different make.');
-          performanceMonitor.endApiCall();
         } finally {
           if (!controller.signal.aborted) {
             setYearsLoading(false);
@@ -237,7 +203,7 @@ export default function DeliveryPartnerVehicleForm() {
 
       loadYears();
     }
-  }, [debouncedMakeId, performanceMonitor]);
+  }, [debouncedMakeId]);
 
   // Load models when make is selected (debounced to avoid rapid API calls)
   useEffect(() => {
@@ -254,7 +220,6 @@ export default function DeliveryPartnerVehicleForm() {
         try {
           setModelsLoading(true);
           setError(null);
-          performanceMonitor.startApiCall();
           
           // Clear any existing models first
           setModels([]);
@@ -264,22 +229,17 @@ export default function DeliveryPartnerVehicleForm() {
           // Check if request was cancelled
           if (controller.signal.aborted) return;
           
-          performanceMonitor.endApiCall();
-          
           if (modelsData && modelsData.length > 0) {
             console.log(`🚗 Loaded ${modelsData.length} models for make ID ${debouncedMakeId}:`, modelsData);
             setModels(modelsData);
-            performanceMonitor.recordUserInteraction(`Models loaded: ${modelsData.length} models found`);
           } else {
             console.warn(`⚠️ No models found for make ID ${debouncedMakeId}`);
             setError('No models found for this make. Please try a different make.');
-            performanceMonitor.recordUserInteraction('No models found for selected make');
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
           console.error('Failed to load vehicle models:', error);
           setError('Failed to load vehicle models. Please try selecting a different make.');
-          performanceMonitor.endApiCall();
         } finally {
           if (!controller.signal.aborted) {
             setModelsLoading(false);
@@ -289,16 +249,16 @@ export default function DeliveryPartnerVehicleForm() {
 
       loadModels();
     }
-  }, [debouncedMakeId, performanceMonitor]);
+  }, [debouncedMakeId]);
 
   const handleInputChange = useCallback((field: keyof typeof formData, value: string | number) => {
     updateFormData({ [field]: value });
     setError(null);
-    performanceMonitor.recordUserInteraction(`${field} changed to ${value}`);
     
-    // Reset dependent fields when make changes
-    if (field === 'vehicleMake') {
+    // Reset dependent fields when vehicle type changes
+    if (field === 'vehicleType') {
       updateFormData({ 
+        vehicleMake: '', 
         vehicleModel: '', 
         vehicleYear: undefined 
       });
@@ -306,7 +266,7 @@ export default function DeliveryPartnerVehicleForm() {
       setModels([]);
       setYears([]);
     }
-  }, [updateFormData, performanceMonitor]);
+  }, [updateFormData]);
 
   const handleMakeChange = useCallback((makeId: string) => {
     const makeIdNum = parseInt(makeId);
@@ -321,13 +281,12 @@ export default function DeliveryPartnerVehicleForm() {
         vehicleModel: '',
         vehicleYear: undefined
       });
-      performanceMonitor.recordUserInteraction(`Make selected: ${selectedMake.name}`);
     }
     
     // Reset dependent fields
     setModels([]);
     setYears([]);
-  }, [makes, updateFormData, performanceMonitor]);
+  }, [makes, updateFormData]);
 
   const handleModelChange = useCallback((modelId: string) => {
     const modelIdNum = parseInt(modelId);
@@ -339,9 +298,8 @@ export default function DeliveryPartnerVehicleForm() {
       updateFormData({ 
         vehicleModel: selectedModel.name
       });
-      performanceMonitor.recordUserInteraction(`Model selected: ${selectedModel.name}`);
     }
-  }, [models, updateFormData, performanceMonitor]);
+  }, [models, updateFormData]);
 
   // Cleanup function for component unmount
   useEffect(() => {
@@ -360,9 +318,9 @@ export default function DeliveryPartnerVehicleForm() {
   const isFormValid = useMemo(() => {
     return formData.vehicleType && 
            formData.vehicleMake && 
-           formData.vehicleModel && 
-           formData.vehicleYear;
-  }, [formData.vehicleType, formData.vehicleMake, formData.vehicleModel, formData.vehicleYear]);
+           formData.vehicleModel;
+    // Removed vehicleYear requirement since it's optional
+  }, [formData.vehicleType, formData.vehicleMake, formData.vehicleModel]);
 
   // Optimize loading states to prevent form freezing
   const isFormLoading = useMemo(() => {
@@ -376,10 +334,10 @@ export default function DeliveryPartnerVehicleForm() {
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (canSubmit) {
+    if (canGoToNextStep()) {
       goToNextStep();
     }
-  }, [canSubmit, goToNextStep]);
+  }, [canGoToNextStep, goToNextStep]);
 
   return (
     <motion.form
@@ -389,16 +347,6 @@ export default function DeliveryPartnerVehicleForm() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      {/* Loading overlay */}
-      {isFormLoading && (
-        <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-lg">
-          <div className="text-center">
-            <LoadingSpinner size="lg" text="Loading vehicle data..." />
-            <p className="text-sm text-gray-600 mt-2">Please wait while we fetch the latest vehicle information...</p>
-          </div>
-        </div>
-      )}
-
       <div className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -585,17 +533,16 @@ export default function DeliveryPartnerVehicleForm() {
             type="button"
             variant="outline"
             onClick={goToPreviousStep}
-            disabled={isFormLoading}
-            className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
           >
             Back to Address
           </Button>
           <Button
             type="submit"
-            disabled={!canSubmit}
+            disabled={!canGoToNextStep()}
             className="flex-1 bg-primary hover:bg-primary/90 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isFormLoading ? 'Loading...' : 'Continue to Documents'}
+            Continue to Documents
           </Button>
         </div>
       </div>
