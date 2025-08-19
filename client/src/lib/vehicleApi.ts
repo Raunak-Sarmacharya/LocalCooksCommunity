@@ -19,141 +19,196 @@ export interface VehicleInfo {
   transmission?: string;
 }
 
-// NHTSA API base URL
-const NHTSA_BASE_URL = 'https://vpic.nhtsa.dot.gov/api';
+// Use local backend endpoints instead of external NHTSA calls
+const API_BASE_URL = '/api/vehicles';
+
+// Cache for vehicle data to avoid repeated API calls
+class VehicleCache {
+  private makesCache: VehicleMake[] | null = null;
+  private modelsCache: Map<number, VehicleModel[]> = new Map();
+  private yearsCache: Map<number, number[]> = new Map();
+  private makesForTypeCache: Map<string, VehicleMake[]> = new Map();
+  private cacheExpiry = 5 * 60 * 1000; // 5 minutes
+  private lastFetch = 0;
+
+  private isCacheValid(): boolean {
+    return Date.now() - this.lastFetch < this.cacheExpiry;
+  }
+
+  setMakes(makes: VehicleMake[]): void {
+    this.makesCache = makes;
+    this.lastFetch = Date.now();
+  }
+
+  getMakes(): VehicleMake[] | null {
+    return this.isCacheValid() ? this.makesCache : null;
+  }
+
+  setModels(makeId: number, models: VehicleModel[]): void {
+    this.modelsCache.set(makeId, models);
+  }
+
+  getModels(makeId: number): VehicleModel[] | null {
+    return this.modelsCache.get(makeId) || null;
+  }
+
+  setYears(makeId: number, years: number[]): void {
+    this.yearsCache.set(makeId, years);
+  }
+
+  getYears(makeId: number): number[] | null {
+    return this.yearsCache.get(makeId) || null;
+  }
+
+  setMakesForType(vehicleType: string, makes: VehicleMake[]): void {
+    this.makesForTypeCache.set(vehicleType, makes);
+  }
+
+  getMakesForType(vehicleType: string): VehicleMake[] | null {
+    return this.makesForTypeCache.get(vehicleType) || null;
+  }
+
+  clearCache(): void {
+    this.makesCache = null;
+    this.modelsCache.clear();
+    this.yearsCache.clear();
+    this.makesForTypeCache.clear();
+    this.lastFetch = 0;
+  }
+}
+
+const vehicleCache = new VehicleCache();
 
 export class VehicleAPIClient {
   /**
-   * Get all available vehicle makes from NHTSA API
+   * Get all available vehicle makes from local backend (cached)
    */
   static async getMakes(): Promise<VehicleMake[]> {
+    // Check cache first
+    const cachedMakes = vehicleCache.getMakes();
+    if (cachedMakes) {
+      return cachedMakes;
+    }
+
     try {
-      const response = await fetch(`${NHTSA_BASE_URL}/vehicles/GetAllMakes?format=json`);
+      const response = await fetch(`${API_BASE_URL}/makes`);
       if (!response.ok) {
         throw new Error(`Failed to fetch vehicle makes: ${response.status}`);
       }
       
       const data = await response.json();
-      // Transform NHTSA data to our format
-      return (data.Results || []).map((make: any, index: number) => ({
-        id: index + 1, // NHTSA doesn't provide IDs, so we generate them
-        name: make.Make_Name
-      }));
+      const makes = data.makes || [];
+      
+      // Cache the result
+      vehicleCache.setMakes(makes);
+      return makes;
     } catch (error) {
-      console.error('Error fetching vehicle makes from NHTSA:', error);
+      console.error('Error fetching vehicle makes:', error);
       throw error;
     }
   }
 
   /**
-   * Get models for a specific make from NHTSA API (without year requirement)
+   * Get models for a specific make from local backend (cached)
    */
   static async getModelsForMake(makeId: number): Promise<VehicleModel[]> {
-    try {
-      // First get the make name from our makes list
-      const makes = await this.getMakes();
-      const selectedMake = makes.find(make => make.id === makeId);
-      
-      if (!selectedMake) {
-        throw new Error('Make not found');
-      }
+    // Check cache first
+    const cachedModels = vehicleCache.getModels(makeId);
+    if (cachedModels) {
+      return cachedModels;
+    }
 
-      const response = await fetch(
-        `${NHTSA_BASE_URL}/vehicles/getmodelsformake/${encodeURIComponent(selectedMake.name)}?format=json`
-      );
-      
+    try {
+      const response = await fetch(`${API_BASE_URL}/models/${makeId}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch vehicle models: ${response.status}`);
       }
       
       const data = await response.json();
-      // Transform NHTSA data to our format
-      return (data.Results || []).map((model: any, index: number) => ({
-        id: index + 1, // NHTSA doesn't provide IDs, so we generate them
-        name: model.Model_Name
-      }));
+      const models = data.models || [];
+      
+      // Cache the result
+      vehicleCache.setModels(makeId, models);
+      return models;
     } catch (error) {
-      console.error('Error fetching vehicle models from NHTSA:', error);
+      console.error('Error fetching vehicle models:', error);
       throw error;
     }
   }
 
-  // Year-based model filtering methods removed - models are now loaded once per make
-
   /**
-   * Get available years for a specific make from NHTSA API
+   * Get available years for a specific make from local backend (cached)
    */
   static async getYears(makeId: number): Promise<number[]> {
-    try {
-      // First get the make name from our makes list
-      const makes = await this.getMakes();
-      const selectedMake = makes.find(make => make.id === makeId);
-      
-      if (!selectedMake) {
-        throw new Error('Make not found');
-      }
-
-      // First try the direct years endpoint
-      try {
-        const response = await fetch(
-          `${NHTSA_BASE_URL}/vehicles/GetYearsForMake/${encodeURIComponent(selectedMake.name)}?format=json`
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.Results && data.Results.length > 0) {
-            const years = data.Results.map((year: any) => parseInt(year.Year)).filter((year: number) => !isNaN(year));
-            if (years.length > 0) {
-              return years.sort((a: number, b: number) => b - a); // Most recent years first
-            }
-          }
-        }
-      } catch (error) {
-        console.log('Direct years endpoint failed, using fallback method');
-      }
-
-      // Fallback: Generate a reasonable range of years
-      const currentYear = new Date().getFullYear();
-      const years: number[] = [];
-      
-      // Generate years from 1995 to current year + 1 (for upcoming models)
-      for (let year = 1995; year <= currentYear + 1; year++) {
-        years.push(year);
-      }
-      
-      return years.sort((a: number, b: number) => b - a); // Most recent years first
-    } catch (error) {
-      console.error('Error fetching vehicle years from NHTSA:', error);
-      throw error;
+    // Check cache first
+    const cachedYears = vehicleCache.getYears(makeId);
+    if (cachedYears) {
+      return cachedYears;
     }
-  }
 
-  /**
-   * Get vehicle types for a specific make from NHTSA API
-   */
-  static async getVehicleTypesForMake(makeId: number): Promise<string[]> {
     try {
-      const makes = await this.getMakes();
-      const selectedMake = makes.find(make => make.id === makeId);
-      
-      if (!selectedMake) {
-        throw new Error('Make not found');
-      }
-
-      const response = await fetch(
-        `${NHTSA_BASE_URL}/vehicles/GetVehicleTypesForMake/${encodeURIComponent(selectedMake.name)}?format=json`
-      );
-      
+      const response = await fetch(`${API_BASE_URL}/years/${makeId}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch vehicle types: ${response.status}`);
+        throw new Error(`Failed to fetch vehicle years: ${response.status}`);
       }
       
       const data = await response.json();
-      return (data.Results || []).map((type: any) => type.VehicleTypeName);
+      const years = data.years || [];
+      
+      // Cache the result
+      vehicleCache.setYears(makeId, years);
+      return years;
     } catch (error) {
-      console.error('Error fetching vehicle types from NHTSA:', error);
+      console.error('Error fetching vehicle years:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get makes for a specific vehicle type from local backend (cached)
+   */
+  static async getMakesForVehicleType(vehicleType: string): Promise<VehicleMake[]> {
+    // Check cache first
+    const cachedMakes = vehicleCache.getMakesForType(vehicleType);
+    if (cachedMakes) {
+      return cachedMakes;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/makes/type/${encodeURIComponent(vehicleType)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch makes for vehicle type: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const makes = data.makes || [];
+      
+      // Cache the result
+      vehicleCache.setMakesForType(vehicleType, makes);
+      return makes;
+    } catch (error) {
+      console.error('Error fetching makes for vehicle type:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Preload all vehicle data for better performance
+   */
+  static async preloadVehicleData(): Promise<void> {
+    try {
+      // Preload makes in the background
+      this.getMakes().catch(console.error);
+    } catch (error) {
+      console.error('Error preloading vehicle data:', error);
+    }
+  }
+
+  /**
+   * Clear cache (useful for testing or when data becomes stale)
+   */
+  static clearCache(): void {
+    vehicleCache.clearCache();
   }
 
   /**
@@ -162,7 +217,7 @@ export class VehicleAPIClient {
   static async getSafetyRatings(make: string, model: string, year: number): Promise<any> {
     try {
       const response = await fetch(
-        `${NHTSA_BASE_URL}/vehicles/GetVehicleVariableList?type=year&year=${year}&make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&format=json`
+        `https://vpic.nhtsa.dot.gov/api/vehicles/GetVehicleVariableList?type=year&year=${year}&make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&format=json`
       );
       
       if (!response.ok) {
@@ -177,34 +232,24 @@ export class VehicleAPIClient {
   }
 
   /**
-   * Get vehicle recalls from NHTSA API
-   * Note: Using a different approach since the direct recalls endpoint has issues
+   * Decode VIN for additional vehicle information
    */
-  static async getRecalls(make: string, model: string, year: number): Promise<any> {
+  static async decodeVIN(vin: string): Promise<any> {
     try {
-      // Try using the safer recalls endpoint
-      const response = await fetch(
-        `${NHTSA_BASE_URL}/vehicles/GetVehicleVariableList?type=year&year=${year}&make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&format=json`
-      );
-      
+      const response = await fetch(`${API_BASE_URL}/decode-vin/${vin}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch vehicle data: ${response.status}`);
+        throw new Error(`Failed to decode VIN: ${response.status}`);
       }
       
-      const data = await response.json();
-      // Return basic vehicle info instead of recalls for now
-      return {
-        message: 'Recall information temporarily unavailable',
-        vehicleData: data
-      };
+      return await response.json();
     } catch (error) {
-      console.error('Error fetching vehicle data from NHTSA:', error);
+      console.error('Error decoding VIN:', error);
       throw error;
     }
   }
 
   /**
-   * Search makes by name (for autocomplete) - now using NHTSA data
+   * Search makes by name (for autocomplete) - now using cached data
    */
   static async searchMakes(query: string): Promise<VehicleMake[]> {
     try {
@@ -222,7 +267,7 @@ export class VehicleAPIClient {
   }
 
   /**
-   * Search models by name (for autocomplete) - now using NHTSA data
+   * Search models by name (for autocomplete) - now using cached data
    */
   static async searchModels(makeId: number, query: string): Promise<VehicleModel[]> {
     try {
@@ -235,30 +280,6 @@ export class VehicleAPIClient {
       );
     } catch (error) {
       console.error('Error searching models:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get makes for a specific vehicle type from NHTSA API
-   */
-  static async getMakesForVehicleType(vehicleType: string): Promise<VehicleMake[]> {
-    try {
-      const response = await fetch(
-        `${NHTSA_BASE_URL}/vehicles/GetMakesForVehicleType/${encodeURIComponent(vehicleType)}?format=json`
-      );
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch makes for vehicle type: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return (data.Results || []).map((make: any, index: number) => ({
-        id: index + 1,
-        name: make.MakeName
-      }));
-    } catch (error) {
-      console.error('Error fetching makes for vehicle type from NHTSA:', error);
       throw error;
     }
   }

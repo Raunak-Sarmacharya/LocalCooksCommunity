@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { usePerformanceMonitor } from "@/hooks/use-performance-monitor";
 import VehicleAPIClient, { VehicleMake, VehicleModel } from "@/lib/vehicleApi";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDeliveryPartnerForm } from "./DeliveryPartnerFormContext";
 
 // Only 4-wheeled vehicles allowed per database constraints
@@ -17,44 +19,91 @@ const VEHICLE_TYPES = [
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+// Debounce hook for search inputs
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export default function DeliveryPartnerVehicleForm() {
   const { formData, updateFormData, goToNextStep, goToPreviousStep, canGoToNextStep } = useDeliveryPartnerForm();
+  const performanceMonitor = usePerformanceMonitor();
   
-  // State for vehicle data from NHTSA API
+  // State for vehicle data from API
   const [makes, setMakes] = useState<VehicleMake[]>([]);
   const [models, setModels] = useState<VehicleModel[]>([]);
   const [years, setYears] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedMakeId, setSelectedMakeId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Loading states for individual fields
+  const [makesLoading, setMakesLoading] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [yearsLoading, setYearsLoading] = useState(false);
 
-  // Load vehicle makes on component mount
+  // Preload vehicle data on component mount
+  useEffect(() => {
+    const preloadData = async () => {
+      try {
+        performanceMonitor.startApiCall();
+        // Preload makes in the background
+        await VehicleAPIClient.preloadVehicleData();
+        performanceMonitor.endApiCall();
+        performanceMonitor.recordUserInteraction('Data preloaded');
+      } catch (error) {
+        console.error('Failed to preload vehicle data:', error);
+        performanceMonitor.endApiCall();
+      }
+    };
+
+    preloadData();
+  }, [performanceMonitor]);
+
+  // Load vehicle makes on component mount (only once)
   useEffect(() => {
     const loadMakes = async () => {
       try {
-        setLoading(true);
+        setMakesLoading(true);
         setError(null);
+        performanceMonitor.startApiCall();
         const makesData = await VehicleAPIClient.getMakes();
+        performanceMonitor.endApiCall();
         setMakes(makesData);
+        performanceMonitor.recordUserInteraction('Makes loaded');
       } catch (error) {
         console.error('Failed to load vehicle makes:', error);
-        setError('Failed to load vehicle makes from NHTSA database. Please try again.');
+        setError('Failed to load vehicle makes. Please try again.');
+        performanceMonitor.endApiCall();
       } finally {
-        setLoading(false);
+        setMakesLoading(false);
       }
     };
 
     loadMakes();
-  }, []);
+  }, [performanceMonitor]);
 
   // Load makes filtered by vehicle type when vehicle type changes
   useEffect(() => {
     if (formData.vehicleType) {
       const loadMakesForType = async () => {
         try {
-          setLoading(true);
+          setMakesLoading(true);
           setError(null);
+          performanceMonitor.startApiCall();
           const makesData = await VehicleAPIClient.getMakesForVehicleType(formData.vehicleType!);
+          performanceMonitor.endApiCall();
           setMakes(makesData);
           // Reset make selection when vehicle type changes
           setSelectedMakeId(null);
@@ -65,61 +114,84 @@ export default function DeliveryPartnerVehicleForm() {
           });
           setModels([]);
           setYears([]);
+          performanceMonitor.recordUserInteraction(`Makes filtered for ${formData.vehicleType}`);
         } catch (error) {
           console.error('Failed to load makes for vehicle type:', error);
+          performanceMonitor.endApiCall();
           // Fallback to all makes if type-specific loading fails
-          const allMakes = await VehicleAPIClient.getMakes();
-          setMakes(allMakes);
+          try {
+            performanceMonitor.startApiCall();
+            const allMakes = await VehicleAPIClient.getMakes();
+            performanceMonitor.endApiCall();
+            setMakes(allMakes);
+          } catch (fallbackError) {
+            console.error('Fallback to all makes also failed:', fallbackError);
+            performanceMonitor.endApiCall();
+          }
         } finally {
-          setLoading(false);
+          setMakesLoading(false);
         }
       };
 
       loadMakesForType();
     }
-  }, [formData.vehicleType]);
+  }, [formData.vehicleType, updateFormData, performanceMonitor]);
 
-  // Load years when make is selected
+  // Load years when make is selected (debounced to avoid rapid API calls)
+  const debouncedMakeId = useDebounce(selectedMakeId, 300);
   useEffect(() => {
-    if (selectedMakeId) {
+    if (debouncedMakeId) {
       const loadYears = async () => {
         try {
+          setYearsLoading(true);
           setError(null);
-          const yearsData = await VehicleAPIClient.getYears(selectedMakeId);
+          performanceMonitor.startApiCall();
+          const yearsData = await VehicleAPIClient.getYears(debouncedMakeId);
+          performanceMonitor.endApiCall();
           setYears(yearsData);
+          performanceMonitor.recordUserInteraction('Years loaded');
         } catch (error) {
           console.error('Failed to load vehicle years:', error);
           setError('Failed to load vehicle years. Please try selecting a different make.');
+          performanceMonitor.endApiCall();
+        } finally {
+          setYearsLoading(false);
         }
       };
 
       loadYears();
     }
-  }, [selectedMakeId]);
+  }, [debouncedMakeId, performanceMonitor]);
 
-  // Load models when make is selected
+  // Load models when make is selected (debounced to avoid rapid API calls)
   useEffect(() => {
-    if (selectedMakeId) {
+    if (debouncedMakeId) {
       const loadModels = async () => {
         try {
+          setModelsLoading(true);
           setError(null);
-          const modelsData = await VehicleAPIClient.getModelsForMake(selectedMakeId);
+          performanceMonitor.startApiCall();
+          const modelsData = await VehicleAPIClient.getModelsForMake(debouncedMakeId);
+          performanceMonitor.endApiCall();
           setModels(modelsData);
+          performanceMonitor.recordUserInteraction('Models loaded');
         } catch (error) {
           console.error('Failed to load vehicle models:', error);
           setError('Failed to load vehicle models. Please try selecting a different make.');
+          performanceMonitor.endApiCall();
+        } finally {
+          setModelsLoading(false);
         }
       };
 
       loadModels();
     }
-  }, [selectedMakeId]);
+  }, [debouncedMakeId, performanceMonitor]);
 
-  // Models are now loaded once when make is selected, no year filtering needed
-
-  const handleInputChange = (field: keyof typeof formData, value: string | number) => {
+  const handleInputChange = useCallback((field: keyof typeof formData, value: string | number) => {
     updateFormData({ [field]: value });
     setError(null);
+    performanceMonitor.recordUserInteraction(`${field} changed to ${value}`);
     
     // Reset dependent fields when make changes
     if (field === 'vehicleMake') {
@@ -131,9 +203,9 @@ export default function DeliveryPartnerVehicleForm() {
       setModels([]);
       setYears([]);
     }
-  };
+  }, [updateFormData, performanceMonitor]);
 
-  const handleMakeChange = (makeId: string) => {
+  const handleMakeChange = useCallback((makeId: string) => {
     const makeIdNum = parseInt(makeId);
     setSelectedMakeId(makeIdNum);
     setError(null);
@@ -146,14 +218,15 @@ export default function DeliveryPartnerVehicleForm() {
         vehicleModel: '',
         vehicleYear: undefined
       });
+      performanceMonitor.recordUserInteraction(`Make selected: ${selectedMake.name}`);
     }
     
     // Reset dependent fields
     setModels([]);
     setYears([]);
-  };
+  }, [makes, updateFormData, performanceMonitor]);
 
-  const handleModelChange = (modelId: string) => {
+  const handleModelChange = useCallback((modelId: string) => {
     const modelIdNum = parseInt(modelId);
     setError(null);
     
@@ -161,15 +234,19 @@ export default function DeliveryPartnerVehicleForm() {
     const selectedModel = models.find(model => model.id === modelIdNum);
     if (selectedModel) {
       updateFormData({ vehicleModel: selectedModel.name });
+      performanceMonitor.recordUserInteraction(`Model selected: ${selectedModel.name}`);
     }
-  };
+  }, [models, updateFormData, performanceMonitor]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (canGoToNextStep()) {
+      const metrics = performanceMonitor.getMetrics();
+      performanceMonitor.recordUserInteraction('Form submitted');
+      console.log('🚗 Final Performance Metrics:', metrics);
       goToNextStep();
     }
-  };
+  }, [canGoToNextStep, goToNextStep, performanceMonitor]);
 
   return (
     <motion.form
@@ -206,7 +283,7 @@ export default function DeliveryPartnerVehicleForm() {
             </SelectContent>
           </Select>
           <p className="text-xs text-gray-500 mt-1">
-            Only 4-wheeled vehicles are permitted. Selecting a specific type will filter available makes from NHTSA database.
+            Only 4-wheeled vehicles are permitted. Selecting a specific type will filter available makes.
           </p>
         </div>
 
@@ -218,10 +295,10 @@ export default function DeliveryPartnerVehicleForm() {
             <Select
               value={selectedMakeId?.toString() || ""}
               onValueChange={handleMakeChange}
-              disabled={loading}
+              disabled={makesLoading}
             >
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder={loading ? "Loading makes..." : "Select vehicle make"} />
+                <SelectValue placeholder={makesLoading ? "Loading makes..." : "Select vehicle make"} />
               </SelectTrigger>
               <SelectContent>
                 {makes.map((make) => (
@@ -231,13 +308,13 @@ export default function DeliveryPartnerVehicleForm() {
                 ))}
               </SelectContent>
             </Select>
-            {loading && (
-              <p className="text-xs text-gray-500 mt-1">Loading vehicle makes from NHTSA database...</p>
+            {makesLoading && (
+              <LoadingSpinner size="sm" text="Loading vehicle makes..." className="mt-1" />
             )}
             <p className="text-xs text-gray-500 mt-1">
               {formData.vehicleType 
-                ? `Filtered for ${formData.vehicleType}s from NHTSA database`
-                : 'All makes from NHTSA database'
+                ? `Filtered for ${formData.vehicleType}s`
+                : 'All available makes'
               }
             </p>
           </div>
@@ -249,25 +326,28 @@ export default function DeliveryPartnerVehicleForm() {
             <Select
               value={formData.vehicleModel || ""}
               onValueChange={handleModelChange}
-              disabled={!selectedMakeId || models.length === 0}
+              disabled={!selectedMakeId || modelsLoading}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder={
                   !selectedMakeId ? "Select make first" :
-                  models.length === 0 ? "Loading models..." :
+                  modelsLoading ? "Loading models..." :
                   "Select vehicle model"
                 } />
               </SelectTrigger>
               <SelectContent>
                 {models.map((model) => (
-                  <SelectItem key={model.id} value={model.name}>
+                  <SelectItem key={model.id} value={model.id.toString()}>
                     {model.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {selectedMakeId && models.length === 0 && (
-              <p className="text-xs text-gray-500 mt-1">Loading models for selected make...</p>
+            {modelsLoading && (
+              <LoadingSpinner size="sm" text="Loading models..." className="mt-1" />
+            )}
+            {selectedMakeId && !modelsLoading && models.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">No models found for selected make</p>
             )}
           </div>
         </div>
@@ -280,12 +360,12 @@ export default function DeliveryPartnerVehicleForm() {
             <Select
               value={formData.vehicleYear?.toString() || ""}
               onValueChange={(value) => handleInputChange("vehicleYear", parseInt(value))}
-              disabled={!selectedMakeId || years.length === 0}
+              disabled={!selectedMakeId || yearsLoading}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder={
                   !selectedMakeId ? "Select make first" :
-                  years.length === 0 ? "Loading years..." :
+                  yearsLoading ? "Loading years..." :
                   "Select vehicle year (optional)"
                 } />
               </SelectTrigger>
@@ -297,11 +377,11 @@ export default function DeliveryPartnerVehicleForm() {
                 ))}
               </SelectContent>
             </Select>
+            {yearsLoading && (
+              <LoadingSpinner size="sm" text="Loading years..." className="mt-1" />
+            )}
             {!selectedMakeId && (
               <p className="text-xs text-gray-500 mt-1">Select a vehicle make first to see available years</p>
-            )}
-            {selectedMakeId && (
-              <p className="text-xs text-green-600 mt-1">Models loaded for selected make</p>
             )}
           </div>
 
@@ -334,12 +414,13 @@ export default function DeliveryPartnerVehicleForm() {
         </div>
 
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-green-800 mb-2">NHTSA Integration</h4>
+          <h4 className="text-sm font-medium text-green-800 mb-2">Performance Optimizations</h4>
           <ul className="text-xs text-green-700 space-y-1">
-            <li>• Real-time vehicle data from National Highway Traffic Safety Administration</li>
-            <li>• Comprehensive make and model database (no year dependency)</li>
-            <li>• Vehicle type filtering for better accuracy</li>
-            <li>• Access to safety ratings and recall information</li>
+            <li>• Smart caching system for faster loading</li>
+            <li>• Debounced API calls to reduce server requests</li>
+            <li>• Background data preloading for better UX</li>
+            <li>• Individual loading states for each field</li>
+            <li>• Optimized backend endpoints for faster responses</li>
           </ul>
         </div>
 

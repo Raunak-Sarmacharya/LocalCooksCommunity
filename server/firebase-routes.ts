@@ -1350,9 +1350,38 @@ export function registerFirebaseRoutes(app: Express) {
     });
 
   // 🚗 NHTSA Vehicle API Endpoints
+  
+  // Server-side caching for vehicle data
+  const vehicleCache = {
+    makes: null as any[] | null,
+    makesByType: new Map<string, any[]>(),
+    modelsByMake: new Map<string, any[]>(),
+    lastFetch: 0,
+    cacheExpiry: 10 * 60 * 1000, // 10 minutes
+  };
+
+  const isCacheValid = () => Date.now() - vehicleCache.lastFetch < vehicleCache.cacheExpiry;
+
   // Get all vehicle makes (4-wheeled vehicles only)
   app.get('/api/vehicles/makes', async (req: Request, res: Response) => {
     try {
+      const { type } = req.query;
+      
+      // Check cache first
+      if (type && vehicleCache.makesByType.has(type as string) && isCacheValid()) {
+        return res.json({
+          success: true,
+          makes: vehicleCache.makesByType.get(type as string)
+        });
+      }
+      
+      if (!type && vehicleCache.makes && isCacheValid()) {
+        return res.json({
+          success: true,
+          makes: vehicleCache.makes
+        });
+      }
+
       const response = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
@@ -1376,12 +1405,22 @@ export function registerFirebaseRoutes(app: Express) {
         );
       });
 
+      const formattedMakes = fourWheeledMakes.map((make: any) => ({
+        id: make.Make_ID,
+        name: make.Make_Name
+      }));
+
+      // Cache the results
+      if (type) {
+        vehicleCache.makesByType.set(type as string, formattedMakes);
+      } else {
+        vehicleCache.makes = formattedMakes;
+      }
+      vehicleCache.lastFetch = Date.now();
+
       res.json({
         success: true,
-        makes: fourWheeledMakes.map((make: any) => ({
-          id: make.Make_ID,
-          name: make.Make_Name
-        }))
+        makes: formattedMakes
       });
     } catch (error) {
       console.error('Error fetching vehicle makes:', error);
@@ -1392,10 +1431,75 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
+  // Get makes for a specific vehicle type
+  app.get('/api/vehicles/makes/type/:vehicleType', async (req: Request, res: Response) => {
+    try {
+      const { vehicleType } = req.params;
+      
+      // Check cache first
+      if (vehicleCache.makesByType.has(vehicleType) && isCacheValid()) {
+        return res.json({
+          success: true,
+          makes: vehicleCache.makesByType.get(vehicleType)
+        });
+      }
+
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/${encodeURIComponent(vehicleType)}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for 4-wheeled vehicles only
+      const fourWheeledMakes = data.Results.filter((make: any) => {
+        const excludedMakes = [
+          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
+          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
+          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
+          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
+        ];
+        
+        return !excludedMakes.some(excluded => 
+          make.MakeName.toUpperCase().includes(excluded) || 
+          excluded.includes(make.MakeName.toUpperCase())
+        );
+      });
+
+      const formattedMakes = fourWheeledMakes.map((make: any, index: number) => ({
+        id: index + 1,
+        name: make.MakeName
+      }));
+
+      // Cache the results
+      vehicleCache.makesByType.set(vehicleType, formattedMakes);
+      vehicleCache.lastFetch = Date.now();
+
+      res.json({
+        success: true,
+        makes: formattedMakes
+      });
+    } catch (error) {
+      console.error('Error fetching makes for vehicle type:', error);
+      res.status(500).json({
+        error: 'Failed to fetch makes for vehicle type',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Get models for a specific make (without year dependency)
   app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
     try {
       const { makeId } = req.params;
+      
+      // Check cache first
+      if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
+        return res.json({
+          success: true,
+          models: vehicleCache.modelsByMake.get(makeId)
+        });
+      }
       
       // First get the make name from our makes list
       const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
@@ -1432,12 +1536,17 @@ export function registerFirebaseRoutes(app: Express) {
         );
       });
 
+      const formattedModels = fourWheeledModels.map((model: any, index: number) => ({
+        id: index + 1, // Generate sequential IDs since NHTSA doesn't provide stable IDs
+        name: model.Model_Name
+      }));
+
+      // Cache the results
+      vehicleCache.modelsByMake.set(makeId, formattedModels);
+
       res.json({
         success: true,
-        models: fourWheeledModels.map((model: any, index: number) => ({
-          id: index + 1, // Generate sequential IDs since NHTSA doesn't provide stable IDs
-          name: model.Model_Name
-        }))
+        models: formattedModels
       });
     } catch (error) {
       console.error('Error fetching vehicle models:', error);
