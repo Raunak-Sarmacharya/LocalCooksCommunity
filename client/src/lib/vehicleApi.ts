@@ -102,35 +102,6 @@ class VehicleCache {
 const vehicleCache = new VehicleCache();
 
 export class VehicleAPIClient {
-  /**
-   * Preload all vehicle data at once to prevent multiple API calls
-   */
-  static async preloadVehicleData(): Promise<void> {
-    // Check if already preloaded
-    if (vehicleCache.isDataPreloaded()) {
-      console.log('🚗 Vehicle data already preloaded and cached');
-      return;
-    }
-
-    try {
-      console.log('🚗 Preloading vehicle data...');
-      const response = await fetch(`${API_BASE_URL}/preload`);
-      if (!response.ok) {
-        throw new Error(`Failed to preload vehicle data: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      if (data.success) {
-        vehicleCache.setPreloaded();
-        console.log('🚗 Vehicle data preloaded successfully:', data);
-      } else {
-        throw new Error('Preload request failed');
-      }
-    } catch (error) {
-      console.error('Error preloading vehicle data:', error);
-      // Don't throw error, just log it - the individual endpoints will handle fallbacks
-    }
-  }
 
   /**
    * Get all available vehicle makes from local backend (cached)
@@ -140,17 +111,6 @@ export class VehicleAPIClient {
     const cachedMakes = vehicleCache.getMakes();
     if (cachedMakes) {
       return cachedMakes;
-    }
-
-    // Try to preload if not already done
-    if (!vehicleCache.isDataPreloaded()) {
-      await this.preloadVehicleData();
-      
-      // Check cache again after preload
-      const cachedMakesAfterPreload = vehicleCache.getMakes();
-      if (cachedMakesAfterPreload) {
-        return cachedMakesAfterPreload;
-      }
     }
 
     try {
@@ -166,7 +126,7 @@ export class VehicleAPIClient {
       vehicleCache.setMakes(makes);
       return makes;
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         throw error; // Re-throw abort errors
       }
       console.error('Error fetching vehicle makes:', error);
@@ -184,16 +144,7 @@ export class VehicleAPIClient {
       return cachedModels;
     }
 
-    // Try to preload if not already done
-    if (!vehicleCache.isDataPreloaded()) {
-      await this.preloadVehicleData();
-      
-      // Check cache again after preload
-      const cachedModelsAfterPreload = vehicleCache.getModels(makeId);
-      if (cachedModelsAfterPreload) {
-        return cachedModelsAfterPreload;
-      }
-    }
+
 
     try {
       const response = await fetch(`${API_BASE_URL}/models/${makeId}`, { signal });
@@ -208,7 +159,7 @@ export class VehicleAPIClient {
       vehicleCache.setModels(makeId, models);
       return models;
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         throw error; // Re-throw abort errors
       }
       console.error('Error fetching vehicle models:', error);
@@ -239,7 +190,7 @@ export class VehicleAPIClient {
       vehicleCache.setYears(makeId, years);
       return years;
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         throw error; // Re-throw abort errors
       }
       console.error('Error fetching vehicle years:', error);
@@ -257,16 +208,7 @@ export class VehicleAPIClient {
       return cachedMakes;
     }
 
-    // Try to preload if not already done
-    if (!vehicleCache.isDataPreloaded()) {
-      await this.preloadVehicleData();
-      
-      // Check cache again after preload
-      const cachedMakesAfterPreload = vehicleCache.getMakesForType(vehicleType);
-      if (cachedMakesAfterPreload) {
-        return cachedMakesAfterPreload;
-      }
-    }
+
 
     try {
       const response = await fetch(`${API_BASE_URL}/makes/type/${encodeURIComponent(vehicleType)}`, { signal });
@@ -281,7 +223,7 @@ export class VehicleAPIClient {
       vehicleCache.setMakesForType(vehicleType, makes);
       return makes;
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         throw error; // Re-throw abort errors
       }
       console.error('Error fetching makes for vehicle type:', error);
@@ -289,61 +231,7 @@ export class VehicleAPIClient {
     }
   }
 
-  /**
-   * Preload all vehicle data for better performance
-   */
-  static async preloadVehicleData(): Promise<void> {
-    // Check if already preloaded
-    if (vehicleCache.isDataPreloaded()) {
-      console.log('🚗 Vehicle data already preloaded and cached');
-      return;
-    }
 
-    try {
-      console.log('🚗 Preloading vehicle data...');
-      const response = await fetch(`${API_BASE_URL}/preload`);
-      if (!response.ok) {
-        throw new Error(`Failed to preload vehicle data: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      if (data.success) {
-        vehicleCache.setPreloaded();
-        console.log('🚗 Vehicle data preloaded successfully:', data);
-      } else {
-        throw new Error('Preload request failed');
-      }
-    } catch (error) {
-      console.error('Error preloading vehicle data:', error);
-      // Don't throw error, just log it - the individual endpoints will handle fallbacks
-    }
-  }
-
-  /**
-   * Check if vehicle data is preloaded and cached
-   */
-  static isDataPreloaded(): boolean {
-    return vehicleCache.isDataPreloaded();
-  }
-
-  /**
-   * Get cache status information
-   */
-  static getCacheStatus(): {
-    isPreloaded: boolean;
-    makesCount: number;
-    modelsCount: number;
-    lastFetch: number;
-    cacheAge: number;
-  } {
-    return {
-      isPreloaded: vehicleCache.isDataPreloaded(),
-      makesCount: vehicleCache.getMakes()?.length || 0,
-      modelsCount: Array.from(vehicleCache.modelsCache.values()).reduce((total, models) => total + models.length, 0),
-      lastFetch: vehicleCache.lastFetch,
-      cacheAge: Date.now() - vehicleCache.lastFetch
-    };
-  }
 
   /**
    * Clear cache (useful for testing or when data becomes stale)

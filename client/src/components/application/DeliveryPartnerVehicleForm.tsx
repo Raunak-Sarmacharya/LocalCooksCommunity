@@ -48,117 +48,12 @@ export default function DeliveryPartnerVehicleForm() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [yearsLoading, setYearsLoading] = useState(false);
 
-  // Cache status state
-  const [cacheStatus, setCacheStatus] = useState({
-    isPreloaded: false,
-    makesCount: 0,
-    modelsCount: 0,
-    lastFetch: 0,
-    cacheAge: 0
-  });
-
   // Refs for request cancellation
   const makesRequestRef = useRef<AbortController | null>(null);
   const modelsRequestRef = useRef<AbortController | null>(null);
   const yearsRequestRef = useRef<AbortController | null>(null);
 
-  // Update cache status periodically
-  useEffect(() => {
-    const updateCacheStatus = () => {
-      setCacheStatus(VehicleAPIClient.getCacheStatus());
-    };
 
-    updateCacheStatus();
-    const interval = setInterval(updateCacheStatus, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Preload vehicle data on component mount (only once)
-  useEffect(() => {
-    const preloadData = async () => {
-      try {
-        console.log('🚗 Preloading vehicle data on form mount...');
-        await VehicleAPIClient.preloadVehicleData();
-        
-        // After preload, load makes for the current vehicle type
-        if (formData.vehicleType) {
-          await loadMakesForType(formData.vehicleType);
-        } else {
-          await loadMakes();
-        }
-      } catch (error) {
-        console.error('Failed to preload vehicle data:', error);
-        // Fallback to loading makes directly
-        if (formData.vehicleType) {
-          await loadMakesForType(formData.vehicleType);
-        } else {
-          await loadMakes();
-        }
-      }
-    };
-
-    preloadData();
-
-    // Cleanup function
-    return () => {
-      if (makesRequestRef.current) {
-        makesRequestRef.current.abort();
-      }
-    };
-  }, []);
-
-  // Manual preload trigger for debugging/testing
-  const handleManualPreload = async () => {
-    try {
-      setMakesLoading(true);
-      setError(null);
-      console.log('🚗 Manual preload triggered...');
-      await VehicleAPIClient.preloadVehicleData();
-      
-      // After preload, load makes for the current vehicle type
-      if (formData.vehicleType) {
-        await loadMakesForType(formData.vehicleType);
-      } else {
-        await loadMakes();
-      }
-    } catch (error) {
-      console.error('Manual preload failed:', error);
-      setError('Failed to preload vehicle data. Please try again.');
-    } finally {
-      setMakesLoading(false);
-    }
-  };
-
-  // Load vehicle makes on component mount (only once)
-  const loadMakes = async () => {
-    // Cancel any existing request
-    if (makesRequestRef.current) {
-      makesRequestRef.current.abort();
-    }
-    
-    const controller = new AbortController();
-    makesRequestRef.current = controller;
-    
-    try {
-      setMakesLoading(true);
-      setError(null);
-      const makesData = await VehicleAPIClient.getMakes(controller.signal);
-      
-      // Check if request was cancelled
-      if (controller.signal.aborted) return;
-      
-      setMakes(makesData);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
-      console.error('Failed to load vehicle makes:', error);
-      setError('Failed to load vehicle makes. Please try again.');
-    } finally {
-      if (!controller.signal.aborted) {
-        setMakesLoading(false);
-      }
-    }
-  };
 
   // Load makes filtered by vehicle type when vehicle type changes
   const loadMakesForType = async (vehicleType: string) => {
@@ -190,21 +85,7 @@ export default function DeliveryPartnerVehicleForm() {
       setYears([]);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
-      console.error('Failed to load makes for vehicle type:', error);
-      // Fallback to all makes if type-specific loading fails
-      try {
-        const fallbackController = new AbortController();
-        makesRequestRef.current = fallbackController;
-        
-        const allMakes = await VehicleAPIClient.getMakes(fallbackController.signal);
-        
-        if (fallbackController.signal.aborted) return;
-        
-        setMakes(allMakes);
-      } catch (fallbackError) {
-        if (fallbackError instanceof Error && fallbackError.name === 'AbortError') return;
-        console.error('Fallback to all makes also failed:', fallbackError);
-      }
+      setError('Failed to load vehicle makes. Please try again.');
     } finally {
       if (!controller.signal.aborted) {
         setMakesLoading(false);
@@ -219,96 +100,77 @@ export default function DeliveryPartnerVehicleForm() {
     }
   }, [formData.vehicleType]);
 
-  // Load years when make is selected (debounced to avoid rapid API calls)
+  // Load models and years sequentially when make is selected (debounced to avoid rapid API calls)
   const debouncedMakeId = useDebounce(selectedMakeId, 300);
   useEffect(() => {
     if (debouncedMakeId) {
-      const loadYears = async () => {
-        // Cancel any existing years request
+      const loadModelsAndYears = async () => {
+        // Cancel any existing requests
+        if (modelsRequestRef.current) {
+          modelsRequestRef.current.abort();
+        }
         if (yearsRequestRef.current) {
           yearsRequestRef.current.abort();
         }
         
-        const controller = new AbortController();
-        yearsRequestRef.current = controller;
+        const modelsController = new AbortController();
+        modelsRequestRef.current = modelsController;
         
         try {
-          setYearsLoading(true);
+          // Step 1: Load models first
+          setModelsLoading(true);
+          setYearsLoading(false);
           setError(null);
           
-          // Clear any existing years first
+          // Clear existing data
+          setModels([]);
           setYears([]);
           
-          const yearsData = await VehicleAPIClient.getYears(debouncedMakeId, controller.signal);
+          const modelsData = await VehicleAPIClient.getModelsForMake(debouncedMakeId, modelsController.signal);
           
           // Check if request was cancelled
-          if (controller.signal.aborted) return;
+          if (modelsController.signal.aborted) return;
+          
+          if (modelsData && modelsData.length > 0) {
+            setModels(modelsData);
+          } else {
+            setError('No models found for this make. Please try a different make.');
+            setModelsLoading(false);
+            return;
+          }
+          
+          setModelsLoading(false);
+          
+          // Step 2: Load years after models are loaded successfully
+          const yearsController = new AbortController();
+          yearsRequestRef.current = yearsController;
+          
+          setYearsLoading(true);
+          
+          const yearsData = await VehicleAPIClient.getYears(debouncedMakeId, yearsController.signal);
+          
+          // Check if request was cancelled
+          if (yearsController.signal.aborted) return;
           
           if (yearsData && yearsData.length > 0) {
-            console.log(`📅 Loaded ${yearsData.length} years for make ID ${debouncedMakeId}:`, yearsData);
             setYears(yearsData);
-          } else {
-            console.warn(`⚠️ No years found for make ID ${debouncedMakeId}`);
-            setError('No years available for this make. Please try a different make.');
           }
+          // Note: Don't show error for years since it's optional
+          
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
-          console.error('Failed to load vehicle years:', error);
-          setError('Failed to load vehicle years. Please try selecting a different make.');
+          setError('Failed to load vehicle data. Please try selecting a different make.');
         } finally {
-          if (!controller.signal.aborted) {
+          if (!modelsController.signal.aborted) {
+            setModelsLoading(false);
+          }
+          if (!yearsRequestRef.current?.signal.aborted) {
             setYearsLoading(false);
           }
         }
       };
 
-      loadYears();
-    }
-  }, [debouncedMakeId]);
-
-  // Load models when make is selected (debounced to avoid rapid API calls)
-  useEffect(() => {
-    if (debouncedMakeId) {
-      const loadModels = async () => {
-        // Cancel any existing models request
-        if (modelsRequestRef.current) {
-          modelsRequestRef.current.abort();
-        }
-        
-        const controller = new AbortController();
-        modelsRequestRef.current = controller;
-        
-        try {
-          setModelsLoading(true);
-          setError(null);
-          
-          // Clear any existing models first
-          setModels([]);
-          
-          const modelsData = await VehicleAPIClient.getModelsForMake(debouncedMakeId, controller.signal);
-          
-          // Check if request was cancelled
-          if (controller.signal.aborted) return;
-          
-          if (modelsData && modelsData.length > 0) {
-            console.log(`🚗 Loaded ${modelsData.length} models for make ID ${debouncedMakeId}:`, modelsData);
-            setModels(modelsData);
-          } else {
-            console.warn(`⚠️ No models found for make ID ${debouncedMakeId}`);
-            setError('No models found for this make. Please try a different make.');
-          }
-        } catch (error) {
-          if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
-          console.error('Failed to load vehicle models:', error);
-          setError('Failed to load vehicle models. Please try selecting a different make.');
-        } finally {
-          if (!controller.signal.aborted) {
-            setModelsLoading(false);
-          }
-        }
-      };
-
-      loadModels();
+      loadModelsAndYears();
     }
   }, [debouncedMakeId]);
 
@@ -409,43 +271,7 @@ export default function DeliveryPartnerVehicleForm() {
       transition={{ duration: 0.3 }}
     >
       <div className="space-y-6">
-        {/* Vehicle Data Status and Manual Preload */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${cacheStatus.isPreloaded ? 'bg-green-500' : 'bg-blue-500'}`}></div>
-              <span className="text-sm font-medium text-blue-800">
-                Vehicle Data Status
-              </span>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleManualPreload}
-              disabled={makesLoading}
-              className="text-xs"
-            >
-              {makesLoading ? "Loading..." : "🔄 Refresh Data"}
-            </Button>
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-blue-600">
-              {cacheStatus.isPreloaded 
-                ? "Vehicle data is preloaded and cached for fast access."
-                : "Vehicle data is being loaded. This may take a moment on first visit."
-              }
-              {makesLoading && " Currently loading..."}
-            </p>
-            <div className="flex items-center space-x-2 text-xs">
-              <span className="text-blue-600">Makes: {cacheStatus.makesCount}</span>
-              <span className="text-blue-600">Models: {cacheStatus.modelsCount}</span>
-              <span className={`${cacheStatus.isPreloaded ? 'text-green-600' : 'text-yellow-600'}`}>
-                {cacheStatus.isPreloaded ? '✓ Cached' : '⏳ Loading...'}
-              </span>
-            </div>
-          </div>
-        </div>
+
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -474,7 +300,7 @@ export default function DeliveryPartnerVehicleForm() {
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 mt-1">
-              Only 4-wheeled vehicles are permitted. Selecting a specific type will filter available makes.
+              Only 4-wheeled vehicles are permitted.
             </p>
           </div>
 
@@ -486,10 +312,14 @@ export default function DeliveryPartnerVehicleForm() {
               <Select
                 value={selectedMakeId?.toString() || ""}
                 onValueChange={handleMakeChange}
-                disabled={makesLoading}
+                disabled={!formData.vehicleType || makesLoading}
               >
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={makesLoading ? "Loading makes..." : "Select vehicle make"} />
+                  <SelectValue placeholder={
+                    !formData.vehicleType ? "Select vehicle type first" :
+                    makesLoading ? "Loading makes..." : 
+                    "Select vehicle make"
+                  } />
                 </SelectTrigger>
                 <SelectContent>
                   {makes.map((make) => (
@@ -502,12 +332,7 @@ export default function DeliveryPartnerVehicleForm() {
               {makesLoading && (
                 <LoadingSpinner size="sm" text="Loading vehicle makes..." className="mt-1" />
               )}
-              <p className="text-xs text-gray-500 mt-1">
-                {formData.vehicleType 
-                  ? `Filtered for ${formData.vehicleType}s`
-                  : 'All available makes'
-                }
-              </p>
+
             </div>
 
             <div>
@@ -596,33 +421,8 @@ export default function DeliveryPartnerVehicleForm() {
             <h4 className="text-sm font-medium text-blue-800 mb-2">Vehicle Requirements</h4>
             <ul className="text-xs text-blue-700 space-y-1">
               <li>• Only 4-wheeled vehicles are allowed (cars, SUVs, trucks, vans)</li>
-              <li>• Motorcycles, bicycles, and scooters are not permitted</li>
               <li>• Vehicle must be in good working condition</li>
               <li>• Valid registration and insurance required</li>
-              <li>• Clean driving record preferred</li>
-              <li>• Vehicle must meet local safety standards</li>
-            </ul>
-          </div>
-
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h4 className="text-sm font-medium text-green-800 mb-2">Performance Optimizations</h4>
-            <ul className="text-xs text-green-700 space-y-1">
-              <li>• Smart caching system for faster loading</li>
-              <li>• Debounced API calls to reduce server requests</li>
-              <li>• Background data preloading for better UX</li>
-              <li>• Individual loading states for each field</li>
-              <li>• Optimized backend endpoints for faster responses</li>
-            </ul>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">Vehicle Selection Flow</h4>
-            <ul className="text-xs text-blue-700 space-y-1">
-              <li>• 1. Select your vehicle type (car, SUV, truck, van)</li>
-              <li>• 2. Choose the vehicle make from the filtered list</li>
-              <li>• 3. Select your vehicle model from available options</li>
-              <li>• 4. Optionally select year for additional details</li>
-              <li>• 5. Enter your license plate number</li>
             </ul>
           </div>
         </div>
