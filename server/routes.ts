@@ -2344,6 +2344,307 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Vehicle API endpoints for NHTSA data
+  // Simple in-memory cache for vehicle data
+  const vehicleCache = {
+    makes: null,
+    modelsByMake: new Map(),
+    yearsByMake: new Map(),
+    makesByType: new Map(),
+    lastFetch: 0,
+    cacheExpiry: 10 * 60 * 1000 // 10 minutes
+  };
+
+  const isCacheValid = () => Date.now() - vehicleCache.lastFetch < vehicleCache.cacheExpiry;
+
+  // Get all vehicle makes (4-wheeled vehicles only)
+  app.get('/api/vehicles/makes', async (req: Request, res: Response) => {
+    try {
+      const { type } = req.query;
+      
+      // Check cache first
+      if (type && vehicleCache.makesByType.has(type as string) && isCacheValid()) {
+        return res.json({
+          success: true,
+          makes: vehicleCache.makesByType.get(type as string)
+        });
+      }
+      
+      if (!type && vehicleCache.makes && isCacheValid()) {
+        return res.json({
+          success: true,
+          makes: vehicleCache.makes
+        });
+      }
+
+      const response = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
+      const fourWheeledMakes = data.Results.filter((make: any) => {
+        // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
+        const excludedMakes = [
+          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
+          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
+          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
+          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
+        ];
+        
+        return !excludedMakes.some(excluded => 
+          make.Make_Name.toUpperCase().includes(excluded) || 
+          excluded.includes(make.Make_Name.toUpperCase())
+        );
+      });
+
+      const formattedMakes = fourWheeledMakes.map((make: any) => ({
+        id: make.Make_ID,
+        name: make.Make_Name
+      }));
+
+      // Cache the results
+      if (type) {
+        vehicleCache.makesByType.set(type as string, formattedMakes);
+      } else {
+        vehicleCache.makes = formattedMakes;
+      }
+      vehicleCache.lastFetch = Date.now();
+
+      res.json({
+        success: true,
+        makes: formattedMakes
+      });
+    } catch (error) {
+      console.error('Error fetching vehicle makes:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle makes',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get makes for a specific vehicle type
+  app.get('/api/vehicles/makes/type/:vehicleType', async (req: Request, res: Response) => {
+    try {
+      const { vehicleType } = req.params;
+      
+      // Check cache first
+      if (vehicleCache.makesByType.has(vehicleType) && isCacheValid()) {
+        return res.json({
+          success: true,
+          makes: vehicleCache.makesByType.get(vehicleType)
+        });
+      }
+
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/${encodeURIComponent(vehicleType)}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for 4-wheeled vehicles only
+      const fourWheeledMakes = data.Results.filter((make: any) => {
+        const excludedMakes = [
+          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
+          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
+          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
+          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
+        ];
+        
+        return !excludedMakes.some(excluded => 
+          make.MakeName.toUpperCase().includes(excluded) || 
+          excluded.includes(make.MakeName.toUpperCase())
+        );
+      });
+
+      const formattedMakes = fourWheeledMakes.map((make: any, index: number) => ({
+        id: index + 1,
+        name: make.MakeName
+      }));
+
+      // Cache the results
+      vehicleCache.makesByType.set(vehicleType, formattedMakes);
+      vehicleCache.lastFetch = Date.now();
+
+      res.json({
+        success: true,
+        makes: formattedMakes
+      });
+    } catch (error) {
+      console.error('Error fetching makes for vehicle type:', error);
+      res.status(500).json({
+        error: 'Failed to fetch makes for vehicle type',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get models for a specific make (without year dependency)
+  app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
+    try {
+      const { makeId } = req.params;
+      
+      // Check cache first
+      if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
+        return res.json({
+          success: true,
+          models: vehicleCache.modelsByMake.get(makeId)
+        });
+      }
+      
+      // First get the make name from our makes list
+      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
+      if (!makesResponse.ok) {
+        throw new Error(`NHTSA API error: ${makesResponse.status}`);
+      }
+      
+      const makesData = await makesResponse.json();
+      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
+      
+      if (!selectedMake) {
+        throw new Error('Make not found');
+      }
+      
+      // Get all models for this make (without year)
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${selectedMake.Make_Name}`);
+      
+      // Filter for 4-wheeled vehicles only, but be much less aggressive
+      const fourWheeledModels = data.Results.filter((model: any) => {
+        // Only exclude very obvious non-4-wheeled vehicle models
+        const modelName = model.Model_Name.toUpperCase();
+        
+        // Very specific exclusions only for obvious non-4-wheeled vehicles
+        const excludedPatterns = [
+          // Motorcycle patterns
+          /MOTORCYCLE$/i,
+          /BIKE$/i,
+          /SCOOTER$/i,
+          /MOPED$/i,
+          /ATV$/i,
+          /QUAD$/i,
+          /TRIKE$/i,
+          /SIDECAR$/i,
+          
+          // Very specific motorcycle model names
+          /^HARLEY/i,
+          /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
+          /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
+          /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
+          /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
+          /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
+          /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
+          /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
+          /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
+          /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
+          /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
+          /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
+          /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
+          /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
+          /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
+          /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
+          /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
+          /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
+          /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
+          /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
+          /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
+          /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
+          /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
+        ];
+        
+        // Check if model matches any excluded patterns
+        return !excludedPatterns.some(pattern => pattern.test(modelName));
+      });
+
+      console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${selectedMake.Make_Name}`);
+      
+      const formattedModels = fourWheeledModels.map((model: any) => ({
+        id: model.Model_ID || model.Model_ID, // Use actual NHTSA ID if available
+        name: model.Model_Name
+      }));
+
+      // Cache the results
+      vehicleCache.modelsByMake.set(makeId, formattedModels);
+
+      res.json({
+        success: true,
+        models: formattedModels
+      });
+    } catch (error) {
+      console.error('Error fetching vehicle models:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle models',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get available years for a specific make
+  app.get('/api/vehicles/years/:makeId', async (req: Request, res: Response) => {
+    try {
+      const { makeId } = req.params;
+      
+      // Check cache first
+      if (vehicleCache.yearsByMake.has(makeId) && isCacheValid()) {
+        return res.json({
+          success: true,
+          years: vehicleCache.yearsByMake.get(makeId)
+        });
+      }
+      
+      // First get the make name from our makes list
+      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
+      if (!makesResponse.ok) {
+        throw new Error(`NHTSA API error: ${makesResponse.status}`);
+      }
+      
+      const makesData = await makesResponse.json();
+      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
+      
+      if (!selectedMake) {
+        throw new Error('Make not found');
+      }
+      
+      // Get years for this make
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetYearsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Extract and sort years
+      const years = data.Results
+        .map((year: any) => parseInt(year.Year))
+        .filter((year: number) => !isNaN(year))
+        .sort((a: number, b: number) => b - a); // Sort descending (newest first)
+
+      // Cache the results
+      vehicleCache.yearsByMake.set(makeId, years);
+
+      res.json({
+        success: true,
+        years: years
+      });
+    } catch (error) {
+      console.error('Error fetching vehicle years:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle years',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
