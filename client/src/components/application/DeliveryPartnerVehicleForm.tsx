@@ -146,10 +146,22 @@ export default function DeliveryPartnerVehicleForm() {
           setYearsLoading(true);
           setError(null);
           performanceMonitor.startApiCall();
+          
+          // Clear any existing years first
+          setYears([]);
+          
           const yearsData = await VehicleAPIClient.getYears(debouncedMakeId);
           performanceMonitor.endApiCall();
-          setYears(yearsData);
-          performanceMonitor.recordUserInteraction('Years loaded');
+          
+          if (yearsData && yearsData.length > 0) {
+            console.log(`📅 Loaded ${yearsData.length} years for make ID ${debouncedMakeId}:`, yearsData);
+            setYears(yearsData);
+            performanceMonitor.recordUserInteraction(`Years loaded: ${yearsData.length} years available`);
+          } else {
+            console.warn(`⚠️ No years found for make ID ${debouncedMakeId}`);
+            setError('No years available for this make. Please try a different make.');
+            performanceMonitor.recordUserInteraction('No years found for selected make');
+          }
         } catch (error) {
           console.error('Failed to load vehicle years:', error);
           setError('Failed to load vehicle years. Please try selecting a different make.');
@@ -171,10 +183,22 @@ export default function DeliveryPartnerVehicleForm() {
           setModelsLoading(true);
           setError(null);
           performanceMonitor.startApiCall();
+          
+          // Clear any existing models first
+          setModels([]);
+          
           const modelsData = await VehicleAPIClient.getModelsForMake(debouncedMakeId);
           performanceMonitor.endApiCall();
-          setModels(modelsData);
-          performanceMonitor.recordUserInteraction('Models loaded');
+          
+          if (modelsData && modelsData.length > 0) {
+            console.log(`🚗 Loaded ${modelsData.length} models for make ID ${debouncedMakeId}:`, modelsData);
+            setModels(modelsData);
+            performanceMonitor.recordUserInteraction(`Models loaded: ${modelsData.length} models found`);
+          } else {
+            console.warn(`⚠️ No models found for make ID ${debouncedMakeId}`);
+            setError('No models found for this make. Please try a different make.');
+            performanceMonitor.recordUserInteraction('No models found for selected make');
+          }
         } catch (error) {
           console.error('Failed to load vehicle models:', error);
           setError('Failed to load vehicle models. Please try selecting a different make.');
