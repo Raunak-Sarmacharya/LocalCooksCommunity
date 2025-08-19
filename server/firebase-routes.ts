@@ -487,15 +487,108 @@ export function registerFirebaseRoutes(app: Express) {
         },
         applications,
         microlearningProgress,
-        stats: {
-          totalApplications: applications.length,
-          approvedApplications: applications.filter(app => app.status === 'approved').length,
-          completedLessons: microlearningProgress.length
-        }
       });
     } catch (error) {
       console.error('Error getting dashboard data:', error);
       res.status(500).json({ error: 'Failed to get dashboard data' });
+    }
+  });
+
+  // 🔥 Submit Delivery Partner Application (with Firebase Auth, NO SESSIONS)
+  app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      // Import the delivery partner schema
+      const { insertDeliveryPartnerApplicationSchema } = await import('@shared/schema');
+      
+      // Validate the request body
+      const parsedData = insertDeliveryPartnerApplicationSchema.safeParse(req.body);
+
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
+        });
+      }
+
+      // Associate application with the authenticated Neon user
+      const applicationData = {
+        ...parsedData.data,
+        userId: req.neonUser!.id // This is the Neon user ID from the middleware
+      };
+
+      console.log(`🚚 Creating delivery partner application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
+
+      const application = await firebaseStorage.createDeliveryPartnerApplication(applicationData);
+
+      res.json({
+        success: true,
+        application,
+        message: 'Delivery partner application submitted successfully'
+      });
+    } catch (error) {
+      console.error('Error creating delivery partner application:', error);
+      res.status(500).json({
+        error: 'Failed to create delivery partner application',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // 🔥 Get User's Delivery Partner Applications (with Firebase Auth, NO SESSIONS)
+  app.get('/api/firebase/delivery-partner-applications/my', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      // Get delivery partner applications for the authenticated Neon user
+      const applications = await firebaseStorage.getDeliveryPartnerApplicationsByUserId(req.neonUser!.id);
+
+      console.log(`📋 Retrieved ${applications.length} delivery partner applications: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
+
+      res.json(applications);
+    } catch (error) {
+      console.error('Error getting user delivery partner applications:', error);
+      res.status(500).json({ error: 'Failed to get delivery partner applications' });
+    }
+  });
+
+  // 🔥 Admin Routes for Delivery Partner Applications (Firebase Auth + Admin Role, NO SESSIONS)
+  app.get('/api/firebase/admin/delivery-partner-applications', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const applications = await firebaseStorage.getAllDeliveryPartnerApplications();
+
+      console.log(`👑 Admin ${req.firebaseUser!.uid} requested all delivery partner applications`);
+
+      res.json(applications);
+    } catch (error) {
+      console.error('Error getting all delivery partner applications:', error);
+      res.status(500).json({ error: 'Failed to get delivery partner applications' });
+    }
+  });
+
+  // 🔥 Update User Application Type (Firebase Auth, NO SESSIONS)
+  app.post('/api/firebase/user/update-application-type', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const { applicationType } = req.body;
+
+      if (!applicationType || !['chef', 'delivery_partner'].includes(applicationType)) {
+        return res.status(400).json({
+          error: 'Invalid application type. Must be "chef" or "delivery_partner"'
+        });
+      }
+
+      console.log(`🎯 Updating application type: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Type: ${applicationType}`);
+
+      await firebaseStorage.updateUserApplicationType(req.neonUser!.id, applicationType);
+
+      res.json({
+        success: true,
+        message: 'Application type updated successfully'
+      });
+    } catch (error) {
+      console.error('Error updating application type:', error);
+      res.status(500).json({
+        error: 'Failed to update application type',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
@@ -1256,6 +1349,194 @@ export function registerFirebaseRoutes(app: Express) {
       }
     });
 
+  // 🚗 NHTSA Vehicle API Endpoints
+  // Get all vehicle makes (4-wheeled vehicles only)
+  app.get('/api/vehicles/makes', async (req: Request, res: Response) => {
+    try {
+      const response = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
+      const fourWheeledMakes = data.Results.filter((make: any) => {
+        // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
+        const excludedMakes = [
+          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
+          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
+          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
+          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
+        ];
+        
+        return !excludedMakes.some(excluded => 
+          make.Make_Name.toUpperCase().includes(excluded) || 
+          excluded.includes(make.Make_Name.toUpperCase())
+        );
+      });
+
+      res.json({
+        success: true,
+        makes: fourWheeledMakes.map((make: any) => ({
+          id: make.Make_ID,
+          name: make.Make_Name
+        }))
+      });
+    } catch (error) {
+      console.error('Error fetching vehicle makes:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle makes',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get models for a specific make and year
+  app.get('/api/vehicles/models/:makeId/:year', async (req: Request, res: Response) => {
+    try {
+      const { makeId, year } = req.params;
+      
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/makeId/${makeId}/modelyear/${year}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for 4-wheeled vehicles only
+      const fourWheeledModels = data.Results.filter((model: any) => {
+        // Filter out motorcycle models and other non-4-wheeled vehicles
+        const excludedKeywords = [
+          'MOTORCYCLE', 'BIKE', 'SCOOTER', 'MOPED', 'ATV', 'QUAD', 'TRIKE',
+          'SIDECAR', 'MOTORCYCLE', 'MOTORBIKE', 'MOTOR BIKE'
+        ];
+        
+        return !excludedKeywords.some(keyword => 
+          model.Model_Name.toUpperCase().includes(keyword) ||
+          model.Model_Name.toUpperCase().includes('MOTO')
+        );
+      });
+
+      res.json({
+        success: true,
+        models: fourWheeledModels.map((model: any) => ({
+          id: model.Model_ID,
+          name: model.Model_Name
+        }))
+      });
+    } catch (error) {
+      console.error('Error fetching vehicle models:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle models',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get available years for a specific make
+  app.get('/api/vehicles/years/:makeId', async (req: Request, res: Response) => {
+    try {
+      const { makeId } = req.params;
+      
+      // Get models for current year to find available years
+      const currentYear = new Date().getFullYear();
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/makeId/${makeId}/modelyear/${currentYear}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.Results && data.Results.length > 0) {
+        // Get years from 1995 to current year + 1 (for upcoming models)
+        const years = [];
+        for (let year = 1995; year <= currentYear + 1; year++) {
+          years.push(year);
+        }
+        
+        res.json({
+          success: true,
+          years: years
+        });
+      } else {
+        res.json({
+          success: true,
+          years: []
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching vehicle years:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle years',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Decode VIN for additional vehicle information
+  app.get('/api/vehicles/decode-vin/:vin', async (req: Request, res: Response) => {
+    try {
+      const { vin } = req.params;
+      
+      if (!vin || vin.length < 8) {
+        return res.status(400).json({
+          error: 'Invalid VIN',
+          message: 'VIN must be at least 8 characters long'
+        });
+      }
+      
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/${vin}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Extract relevant vehicle information
+      const vehicleInfo: any = {};
+      data.Results.forEach((result: any) => {
+        if (result.Variable && result.Value) {
+          switch (result.Variable) {
+            case 'Make':
+              vehicleInfo.make = result.Value;
+              break;
+            case 'Model':
+              vehicleInfo.model = result.Value;
+              break;
+            case 'Model Year':
+              vehicleInfo.year = result.Value;
+              break;
+            case 'Vehicle Type':
+              vehicleInfo.type = result.Value;
+              break;
+            case 'Body Class':
+              vehicleInfo.bodyClass = result.Value;
+              break;
+            case 'Engine Model':
+              vehicleInfo.engine = result.Value;
+              break;
+            case 'Transmission Style':
+              vehicleInfo.transmission = result.Value;
+              break;
+          }
+        }
+      });
+      
+      res.json({
+        success: true,
+        vehicle: vehicleInfo
+      });
+    } catch (error) {
+      console.error('Error decoding VIN:', error);
+      res.status(500).json({
+        error: 'Failed to decode VIN',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   console.log('🔥 Firebase authentication routes registered successfully');
   console.log('✨ Session-free architecture active - JWT tokens only');
+  console.log('🚗 NHTSA Vehicle API endpoints registered successfully');
 } 

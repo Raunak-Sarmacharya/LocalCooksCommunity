@@ -26,6 +26,7 @@ import WelcomeScreen from "@/pages/welcome-screen";
 
 // Lazy load larger components
 const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
+const DeliveryPartnerApplicationForm = lazy(() => import("@/pages/DeliveryPartnerApplicationForm"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const ApplicantDashboard = lazy(() => import("@/pages/ApplicantDashboard"));
 const DocumentVerification = lazy(() => import("@/pages/DocumentVerification"));
@@ -50,6 +51,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <ProtectedRoute path="/apply" component={ApplicationForm} />
+        <ProtectedRoute path="/delivery-partner-apply" component={DeliveryPartnerApplicationForm} />
         <Route path="/success" component={Success} />
         <Route path="/auth" component={EnhancedAuthPage} />
         <Route path="/auth-test" component={AuthTest} />
