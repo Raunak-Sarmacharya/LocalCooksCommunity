@@ -28,8 +28,9 @@ class VehicleCache {
   private modelsCache: Map<number, VehicleModel[]> = new Map();
   private yearsCache: Map<number, number[]> = new Map();
   private makesForTypeCache: Map<string, VehicleMake[]> = new Map();
-  private cacheExpiry = 10 * 60 * 1000; // 10 minutes (increased from 5)
+  private cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours (increased from 10 minutes)
   private lastFetch = 0;
+  private isPreloaded = false;
 
   private isCacheValid(): boolean {
     return Date.now() - this.lastFetch < this.cacheExpiry;
@@ -68,12 +69,22 @@ class VehicleCache {
     return this.makesForTypeCache.get(vehicleType) || null;
   }
 
+  setPreloaded(): void {
+    this.isPreloaded = true;
+    this.lastFetch = Date.now();
+  }
+
+  isDataPreloaded(): boolean {
+    return this.isPreloaded && this.isCacheValid();
+  }
+
   clearCache(): void {
     this.makesCache = null;
     this.modelsCache.clear();
     this.yearsCache.clear();
     this.makesForTypeCache.clear();
     this.lastFetch = 0;
+    this.isPreloaded = false;
   }
 
   // Clear specific make's data when it might be stale
@@ -92,6 +103,36 @@ const vehicleCache = new VehicleCache();
 
 export class VehicleAPIClient {
   /**
+   * Preload all vehicle data at once to prevent multiple API calls
+   */
+  static async preloadVehicleData(): Promise<void> {
+    // Check if already preloaded
+    if (vehicleCache.isDataPreloaded()) {
+      console.log('🚗 Vehicle data already preloaded and cached');
+      return;
+    }
+
+    try {
+      console.log('🚗 Preloading vehicle data...');
+      const response = await fetch(`${API_BASE_URL}/preload`);
+      if (!response.ok) {
+        throw new Error(`Failed to preload vehicle data: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        vehicleCache.setPreloaded();
+        console.log('🚗 Vehicle data preloaded successfully:', data);
+      } else {
+        throw new Error('Preload request failed');
+      }
+    } catch (error) {
+      console.error('Error preloading vehicle data:', error);
+      // Don't throw error, just log it - the individual endpoints will handle fallbacks
+    }
+  }
+
+  /**
    * Get all available vehicle makes from local backend (cached)
    */
   static async getMakes(signal?: AbortSignal): Promise<VehicleMake[]> {
@@ -99,6 +140,17 @@ export class VehicleAPIClient {
     const cachedMakes = vehicleCache.getMakes();
     if (cachedMakes) {
       return cachedMakes;
+    }
+
+    // Try to preload if not already done
+    if (!vehicleCache.isDataPreloaded()) {
+      await this.preloadVehicleData();
+      
+      // Check cache again after preload
+      const cachedMakesAfterPreload = vehicleCache.getMakes();
+      if (cachedMakesAfterPreload) {
+        return cachedMakesAfterPreload;
+      }
     }
 
     try {
@@ -130,6 +182,17 @@ export class VehicleAPIClient {
     const cachedModels = vehicleCache.getModels(makeId);
     if (cachedModels) {
       return cachedModels;
+    }
+
+    // Try to preload if not already done
+    if (!vehicleCache.isDataPreloaded()) {
+      await this.preloadVehicleData();
+      
+      // Check cache again after preload
+      const cachedModelsAfterPreload = vehicleCache.getModels(makeId);
+      if (cachedModelsAfterPreload) {
+        return cachedModelsAfterPreload;
+      }
     }
 
     try {
@@ -194,6 +257,17 @@ export class VehicleAPIClient {
       return cachedMakes;
     }
 
+    // Try to preload if not already done
+    if (!vehicleCache.isDataPreloaded()) {
+      await this.preloadVehicleData();
+      
+      // Check cache again after preload
+      const cachedMakesAfterPreload = vehicleCache.getMakesForType(vehicleType);
+      if (cachedMakesAfterPreload) {
+        return cachedMakesAfterPreload;
+      }
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/makes/type/${encodeURIComponent(vehicleType)}`, { signal });
       if (!response.ok) {
@@ -219,12 +293,56 @@ export class VehicleAPIClient {
    * Preload all vehicle data for better performance
    */
   static async preloadVehicleData(): Promise<void> {
+    // Check if already preloaded
+    if (vehicleCache.isDataPreloaded()) {
+      console.log('🚗 Vehicle data already preloaded and cached');
+      return;
+    }
+
     try {
-      // Preload makes in the background
-      this.getMakes().catch(console.error);
+      console.log('🚗 Preloading vehicle data...');
+      const response = await fetch(`${API_BASE_URL}/preload`);
+      if (!response.ok) {
+        throw new Error(`Failed to preload vehicle data: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        vehicleCache.setPreloaded();
+        console.log('🚗 Vehicle data preloaded successfully:', data);
+      } else {
+        throw new Error('Preload request failed');
+      }
     } catch (error) {
       console.error('Error preloading vehicle data:', error);
+      // Don't throw error, just log it - the individual endpoints will handle fallbacks
     }
+  }
+
+  /**
+   * Check if vehicle data is preloaded and cached
+   */
+  static isDataPreloaded(): boolean {
+    return vehicleCache.isDataPreloaded();
+  }
+
+  /**
+   * Get cache status information
+   */
+  static getCacheStatus(): {
+    isPreloaded: boolean;
+    makesCount: number;
+    modelsCount: number;
+    lastFetch: number;
+    cacheAge: number;
+  } {
+    return {
+      isPreloaded: vehicleCache.isDataPreloaded(),
+      makesCount: vehicleCache.getMakes()?.length || 0,
+      modelsCount: Array.from(vehicleCache.modelsCache.values()).reduce((total, models) => total + models.length, 0),
+      lastFetch: vehicleCache.lastFetch,
+      cacheAge: Date.now() - vehicleCache.lastFetch
+    };
   }
 
   /**

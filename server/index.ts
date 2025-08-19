@@ -53,6 +53,21 @@ app.use((req, res, next) => {
   const { createServer } = await import('http');
   const server = createServer(app);
 
+  // Warm up vehicle data cache on server startup
+  try {
+    log('🚗 Warming up vehicle data cache on server startup...');
+    const baseUrl = `http://localhost:5000`;
+    const preloadResponse = await fetch(`${baseUrl}/api/vehicles/preload`);
+    if (preloadResponse.ok) {
+      const preloadData = await preloadResponse.json();
+      log(`🚗 Vehicle data cache warmed up successfully: ${preloadData.makesCount} makes, ${preloadData.modelsCount} models`);
+    } else {
+      log('⚠️ Vehicle data cache warmup failed, will load on-demand');
+    }
+  } catch (error) {
+    log('⚠️ Vehicle data cache warmup failed, will load on-demand:', error);
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
