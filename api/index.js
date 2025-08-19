@@ -9571,18 +9571,63 @@ app.get('/api/vehicles/makes/type/:vehicleType', async (req, res) => {
   }
 });
 
-// Get models for a specific make (without year dependency)
+// Get models for a specific make using make name (more efficient)
+app.get('/api/vehicles/models/by-name/:makeName', async (req, res) => {
+  try {
+    const { makeName } = req.params;
+    const decodedMakeName = decodeURIComponent(makeName);
+    
+    // Check cache first (use make name as key)
+    if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
+      return res.json({
+        success: true,
+        models: vehicleCache.modelsByMake.get(decodedMakeName)
+      });
+    }
+    
+    // Direct call to NHTSA API with make name (no need to lookup make ID)
+    const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
+    if (!response.ok) {
+      throw new Error(`NHTSA API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Filter for 4-wheeled vehicles only
+    const fourWheeledModels = data.Results.filter((model) => {
+      const modelName = model.Model_Name.toUpperCase();
+      const excludedPatterns = [
+        /MOTORCYCLE$/i, /BIKE$/i, /SCOOTER$/i, /MOPED$/i, /ATV$/i,
+        /SNOWMOBILE$/i, /WATERCRAFT$/i, /BOAT$/i, /JET.?SKI$/i
+      ];
+      return !excludedPatterns.some(pattern => pattern.test(modelName));
+    });
+
+    const formattedModels = fourWheeledModels.map((model) => ({
+      id: model.Model_ID,
+      name: model.Model_Name
+    }));
+
+    // Cache the results
+    vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
+
+    res.json({
+      success: true,
+      models: formattedModels
+    });
+  } catch (error) {
+    console.error('Error fetching vehicle models:', error);
+    res.status(500).json({
+      error: 'Failed to fetch vehicle models',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get models for a specific make (without year dependency) - LEGACY ENDPOINT
 app.get('/api/vehicles/models/:makeId', async (req, res) => {
   try {
     const { makeId } = req.params;
-    
-    // Check cache first
-    if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
-      return res.json({
-        success: true,
-        models: vehicleCache.modelsByMake.get(makeId)
-      });
-    }
     
     // First get the make name from our makes list
     const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
@@ -9595,6 +9640,14 @@ app.get('/api/vehicles/models/:makeId', async (req, res) => {
     
     if (!selectedMake) {
       throw new Error('Make not found');
+    }
+    
+    // Check cache with make name
+    if (vehicleCache.modelsByMake.has(selectedMake.Make_Name) && isCacheValid()) {
+      return res.json({
+        success: true,
+        models: vehicleCache.modelsByMake.get(selectedMake.Make_Name)
+      });
     }
     
     // Get all models for this make (without year)
@@ -9661,8 +9714,8 @@ app.get('/api/vehicles/models/:makeId', async (req, res) => {
       name: model.Model_Name
     }));
 
-    // Cache the results
-    vehicleCache.modelsByMake.set(makeId, formattedModels);
+    // Cache the results using make name for consistency with new endpoint
+    vehicleCache.modelsByMake.set(selectedMake.Make_Name, formattedModels);
 
     res.json({
       success: true,
