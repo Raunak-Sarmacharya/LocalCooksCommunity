@@ -28,7 +28,7 @@ class VehicleCache {
   private modelsCache: Map<number, VehicleModel[]> = new Map();
   private yearsCache: Map<number, number[]> = new Map();
   private makesForTypeCache: Map<string, VehicleMake[]> = new Map();
-  private cacheExpiry = 5 * 60 * 1000; // 5 minutes
+  private cacheExpiry = 10 * 60 * 1000; // 10 minutes (increased from 5)
   private lastFetch = 0;
 
   private isCacheValid(): boolean {
@@ -74,6 +74,17 @@ class VehicleCache {
     this.yearsCache.clear();
     this.makesForTypeCache.clear();
     this.lastFetch = 0;
+  }
+
+  // Clear specific make's data when it might be stale
+  clearMakeData(makeId: number): void {
+    this.modelsCache.delete(makeId);
+    this.yearsCache.delete(makeId);
+  }
+
+  // Clear all type-specific data
+  clearTypeData(): void {
+    this.makesForTypeCache.clear();
   }
 }
 
@@ -209,6 +220,20 @@ export class VehicleAPIClient {
    */
   static clearCache(): void {
     vehicleCache.clearCache();
+  }
+
+  /**
+   * Clear cache for a specific make (useful when make data might be stale)
+   */
+  static clearMakeCache(makeId: number): void {
+    vehicleCache.clearMakeData(makeId);
+  }
+
+  /**
+   * Clear cache for vehicle types (useful when type data might be stale)
+   */
+  static clearTypeCache(): void {
+    vehicleCache.clearTypeData();
   }
 
   /**

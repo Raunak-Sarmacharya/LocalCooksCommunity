@@ -1522,22 +1522,59 @@ export function registerFirebaseRoutes(app: Express) {
       
       const data = await response.json();
       
-      // Filter for 4-wheeled vehicles only
+      console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${selectedMake.Make_Name}`);
+      
+      // Filter for 4-wheeled vehicles only, but be much less aggressive
       const fourWheeledModels = data.Results.filter((model: any) => {
-        // Filter out motorcycle models and other non-4-wheeled vehicles
-        const excludedKeywords = [
-          'MOTORCYCLE', 'BIKE', 'SCOOTER', 'MOPED', 'ATV', 'QUAD', 'TRIKE',
-          'SIDECAR', 'MOTORCYCLE', 'MOTORBIKE', 'MOTOR BIKE'
+        // Only exclude very obvious non-4-wheeled vehicle models
+        const modelName = model.Model_Name.toUpperCase();
+        
+        // Very specific exclusions only for obvious non-4-wheeled vehicles
+        const excludedPatterns = [
+          // Motorcycle patterns
+          /MOTORCYCLE$/i,
+          /BIKE$/i,
+          /SCOOTER$/i,
+          /MOPED$/i,
+          /ATV$/i,
+          /QUAD$/i,
+          /TRIKE$/i,
+          /SIDECAR$/i,
+          
+          // Very specific motorcycle model names
+          /^HARLEY/i,
+          /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
+          /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
+          /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
+          /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
+          /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
+          /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
+          /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
+          /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
+          /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
+          /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
+          /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
+          /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
+          /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
+          /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
+          /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
+          /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
+          /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
+          /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
+          /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
+          /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
+          /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
+          /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
         ];
         
-        return !excludedKeywords.some(keyword => 
-          model.Model_Name.toUpperCase().includes(keyword) ||
-          model.Model_Name.toUpperCase().includes('MOTO')
-        );
+        // Check if model matches any excluded patterns
+        return !excludedPatterns.some(pattern => pattern.test(modelName));
       });
 
-      const formattedModels = fourWheeledModels.map((model: any, index: number) => ({
-        id: index + 1, // Generate sequential IDs since NHTSA doesn't provide stable IDs
+      console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${selectedMake.Make_Name}`);
+      
+      const formattedModels = fourWheeledModels.map((model: any) => ({
+        id: model.Model_ID || model.Model_ID, // Use actual NHTSA ID if available
         name: model.Model_Name
       }));
 
@@ -1562,14 +1599,198 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       const { makeId } = req.params;
       
-      // Generate a reasonable range of years without API dependency
+      // Get the make name first to determine appropriate year range
+      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
+      if (!makesResponse.ok) {
+        throw new Error(`NHTSA API error: ${makesResponse.status}`);
+      }
+      
+      const makesData = await makesResponse.json();
+      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
+      
+      if (!selectedMake) {
+        throw new Error('Make not found');
+      }
+      
+      const makeName = selectedMake.Make_Name;
       const currentYear = new Date().getFullYear();
       const years = [];
       
-      // Generate years from 1995 to current year + 1 (for upcoming models)
-      for (let year = 1995; year <= currentYear + 1; year++) {
+      // Define brand founding years for more accurate year ranges
+      const brandFoundingYears: { [key: string]: number } = {
+        'TESLA': 2003,
+        'RIVIAN': 2009,
+        'LUCID': 2007,
+        'FISKER': 2007,
+        'CANOO': 2017,
+        'BOLLINGER': 2014,
+        'LORDSTOWN': 2018,
+        'NIKOLA': 2014,
+        'HYUNDAI': 1967,
+        'KIA': 1944,
+        'GENESIS': 2015,
+        'LEXUS': 1989,
+        'INFINITI': 1989,
+        'ACURA': 1986,
+        'SCION': 2002, // Discontinued in 2016
+        'SATURN': 1985, // Discontinued in 2010
+        'PONTIAC': 1926, // Discontinued in 2010
+        'OLDSMOBILE': 1897, // Discontinued in 2004
+        'HUMMER': 1992, // Discontinued in 2010, revived in 2020
+        'SAAB': 1945, // Discontinued in 2016
+        'VOLVO': 1927,
+        'JAGUAR': 1922,
+        'LAND ROVER': 1948,
+        'MINI': 1959,
+        'BMW': 1916,
+        'MERCEDES-BENZ': 1926,
+        'AUDI': 1909,
+        'VOLKSWAGEN': 1937,
+        'PORSCHE': 1931,
+        'FERRARI': 1947,
+        'LAMBORGHINI': 1963,
+        'MASERATI': 1914,
+        'ALFA ROMEO': 1910,
+        'FIAT': 1899,
+        'LOTUS': 1952,
+        'ASTON MARTIN': 1913,
+        'BENTLEY': 1919,
+        'ROLLS-ROYCE': 1904,
+        'MCLAREN': 1963,
+        'BUGATTI': 1909,
+        'KOENIGSEGG': 1994,
+        'PAGANI': 1992,
+        'RIMAC': 2009,
+        'PININFARINA': 1930,
+        'SPYKER': 1999,
+        'NOBLE': 1999,
+        'GINETTA': 1958,
+        'MORGAN': 1909,
+        'CATERHAM': 1973,
+        'WESTFIELD': 1982,
+        'ARIEL': 1991,
+        'BAC': 2009,
+        'RADICAL': 1997,
+        'DONKERVOORT': 1978,
+        'ULTIMA': 1992,
+        'SALEEN': 1983,
+        'PANOZ': 1989,
+        'MOSLER': 1985,
+        'ROSSION': 2008,
+        'KTM': 1934, // Only for cars, not motorcycles
+        'TVR': 1947,
+        'JENSEN': 1934,
+        'MARCOS': 1959,
+        'GRIFFITH': 1963,
+        // Additional recent electric vehicle brands
+        'POLESTAR': 2017,
+        'NIO': 2014,
+        'XPENG': 2014,
+        'LI AUTO': 2015,
+        'BYD': 1995,
+        'GEELY': 1986,
+        'GREAT WALL': 1984,
+        'CHANGAN': 1862,
+        'DONGFENG': 1969,
+        'FAW': 1953,
+        'SAIC': 1955,
+        'GAC': 1997,
+        'BAIC': 1958,
+        'CHERY': 1997,
+        'JAC': 1964,
+        'HAVAL': 2013,
+        'WEY': 2016,
+        'LYNK & CO': 2016,
+        'ZEEKR': 2021,
+        'AVATR': 2018,
+        'ARCFOX': 2017,
+        'AIWAYS': 2017,
+        'SERES': 2016,
+        'HORSE': 2019,
+        'CITROEN': 1919,
+        'PEUGEOT': 1810,
+        'RENAULT': 1899,
+        'OPEL': 1862,
+        'VAUXHALL': 1857,
+        'SEAT': 1950,
+        'SKODA': 1895,
+        'DAEWOO': 1967, // Discontinued in 2002
+        'SSANGYONG': 1954,
+        'MAHINDRA': 1945,
+        'TATA': 1945,
+        'MARUTI': 1981,
+        'PROTON': 1983,
+        'PERODUA': 1993,
+        'HINDUSTAN': 1942,
+        'PREMIER': 1944,
+        'FORCE': 1958,
+        'ASHOK': 1948,
+        'EICHER': 1948,
+        'BAJAJ': 1945,
+        'TVS': 1978,
+        'HERO': 1984,
+        'ROYAL': 1949,
+        'JAWA': 1929,
+        'YAMAHA': 1955, // Only for cars, not motorcycles
+        'SUZUKI': 1909, // Only for cars, not motorcycles
+        'KAWASAKI': 1896, // Only for cars, not motorcycles
+        'HONDA': 1948, // Only for cars, not motorcycles
+        'MITSUBISHI': 1870,
+        'SUBARU': 1953,
+        'MAZDA': 1920,
+        'ISUZU': 1916,
+        'DAIHATSU': 1907,
+        'MITSUOKA': 1968,
+        'TOYOTA': 1937,
+        'NISSAN': 1933,
+        'DATSUN': 1931, // Discontinued in 1986, revived 2013-2022
+        'INFINITI': 1989,
+        'LEXUS': 1989,
+        'SCION': 2002, // Discontinued in 2016
+        'ACURA': 1986,
+        'HONDA': 1948,
+        'TOYOTA': 1937,
+        'NISSAN': 1933,
+        'MITSUBISHI': 1870,
+        'SUBARU': 1953,
+        'MAZDA': 1920,
+        'ISUZU': 1916,
+        'DAIHATSU': 1907,
+        'MITSUOKA': 1968,
+        'SUZUKI': 1909,
+        'YAMAHA': 1955,
+        'KAWASAKI': 1896,
+        'HONDA': 1948
+      };
+      
+      // Determine start year based on brand founding
+      let startYear = 1995; // Default fallback
+      
+      // Check if we have founding year data for this brand
+      const brandKey = makeName.toUpperCase();
+      if (brandFoundingYears[brandKey]) {
+        startYear = brandFoundingYears[brandKey];
+        console.log(`📅 Brand ${makeName} founded in ${startYear}, using that as start year`);
+      } else {
+        // For unknown brands, use a reasonable default based on common patterns
+        if (brandKey.includes('ELECTRIC') || brandKey.includes('EV') || brandKey.includes('HYBRID')) {
+          startYear = 2000; // Most electric brands started around 2000s
+          console.log(`📅 Brand ${makeName} appears to be electric, using 2000 as start year`);
+        } else if (brandKey.includes('CHINESE') || brandKey.includes('ASIAN')) {
+          startYear = 1990; // Many Asian brands expanded globally in 1990s
+          console.log(`📅 Brand ${makeName} appears to be Asian, using 1990 as start year`);
+        } else {
+          startYear = 1995; // Conservative default for established brands
+          console.log(`📅 Brand ${makeName} using default start year of 1995`);
+        }
+      }
+      
+      // Generate years from start year to current year + 1 (for upcoming models)
+      for (let year = startYear; year <= currentYear + 1; year++) {
         years.push(year);
       }
+      
+      console.log(`📅 Generated ${years.length} years for ${makeName}: ${startYear} to ${currentYear + 1}`);
       
       res.json({
         success: true,
