@@ -4,9 +4,9 @@ import { fromZodError } from 'zod-validation-error';
 import { pool } from './db';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-    requireAdmin,
-    requireFirebaseAuthWithUser,
-    verifyFirebaseAuth
+  requireAdmin,
+  requireFirebaseAuthWithUser,
+  verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
@@ -1392,12 +1392,26 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
-  // Get models for a specific make and year
-  app.get('/api/vehicles/models/:makeId/:year', async (req: Request, res: Response) => {
+  // Get models for a specific make (without year dependency)
+  app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
     try {
-      const { makeId, year } = req.params;
+      const { makeId } = req.params;
       
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/makeId/${makeId}/modelyear/${year}?format=json`);
+      // First get the make name from our makes list
+      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
+      if (!makesResponse.ok) {
+        throw new Error(`NHTSA API error: ${makesResponse.status}`);
+      }
+      
+      const makesData = await makesResponse.json();
+      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
+      
+      if (!selectedMake) {
+        throw new Error('Make not found');
+      }
+      
+      // Get all models for this make (without year)
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
       }
@@ -1420,8 +1434,8 @@ export function registerFirebaseRoutes(app: Express) {
 
       res.json({
         success: true,
-        models: fourWheeledModels.map((model: any) => ({
-          id: model.Model_ID,
+        models: fourWheeledModels.map((model: any, index: number) => ({
+          id: index + 1, // Generate sequential IDs since NHTSA doesn't provide stable IDs
           name: model.Model_Name
         }))
       });
@@ -1439,36 +1453,23 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       const { makeId } = req.params;
       
-      // Get models for current year to find available years
+      // Generate a reasonable range of years without API dependency
       const currentYear = new Date().getFullYear();
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/makeId/${makeId}/modelyear/${currentYear}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
+      const years = [];
+      
+      // Generate years from 1995 to current year + 1 (for upcoming models)
+      for (let year = 1995; year <= currentYear + 1; year++) {
+        years.push(year);
       }
       
-      const data = await response.json();
-      
-      if (data.Results && data.Results.length > 0) {
-        // Get years from 1995 to current year + 1 (for upcoming models)
-        const years = [];
-        for (let year = 1995; year <= currentYear + 1; year++) {
-          years.push(year);
-        }
-        
-        res.json({
-          success: true,
-          years: years
-        });
-      } else {
-        res.json({
-          success: true,
-          years: []
-        });
-      }
+      res.json({
+        success: true,
+        years: years
+      });
     } catch (error) {
-      console.error('Error fetching vehicle years:', error);
+      console.error('Error generating vehicle years:', error);
       res.status(500).json({
-        error: 'Failed to fetch vehicle years',
+        error: 'Failed to generate vehicle years',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
     }

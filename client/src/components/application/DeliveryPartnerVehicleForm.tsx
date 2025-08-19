@@ -54,7 +54,7 @@ export default function DeliveryPartnerVehicleForm() {
         try {
           setLoading(true);
           setError(null);
-          const makesData = await VehicleAPIClient.getMakesForVehicleType(formData.vehicleType);
+          const makesData = await VehicleAPIClient.getMakesForVehicleType(formData.vehicleType!);
           setMakes(makesData);
           // Reset make selection when vehicle type changes
           setSelectedMakeId(null);
@@ -115,32 +115,13 @@ export default function DeliveryPartnerVehicleForm() {
     }
   }, [selectedMakeId]);
 
-  // Optional: Filter models by year when year is selected (for additional validation)
-  useEffect(() => {
-    if (selectedMakeId && formData.vehicleYear && models.length > 0) {
-      const filterModelsByYear = async () => {
-        try {
-          setError(null);
-          const yearSpecificModels = await VehicleAPIClient.getModelsForMakeYear(selectedMakeId, formData.vehicleYear);
-          // If year-specific models are available, use them; otherwise keep the general models
-          if (yearSpecificModels.length > 0) {
-            setModels(yearSpecificModels);
-          }
-        } catch (error) {
-          console.error('Failed to filter models by year:', error);
-          // Keep the general models if year filtering fails
-        }
-      };
-
-      filterModelsByYear();
-    }
-  }, [selectedMakeId, formData.vehicleYear, models.length]);
+  // Models are now loaded once when make is selected, no year filtering needed
 
   const handleInputChange = (field: keyof typeof formData, value: string | number) => {
     updateFormData({ [field]: value });
     setError(null);
     
-    // Reset dependent fields when make or year changes
+    // Reset dependent fields when make changes
     if (field === 'vehicleMake') {
       updateFormData({ 
         vehicleModel: '', 
@@ -149,9 +130,6 @@ export default function DeliveryPartnerVehicleForm() {
       setSelectedMakeId(null);
       setModels([]);
       setYears([]);
-    } else if (field === 'vehicleYear') {
-      updateFormData({ vehicleModel: '' });
-      setModels([]);
     }
   };
 
@@ -322,8 +300,8 @@ export default function DeliveryPartnerVehicleForm() {
             {!selectedMakeId && (
               <p className="text-xs text-gray-500 mt-1">Select a vehicle make first to see available years</p>
             )}
-            {selectedMakeId && formData.vehicleYear && (
-              <p className="text-xs text-green-600 mt-1">Year selected - models will be filtered for additional accuracy</p>
+            {selectedMakeId && (
+              <p className="text-xs text-green-600 mt-1">Models loaded for selected make</p>
             )}
           </div>
 
@@ -359,7 +337,7 @@ export default function DeliveryPartnerVehicleForm() {
           <h4 className="text-sm font-medium text-green-800 mb-2">NHTSA Integration</h4>
           <ul className="text-xs text-green-700 space-y-1">
             <li>• Real-time vehicle data from National Highway Traffic Safety Administration</li>
-            <li>• Comprehensive make, model, and year database</li>
+            <li>• Comprehensive make and model database (no year dependency)</li>
             <li>• Vehicle type filtering for better accuracy</li>
             <li>• Access to safety ratings and recall information</li>
           </ul>
@@ -371,7 +349,7 @@ export default function DeliveryPartnerVehicleForm() {
             <li>• 1. Select your vehicle type (car, SUV, truck, van)</li>
             <li>• 2. Choose the vehicle make from the filtered list</li>
             <li>• 3. Select your vehicle model from available options</li>
-            <li>• 4. Optionally select year for additional validation</li>
+            <li>• 4. Optionally select year for additional details</li>
             <li>• 5. Enter your license plate number</li>
           </ul>
         </div>

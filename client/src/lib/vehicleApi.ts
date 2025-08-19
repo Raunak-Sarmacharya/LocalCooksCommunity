@@ -78,46 +78,7 @@ export class VehicleAPIClient {
     }
   }
 
-  /**
-   * Get models for a specific make and year from NHTSA API (for year-specific filtering)
-   */
-  static async getModelsForMakeYear(makeId: number, year: number): Promise<VehicleModel[]> {
-    try {
-      // First get the make name from our makes list
-      const makes = await this.getMakes();
-      const selectedMake = makes.find(make => make.id === makeId);
-      
-      if (!selectedMake) {
-        throw new Error('Make not found');
-      }
-
-      const response = await fetch(
-        `${NHTSA_BASE_URL}/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(selectedMake.name)}/modelyear/${year}?format=json`
-      );
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch vehicle models: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      // Transform NHTSA data to our format
-      return (data.Results || []).map((model: any, index: number) => ({
-        id: index + 1, // NHTSA doesn't provide IDs, so we generate them
-        name: model.Model_Name
-      }));
-    } catch (error) {
-      console.error('Error fetching vehicle models from NHTSA:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get models for a specific make and year from NHTSA API
-   * @deprecated Use getModelsForMakeYear instead for year-specific filtering
-   */
-  static async getModels(makeId: number, year: number): Promise<VehicleModel[]> {
-    return this.getModelsForMakeYear(makeId, year);
-  }
+  // Year-based model filtering methods removed - models are now loaded once per make
 
   /**
    * Get available years for a specific make from NHTSA API
@@ -151,27 +112,13 @@ export class VehicleAPIClient {
         console.log('Direct years endpoint failed, using fallback method');
       }
 
-      // Fallback: Try to get years by looking at available models for different years
+      // Fallback: Generate a reasonable range of years
       const currentYear = new Date().getFullYear();
       const years: number[] = [];
       
-      // Check the last 30 years for available models
-      for (let year = currentYear; year >= currentYear - 30; year--) {
-        try {
-          const response = await fetch(
-            `${NHTSA_BASE_URL}/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(selectedMake.name)}/modelyear/${year}?format=json`
-          );
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.Results && data.Results.length > 0) {
-              years.push(year);
-            }
-          }
-        } catch (error) {
-          // Continue to next year if this one fails
-          continue;
-        }
+      // Generate years from 1995 to current year + 1 (for upcoming models)
+      for (let year = 1995; year <= currentYear + 1; year++) {
+        years.push(year);
       }
       
       return years.sort((a: number, b: number) => b - a); // Most recent years first
