@@ -1,4 +1,3 @@
-import { apiClient } from './api';
 
 export interface VehicleMake {
   id: number;
@@ -47,9 +46,42 @@ export class VehicleAPIClient {
   }
 
   /**
-   * Get models for a specific make and year from NHTSA API
+   * Get models for a specific make from NHTSA API (without year requirement)
    */
-  static async getModels(makeId: number, year: number): Promise<VehicleModel[]> {
+  static async getModelsForMake(makeId: number): Promise<VehicleModel[]> {
+    try {
+      // First get the make name from our makes list
+      const makes = await this.getMakes();
+      const selectedMake = makes.find(make => make.id === makeId);
+      
+      if (!selectedMake) {
+        throw new Error('Make not found');
+      }
+
+      const response = await fetch(
+        `${NHTSA_BASE_URL}/vehicles/getmodelsformake/${encodeURIComponent(selectedMake.name)}?format=json`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch vehicle models: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      // Transform NHTSA data to our format
+      return (data.Results || []).map((model: any, index: number) => ({
+        id: index + 1, // NHTSA doesn't provide IDs, so we generate them
+        name: model.Model_Name
+      }));
+    } catch (error) {
+      console.error('Error fetching vehicle models from NHTSA:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get models for a specific make and year from NHTSA API (for year-specific filtering)
+   */
+  static async getModelsForMakeYear(makeId: number, year: number): Promise<VehicleModel[]> {
     try {
       // First get the make name from our makes list
       const makes = await this.getMakes();
@@ -80,8 +112,15 @@ export class VehicleAPIClient {
   }
 
   /**
+   * Get models for a specific make and year from NHTSA API
+   * @deprecated Use getModelsForMakeYear instead for year-specific filtering
+   */
+  static async getModels(makeId: number, year: number): Promise<VehicleModel[]> {
+    return this.getModelsForMakeYear(makeId, year);
+  }
+
+  /**
    * Get available years for a specific make from NHTSA API
-   * Note: Using a different approach since the direct years endpoint has issues
    */
   static async getYears(makeId: number): Promise<number[]> {
     try {
@@ -93,8 +132,26 @@ export class VehicleAPIClient {
         throw new Error('Make not found');
       }
 
-      // Try to get years by looking at available models for different years
-      // This is a workaround since the direct years endpoint has issues
+      // First try the direct years endpoint
+      try {
+        const response = await fetch(
+          `${NHTSA_BASE_URL}/vehicles/GetYearsForMake/${encodeURIComponent(selectedMake.name)}?format=json`
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.Results && data.Results.length > 0) {
+            const years = data.Results.map((year: any) => parseInt(year.Year)).filter((year: number) => !isNaN(year));
+            if (years.length > 0) {
+              return years.sort((a: number, b: number) => b - a); // Most recent years first
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Direct years endpoint failed, using fallback method');
+      }
+
+      // Fallback: Try to get years by looking at available models for different years
       const currentYear = new Date().getFullYear();
       const years: number[] = [];
       
@@ -117,7 +174,7 @@ export class VehicleAPIClient {
         }
       }
       
-      return years.sort((a, b) => b - a); // Most recent years first
+      return years.sort((a: number, b: number) => b - a); // Most recent years first
     } catch (error) {
       console.error('Error fetching vehicle years from NHTSA:', error);
       throw error;
@@ -220,9 +277,9 @@ export class VehicleAPIClient {
   /**
    * Search models by name (for autocomplete) - now using NHTSA data
    */
-  static async searchModels(makeId: number, year: number, query: string): Promise<VehicleModel[]> {
+  static async searchModels(makeId: number, query: string): Promise<VehicleModel[]> {
     try {
-      const models = await this.getModels(makeId, year);
+      const models = await this.getModelsForMake(makeId);
       if (!query) return models;
       
       const searchTerm = query.toLowerCase();
