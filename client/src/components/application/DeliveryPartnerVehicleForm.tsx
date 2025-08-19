@@ -41,6 +41,7 @@ export default function DeliveryPartnerVehicleForm() {
   const [models, setModels] = useState<VehicleModel[]>([]);
   const [years, setYears] = useState<number[]>([]);
   const [selectedMakeId, setSelectedMakeId] = useState<number | null>(null);
+  const [selectedMakeName, setSelectedMakeName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Loading states for individual fields
@@ -76,6 +77,7 @@ export default function DeliveryPartnerVehicleForm() {
       setMakes(makesData);
       // Reset make selection when vehicle type changes
       setSelectedMakeId(null);
+      setSelectedMakeName(null);
       updateFormData({ 
         vehicleMake: '', 
         vehicleModel: '', 
@@ -101,9 +103,9 @@ export default function DeliveryPartnerVehicleForm() {
   }, [formData.vehicleType]);
 
   // Load models and years sequentially when make is selected (debounced to avoid rapid API calls)
-  const debouncedMakeId = useDebounce(selectedMakeId, 300);
+  const debouncedMakeName = useDebounce(selectedMakeName, 300);
   useEffect(() => {
-    if (debouncedMakeId) {
+    if (debouncedMakeName) {
       const loadModelsAndYears = async () => {
         // Cancel any existing requests
         if (modelsRequestRef.current) {
@@ -126,7 +128,7 @@ export default function DeliveryPartnerVehicleForm() {
           setModels([]);
           setYears([]);
           
-          const modelsData = await VehicleAPIClient.getModelsForMake(debouncedMakeId, modelsController.signal);
+          const modelsData = await VehicleAPIClient.getModelsForMake(debouncedMakeName, modelsController.signal);
           
           // Check if request was cancelled
           if (modelsController.signal.aborted) return;
@@ -147,7 +149,7 @@ export default function DeliveryPartnerVehicleForm() {
           
           setYearsLoading(true);
           
-          const yearsData = await VehicleAPIClient.getYears(debouncedMakeId, yearsController.signal);
+          const yearsData = await VehicleAPIClient.getYears(selectedMakeId!, yearsController.signal);
           
           // Check if request was cancelled
           if (yearsController.signal.aborted) return;
@@ -172,7 +174,7 @@ export default function DeliveryPartnerVehicleForm() {
 
       loadModelsAndYears();
     }
-  }, [debouncedMakeId]);
+  }, [debouncedMakeName]);
 
   const handleInputChange = useCallback((field: keyof typeof formData, value: string | number) => {
     updateFormData({ [field]: value });
@@ -186,6 +188,7 @@ export default function DeliveryPartnerVehicleForm() {
         vehicleYear: undefined 
       });
       setSelectedMakeId(null);
+      setSelectedMakeName(null);
       setModels([]);
       setYears([]);
     }
@@ -199,6 +202,7 @@ export default function DeliveryPartnerVehicleForm() {
     // Find the make name and update form
     const selectedMake = makes.find(make => make.id === makeIdNum);
     if (selectedMake) {
+      setSelectedMakeName(selectedMake.name);
       updateFormData({ 
         vehicleMake: selectedMake.name,
         vehicleModel: '',

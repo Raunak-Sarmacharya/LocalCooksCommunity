@@ -4,9 +4,9 @@ import { fromZodError } from 'zod-validation-error';
 import { pool } from './db';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-  requireAdmin,
-  requireFirebaseAuthWithUser,
-  verifyFirebaseAuth
+    requireAdmin,
+    requireFirebaseAuthWithUser,
+    verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
@@ -1488,41 +1488,29 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
-  // Get models for a specific make (without year dependency)
-  app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
+  // Get models for a specific make using make name (more efficient)
+  app.get('/api/vehicles/models/by-name/:makeName', async (req: Request, res: Response) => {
     try {
-      const { makeId } = req.params;
+      const { makeName } = req.params;
+      const decodedMakeName = decodeURIComponent(makeName);
       
-      // Check cache first
-      if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
+      // Check cache first (use make name as key)
+      if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
         return res.json({
           success: true,
-          models: vehicleCache.modelsByMake.get(makeId)
+          models: vehicleCache.modelsByMake.get(decodedMakeName)
         });
       }
       
-      // First get the make name from our makes list
-      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
-      if (!makesResponse.ok) {
-        throw new Error(`NHTSA API error: ${makesResponse.status}`);
-      }
-      
-      const makesData = await makesResponse.json();
-      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
-      
-      if (!selectedMake) {
-        throw new Error('Make not found');
-      }
-      
-      // Get all models for this make (without year)
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
+      // Direct call to NHTSA API with make name (no need to lookup make ID)
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
       }
       
       const data = await response.json();
       
-      console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${selectedMake.Make_Name}`);
+      console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${decodedMakeName}`);
       
       // Filter for 4-wheeled vehicles only, but be much less aggressive
       const fourWheeledModels = data.Results.filter((model: any) => {
@@ -1571,7 +1559,7 @@ export function registerFirebaseRoutes(app: Express) {
         return !excludedPatterns.some(pattern => pattern.test(modelName));
       });
 
-      console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${selectedMake.Make_Name}`);
+      console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${decodedMakeName}`);
       
       const formattedModels = fourWheeledModels.map((model: any) => ({
         id: model.Model_ID || model.Model_ID, // Use actual NHTSA ID if available
@@ -1579,7 +1567,7 @@ export function registerFirebaseRoutes(app: Express) {
       }));
 
       // Cache the results
-      vehicleCache.modelsByMake.set(makeId, formattedModels);
+      vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
 
       res.json({
         success: true,

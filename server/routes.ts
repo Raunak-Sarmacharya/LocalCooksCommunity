@@ -2655,7 +2655,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get models for a specific make (without year dependency)
+  // Get models for a specific make using make name (more efficient)
+  app.get('/api/vehicles/models/by-name/:makeName', async (req: Request, res: Response) => {
+    try {
+      const { makeName } = req.params;
+      const decodedMakeName = decodeURIComponent(makeName);
+      
+      // Check cache first (use make name as key)
+      if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
+        return res.json({
+          success: true,
+          models: vehicleCache.modelsByMake.get(decodedMakeName)
+        });
+      }
+      
+      // Direct call to NHTSA API with make name (no need to lookup make ID)
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
+      if (!response.ok) {
+        throw new Error(`NHTSA API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for 4-wheeled vehicles only
+      const fourWheeledModels = data.Results.filter((model: any) => {
+        const modelName = model.Model_Name.toUpperCase();
+        const excludedPatterns = [
+          /MOTORCYCLE$/i, /BIKE$/i, /SCOOTER$/i, /MOPED$/i, /ATV$/i,
+          /SNOWMOBILE$/i, /WATERCRAFT$/i, /BOAT$/i, /JET.?SKI$/i
+        ];
+        return !excludedPatterns.some(pattern => pattern.test(modelName));
+      });
+
+      const formattedModels = fourWheeledModels.map((model: any) => ({
+        id: model.Model_ID,
+        name: model.Model_Name
+      }));
+
+      // Cache the results
+      vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
+
+      res.json({
+        success: true,
+        models: formattedModels
+      });
+    } catch (error) {
+      console.error('Error fetching vehicle models:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vehicle models',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get models for a specific make (without year dependency) - LEGACY ENDPOINT
   app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
     try {
       const { makeId } = req.params;

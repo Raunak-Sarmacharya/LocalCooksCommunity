@@ -25,7 +25,7 @@ const API_BASE_URL = '/api/vehicles';
 // Cache for vehicle data to avoid repeated API calls
 class VehicleCache {
   private makesCache: VehicleMake[] | null = null;
-  private modelsCache: Map<number, VehicleModel[]> = new Map();
+  private modelsCache: Map<string, VehicleModel[]> = new Map();
   private yearsCache: Map<number, number[]> = new Map();
   private makesForTypeCache: Map<string, VehicleMake[]> = new Map();
   private cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours (increased from 10 minutes)
@@ -45,12 +45,12 @@ class VehicleCache {
     return this.isCacheValid() ? this.makesCache : null;
   }
 
-  setModels(makeId: number, models: VehicleModel[]): void {
-    this.modelsCache.set(makeId, models);
+  setModels(makeName: string, models: VehicleModel[]): void {
+    this.modelsCache.set(makeName, models);
   }
 
-  getModels(makeId: number): VehicleModel[] | null {
-    return this.modelsCache.get(makeId) || null;
+  getModels(makeName: string): VehicleModel[] | null {
+    return this.modelsCache.get(makeName) || null;
   }
 
   setYears(makeId: number, years: number[]): void {
@@ -88,9 +88,9 @@ class VehicleCache {
   }
 
   // Clear specific make's data when it might be stale
-  clearMakeData(makeId: number): void {
-    this.modelsCache.delete(makeId);
-    this.yearsCache.delete(makeId);
+  clearMakeData(makeName: string): void {
+    this.modelsCache.delete(makeName);
+    // Note: yearsCache still uses makeId for now since years API wasn't updated yet
   }
 
   // Clear all type-specific data
@@ -137,9 +137,9 @@ export class VehicleAPIClient {
   /**
    * Get models for a specific make from local backend (cached)
    */
-  static async getModelsForMake(makeId: number, signal?: AbortSignal): Promise<VehicleModel[]> {
+  static async getModelsForMake(makeName: string, signal?: AbortSignal): Promise<VehicleModel[]> {
     // Check cache first
-    const cachedModels = vehicleCache.getModels(makeId);
+    const cachedModels = vehicleCache.getModels(makeName);
     if (cachedModels) {
       return cachedModels;
     }
@@ -147,7 +147,7 @@ export class VehicleAPIClient {
 
 
     try {
-      const response = await fetch(`${API_BASE_URL}/models/${makeId}`, { signal });
+      const response = await fetch(`${API_BASE_URL}/models/by-name/${encodeURIComponent(makeName)}`, { signal });
       if (!response.ok) {
         throw new Error(`Failed to fetch vehicle models: ${response.status}`);
       }
@@ -156,7 +156,7 @@ export class VehicleAPIClient {
       const models = data.models || [];
       
       // Cache the result
-      vehicleCache.setModels(makeId, models);
+      vehicleCache.setModels(makeName, models);
       return models;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -243,8 +243,8 @@ export class VehicleAPIClient {
   /**
    * Clear cache for a specific make (useful when make data might be stale)
    */
-  static clearMakeCache(makeId: number): void {
-    vehicleCache.clearMakeData(makeId);
+  static clearMakeCache(makeName: string): void {
+    vehicleCache.clearMakeData(makeName);
   }
 
   /**
@@ -312,9 +312,9 @@ export class VehicleAPIClient {
   /**
    * Search models by name (for autocomplete) - now using cached data
    */
-  static async searchModels(makeId: number, query: string): Promise<VehicleModel[]> {
+  static async searchModels(makeName: string, query: string): Promise<VehicleModel[]> {
     try {
-      const models = await this.getModelsForMake(makeId);
+      const models = await this.getModelsForMake(makeName);
       if (!query) return models;
       
       const searchTerm = query.toLowerCase();
