@@ -56,7 +56,7 @@ export function DeliveryPartnerFormProvider({ children }: DeliveryPartnerFormPro
       case 2: // Address
         return !!(formData.address && formData.city && formData.province && formData.postalCode);
       case 3: // Vehicle Details
-        return !!(formData.vehicleType && formData.vehicleMake && formData.vehicleModel && formData.vehicleYear && formData.licensePlate);
+        return !!(formData.vehicleType && formData.vehicleMake && formData.vehicleModel && formData.licensePlate);
       case 4: // Documents
         return true; // Documents are optional during initial submission
       default:

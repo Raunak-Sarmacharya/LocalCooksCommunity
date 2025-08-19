@@ -97,23 +97,44 @@ export default function DeliveryPartnerVehicleForm() {
     }
   }, [selectedMakeId]);
 
-  // Load models when make and year are selected
+  // Load models when make is selected
   useEffect(() => {
-    if (selectedMakeId && formData.vehicleYear) {
+    if (selectedMakeId) {
       const loadModels = async () => {
         try {
           setError(null);
-          const modelsData = await VehicleAPIClient.getModels(selectedMakeId, formData.vehicleYear);
+          const modelsData = await VehicleAPIClient.getModelsForMake(selectedMakeId);
           setModels(modelsData);
         } catch (error) {
           console.error('Failed to load vehicle models:', error);
-          setError('Failed to load vehicle models. Please try selecting a different year.');
+          setError('Failed to load vehicle models. Please try selecting a different make.');
         }
       };
 
       loadModels();
     }
-  }, [selectedMakeId, formData.vehicleYear]);
+  }, [selectedMakeId]);
+
+  // Optional: Filter models by year when year is selected (for additional validation)
+  useEffect(() => {
+    if (selectedMakeId && formData.vehicleYear && models.length > 0) {
+      const filterModelsByYear = async () => {
+        try {
+          setError(null);
+          const yearSpecificModels = await VehicleAPIClient.getModelsForMakeYear(selectedMakeId, formData.vehicleYear);
+          // If year-specific models are available, use them; otherwise keep the general models
+          if (yearSpecificModels.length > 0) {
+            setModels(yearSpecificModels);
+          }
+        } catch (error) {
+          console.error('Failed to filter models by year:', error);
+          // Keep the general models if year filtering fails
+        }
+      };
+
+      filterModelsByYear();
+    }
+  }, [selectedMakeId, formData.vehicleYear, models.length]);
 
   const handleInputChange = (field: keyof typeof formData, value: string | number) => {
     updateFormData({ [field]: value });
@@ -250,13 +271,12 @@ export default function DeliveryPartnerVehicleForm() {
             <Select
               value={formData.vehicleModel || ""}
               onValueChange={handleModelChange}
-              disabled={!selectedMakeId || !formData.vehicleYear || models.length === 0}
+              disabled={!selectedMakeId || models.length === 0}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder={
                   !selectedMakeId ? "Select make first" :
-                  !formData.vehicleYear ? "Select year first" :
-                  models.length === 0 ? "No models available" :
+                  models.length === 0 ? "Loading models..." :
                   "Select vehicle model"
                 } />
               </SelectTrigger>
@@ -268,8 +288,8 @@ export default function DeliveryPartnerVehicleForm() {
                 ))}
               </SelectContent>
             </Select>
-            {selectedMakeId && formData.vehicleYear && models.length === 0 && (
-              <p className="text-xs text-gray-500 mt-1">No models found for selected make and year</p>
+            {selectedMakeId && models.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">Loading models for selected make...</p>
             )}
           </div>
         </div>
@@ -277,7 +297,7 @@ export default function DeliveryPartnerVehicleForm() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="vehicleYear" className="text-sm font-medium text-gray-700">
-              Vehicle Year *
+              Vehicle Year (Optional)
             </Label>
             <Select
               value={formData.vehicleYear?.toString() || ""}
@@ -288,7 +308,7 @@ export default function DeliveryPartnerVehicleForm() {
                 <SelectValue placeholder={
                   !selectedMakeId ? "Select make first" :
                   years.length === 0 ? "Loading years..." :
-                  "Select vehicle year"
+                  "Select vehicle year (optional)"
                 } />
               </SelectTrigger>
               <SelectContent>
@@ -301,6 +321,9 @@ export default function DeliveryPartnerVehicleForm() {
             </Select>
             {!selectedMakeId && (
               <p className="text-xs text-gray-500 mt-1">Select a vehicle make first to see available years</p>
+            )}
+            {selectedMakeId && formData.vehicleYear && (
+              <p className="text-xs text-green-600 mt-1">Year selected - models will be filtered for additional accuracy</p>
             )}
           </div>
 
@@ -339,6 +362,17 @@ export default function DeliveryPartnerVehicleForm() {
             <li>• Comprehensive make, model, and year database</li>
             <li>• Vehicle type filtering for better accuracy</li>
             <li>• Access to safety ratings and recall information</li>
+          </ul>
+        </div>
+
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-blue-800 mb-2">Vehicle Selection Flow</h4>
+          <ul className="text-xs text-blue-700 space-y-1">
+            <li>• 1. Select your vehicle type (car, SUV, truck, van)</li>
+            <li>• 2. Choose the vehicle make from the filtered list</li>
+            <li>• 3. Select your vehicle model from available options</li>
+            <li>• 4. Optionally select year for additional validation</li>
+            <li>• 5. Enter your license plate number</li>
           </ul>
         </div>
       </div>
