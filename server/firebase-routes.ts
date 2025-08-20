@@ -46,7 +46,7 @@ export function registerFirebaseRoutes(app: Express) {
         email: req.firebaseUser.email || null,
         displayName,
         emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
-        role: role || 'chef'
+        role: role // Don't set default role - let user choose
       });
 
       res.json({

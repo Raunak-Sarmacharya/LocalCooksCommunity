@@ -17,7 +17,7 @@ interface RoleSelectionScreenProps {
 }
 
 export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScreenProps) {
-  const { user } = useFirebaseAuth();
+  const { user, refreshUserData } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [selectedRoles, setSelectedRoles] = useState<{isChef: boolean; isDeliveryPartner: boolean}>({
     isChef: false,
@@ -74,6 +74,9 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
           } catch (firestoreError) {
             console.error('❌ Failed to update Firestore roles:', firestoreError);
           }
+          
+          // Refresh user data to get updated roles
+          await refreshUserData();
           
           onRoleSelected(selectedRoles);
         } else {

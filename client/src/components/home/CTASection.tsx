@@ -44,15 +44,15 @@ export default function CTASection() {
 
   const getDescriptionText = () => {
     if (user?.role === "admin") {
-      return "Review applications, manage documents, and oversee the Local Cooks community platform.";
+      return "Manage applications, users, and platform settings from your admin dashboard.";
     } else if ((user as any)?.isChef && (user as any)?.isDeliveryPartner) {
-      return "You're part of our community as both a chef and delivery partner. Manage your applications and grow your business with us.";
+      return "You can apply for both chef and delivery partner roles. Choose which application to start with.";
     } else if ((user as any)?.isDeliveryPartner) {
-      return "Join our delivery network and earn money while connecting local cooks with hungry customers.";
+      return "Join our delivery network and start earning money while serving your community.";
     } else if ((user as any)?.isChef) {
-      return "Join our growing community of local cooks and share your culinary creations with food lovers in St. John's.";
+      return "Unlock your culinary potential and build a sustainable cooking business with Local Cooks.";
     } else {
-      return "Join our growing community of local cooks and delivery partners. Choose your path and start your journey with us.";
+      return "Join our growing community and start your journey with Local Cooks today.";
     }
   };
 
@@ -84,8 +84,32 @@ export default function CTASection() {
           </Button>
         </div>
 
-        {/* Delivery Partner CTA - Only show for non-admin users who aren't already delivery partners */}
-        {user?.role !== "admin" && !(user as any)?.isDeliveryPartner && (
+        {/* Dual Role CTA - Show both application options for dual role users */}
+        {user?.role !== "admin" && (user as any)?.isChef && (user as any)?.isDeliveryPartner && (
+          <div className="mt-8">
+            <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
+              Choose which application to start with:
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                onClick={() => navigate('/apply')}
+                className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
+              >
+                Start Chef Application
+              </Button>
+              <Button
+                onClick={() => navigate('/delivery-partner-apply')}
+                variant="outline"
+                className="border-2 border-blue-600 text-blue-600 hover:bg-blue-50 font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow transition-all duration-300"
+              >
+                Start Delivery Application
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Single Role CTA - Show delivery partner option for non-delivery users */}
+        {user?.role !== "admin" && !(user as any)?.isDeliveryPartner && (user as any)?.isChef && (
           <div className="mt-8">
             <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
               {getDeliveryPartnerDescription()}
@@ -101,7 +125,7 @@ export default function CTASection() {
         )}
 
         {/* Show role status for existing users */}
-        {user?.role !== "admin" && ((user as any)?.isDeliveryPartner || (user as any)?.isChef) && (
+        {user?.role !== "admin" && ((user as any)?.isDeliveryPartner || (user as any)?.isChef) && !(user as any)?.isChef && (
           <div className="mt-8">
             <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
               {getDeliveryPartnerDescription()}

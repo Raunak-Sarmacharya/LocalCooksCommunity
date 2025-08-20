@@ -94,14 +94,16 @@ export default function ApplicantDashboard() {
   const { showConfirm } = useCustomAlerts();
 
   // Debug authentication state
-  console.log('ApplicantDashboard - Authentication state:', {
-    isLoggedIn: !!user,
-    userId: user?.uid,
-    userRole: user?.role,
-    isChef: (user as any)?.isChef,
-    isDeliveryPartner: (user as any)?.isDeliveryPartner,
-    localStorageUserId: localStorage.getItem('userId')
-  });
+  useEffect(() => {
+    console.log('ApplicantDashboard - Authentication state:', {
+      isLoggedIn: !!user,
+      userId: user?.uid,
+      userRole: user?.role,
+      isChef: (user as any)?.isChef,
+      isDeliveryPartner: (user as any)?.isDeliveryPartner,
+      localStorageUserId: localStorage.getItem('userId')
+    });
+  }, [user]);
 
   // Helper function to determine user type and appropriate applications to display
   const getUserDisplayInfo = () => {
@@ -109,16 +111,18 @@ export default function ApplicantDashboard() {
     const isDeliveryPartner = (user as any)?.isDeliveryPartner;
     
     if (isChef && isDeliveryPartner) {
-      // Dual role - for now, prioritize chef (can be enhanced later)
+      // Dual role - enhanced experience
       return {
-        primaryRole: 'chef',
+        primaryRole: 'dual',
         applications: applications,
-        applicationFormUrl: '/apply',
-        roleName: 'Chef',
+        deliveryApplications: deliveryApplications,
+        applicationFormUrl: '/apply', // Default to chef, but we'll show both options
+        roleName: 'Chef & Delivery Partner',
         icon: ChefHat,
-        description: 'Start your culinary journey with Local Cooks by submitting your application.',
-        isLoading: isLoading,
-        error: error
+        description: 'You can apply for both chef and delivery partner roles. Choose which application to start with.',
+        isLoading: isLoading || isLoadingDelivery,
+        error: error || deliveryError,
+        isDualRole: true
       };
     } else if (isDeliveryPartner) {
       // Pure delivery partner
@@ -130,7 +134,8 @@ export default function ApplicantDashboard() {
         icon: Truck,
         description: 'Join our delivery team and start earning by delivering delicious meals.',
         isLoading: isLoadingDelivery,
-        error: deliveryError
+        error: deliveryError,
+        isDualRole: false
       };
     } else if (isChef) {
       // Pure chef
@@ -142,19 +147,21 @@ export default function ApplicantDashboard() {
         icon: ChefHat,
         description: 'Start your culinary journey with Local Cooks by submitting your application.',
         isLoading: isLoading,
-        error: error
+        error: error,
+        isDualRole: false
       };
     } else {
-      // No role selected yet - should not happen but fallback to chef
+      // No role selected yet - show role selection
       return {
-        primaryRole: 'chef',
-        applications: applications,
-        applicationFormUrl: '/apply',
-        roleName: 'Chef',
+        primaryRole: 'none',
+        applications: [],
+        applicationFormUrl: '/auth',
+        roleName: 'Select Your Role',
         icon: ChefHat,
-        description: 'Start your culinary journey with Local Cooks by submitting your application.',
-        isLoading: isLoading,
-        error: error
+        description: 'Please select your role to get started with Local Cooks.',
+        isLoading: false,
+        error: null,
+        isDualRole: false
       };
     }
   };
@@ -176,14 +183,32 @@ export default function ApplicantDashboard() {
   // Helper functions for status management based on most recent application
   const getApplicationStatus = () => {
     const mostRecentApp = getMostRecentApplication();
-    if (!mostRecentApp) return null;
+    if (!mostRecentApp) {
+      // Check if user has any role selected
+      const isChef = (user as any)?.isChef;
+      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+      
+      if (!isChef && !isDeliveryPartner) {
+        return "Select Role";
+      }
+      return null;
+    }
     return formatApplicationStatus(mostRecentApp.status);
   };
 
   // Helper function to get document verification status for most recent application
   const getDocumentStatus = () => {
     const mostRecentApp = getMostRecentApplication();
-    if (!mostRecentApp) return "No Documents Uploaded";
+    if (!mostRecentApp) {
+      // Check if user has any role selected
+      const isChef = (user as any)?.isChef;
+      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+      
+      if (!isChef && !isDeliveryPartner) {
+        return "Select Role";
+      }
+      return "No Documents Uploaded";
+    }
     
     // Check if application is approved and has document verification
     if (mostRecentApp.status === "approved") {
@@ -1061,7 +1086,7 @@ export default function ApplicantDashboard() {
                     } else if (isDeliveryPartner) {
                       return "Manage your delivery partner applications";
                     } else {
-                      return "Get started by selecting your role";
+                      return "Select your role to get started";
                     }
                   })()}
                 </p>
@@ -1088,7 +1113,8 @@ export default function ApplicantDashboard() {
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-gray-500 truncate">
                     {(user as any)?.isChef && (user as any)?.isDeliveryPartner ? 'Chef Apps' : 
-                     (user as any)?.isChef ? 'Chef Apps' : 'Applications'}
+                     (user as any)?.isChef ? 'Chef Apps' : 
+                     (user as any)?.isDeliveryPartner ? 'Delivery Apps' : 'Applications'}
                   </p>
                   <p className="text-lg sm:text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
                 </div>
@@ -1128,7 +1154,7 @@ export default function ApplicantDashboard() {
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-gray-500 truncate">Training</p>
                   <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
-                    {!(user as any)?.isChef ? "N/A" :
+                    {!(user as any)?.isChef ? "Select Role" :
                      microlearningCompletion?.confirmed 
                       ? "Completed" 
                       : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
@@ -1384,14 +1410,44 @@ export default function ApplicantDashboard() {
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mx-auto mb-4">
                       <userDisplayInfo.icon className="h-8 w-8 text-blue-600" />
                     </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">Ready to Start?</h4>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">
+                      {userDisplayInfo.primaryRole === 'none' ? 'Select Your Role' : 'Ready to Start?'}
+                    </h4>
                     <p className="text-gray-600 mb-6">{userDisplayInfo.description}</p>
-                    <Button asChild className="rounded-xl">
-                      <Link href={userDisplayInfo.applicationFormUrl}>
-                        <userDisplayInfo.icon className="mr-2 h-4 w-4" />
-                        Start Application
-                      </Link>
-                    </Button>
+                    
+                    {userDisplayInfo.primaryRole === 'none' ? (
+                      // No role selected - show role selection button
+                      <Button asChild className="rounded-xl bg-blue-600 hover:bg-blue-700">
+                        <Link href="/auth">
+                          <ChefHat className="mr-2 h-4 w-4" />
+                          Choose Your Role
+                        </Link>
+                      </Button>
+                    ) : userDisplayInfo.isDualRole ? (
+                      // Dual role - show both application options
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Button asChild className="rounded-xl bg-orange-600 hover:bg-orange-700">
+                          <Link href="/apply">
+                            <ChefHat className="mr-2 h-4 w-4" />
+                            Start Chef Application
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline" className="rounded-xl border-blue-600 text-blue-600 hover:bg-blue-50">
+                          <Link href="/delivery-partner-apply">
+                            <Truck className="mr-2 h-4 w-4" />
+                            Start Delivery Application
+                          </Link>
+                        </Button>
+                      </div>
+                    ) : (
+                      // Single role - show single application button
+                      <Button asChild className="rounded-xl">
+                        <Link href={userDisplayInfo.applicationFormUrl}>
+                          <userDisplayInfo.icon className="mr-2 h-4 w-4" />
+                          Start Application
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1401,22 +1457,23 @@ export default function ApplicantDashboard() {
           {/* Bottom Row: Document Verification & Training */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             
-            {/* Document Verification Card */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
-                  <Shield className="h-6 w-6 text-white" />
+            {/* Chef Document Verification Card - Only show for chefs */}
+            {((user as any)?.isChef) && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
+              >
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                    <ChefHat className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Chef Document Verification</h3>
+                    <p className="text-sm text-gray-500">Upload and manage your chef certificates</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900">Document Verification</h3>
-                  <p className="text-sm text-gray-500">Upload and manage your certificates</p>
-                </div>
-              </div>
               
               {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
                 (() => {
@@ -1568,6 +1625,92 @@ export default function ApplicantDashboard() {
                 </div>
               )}
             </motion.div>
+            )}
+
+            {/* Delivery Partner Document Verification Card - Only show for delivery partners */}
+            {((user as any)?.isDeliveryPartner) && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
+              >
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                    <Truck className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Delivery Partner Documents</h3>
+                    <p className="text-sm text-gray-500">Upload and manage your delivery documents</p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-col h-full">
+                  <div className="space-y-4 flex-1">
+                    {/* Driver's License */}
+                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-gray-900">Driver's License</h4>
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Required
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-gray-500 text-sm">
+                          <FileText className="h-4 w-4" />
+                          Valid driver's license
+                        </div>
+                        <p className="text-xs text-gray-600">Required for delivery operations</p>
+                      </div>
+                    </div>
+                    
+                    {/* Vehicle Registration */}
+                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Required
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-gray-500 text-sm">
+                          <FileText className="h-4 w-4" />
+                          Vehicle documentation
+                        </div>
+                        <p className="text-xs text-gray-600">Required for delivery operations</p>
+                      </div>
+                    </div>
+                    
+                    {/* Insurance */}
+                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Required
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-gray-500 text-sm">
+                          <FileText className="h-4 w-4" />
+                          Vehicle insurance
+                        </div>
+                        <p className="text-xs text-gray-600">Required for delivery operations</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3 pt-4 border-t border-gray-200">
+                    <Button asChild className="w-full rounded-xl">
+                      <Link href="/delivery-partner-apply">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Delivery Documents
+                      </Link>
+                    </Button>
+                    <p className="text-xs text-gray-500">You'll be able to upload documents after submitting your delivery partner application</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             {/* Training & Certification Card */}
             <motion.div 
