@@ -2,7 +2,7 @@ import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import RoleSelectionScreen from "@/components/auth/RoleSelectionScreen";
-import VerificationDebug from "@/components/auth/VerificationDebug";
+
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -14,13 +14,14 @@ import { useLocation } from "wouter";
 
 export default function EnhancedAuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, updateUserVerification } = useFirebaseAuth();
+  const { user, loading, logout } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [userMeta, setUserMeta] = useState<any>(null);
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
@@ -35,8 +36,10 @@ export default function EnhancedAuthPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const message = urlParams.get('message');
+    const verified = urlParams.get('verified');
     
     if (message === 'password-reset-success') {
+      setSuccessMessageType('password-reset');
       setShowSuccessMessage(true);
       setActiveTab('login'); // Switch to login tab
       
@@ -47,6 +50,19 @@ export default function EnhancedAuthPage() {
       setTimeout(() => {
         setShowSuccessMessage(false);
       }, 8000);
+    } else if (verified === 'true') {
+      console.log('📧 EMAIL VERIFICATION SUCCESS detected in URL');
+      setSuccessMessageType('email-verified');
+      setShowSuccessMessage(true);
+      setActiveTab('login'); // Switch to login tab so they can sign in
+      
+      // Clear the URL parameter
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Hide success message after 10 seconds (longer for post-verification)
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+      }, 10000);
     }
   }, []);
 
@@ -61,15 +77,7 @@ export default function EnhancedAuthPage() {
     }
   };
 
-  // Check if this is an email verification redirect
-  const isEmailVerificationRedirect = () => {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.has('verified') || window.location.href.includes('continueUrl');
-    } catch {
-      return false;
-    }
-  };
+
 
   // Handle initial load detection
   useEffect(() => {
@@ -79,33 +87,7 @@ export default function EnhancedAuthPage() {
     }
   }, [loading]);
 
-  // Handle email verification redirect
-  useEffect(() => {
-    if (!loading && user && isEmailVerificationRedirect()) {
-      console.log('📧 EMAIL VERIFICATION REDIRECT DETECTED - Updating verification status');
-      
-      const handleVerificationRedirect = async () => {
-        try {
-          // Call the auth hook's updateUserVerification function
-          const updatedUser = await updateUserVerification();
-          
-          // Clean up the URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-          
-          console.log('✅ EMAIL VERIFICATION REDIRECT HANDLED:', updatedUser);
-          
-          // Force a refresh of user meta after verification update
-          setTimeout(() => {
-            hasCheckedUser.current = false;
-          }, 1000);
-        } catch (error) {
-          console.error('❌ Error handling verification redirect:', error);
-        }
-      };
-      
-      handleVerificationRedirect();
-    }
-  }, [loading, user]);
+
 
   // Fetch user metadata to check welcome screen status
   useEffect(() => {
@@ -414,8 +396,17 @@ export default function EnhancedAuthPage() {
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-green-800">Password reset successful!</p>
-                      <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
+                      {successMessageType === 'password-reset' ? (
+                        <>
+                          <p className="text-sm font-medium text-green-800">Password reset successful!</p>
+                          <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-green-800">Email verified successfully!</p>
+                          <p className="text-xs text-green-600 mt-1">Your account is now verified. Please sign in with your credentials to continue.</p>
+                        </>
+                      )}
                     </div>
                     <button
                       onClick={() => setShowSuccessMessage(false)}
@@ -553,8 +544,7 @@ export default function EnhancedAuthPage() {
         </motion.div>
       </motion.div>
 
-      {/* Debug component for development */}
-      <VerificationDebug />
+
     </>
   );
 } 
