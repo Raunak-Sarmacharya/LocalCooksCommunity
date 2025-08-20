@@ -28,7 +28,7 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  role: userRoleEnum("role").default("chef").notNull(),
+  role: userRoleEnum("role"), // Allow null initially - user will choose role
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
   firebaseUid: text("firebase_uid").unique(),

@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
-          role: role || "chef",
+          role: role, // Don't set default role - let backend handle
           isRegistration: isRegistration,
           password: password // Include password for email/password registrations
         })
@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('🔥 EMAIL VERIFIED:', firebaseUser.emailVerified);
 
           // Check for user role and data from backend API (not Firestore)
-          let role = "chef";
+          let role = null; // Don't set default role - let backend determine
           let applicationData = null;
           try {
             const token = await firebaseUser.getIdToken();
@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             if (response.ok) {
               const userData = await response.json();
-              role = userData.role || "chef";
+              role = userData.role;
               applicationData = {
                 application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
                 isChef: userData.isChef || userData.is_chef || false,
@@ -156,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           } catch (error) {
             console.error('❌ BACKEND USER FETCH ERROR:', error);
-            // Continue with default role if backend fails
+            // Continue without default role if backend fails
           }
           
           // **IMPROVED SYNC LOGIC WITH VERIFICATION HANDLING**
@@ -736,6 +736,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(updatedUser);
         console.log('✅ Auth context user updated with fresh data');
+        
+        // Force a re-render by triggering a state update
+        setLoading(true);
+        setTimeout(() => setLoading(false), 100);
       } else {
         console.error('❌ Failed to refresh user data:', response.status);
       }

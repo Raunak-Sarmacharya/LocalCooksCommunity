@@ -198,8 +198,9 @@ export function useApplicationStatus() {
       } else if (isChef && !isDeliveryPartner) {
         return "/apply";
       } else if (isChef && isDeliveryPartner) {
-        // For dual-role users, default to chef application or show selection
-        return "/apply";
+        // For dual-role users, show a selection page or default to dashboard
+        // They can choose which application to start from the dashboard
+        return "/dashboard";
       } else {
         // Fallback: If no roles detected but user is logged in, go to dashboard
         // This prevents redirecting to auth page when user is already authenticated
