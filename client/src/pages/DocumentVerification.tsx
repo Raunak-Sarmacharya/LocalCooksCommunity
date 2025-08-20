@@ -1,3 +1,4 @@
+import DeliveryPartnerDocumentUpload from "@/components/document-verification/DeliveryPartnerDocumentUpload";
 import DocumentUpload from "@/components/document-verification/DocumentUpload";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { auth } from "@/lib/firebase";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   CheckCircle,
@@ -116,6 +117,40 @@ export default function DocumentVerification() {
 
   // Get the most recent delivery partner application
   const latestDeliveryApp = deliveryApplications.length > 0 ? deliveryApplications[0] : null;
+  
+  // Query client for invalidating queries
+  const queryClient = useQueryClient();
+  
+  // Mutation for updating delivery partner documents
+  const updateDeliveryDocumentsMutation = useMutation({
+    mutationFn: async ({ id, documentData }: { id: number; documentData: any }) => {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch(`/api/firebase/delivery-partner-applications/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(documentData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate and refetch delivery partner applications
+      queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] });
+    },
+  });
   
   // Determine if user is a chef or delivery partner
   const isChef = (user as any)?.isChef;
@@ -321,6 +356,20 @@ export default function DocumentVerification() {
     }
   };
 
+  // Handler for updating delivery partner documents
+  const handleDeliveryDocumentUpdate = async (field: string, url: string) => {
+    if (!latestDeliveryApp) return;
+    
+    try {
+      await updateDeliveryDocumentsMutation.mutateAsync({
+        id: latestDeliveryApp.id,
+        documentData: { [field]: url }
+      });
+    } catch (error) {
+      console.error('Error updating delivery partner document:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
       <Header />
@@ -467,169 +516,173 @@ export default function DocumentVerification() {
             </div>
           </div>
 
-          {/* Document Upload Section */}
-          <div className="pt-6 border-t border-gray-200">
-            {shouldShowChefDocuments ? (
-              <DocumentUpload forceShowForm={true} />
-            ) : (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Delivery Partner Documents</h3>
-                  <p className="text-gray-600">Upload your required delivery partner documents</p>
-                </div>
-                
-                {latestDeliveryApp ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Driver's License */}
-                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">Driver's License</h4>
-                        {latestDeliveryApp.driversLicenseStatus && (
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            latestDeliveryApp.driversLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                            latestDeliveryApp.driversLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {latestDeliveryApp.driversLicenseStatus.charAt(0).toUpperCase() + latestDeliveryApp.driversLicenseStatus.slice(1)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        {latestDeliveryApp.driversLicenseUrl ? (
-                          <a href={latestDeliveryApp.driversLicenseUrl} target="_blank" rel="noopener noreferrer" 
-                             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            <FileText className="h-4 w-4" />
-                            View Document
-                          </a>
-                        ) : (
-                          <div className="flex items-center gap-2 text-gray-500 text-sm">
-                            <FileText className="h-4 w-4" />
-                            Not uploaded
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-600">Required for delivery operations</p>
-                      </div>
-                    </div>
-                    
-                    {/* Vehicle Registration */}
-                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
-                        {latestDeliveryApp.vehicleRegistrationStatus && (
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            latestDeliveryApp.vehicleRegistrationStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                            latestDeliveryApp.vehicleRegistrationStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {latestDeliveryApp.vehicleRegistrationStatus.charAt(0).toUpperCase() + latestDeliveryApp.vehicleRegistrationStatus.slice(1)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        {latestDeliveryApp.vehicleRegistrationUrl ? (
-                          <a href={latestDeliveryApp.vehicleRegistrationUrl} target="_blank" rel="noopener noreferrer" 
-                             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            <FileText className="h-4 w-4" />
-                            View Document
-                          </a>
-                        ) : (
-                          <div className="flex items-center gap-2 text-gray-500 text-sm">
-                            <FileText className="h-4 w-4" />
-                            Not uploaded
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-600">Required for delivery operations</p>
-                      </div>
-                    </div>
-                    
-                    {/* Vehicle Insurance */}
-                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
-                        {latestDeliveryApp.insuranceStatus && (
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            latestDeliveryApp.insuranceStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                            latestDeliveryApp.insuranceStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {latestDeliveryApp.insuranceStatus.charAt(0).toUpperCase() + latestDeliveryApp.insuranceStatus.slice(1)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        {latestDeliveryApp.insuranceUrl ? (
-                          <a href={latestDeliveryApp.insuranceUrl} target="_blank" rel="noopener noreferrer" 
-                             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            <FileText className="h-4 w-4" />
-                            View Document
-                          </a>
-                        ) : (
-                          <div className="flex items-center gap-2 text-gray-500 text-sm">
-                            <FileText className="h-4 w-4" />
-                            Not uploaded
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-600">Required for delivery operations</p>
-                      </div>
-                    </div>
-                    
-                    {/* Background Check */}
-                    <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">Background Check</h4>
-                        {latestDeliveryApp.backgroundCheckStatus && (
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            latestDeliveryApp.backgroundCheckStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                            latestDeliveryApp.backgroundCheckStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {latestDeliveryApp.backgroundCheckStatus.charAt(0).toUpperCase() + latestDeliveryApp.backgroundCheckStatus.slice(1)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        {latestDeliveryApp.backgroundCheckUrl ? (
-                          <a href={latestDeliveryApp.backgroundCheckUrl} target="_blank" rel="noopener noreferrer" 
-                             className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                            <FileText className="h-4 w-4" />
-                            View Document
-                          </a>
-                        ) : (
-                          <div className="flex items-center gap-2 text-gray-500 text-sm">
-                            <FileText className="h-4 w-4" />
-                            Not uploaded
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-600">Required for delivery operations</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mx-auto mb-4">
-                      <Truck className="h-8 w-8 text-blue-600" />
-                    </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">No Delivery Partner Application Found</h4>
-                    <p className="text-gray-600 mb-6">You need to submit a delivery partner application first to upload documents.</p>
-                    <Button asChild className="rounded-xl">
-                      <Link href="/delivery-partner-apply">
-                        <Truck className="mr-2 h-4 w-4" />
-                        Submit Delivery Partner Application
-                      </Link>
-                    </Button>
-                  </div>
-                )}
-                
-                {/* Admin Feedback */}
-                {latestDeliveryApp?.documentsAdminFeedback && (
-                  <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-xl border border-yellow-200">
-                    <p className="text-sm text-yellow-800 font-medium">Admin Feedback:</p>
-                    <p className="text-sm text-yellow-700 mt-1">{latestDeliveryApp.documentsAdminFeedback}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                     {/* Document Upload Section */}
+           <div className="pt-6 border-t border-gray-200">
+             {shouldShowChefDocuments ? (
+               <DocumentUpload forceShowForm={true} />
+             ) : (
+               <div className="space-y-6">
+                 {latestDeliveryApp ? (
+                   <>
+                     {/* Document Status Display */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                       {/* Driver's License */}
+                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                         <div className="flex items-center justify-between mb-3">
+                           <h4 className="font-medium text-gray-900">Driver's License</h4>
+                           {latestDeliveryApp.driversLicenseStatus && (
+                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                               latestDeliveryApp.driversLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                               latestDeliveryApp.driversLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                               'bg-red-100 text-red-800'
+                             }`}>
+                               {latestDeliveryApp.driversLicenseStatus.charAt(0).toUpperCase() + latestDeliveryApp.driversLicenseStatus.slice(1)}
+                             </span>
+                           )}
+                         </div>
+                         <div className="space-y-2">
+                           {latestDeliveryApp.driversLicenseUrl ? (
+                             <a href={latestDeliveryApp.driversLicenseUrl} target="_blank" rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                               <FileText className="h-4 w-4" />
+                               View Document
+                             </a>
+                           ) : (
+                             <div className="flex items-center gap-2 text-gray-500 text-sm">
+                               <FileText className="h-4 w-4" />
+                               Not uploaded
+                             </div>
+                           )}
+                           <p className="text-xs text-gray-600">Required for delivery operations</p>
+                         </div>
+                       </div>
+                       
+                       {/* Vehicle Registration */}
+                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                         <div className="flex items-center justify-between mb-3">
+                           <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
+                           {latestDeliveryApp.vehicleRegistrationStatus && (
+                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                               latestDeliveryApp.vehicleRegistrationStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                               latestDeliveryApp.vehicleRegistrationStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                               'bg-red-100 text-red-800'
+                             }`}>
+                               {latestDeliveryApp.vehicleRegistrationStatus.charAt(0).toUpperCase() + latestDeliveryApp.vehicleRegistrationStatus.slice(1)}
+                             </span>
+                           )}
+                         </div>
+                         <div className="space-y-2">
+                           {latestDeliveryApp.vehicleRegistrationUrl ? (
+                             <a href={latestDeliveryApp.vehicleRegistrationUrl} target="_blank" rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                               <FileText className="h-4 w-4" />
+                               View Document
+                             </a>
+                           ) : (
+                             <div className="flex items-center gap-2 text-gray-500 text-sm">
+                               <FileText className="h-4 w-4" />
+                               Not uploaded
+                             </div>
+                           )}
+                           <p className="text-xs text-gray-600">Required for delivery operations</p>
+                         </div>
+                       </div>
+                       
+                       {/* Vehicle Insurance */}
+                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                         <div className="flex items-center justify-between mb-3">
+                           <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
+                           {latestDeliveryApp.insuranceStatus && (
+                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                               latestDeliveryApp.insuranceStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                               latestDeliveryApp.insuranceStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                               'bg-red-100 text-red-800'
+                             }`}>
+                               {latestDeliveryApp.insuranceStatus.charAt(0).toUpperCase() + latestDeliveryApp.insuranceStatus.slice(1)}
+                             </span>
+                           )}
+                         </div>
+                         <div className="space-y-2">
+                           {latestDeliveryApp.insuranceUrl ? (
+                             <a href={latestDeliveryApp.insuranceUrl} target="_blank" rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                               <FileText className="h-4 w-4" />
+                               View Document
+                             </a>
+                           ) : (
+                             <div className="flex items-center gap-2 text-gray-500 text-sm">
+                               <FileText className="h-4 w-4" />
+                               Not uploaded
+                             </div>
+                           )}
+                           <p className="text-xs text-gray-600">Required for delivery operations</p>
+                         </div>
+                       </div>
+                       
+                       {/* Background Check */}
+                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                         <div className="flex items-center justify-between mb-3">
+                           <h4 className="font-medium text-gray-900">Background Check</h4>
+                           {latestDeliveryApp.backgroundCheckStatus && (
+                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                               latestDeliveryApp.backgroundCheckStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                               latestDeliveryApp.backgroundCheckStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                               'bg-red-100 text-red-800'
+                             }`}>
+                               {latestDeliveryApp.backgroundCheckStatus.charAt(0).toUpperCase() + latestDeliveryApp.backgroundCheckStatus.slice(1)}
+                             </span>
+                           )}
+                         </div>
+                         <div className="space-y-2">
+                           {latestDeliveryApp.backgroundCheckUrl ? (
+                             <a href={latestDeliveryApp.backgroundCheckUrl} target="_blank" rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                               <FileText className="h-4 w-4" />
+                               View Document
+                             </a>
+                           ) : (
+                             <div className="flex items-center gap-2 text-gray-500 text-sm">
+                               <FileText className="h-4 w-4" />
+                               Not uploaded
+                             </div>
+                           )}
+                           <p className="text-xs text-gray-600">Required for delivery operations</p>
+                         </div>
+                       </div>
+                     </div>
+                     
+                     {/* Document Upload Component */}
+                     <DeliveryPartnerDocumentUpload 
+                       application={latestDeliveryApp}
+                       onDocumentUpdate={handleDeliveryDocumentUpdate}
+                     />
+                   </>
+                 ) : (
+                   <div className="text-center py-8">
+                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mx-auto mb-4">
+                       <Truck className="h-8 w-8 text-blue-600" />
+                     </div>
+                     <h4 className="text-lg font-medium text-gray-900 mb-2">No Delivery Partner Application Found</h4>
+                     <p className="text-gray-600 mb-6">You need to submit a delivery partner application first to upload documents.</p>
+                     <Button asChild className="rounded-xl">
+                       <Link href="/delivery-partner-apply">
+                         <Truck className="mr-2 h-4 w-4" />
+                         Submit Delivery Partner Application
+                       </Link>
+                     </Button>
+                   </div>
+                 )}
+                 
+                 {/* Admin Feedback */}
+                 {latestDeliveryApp?.documentsAdminFeedback && (
+                   <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-xl border border-yellow-200">
+                     <p className="text-sm text-yellow-800 font-medium">Admin Feedback:</p>
+                     <p className="text-sm text-yellow-700 mt-1">{latestDeliveryApp.documentsAdminFeedback}</p>
+                   </div>
+                 )}
+               </div>
+             )}
+           </div>
         </motion.div>
       </main>
       <Footer />

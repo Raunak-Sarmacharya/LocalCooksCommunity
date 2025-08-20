@@ -5959,6 +5959,77 @@ app.get('/api/firebase/admin/delivery-partner-applications', requireFirebaseAuth
   }
 });
 
+// Update Delivery Partner Application Documents
+app.put('/api/firebase/delivery-partner-applications/:id', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { driversLicenseUrl, vehicleRegistrationUrl, insuranceUrl, backgroundCheckUrl } = req.body;
+    
+    // Verify the application belongs to the current user
+    let application = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM delivery_partner_applications WHERE id = $1', [id]);
+      application = result.rows[0];
+    }
+    
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    if (application.user_id !== req.neonUser.id) {
+      return res.status(403).json({ error: 'Not authorized to update this application' });
+    }
+    
+    // Update the application with new document URLs
+    const updateData = {};
+    if (driversLicenseUrl !== undefined) updateData.drivers_license_url = driversLicenseUrl;
+    if (vehicleRegistrationUrl !== undefined) updateData.vehicle_registration_url = vehicleRegistrationUrl;
+    if (insuranceUrl !== undefined) updateData.insurance_url = insuranceUrl;
+    if (backgroundCheckUrl !== undefined) updateData.background_check_url = backgroundCheckUrl;
+    
+    // Reset status to pending when documents are updated
+    updateData.drivers_license_status = 'pending';
+    updateData.vehicle_registration_status = 'pending';
+    updateData.insurance_status = 'pending';
+    updateData.background_check_status = 'pending';
+    
+    if (pool) {
+      const updateQuery = `
+        UPDATE delivery_partner_applications 
+        SET 
+          drivers_license_url = COALESCE($1, drivers_license_url),
+          vehicle_registration_url = COALESCE($2, vehicle_registration_url),
+          insurance_url = COALESCE($3, insurance_url),
+          background_check_url = COALESCE($4, background_check_url),
+          drivers_license_status = 'pending',
+          vehicle_registration_status = 'pending',
+          insurance_status = 'pending',
+          background_check_status = 'pending'
+        WHERE id = $5
+        RETURNING *
+      `;
+      
+      const result = await pool.query(updateQuery, [
+        driversLicenseUrl || null,
+        vehicleRegistrationUrl || null,
+        insuranceUrl || null,
+        backgroundCheckUrl || null,
+        id
+      ]);
+      
+      const updatedApplication = result.rows[0];
+      console.log(`📄 Updated delivery partner application ${id} documents for user ${req.neonUser.id}`);
+      
+      res.json(updatedApplication);
+    } else {
+      res.status(500).json({ error: 'Database not available' });
+    }
+  } catch (error) {
+    console.error('Error updating delivery partner application:', error);
+    res.status(500).json({ error: 'Failed to update delivery partner application' });
+  }
+});
+
 // ===============================
 // FIREBASE MICROLEARNING ENDPOINTS
 // ===============================
