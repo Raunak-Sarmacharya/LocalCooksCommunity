@@ -88,13 +88,11 @@ export const deliveryPartnerApplications = pgTable("delivery_partner_application
   driversLicenseUrl: text("drivers_license_url"),
   vehicleRegistrationUrl: text("vehicle_registration_url"),
   insuranceUrl: text("insurance_url"),
-  backgroundCheckUrl: text("background_check_url"),
   
   // Document verification status
   driversLicenseStatus: documentVerificationStatusEnum("drivers_license_status").default("pending"),
   vehicleRegistrationStatus: documentVerificationStatusEnum("vehicle_registration_status").default("pending"),
   insuranceStatus: documentVerificationStatusEnum("insurance_status").default("pending"),
-  backgroundCheckStatus: documentVerificationStatusEnum("background_check_status").default("pending"),
   
   // Admin fields
   documentsAdminFeedback: text("documents_admin_feedback"),
@@ -254,7 +252,6 @@ export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliver
   driversLicenseUrl: z.string().optional(),
   vehicleRegistrationUrl: z.string().optional(),
   insuranceUrl: z.string().optional(),
-  backgroundCheckUrl: z.string().optional(),
 }).omit({ 
   id: true, 
   status: true, 
@@ -266,7 +263,6 @@ export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliver
   driversLicenseStatus: true,
   vehicleRegistrationStatus: true,
   insuranceStatus: true,
-  backgroundCheckStatus: true,
 });
 
 export const updateDeliveryPartnerApplicationStatusSchema = z.object({

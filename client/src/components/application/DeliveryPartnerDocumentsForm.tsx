@@ -144,12 +144,6 @@ export default function DeliveryPartnerDocumentsForm() {
       label: "Vehicle Insurance",
       description: "Upload proof of vehicle insurance",
       required: true
-    },
-    {
-      key: 'backgroundCheckUrl',
-      label: "Background Check (Optional)",
-      description: "Upload a recent background check if you have one",
-      required: false
     }
   ];
 

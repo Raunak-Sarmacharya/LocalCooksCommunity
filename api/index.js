@@ -5854,8 +5854,9 @@ app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithU
         `INSERT INTO delivery_partner_applications (
           user_id, full_name, email, phone, address, city, province, postal_code,
           vehicle_type, vehicle_make, vehicle_model, vehicle_year, license_plate,
+          drivers_license_url, vehicle_registration_url, insurance_url,
           status, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING *`,
         [
           applicationData.userId,
           applicationData.fullName,
@@ -5870,6 +5871,9 @@ app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithU
           applicationData.vehicleModel,
           applicationData.vehicleYear,
           applicationData.licensePlate,
+          applicationData.driversLicenseUrl || null,
+          applicationData.vehicleRegistrationUrl || null,
+          applicationData.insuranceUrl || null,
           'inReview',
           new Date()
         ]
@@ -5896,6 +5900,55 @@ app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithU
         status: 'inReview',
         created_at: new Date()
       };
+    }
+
+    // Send email notification for new delivery partner application
+    try {
+      if (application.email) {
+        const hasDocuments = !!(application.drivers_license_url || application.vehicle_registration_url || application.insurance_url);
+        
+        if (hasDocuments) {
+          // Application submitted WITH documents - send combined email
+          console.log("📧 Sending delivery partner WITH documents email...");
+          const { sendEmail, generateDeliveryPartnerApplicationWithDocumentsEmail } = await import('../server/email.js');
+          const emailContent = generateDeliveryPartnerApplicationWithDocumentsEmail({
+            fullName: application.full_name || "Applicant",
+            email: application.email
+          });
+          console.log("📧 WITH docs email content generated:", { to: emailContent.to, subject: emailContent.subject });
+
+          const emailResult = await sendEmail(emailContent, {
+            trackingId: `delivery_app_with_docs_${application.id}_${Date.now()}`
+          });
+          console.log(`✅ Delivery partner application with documents email result: ${emailResult ? 'SUCCESS' : 'FAILED'} to ${application.email} for application ${application.id}`);
+        } else {
+          // Application submitted WITHOUT documents - prompt to upload
+          console.log("📧 Sending delivery partner WITHOUT documents email...");
+          const { sendEmail, generateDeliveryPartnerApplicationWithoutDocumentsEmail } = await import('../server/email.js');
+          const emailContent = generateDeliveryPartnerApplicationWithoutDocumentsEmail({
+            fullName: application.full_name || "Applicant",
+            email: application.email
+          });
+          console.log("📧 WITHOUT docs email content generated:", { to: emailContent.to, subject: emailContent.subject });
+
+          const emailResult = await sendEmail(emailContent, {
+            trackingId: `delivery_app_no_docs_${application.id}_${Date.now()}`
+          });
+          console.log(`✅ Delivery partner application without documents email result: ${emailResult ? 'SUCCESS' : 'FAILED'} to ${application.email} for application ${application.id}`);
+        }
+      } else {
+        console.warn(`Cannot send delivery partner application email: Missing email address`);
+      }
+    } catch (emailError) {
+      // Log the error but don't fail the request
+      console.error("❌ DELIVERY PARTNER EMAIL ERROR:", {
+        error: emailError.message,
+        stack: emailError.stack,
+        applicationId: application.id,
+        email: application.email,
+        hasDocuments: !!(application.drivers_license_url || application.vehicle_registration_url || application.insurance_url),
+        environment: process.env.NODE_ENV
+      });
     }
 
     res.json({
@@ -5951,6 +6004,55 @@ app.get('/api/firebase/admin/delivery-partner-applications', requireFirebaseAuth
     }
     
     console.log(`👑 Admin ${req.firebaseUser.uid} requested all delivery partner applications`);
+
+    res.json(applications);
+  } catch (error) {
+    console.error('Error getting admin delivery partner applications:', error);
+    res.status(500).json({ error: 'Failed to get delivery partner applications' });
+  }
+});
+
+// Admin - Get All Delivery Partner Applications (Session-based auth)
+app.get('/api/delivery-partner-applications', async (req, res) => {
+  try {
+    // Check if user is authenticated via session
+    const rawUserId = req.headers['x-user-id'] || req.session?.userId;
+    
+    if (!rawUserId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Authentication required'
+      });
+    }
+
+    // Get user from database
+    let user;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [rawUserId]);
+      user = result.rows[0];
+    } else {
+      // In-memory fallback
+      user = null; // Would need proper in-memory storage implementation
+    }
+
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Only administrators can access this endpoint'
+      });
+    }
+
+    // Get delivery partner applications from database
+    let applications = [];
+    if (pool) {
+      const result = await pool.query('SELECT * FROM delivery_partner_applications ORDER BY created_at DESC');
+      applications = result.rows;
+    } else {
+      // In-memory fallback
+      applications = []; // Would need proper in-memory storage implementation
+    }
+
+    console.log(`👑 Admin ${user.id} requested all delivery partner applications`);
 
     res.json(applications);
   } catch (error) {
