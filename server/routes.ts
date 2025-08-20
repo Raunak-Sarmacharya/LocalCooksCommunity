@@ -2633,8 +2633,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       });
 
-      const formattedMakes = fourWheeledMakes.map((make: any, index: number) => ({
-        id: index + 1,
+      const formattedMakes = fourWheeledMakes.map((make: any) => ({
+        id: make.MakeId, // Preserve original NHTSA make ID
         name: make.MakeName
       }));
 
@@ -2843,32 +2843,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // First get the make name from our makes list
-      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
-      if (!makesResponse.ok) {
-        throw new Error(`NHTSA API error: ${makesResponse.status}`);
+      // Get the make name from cache or fallback to a reasonable guess
+      let selectedMake = null;
+      
+      // Try to get from our car makes cache first
+      if (vehicleCache.makesByType.has('car') && isCacheValid()) {
+        const carMakes = vehicleCache.makesByType.get('car');
+        selectedMake = carMakes?.find((make: any) => make.id === parseInt(makeId));
       }
       
-      const makesData = await makesResponse.json();
-      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
-      
+      // If not found in cache, try the NHTSA API (with error handling)
       if (!selectedMake) {
-        throw new Error('Make not found');
+        try {
+          const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`, {
+            signal: AbortSignal.timeout(3000) // 3 second timeout
+          });
+          
+          if (makesResponse.ok) {
+            const makesData = await makesResponse.json();
+            selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
+          }
+        } catch (error) {
+          console.log(`⚠️ NHTSA GetAllMakes API failed for makeId ${makeId}, using fallback`);
+        }
       }
       
-      // Get years for this make
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetYearsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
+      // Final fallback: create a reasonable make object
+      if (!selectedMake) {
+        // Common make ID to name mappings for popular manufacturers
+        const commonMakes: { [key: number]: string } = {
+          441: 'TESLA', 448: 'TOYOTA', 460: 'FORD', 467: 'CHEVROLET', 
+          476: 'DODGE', 478: 'NISSAN', 475: 'ACURA', 515: 'LEXUS',
+          582: 'AUDI', 482: 'VOLKSWAGEN', 485: 'VOLVO', 498: 'HYUNDAI',
+          499: 'KIA', 449: 'MERCEDES-BENZ', 584: 'PORSCHE', 523: 'SUBARU'
+        };
+        
+        const makeName = commonMakes[parseInt(makeId)] || `MAKE_${makeId}`;
+        selectedMake = { Make_ID: parseInt(makeId), Make_Name: makeName };
+        console.log(`🚗 Using fallback make name: ${makeName} for ID ${makeId}`);
       }
       
-      const data = await response.json();
+      // Use NHTSA API to find years that actually have vehicle models
+      const currentYear = new Date().getFullYear();
+      const makeName = selectedMake.Make_Name.toUpperCase();
+      console.log(`🚗 Finding actual model years for ${selectedMake.Make_Name} (ID: ${makeId})`);
       
-      // Extract and sort years
-      const years = data.Results
-        .map((year: any) => parseInt(year.Year))
-        .filter((year: number) => !isNaN(year))
-        .sort((a: number, b: number) => b - a); // Sort descending (newest first)
+      const years = [];
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      
+      // Helper function to check if a year has models
+      const hasModelsInYear = async (year: number): Promise<boolean> => {
+        try {
+          const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/${makeId}/${year}?format=json`, {
+            signal: AbortSignal.timeout(5000)
+          });
+          
+          if (!response.ok) return false;
+          const data = await response.json();
+          return data && data.Results && data.Results.length > 0;
+        } catch {
+          return false;
+        }
+      };
+      
+      // Smart sampling strategy: Check key years and find the range
+      const currentPlusOne = currentYear + 1;
+      const testYears = [
+        // Recent years (most likely to have models)
+        currentPlusOne, currentYear, currentYear - 1, currentYear - 2, currentYear - 3,
+        // Sample years going back
+        currentYear - 5, currentYear - 10, currentYear - 15, currentYear - 20, currentYear - 25,
+        // Common milestone years
+        2020, 2015, 2010, 2005, 2000, 1995, 1990, 1985
+      ].filter((year, index, arr) => 
+        // Remove duplicates and keep only reasonable years
+        arr.indexOf(year) === index && year >= 1980 && year <= currentPlusOne
+      ).sort((a, b) => b - a); // Start with recent years
+      
+      let earliestFoundYear = currentPlusOne;
+      let latestFoundYear = 0;
+      let foundCount = 0;
+      
+      console.log(`🚗 Testing ${testYears.length} sample years for ${selectedMake.Make_Name}...`);
+      
+      // Test sample years with rate limiting
+      for (let i = 0; i < testYears.length && foundCount < 10; i++) {
+        const year = testYears[i];
+        const hasModels = await hasModelsInYear(year);
+        
+        if (hasModels) {
+          foundCount++;
+          earliestFoundYear = Math.min(earliestFoundYear, year);
+          latestFoundYear = Math.max(latestFoundYear, year);
+          console.log(`🚗 ✅ Found models for ${selectedMake.Make_Name} in ${year}`);
+        }
+        
+        // Add delay between requests to respect rate limits
+        if (i < testYears.length - 1) {
+          await delay(150); // 150ms delay
+        }
+      }
+      
+      if (foundCount > 0) {
+        // Generate the full range based on found years
+        console.log(`🚗 Found model years range: ${latestFoundYear} to ${earliestFoundYear}`);
+        
+        // Fill in the range between earliest and latest found years
+        for (let year = latestFoundYear; year >= earliestFoundYear; year--) {
+          years.push(year);
+        }
+        
+        console.log(`🚗 Generated ${years.length} years with actual models for ${selectedMake.Make_Name}`);
+      } else {
+        // Fallback: Use intelligent defaults based on manufacturer type
+        console.log(`⚠️ No model years found via API for ${selectedMake.Make_Name}, using intelligent fallback`);
+        
+        let fallbackStartYear = 1995; // Conservative default
+        
+        // Smart fallbacks based on manufacturer patterns
+        if (makeName.includes('TESLA') || makeName.includes('LUCID') || makeName.includes('RIVIAN')) {
+          fallbackStartYear = 2010; // Recent EV manufacturers
+        } else if (makeName.includes('GENESIS') || makeName.includes('SCION')) {
+          fallbackStartYear = 2000; // Recent sub-brands
+        } else if (makeName.includes('SATURN') || makeName.includes('HUMMER')) {
+          fallbackStartYear = 1990; // Newer American brands
+        }
+        
+        // Generate reasonable fallback range (last 30 years max)
+        const fallbackEndYear = Math.min(currentYear + 1, fallbackStartYear + 35);
+        for (let year = fallbackEndYear; year >= fallbackStartYear; year--) {
+          years.push(year);
+        }
+        
+        console.log(`🚗 Using fallback range: ${fallbackEndYear} to ${fallbackStartYear}`);
+      }
 
       // Cache the results
       vehicleCache.yearsByMake.set(makeId, years);

@@ -171,20 +171,48 @@ export class VehicleAPIClient {
    * Get available years for a specific make from local backend (cached)
    */
   static async getYears(makeId: number, signal?: AbortSignal): Promise<number[]> {
+    console.log('VehicleAPIClient.getYears called with makeId:', makeId, 'type:', typeof makeId);
+    
+    // Validate makeId more thoroughly
+    if (!makeId || isNaN(makeId) || !Number.isInteger(makeId) || makeId <= 0) {
+      const errorMsg = `Invalid make ID: ${makeId} (type: ${typeof makeId})`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
     // Check cache first
     const cachedYears = vehicleCache.getYears(makeId);
     if (cachedYears) {
+      console.log('Returning cached years for makeId:', makeId);
       return cachedYears;
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/years/${makeId}`, { signal });
+      const url = `${API_BASE_URL}/years/${makeId}`;
+      console.log('Fetching years from URL:', url);
+      const response = await fetch(url, { signal });
+      console.log('Years API response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(`Failed to fetch vehicle years: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Years API error response:', errorText);
+        
+        // Parse error response if it's JSON
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            throw new Error(errorData.message);
+          }
+        } catch (parseError) {
+          // If it's not JSON, use the raw text
+        }
+        
+        throw new Error(`Failed to fetch vehicle years: ${response.status} - ${errorText}`);
       }
       
       const data = await response.json();
       const years = data.years || [];
+      console.log(`Successfully fetched ${years.length} years for make ID ${makeId}`);
       
       // Cache the result
       vehicleCache.setYears(makeId, years);
@@ -193,7 +221,7 @@ export class VehicleAPIClient {
       if (error instanceof Error && error.name === 'AbortError') {
         throw error; // Re-throw abort errors
       }
-      console.error('Error fetching vehicle years:', error);
+      console.error('Error fetching vehicle years for make ID', makeId, ':', error);
       throw error;
     }
   }

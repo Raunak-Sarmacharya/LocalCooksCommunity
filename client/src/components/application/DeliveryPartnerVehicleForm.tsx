@@ -175,7 +175,15 @@ export default function DeliveryPartnerVehicleForm() {
 
   const handleMakeChange = useCallback((makeId: string) => {
     const makeIdNum = parseInt(makeId);
-    console.log('Selected make ID:', makeIdNum);
+    console.log('Selected make ID:', makeIdNum, 'from string:', makeId);
+    
+    // Validate the make ID
+    if (isNaN(makeIdNum) || makeIdNum <= 0) {
+      console.error('Invalid make ID received:', makeId, 'parsed as:', makeIdNum);
+      setError('Invalid vehicle make selected. Please try again.');
+      return;
+    }
+    
     setSelectedMakeId(makeIdNum);
     setSelectedModelId(null);
     setError(null);
@@ -190,6 +198,12 @@ export default function DeliveryPartnerVehicleForm() {
         vehicleModel: '',
         vehicleYear: undefined
       });
+    } else {
+      console.error('Make not found in makes array for ID:', makeIdNum);
+      setError('Selected vehicle make not found. Please try again.');
+      setSelectedMakeId(null);
+      setSelectedMakeName(null);
+      return;
     }
     
     // Reset dependent fields
@@ -211,20 +225,35 @@ export default function DeliveryPartnerVehicleForm() {
     }
 
     // Load years when model is selected (if make is selected)
-    if (selectedMakeId) {
+    if (selectedMakeId && selectedMakeId > 0 && !isNaN(selectedMakeId)) {
       try {
         setYearsLoading(true);
-        console.log('Loading years for make ID:', selectedMakeId);
+        console.log('Loading years for make ID:', selectedMakeId, 'type:', typeof selectedMakeId);
+        
+        // Validate make ID before making API call
+        if (!Number.isInteger(selectedMakeId) || selectedMakeId <= 0) {
+          console.error('Invalid make ID for years lookup:', selectedMakeId);
+          setYearsLoading(false);
+          return;
+        }
+        
         const yearsData = await VehicleAPIClient.getYears(selectedMakeId);
         if (yearsData && yearsData.length > 0) {
           setYears(yearsData);
+        } else {
+          console.log('No years data returned for make ID:', selectedMakeId);
+          setYears([]);
         }
       } catch (error) {
-        console.error('Error loading years:', error);
-        // Don't show error for years since it's optional
+        console.error('Error loading years for make ID', selectedMakeId, ':', error);
+        // Don't show error for years since it's optional, but clear years array
+        setYears([]);
       } finally {
         setYearsLoading(false);
       }
+    } else {
+      console.log('Skipping years load - invalid make ID:', selectedMakeId);
+      setYears([]);
     }
   }, [models, updateFormData, selectedMakeId]);
 
