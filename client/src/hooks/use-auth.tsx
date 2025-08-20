@@ -1,4 +1,4 @@
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { queryClient } from "@/lib/queryClient";
 import {
   createUserWithEmailAndPassword,
@@ -13,11 +13,6 @@ import {
   signOut,
   updateProfile
 } from "firebase/auth";
-import {
-  doc,
-  serverTimestamp,
-  setDoc
-} from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
 interface AuthUser {
@@ -81,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
-          role: role || "applicant",
+          role: role || "chef",
           isRegistration: isRegistration,
           password: password // Include password for email/password registrations
         })
@@ -123,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('🔥 EMAIL VERIFIED:', firebaseUser.emailVerified);
 
           // Check for user role and data from backend API (not Firestore)
-          let role = "applicant";
+          let role = "chef";
           let applicationData = null;
           try {
             const token = await firebaseUser.getIdToken();
@@ -303,21 +298,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await updateProfile(cred.user, { displayName });
         console.log('📝 Updated Firebase profile with displayName:', displayName);
         
-        // Also update Firestore document with displayName
-        try {
-          const userDocRef = doc(db, "users", cred.user.uid);
-          await setDoc(userDocRef, {
-            email: cred.user.email,
-            displayName: displayName,
-            role: "chef", // Base role - user will choose specific roles later
-            createdAt: serverTimestamp(),
-            lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          console.log('📝 Updated Firestore with displayName:', displayName);
-        } catch (firestoreError) {
-          console.error('❌ Failed to update Firestore:', firestoreError);
-        }
+        // NOTE: We don't use Firestore for data storage - using Neon database instead
+        // User data is handled by the backend sync process
+        console.log('📝 User displayName will be synced via backend API');
       }
 
       // IMPORTANT: Manually sync the user before signing them out
@@ -428,8 +411,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await signInWithPopup(auth, provider);
         console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
         
-        // Manually trigger sync for registration
-        const syncSuccess = await syncUserWithBackend(result.user, "applicant", true);
+        // Manually trigger sync for registration - NO DEFAULT ROLE, user will choose
+        const syncSuccess = await syncUserWithBackend(result.user, "chef", true);
         if (syncSuccess) {
           console.log('✅ Google registration sync completed');
           setPendingSync(false);

@@ -46,7 +46,7 @@ export function registerFirebaseRoutes(app: Express) {
         email: req.firebaseUser.email || null,
         displayName,
         emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
-        role: role || 'applicant'
+        role: role || 'chef'
       });
 
       res.json({
@@ -276,7 +276,7 @@ export function registerFirebaseRoutes(app: Express) {
           email: req.firebaseUser.email || null,
           displayName,
           emailVerified: emailVerified !== undefined ? emailVerified : req.firebaseUser.email_verified,
-          role: role || 'applicant'
+          role: role || 'chef'
         });
 
         return res.json({
