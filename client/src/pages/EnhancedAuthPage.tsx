@@ -334,14 +334,14 @@ export default function EnhancedAuthPage() {
     setHasAttemptedLogin(true);
   };
 
-  // Show welcome screen if user is verified but hasn't seen welcome
-  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
-    return <WelcomeScreen onContinue={handleWelcomeContinue} />;
-  }
-
-  // Show role selection screen if user is verified but hasn't selected any roles
+  // Show role selection screen FIRST if user is verified but hasn't selected any roles
   if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.isChef && !userMeta.isDeliveryPartner && showRoleSelection) {
     return <RoleSelectionScreen onRoleSelected={handleRoleSelected} />;
+  }
+
+  // Show welcome screen if user is verified but hasn't seen welcome (AFTER role selection)
+  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+    return <WelcomeScreen onContinue={handleWelcomeContinue} />;
   }
 
   // Show the main auth form

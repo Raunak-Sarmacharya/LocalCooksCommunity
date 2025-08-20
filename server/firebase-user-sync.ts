@@ -31,7 +31,7 @@ export async function syncFirebaseUserToNeon(params: {
   displayName?: string;
   role?: string;
 }): Promise<User> {
-  const { uid, email, emailVerified, displayName, role = 'applicant' } = params;
+  const { uid, email, emailVerified, displayName, role = 'chef' } = params;
   
   // Determine if user should be marked as verified
   // Google users are automatically verified, email/password users need email verification
