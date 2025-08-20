@@ -5823,6 +5823,143 @@ app.get('/api/firebase/dashboard', requireFirebaseAuthWithUser, async (req, res)
 });
 
 // ===============================
+// FIREBASE DELIVERY PARTNER ENDPOINTS
+// ===============================
+
+// Submit Delivery Partner Application (with Firebase Auth)
+app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    // Validate required fields
+    const requiredFields = ['fullName', 'email', 'phone', 'address', 'city', 'province', 'postalCode', 'vehicleType', 'vehicleMake', 'vehicleModel', 'vehicleYear', 'licensePlate'];
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        message: "Validation error",
+        errors: missingFields.map(field => ({ field, message: `${field} is required` }))
+      });
+    }
+
+    // Associate application with the authenticated Neon user
+    const applicationData = {
+      ...req.body,
+      userId: req.neonUser.id
+    };
+
+    console.log(`🚚 Creating delivery partner application: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id}`);
+
+    let application;
+    if (pool) {
+      const result = await pool.query(
+        `INSERT INTO delivery_partner_applications (
+          user_id, full_name, email, phone, address, city, province, postal_code,
+          vehicle_type, vehicle_make, vehicle_model, vehicle_year, license_plate,
+          status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+        [
+          applicationData.userId,
+          applicationData.fullName,
+          applicationData.email,
+          applicationData.phone,
+          applicationData.address,
+          applicationData.city,
+          applicationData.province,
+          applicationData.postalCode,
+          applicationData.vehicleType,
+          applicationData.vehicleMake,
+          applicationData.vehicleModel,
+          applicationData.vehicleYear,
+          applicationData.licensePlate,
+          'inReview',
+          new Date()
+        ]
+      );
+      application = result.rows[0];
+    } else {
+      // In-memory fallback
+      const id = Date.now();
+      application = {
+        id,
+        user_id: applicationData.userId,
+        full_name: applicationData.fullName,
+        email: applicationData.email,
+        phone: applicationData.phone,
+        address: applicationData.address,
+        city: applicationData.city,
+        province: applicationData.province,
+        postal_code: applicationData.postalCode,
+        vehicle_type: applicationData.vehicleType,
+        vehicle_make: applicationData.vehicleMake,
+        vehicle_model: applicationData.vehicleModel,
+        vehicle_year: applicationData.vehicleYear,
+        license_plate: applicationData.licensePlate,
+        status: 'inReview',
+        created_at: new Date()
+      };
+    }
+
+    res.json({
+      success: true,
+      application,
+      message: 'Delivery partner application submitted successfully'
+    });
+  } catch (error) {
+    console.error('Error creating delivery partner application:', error);
+    res.status(500).json({
+      error: 'Failed to create delivery partner application',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get User's Delivery Partner Applications (with Firebase Auth)
+app.get('/api/firebase/delivery-partner-applications/my', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    let applications = [];
+    
+    if (pool) {
+      const result = await pool.query(
+        'SELECT * FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.neonUser.id]
+      );
+      applications = result.rows;
+    } else {
+      // In-memory fallback
+      applications = []; // Would need proper in-memory storage implementation
+    }
+    
+    console.log(`🚚 Retrieved ${applications.length} delivery partner applications: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id}`);
+
+    res.json(applications);
+  } catch (error) {
+    console.error('Error getting delivery partner applications:', error);
+    res.status(500).json({ error: 'Failed to get delivery partner applications' });
+  }
+});
+
+// Admin - Get All Delivery Partner Applications (with Firebase Auth and Admin Check)
+app.get('/api/firebase/admin/delivery-partner-applications', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    let applications = [];
+    
+    if (pool) {
+      const result = await pool.query('SELECT * FROM delivery_partner_applications ORDER BY created_at DESC');
+      applications = result.rows;
+    } else {
+      // In-memory fallback
+      applications = []; // Would need proper in-memory storage implementation
+    }
+    
+    console.log(`👑 Admin ${req.firebaseUser.uid} requested all delivery partner applications`);
+
+    res.json(applications);
+  } catch (error) {
+    console.error('Error getting admin delivery partner applications:', error);
+    res.status(500).json({ error: 'Failed to get delivery partner applications' });
+  }
+});
+
+// ===============================
 // FIREBASE MICROLEARNING ENDPOINTS
 // ===============================
 
