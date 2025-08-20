@@ -141,7 +141,11 @@ export function useApplicationStatus() {
     } else if (user.role === "admin") {
       return "Go to Admin Dashboard";
     } else if (shouldShowStartApplication()) {
-      return defaultText.includes("Start") ? defaultText : "Start an Application";
+      if (user.application_type === "delivery_partner") {
+        return "Start Delivery Partner Application";
+      } else {
+        return defaultText.includes("Start") ? defaultText : "Start Chef Application";
+      }
     } else {
       return "Go To Dashboard";
     }
@@ -156,7 +160,12 @@ export function useApplicationStatus() {
     } else if (user.role === "admin") {
       return "/admin";
     } else if (shouldShowStartApplication()) {
-      return "/apply";
+      // Direct to appropriate application form based on user's application type
+      if (user.application_type === "delivery_partner") {
+        return "/delivery-partner-apply";
+      } else {
+        return "/apply";
+      }
     } else {
       return "/dashboard";
     }

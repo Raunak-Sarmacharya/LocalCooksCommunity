@@ -6,26 +6,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from "@/hooks/use-toast"
 import {
-    AlignCenter,
-    AlignLeft,
-    AlignRight,
-    ArrowLeft,
-    Bold,
-    Download,
-    Edit3,
-    Eye,
-    Image,
-    Italic,
-    Mail,
-    Minus,
-    Palette,
-    Plus,
-    Send,
-    Settings,
-    Square,
-    Target,
-    Trash2,
-    Type
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ArrowLeft,
+  Bold,
+  Download,
+  Edit3,
+  Eye,
+  Image,
+  Italic,
+  Mail,
+  Minus,
+  Palette,
+  Plus,
+  Send,
+  Settings,
+  Square,
+  Target,
+  Trash2,
+  Type
 } from 'lucide-react'
 import React, { useState } from 'react'
 import { SimpleUserSelector } from '../../ui/SimpleUserSelector'
@@ -1776,11 +1776,12 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
                           <Checkbox
                             checked={currentDesign.content.includePromoSection || false}
                             onCheckedChange={(checked) => {
+                              const isChecked = checked === true;
                               handleContentUpdate({
-                                includePromoSection: checked,
+                                includePromoSection: isChecked,
                                 // Reset promo code when disabling
-                                promoCode: checked ? currentDesign.content.promoCode : '',
-                                promoCodeLabel: checked ? currentDesign.content.promoCodeLabel : ''
+                                promoCode: isChecked ? currentDesign.content.promoCode : '',
+                                promoCodeLabel: isChecked ? currentDesign.content.promoCodeLabel : ''
                               });
                             }}
                             className="h-4 w-4 flex-shrink-0"

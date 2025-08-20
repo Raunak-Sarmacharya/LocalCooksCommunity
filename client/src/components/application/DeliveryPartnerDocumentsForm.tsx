@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
 import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle, Upload } from "lucide-react";
 import { useState } from "react";
@@ -19,7 +20,7 @@ export default function DeliveryPartnerDocumentsForm() {
       formData.append('file', file);
       
       // Get Firebase token for authentication
-      const token = await window.firebase?.auth().currentUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken();
       
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -83,7 +84,7 @@ export default function DeliveryPartnerDocumentsForm() {
 
     try {
       // Get Firebase token for authentication
-      const token = await window.firebase?.auth().currentUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken();
       
       const response = await fetch('/api/delivery-partner-applications', {
         method: 'POST',

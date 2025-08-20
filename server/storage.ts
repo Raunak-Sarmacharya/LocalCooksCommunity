@@ -67,20 +67,24 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private applications: Map<number, Application>;
+  private deliveryPartnerApplications: Map<number, DeliveryPartnerApplication>;
   private videoProgress: Map<string, any>; // key: userId-videoId
   private microlearningCompletions: Map<number, any>; // key: userId
   private userCurrentId: number;
   private applicationCurrentId: number;
+  private deliveryPartnerApplicationCurrentId: number;
   sessionStore: session.Store;
   // TypeScript fixes for instagramId and twitterId
 
   constructor() {
     this.users = new Map();
     this.applications = new Map();
+    this.deliveryPartnerApplications = new Map();
     this.videoProgress = new Map();
     this.microlearningCompletions = new Map();
     this.userCurrentId = 1;
     this.applicationCurrentId = 1;
+    this.deliveryPartnerApplicationCurrentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // 24hrs
     });
@@ -102,6 +106,7 @@ export class MemStorage implements IStorage {
       firebaseUid: null,
       isVerified: true,
       has_seen_welcome: true,
+      applicationType: null,
     };
     this.users.set(adminUser.id, adminUser);
     console.log("Development: Default admin user created (username: admin, password: localcooks)");
@@ -167,6 +172,7 @@ export class MemStorage implements IStorage {
       firebaseUid: insertUser.firebaseUid || null,
       isVerified: (insertUser as any).isVerified !== undefined ? (insertUser as any).isVerified : false,
       has_seen_welcome: (insertUser as any).has_seen_welcome !== undefined ? (insertUser as any).has_seen_welcome : false,
+      applicationType: (insertUser as any).applicationType || null,
     };
 
     this.users.set(user.id, user);
@@ -382,53 +388,70 @@ export class MemStorage implements IStorage {
 
   // Delivery Partner Application-related methods
   async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
-    return Array.from(this.applications.values()).filter(
-      (app): app is DeliveryPartnerApplication => app.type === 'delivery_partner'
-    );
+    return Array.from(this.deliveryPartnerApplications.values());
   }
 
   async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
-    return this.applications.get(id);
+    return this.deliveryPartnerApplications.get(id);
   }
 
   async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
-    return Array.from(this.applications.values()).filter(
-      (application) => application.userId === userId && application.type === 'delivery_partner'
+    return Array.from(this.deliveryPartnerApplications.values()).filter(
+      (application) => application.userId === userId
     );
   }
 
   async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
-    const id = this.applicationCurrentId++;
+    const id = this.deliveryPartnerApplicationCurrentId++;
     const now = new Date();
 
-    // Create application with properly typed userId (null if not provided)
+    // Create application with all required delivery partner fields
     const application: DeliveryPartnerApplication = {
       id,
       userId: insertApplication.userId || null,
       fullName: insertApplication.fullName,
       email: insertApplication.email,
       phone: insertApplication.phone,
-      type: 'delivery_partner',
-      status: "inReview",
+      address: insertApplication.address,
+      city: insertApplication.city,
+      province: insertApplication.province,
+      postalCode: insertApplication.postalCode,
       
-      // Initialize document verification fields
-      foodSafetyLicenseUrl: insertApplication.foodSafetyLicenseUrl || null,
-      foodEstablishmentCertUrl: insertApplication.foodEstablishmentCertUrl || null,
-      foodSafetyLicenseStatus: "pending",
-      foodEstablishmentCertStatus: "pending",
+      // Vehicle details
+      vehicleType: insertApplication.vehicleType,
+      vehicleMake: insertApplication.vehicleMake,
+      vehicleModel: insertApplication.vehicleModel,
+      vehicleYear: insertApplication.vehicleYear,
+      licensePlate: insertApplication.licensePlate,
+      
+      // Document URLs
+      driversLicenseUrl: insertApplication.driversLicenseUrl || null,
+      vehicleRegistrationUrl: insertApplication.vehicleRegistrationUrl || null,
+      insuranceUrl: insertApplication.insuranceUrl || null,
+      backgroundCheckUrl: insertApplication.backgroundCheckUrl || null,
+      
+      // Document verification status
+      driversLicenseStatus: "pending",
+      vehicleRegistrationStatus: "pending",
+      insuranceStatus: "pending",
+      backgroundCheckStatus: "pending",
+      
+      // Admin fields
       documentsAdminFeedback: null,
       documentsReviewedBy: null,
       documentsReviewedAt: null,
       
+      feedback: null,
+      status: "inReview",
       createdAt: now,
     };
 
-    this.applications.set(id, application);
+    this.deliveryPartnerApplications.set(id, application);
     return application;
   }
 
   async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise<DeliveryPartnerApplication | undefined> {
-    const application = this.applications.get(update.id);
+    const application = this.deliveryPartnerApplications.get(update.id);
 
     if (!application) {
       return undefined;
@@ -444,12 +467,12 @@ export class MemStorage implements IStorage {
       status: update.status,
     };
 
-    this.applications.set(update.id, updatedApplication);
+    this.deliveryPartnerApplications.set(update.id, updatedApplication);
     return updatedApplication;
   }
 
-  async updateDeliveryPartnerApplicationDocuments(update: UpdateApplicationDocuments): Promise<DeliveryPartnerApplication | undefined> {
-    const application = this.applications.get(update.id);
+  async updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined> {
+    const application = this.deliveryPartnerApplications.get(update.id);
 
     if (!application) {
       return undefined;
@@ -459,16 +482,18 @@ export class MemStorage implements IStorage {
       ...application,
       ...update,
       // Reset document status to pending when new documents are uploaded
-      ...(update.foodSafetyLicenseUrl && { foodSafetyLicenseStatus: "pending" }),
-      ...(update.foodEstablishmentCertUrl && { foodEstablishmentCertStatus: "pending" }),
+      ...(update.driversLicenseUrl && { driversLicenseStatus: "pending" }),
+      ...(update.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" }),
+      ...(update.insuranceUrl && { insuranceStatus: "pending" }),
+      ...(update.backgroundCheckUrl && { backgroundCheckStatus: "pending" }),
     };
 
-    this.applications.set(update.id, updatedApplication);
+    this.deliveryPartnerApplications.set(update.id, updatedApplication);
     return updatedApplication;
   }
 
-  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
-    const application = this.applications.get(update.id);
+  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDeliveryPartnerDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
+    const application = this.deliveryPartnerApplications.get(update.id);
 
     if (!application) {
       return undefined;
@@ -480,7 +505,7 @@ export class MemStorage implements IStorage {
       documentsReviewedAt: new Date(),
     };
 
-    this.applications.set(update.id, updatedApplication);
+    this.deliveryPartnerApplications.set(update.id, updatedApplication);
     return updatedApplication;
   }
 
@@ -919,7 +944,7 @@ export class DatabaseStorage implements IStorage {
     return updatedApplication || undefined;
   }
 
-  async updateDeliveryPartnerApplicationDocuments(update: UpdateApplicationDocuments): Promise<DeliveryPartnerApplication | undefined> {
+  async updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined> {
     const { id, ...updateData } = update;
 
     const [updatedApplication] = await db
@@ -927,8 +952,10 @@ export class DatabaseStorage implements IStorage {
       .set({
         ...updateData,
         // Reset document status to pending when new documents are uploaded
-        ...(updateData.foodSafetyLicenseUrl && { foodSafetyLicenseStatus: "pending" }),
-        ...(updateData.foodEstablishmentCertUrl && { foodEstablishmentCertStatus: "pending" }),
+        ...(updateData.driversLicenseUrl && { driversLicenseStatus: "pending" }),
+        ...(updateData.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" }),
+        ...(updateData.insuranceUrl && { insuranceStatus: "pending" }),
+        ...(updateData.backgroundCheckUrl && { backgroundCheckStatus: "pending" }),
       })
       .where(eq(deliveryPartnerApplications.id, id))
       .returning();

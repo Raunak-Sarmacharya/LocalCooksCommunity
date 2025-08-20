@@ -15,9 +15,8 @@ import {
 } from "firebase/auth";
 import {
     doc,
-    getDoc,
     serverTimestamp,
-    setDoc,
+    setDoc
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
@@ -29,6 +28,9 @@ interface AuthUser {
   emailVerified: boolean;
   providers: string[];
   role?: string;
+  application_type?: 'chef' | 'delivery_partner';
+  is_verified?: boolean;
+  has_seen_welcome?: boolean;
 }
 
 interface AuthContextType {
@@ -118,30 +120,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('🔥 AUTH PROVIDERS:', providers);
           console.log('🔥 EMAIL VERIFIED:', firebaseUser.emailVerified);
 
-          // Check for user role in Firestore
+          // Check for user role and data from backend API (not Firestore)
           let role = "applicant";
+          let applicationData = null;
           try {
-            const userDocRef = doc(db, "users", firebaseUser.uid);
-            const userSnap = await getDoc(userDocRef);
+            const token = await firebaseUser.getIdToken();
+            const response = await fetch('/api/user/profile', {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
             
-            if (userSnap.exists()) {
-              const userData = userSnap.data();
+            if (response.ok) {
+              const userData = await response.json();
               role = userData.role || "applicant";
-              console.log('🔥 FIRESTORE ROLE:', role);
-            } else {
-              console.log('🔥 NEW USER - Creating Firestore document');
-              // Create user document in Firestore for new users
-              await setDoc(userDocRef, {
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName,
-                role: "applicant",
-                createdAt: serverTimestamp(),
-                lastLoginAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
+              applicationData = {
+                application_type: userData.application_type,
+                is_verified: userData.is_verified,
+                has_seen_welcome: userData.has_seen_welcome
+              };
+              console.log('🔥 BACKEND USER DATA:', {
+                role,
+                application_type: userData.application_type,
+                is_verified: userData.is_verified,
+                has_seen_welcome: userData.has_seen_welcome
               });
+            } else {
+              console.log('🔥 NEW USER - No backend profile found, will need to sync');
             }
-          } catch (firestoreError) {
-            console.error('Firestore error:', firestoreError);
+          } catch (error) {
+            console.error('❌ BACKEND USER FETCH ERROR:', error);
+            // Continue with default role if backend fails
           }
           
           // **IMPROVED SYNC LOGIC WITH VERIFICATION HANDLING**
@@ -185,6 +195,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             emailVerified: firebaseUser.emailVerified,
             providers,
             role,
+            application_type: applicationData?.application_type,
+            is_verified: applicationData?.is_verified,
+            has_seen_welcome: applicationData?.has_seen_welcome,
           });
         } else {
           console.log('🔥 AUTH STATE CHANGE - No user (logged out)');

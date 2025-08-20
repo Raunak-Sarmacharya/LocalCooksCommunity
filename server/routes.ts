@@ -17,47 +17,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
   setupAuth(app);
 
-  // Google authentication
-  app.get("/api/auth/google", (req, res, next) => {
-    console.log("Starting Google auth flow");
-    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-      passport.authenticate("google", {
-        scope: ["profile", "email"],
-        failureRedirect: "/login?error=google_auth_failed",
-        state: Date.now().toString() // Add state parameter for security
-      })(req, res, next);
-    } else {
-      console.error("Google OAuth credentials not configured");
-      res.redirect("/login?error=google_not_configured");
-    }
-  });
-
-  app.get(
-    "/api/auth/google/callback",
-    (req: { query: { error: any; }; }, res: { redirect: (arg0: string) => any; }, next: () => void) => {
-      console.log("Google OAuth callback received:", req.query);
-      // Check for error in the callback
-      if (req.query.error) {
-        console.error("Google OAuth error:", req.query.error);
-        return res.redirect(`/login?error=${req.query.error}`);
-      }
-      next();
-    },
-    passport.authenticate("google", {
-      failureRedirect: "/login?error=google_callback_failed",
-      failWithError: true // This will pass the error to the next middleware
-    }),
-    (req: any, res: { redirect: (arg0: string) => void; }) => {
-      // Successful authentication
-      console.log("Google authentication successful");
-      res.redirect("/");
-    },
-    // Error handler
-    (err: any, req: any, res: any, next: any) => {
-      console.error("Google authentication error:", err);
-      res.redirect("/login?error=internal_error");
-    }
-  );
+  // NOTE: Google OAuth now handled entirely by Firebase Auth
+  // No session-based Google OAuth needed for users
 
   // Facebook authentication
   app.get("/api/auth/facebook", (req, res, next) => {

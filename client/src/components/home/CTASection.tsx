@@ -31,6 +31,8 @@ export default function CTASection() {
   const getHeadingText = () => {
     if (user?.role === "admin") {
       return "Manage Local Cooks";
+    } else if (user?.application_type === "delivery_partner") {
+      return "Ready to Start Delivering?";
     } else {
       return "Ready to Start Cooking?";
     }
@@ -39,6 +41,8 @@ export default function CTASection() {
   const getDescriptionText = () => {
     if (user?.role === "admin") {
       return "Review applications, manage documents, and oversee the Local Cooks community platform.";
+    } else if (user?.application_type === "delivery_partner") {
+      return "Join our delivery network and earn money while connecting local cooks with hungry customers.";
     } else {
       return "Join our growing community of local cooks and share your culinary creations with food lovers in St. John's.";
     }

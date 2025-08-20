@@ -1,13 +1,12 @@
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-import { Strategy as FacebookStrategy } from "passport-facebook";
-import { Express, Request } from "express";
+import { User } from "@shared/schema";
+import { randomBytes, scrypt, timingSafeEqual } from "crypto";
+import { Express } from "express";
 import session from "express-session";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import passport from "passport";
+import { Strategy as FacebookStrategy } from "passport-facebook";
+import { Strategy as LocalStrategy } from "passport-local";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User } from "@shared/schema";
 
 declare global {
   namespace Express {
@@ -87,72 +86,10 @@ export function setupAuth(app: Express) {
     })
   );
 
-  // Configure Google OAuth Strategy if credentials are available
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-    // Determine callback URL based on environment
-    const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL || 
-      (process.env.NODE_ENV === 'production' 
-        ? 'https://your-domain.com/api/auth/google/callback'
-        : 'http://localhost:5000/api/auth/google/callback');
-
-    passport.use(
-      new GoogleStrategy(
-        {
-          clientID: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          callbackURL: googleCallbackURL,
-          scope: ["profile", "email"]
-        },
-        async (accessToken, refreshToken, profile, done) => {
-          try {
-            console.log('Google OAuth callback - Profile received:', {
-              id: profile.id,
-              email: profile.emails?.[0]?.value,
-              name: profile.displayName
-            });
-
-            // Check if user exists by Google ID
-            let user = await storage.getUserByOAuthId("google", profile.id);
-            
-            if (!user) {
-              // First-time Google signup - create new user with proper fields
-              const userData = {
-                oauth_provider: "google",
-                oauth_id: profile.id,
-                username: profile.emails?.[0]?.value || `google_${profile.id}`,
-                role: "applicant" as const,
-                profile_data: JSON.stringify(profile)
-              };
-
-              console.log('Creating new Google OAuth user:', userData.username);
-              user = await storage.createOAuthUser(userData);
-              console.log('Created user with fields:', { 
-                id: user.id, 
-                isVerified: user.isVerified, 
-                has_seen_welcome: (user as any).has_seen_welcome 
-              });
-            } else {
-              console.log('Existing Google user logging in:', { 
-                id: user.id, 
-                username: user.username,
-                isVerified: user.isVerified,
-                has_seen_welcome: (user as any).has_seen_welcome 
-              });
-            }
-            
-            console.log('Google OAuth authentication successful for user:', user.id);
-            return done(null, user);
-          } catch (error) {
-            console.error('Google OAuth error:', error);
-            return done(error as Error);
-          }
-        }
-      )
-    );
-    console.log(`Google OAuth strategy configured with callback: ${googleCallbackURL}`);
-  } else {
-    console.log("Google OAuth strategy not configured - missing environment variables");
-  }
+  // NOTE: Google OAuth is handled by Firebase Auth on the client side
+  // Session-based Google OAuth is only used for admin authentication
+  // Regular users should use Firebase Auth with Google provider
+  console.log("Session-based Google OAuth disabled - Firebase Auth handles user OAuth");
 
   // Configure Facebook OAuth Strategy if credentials are available
   if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
@@ -365,21 +302,8 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // OAuth routes - only configured if credentials are available
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-    app.get(
-      "/api/auth/google",
-      passport.authenticate("google", { scope: ["profile", "email"] })
-    );
-
-    app.get(
-      "/api/auth/google/callback",
-      passport.authenticate("google", { failureRedirect: "/login" }),
-      (req, res) => {
-        res.redirect("/");
-      }
-    );
-  }
+  // NOTE: Google OAuth routes removed - Firebase Auth handles all user OAuth
+  // Admin authentication uses local strategy only
 
   if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
     app.get(
