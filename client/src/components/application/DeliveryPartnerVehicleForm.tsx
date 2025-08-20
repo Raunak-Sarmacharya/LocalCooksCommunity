@@ -175,6 +175,7 @@ export default function DeliveryPartnerVehicleForm() {
 
   const handleMakeChange = useCallback((makeId: string) => {
     const makeIdNum = parseInt(makeId);
+    console.log('Selected make ID:', makeIdNum);
     setSelectedMakeId(makeIdNum);
     setSelectedModelId(null);
     setError(null);
@@ -182,6 +183,7 @@ export default function DeliveryPartnerVehicleForm() {
     // Find the make name and update form
     const selectedMake = makes.find(make => make.id === makeIdNum);
     if (selectedMake) {
+      console.log('Selected make:', selectedMake);
       setSelectedMakeName(selectedMake.name);
       updateFormData({ 
         vehicleMake: selectedMake.name,
@@ -212,6 +214,7 @@ export default function DeliveryPartnerVehicleForm() {
     if (selectedMakeId) {
       try {
         setYearsLoading(true);
+        console.log('Loading years for make ID:', selectedMakeId);
         const yearsData = await VehicleAPIClient.getYears(selectedMakeId);
         if (yearsData && yearsData.length > 0) {
           setYears(yearsData);
