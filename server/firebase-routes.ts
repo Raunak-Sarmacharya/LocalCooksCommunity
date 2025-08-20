@@ -6,9 +6,9 @@ import { pool } from './db';
 import { getFileUrl, upload, uploadToBlob } from './fileUpload';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-    requireAdmin,
-    requireFirebaseAuthWithUser,
-    verifyFirebaseAuth
+  requireAdmin,
+  requireFirebaseAuthWithUser,
+  verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
@@ -323,7 +323,16 @@ export function registerFirebaseRoutes(app: Express) {
       // req.neonUser is now populated by middleware with Neon user data
       // req.firebaseUser contains Firebase auth data
 
+      // Return flat structure expected by frontend
       res.json({
+        id: req.neonUser!.id,
+        username: req.neonUser!.username,
+        role: req.neonUser!.role,
+        is_verified: (req.neonUser as any).isVerified || req.firebaseUser!.email_verified,
+        has_seen_welcome: (req.neonUser as any).has_seen_welcome || false,
+        isChef: (req.neonUser as any).isChef || false,
+        isDeliveryPartner: (req.neonUser as any).isDeliveryPartner || false,
+        // Also include original structure for compatibility
         neonUser: {
           id: req.neonUser!.id,
           username: req.neonUser!.username,

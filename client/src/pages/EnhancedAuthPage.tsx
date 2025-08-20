@@ -243,15 +243,40 @@ export default function EnhancedAuthPage() {
     try {
       console.log(`🎯 ROLES SELECTED:`, roles);
       
-      // Update local user meta
+      // Update local user meta immediately for UI responsiveness
       if (userMeta) {
-        setUserMeta({
+        const updatedUserMeta = {
           ...userMeta,
           isChef: roles.isChef,
           isDeliveryPartner: roles.isDeliveryPartner,
           // Keep application_type for backward compatibility, but use the new role flags primarily
           application_type: roles.isChef && roles.isDeliveryPartner ? 'chef' : roles.isChef ? 'chef' : 'delivery_partner'
-        });
+        };
+        setUserMeta(updatedUserMeta);
+        console.log('✅ Local user meta updated:', updatedUserMeta);
+      }
+      
+      // Refresh user metadata from backend to ensure sync
+      try {
+        const firebaseUser = auth.currentUser;
+        if (firebaseUser) {
+          const token = await firebaseUser.getIdToken();
+          const response = await fetch('/api/user/profile', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const refreshedUserData = await response.json();
+            console.log('✅ USER DATA REFRESHED after role selection:', refreshedUserData);
+            setUserMeta(refreshedUserData);
+          }
+        }
+      } catch (refreshError) {
+        console.error('❌ Error refreshing user data after role selection:', refreshError);
+        // Don't fail the flow if refresh fails
       }
       
       // Show welcome screen after role selection
@@ -271,13 +296,19 @@ export default function EnhancedAuthPage() {
     }
 
     if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
+      // Check if user needs role selection first
+      if (userMeta.is_verified && !userMeta.isChef && !userMeta.isDeliveryPartner && showRoleSelection) {
+        console.log('🎯 ROLE SELECTION REQUIRED - Not redirecting yet');
+        return; // Don't redirect, show role selection screen
+      }
+
       // Check if user needs welcome screen
       if (userMeta.is_verified && !userMeta.has_seen_welcome) {
         console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
         return; // Don't redirect, show welcome screen
       }
 
-      // User has seen welcome or doesn't need it - proceed with redirect
+      // User has completed role selection and welcome or doesn't need them - proceed with redirect
       const redirectPath = getRedirectPath();
       const targetPath = redirectPath !== '/' ? redirectPath : (userMeta.role === 'admin' ? '/admin' : '/dashboard');
       
@@ -287,7 +318,7 @@ export default function EnhancedAuthPage() {
         }, 300);
       }
     }
-  }, [loading, isInitialLoad, user, hasAttemptedLogin, userMeta, location, setLocation]);
+  }, [loading, isInitialLoad, user, hasAttemptedLogin, userMeta, showRoleSelection, location, setLocation]);
 
   // Cleanup on unmount
   useEffect(() => {
