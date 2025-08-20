@@ -5430,6 +5430,8 @@ async function requireFirebaseAuthWithUser(req, res, next) {
       firebaseUid: neonUser.firebase_uid || undefined,
       isVerified: neonUser.is_verified !== undefined ? neonUser.is_verified : true,
       hasSeenWelcome: neonUser.has_seen_welcome !== undefined ? neonUser.has_seen_welcome : false,
+      isChef: neonUser.is_chef || false,
+      isDeliveryPartner: neonUser.is_delivery_partner || false,
     };
 
     console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
@@ -5476,8 +5478,10 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
       id: req.neonUser.id,
       username: req.neonUser.username,
       role: req.neonUser.role,
-      is_verified: req.neonUser.isVerified !== undefined ? req.neonUser.isVerified : true,
-      has_seen_welcome: req.neonUser.hasSeenWelcome !== undefined ? req.neonUser.hasSeenWelcome : false,
+      is_verified: req.neonUser.isVerified,
+      has_seen_welcome: req.neonUser.hasSeenWelcome,
+      isChef: req.neonUser.isChef,
+      isDeliveryPartner: req.neonUser.isDeliveryPartner,
       firebaseUid: req.firebaseUser.uid,
       email: req.firebaseUser.email,
       emailVerified: req.firebaseUser.email_verified
