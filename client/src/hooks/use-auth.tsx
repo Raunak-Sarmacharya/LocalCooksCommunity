@@ -49,6 +49,7 @@ interface AuthContextType {
   updateUserVerification: () => Promise<AuthUser | null>;
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
   resendFirebaseVerification: () => Promise<boolean>;
+  refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -689,6 +690,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Refresh user data from backend (useful after role changes)
+  const refreshUserData = async () => {
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        console.warn('No Firebase user available for refresh');
+        return;
+      }
+
+      console.log('🔄 Refreshing user data from backend...');
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch('/api/user/profile', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('✅ User data refreshed from backend:', {
+          role: userData.role,
+          isChef: userData.isChef || userData.is_chef,
+          isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner,
+          is_verified: userData.is_verified,
+          has_seen_welcome: userData.has_seen_welcome
+        });
+
+        // Update the user object with fresh data
+        const updatedUser: AuthUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
+          emailVerified: firebaseUser.emailVerified,
+          providers: firebaseUser.providerData.map((p: any) => p.providerId),
+          role: userData.role || "chef",
+          application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
+          isChef: userData.isChef || userData.is_chef || false,
+          isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner || false,
+          is_verified: userData.is_verified,
+          has_seen_welcome: userData.has_seen_welcome,
+        };
+
+        setUser(updatedUser);
+        console.log('✅ Auth context user updated with fresh data');
+      } else {
+        console.error('❌ Failed to refresh user data:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing user data:', error);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -705,6 +760,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateUserVerification,
         sendVerificationEmail,
         resendFirebaseVerification,
+        refreshUserData,
       }}
     >
       {children}

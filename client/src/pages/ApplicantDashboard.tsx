@@ -23,7 +23,7 @@ import {
   formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Application } from "@shared/schema";
+import { Application, DeliveryPartnerApplication } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -40,13 +40,16 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 
+// Union type for handling both application types
+type AnyApplication = Application | DeliveryPartnerApplication;
+
 // Helper to check if an application is active (not cancelled, rejected)
-const isApplicationActive = (app: Application) => {
+const isApplicationActive = (app: AnyApplication) => {
   return app.status !== 'cancelled' && app.status !== 'rejected';
 };
 
 // Helper to check if user can apply again
-const canApplyAgain = (applications: Application[]) => {
+const canApplyAgain = (applications: AnyApplication[]) => {
   if (!applications || applications.length === 0) return true;
   // Check if any application is active (not cancelled or rejected)
   return !applications.some(isApplicationActive);
@@ -100,12 +103,70 @@ export default function ApplicantDashboard() {
     localStorageUserId: localStorage.getItem('userId')
   });
 
+  // Helper function to determine user type and appropriate applications to display
+  const getUserDisplayInfo = () => {
+    const isChef = (user as any)?.isChef;
+    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+    
+    if (isChef && isDeliveryPartner) {
+      // Dual role - for now, prioritize chef (can be enhanced later)
+      return {
+        primaryRole: 'chef',
+        applications: applications,
+        applicationFormUrl: '/apply',
+        roleName: 'Chef',
+        icon: ChefHat,
+        description: 'Start your culinary journey with Local Cooks by submitting your application.',
+        isLoading: isLoading,
+        error: error
+      };
+    } else if (isDeliveryPartner) {
+      // Pure delivery partner
+      return {
+        primaryRole: 'deliveryPartner',
+        applications: deliveryApplications,
+        applicationFormUrl: '/delivery-partner-apply',
+        roleName: 'Delivery Partner',
+        icon: Truck,
+        description: 'Join our delivery team and start earning by delivering delicious meals.',
+        isLoading: isLoadingDelivery,
+        error: deliveryError
+      };
+    } else if (isChef) {
+      // Pure chef
+      return {
+        primaryRole: 'chef',
+        applications: applications,
+        applicationFormUrl: '/apply',
+        roleName: 'Chef',
+        icon: ChefHat,
+        description: 'Start your culinary journey with Local Cooks by submitting your application.',
+        isLoading: isLoading,
+        error: error
+      };
+    } else {
+      // No role selected yet - should not happen but fallback to chef
+      return {
+        primaryRole: 'chef',
+        applications: applications,
+        applicationFormUrl: '/apply',
+        roleName: 'Chef',
+        icon: ChefHat,
+        description: 'Start your culinary journey with Local Cooks by submitting your application.',
+        isLoading: isLoading,
+        error: error
+      };
+    }
+  };
+
+  const userDisplayInfo = getUserDisplayInfo();
+
   // Helper function to get the most recent application
   const getMostRecentApplication = () => {
-    if (!applications || applications.length === 0) return null;
+    if (!userDisplayInfo.applications || userDisplayInfo.applications.length === 0) return null;
     
     // Find the application with the latest createdAt timestamp
-    return applications.reduce((latest, current) => {
+    return userDisplayInfo.applications.reduce((latest: AnyApplication, current: AnyApplication) => {
       const latestDate = new Date(latest.createdAt || 0);
       const currentDate = new Date(current.createdAt || 0);
       return currentDate > latestDate ? current : latest;
@@ -311,7 +372,7 @@ export default function ApplicantDashboard() {
 
   // Fetch delivery partner applications (only for users who are delivery partners)
   const { data: deliveryApplications = [], isLoading: isLoadingDelivery, error: deliveryError } = useQuery({
-    queryKey: ["/api/firebase/delivery-applications/my"],
+    queryKey: ["/api/firebase/delivery-partner-applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid) {
         throw new Error("User not authenticated");
@@ -406,10 +467,10 @@ export default function ApplicantDashboard() {
 
   // Monitor application status changes and microlearning completion
   useEffect(() => {
-    if (applications && prevApplicationsRef.current) {
+    if (userDisplayInfo.applications && prevApplicationsRef.current) {
       const prevApps = prevApplicationsRef.current;
       
-              applications.forEach((currentApp) => {
+              userDisplayInfo.applications.forEach((currentApp: AnyApplication) => {
           const prevApp = prevApps.find(app => app.id === currentApp.id);
           
           if (prevApp && prevApp.status !== currentApp.status) {
@@ -440,16 +501,19 @@ export default function ApplicantDashboard() {
             }
           }
         
-        // Check for document verification status changes (only for approved applications)
-        if (prevApp && currentApp.status === "approved") {
+        // Check for document verification status changes (only for approved chef applications)
+        if (prevApp && currentApp.status === "approved" && 'foodSafetyLicenseStatus' in currentApp) {
+          const chefApp = currentApp as Application;
+          const prevChefApp = prevApp as Application;
+          
           // Food Safety License status change
-          if (prevApp.foodSafetyLicenseStatus !== currentApp.foodSafetyLicenseStatus) {
-            if (currentApp.foodSafetyLicenseStatus === "approved") {
+          if (prevChefApp.foodSafetyLicenseStatus !== chefApp.foodSafetyLicenseStatus) {
+            if (chefApp.foodSafetyLicenseStatus === "approved") {
               toast({
                 title: "✅ Food Safety License Approved",
                 description: "Your Food Safety License has been approved!",
               });
-            } else if (currentApp.foodSafetyLicenseStatus === "rejected") {
+            } else if (chefApp.foodSafetyLicenseStatus === "rejected") {
               toast({
                 title: "📄 Document Update Required",
                 description: "Your Food Safety License needs to be updated. Please check the feedback and resubmit.",
@@ -459,13 +523,13 @@ export default function ApplicantDashboard() {
           }
           
           // Food Establishment Certificate status change
-          if (prevApp.foodEstablishmentCertStatus !== currentApp.foodEstablishmentCertStatus) {
-            if (currentApp.foodEstablishmentCertStatus === "approved") {
+          if (prevChefApp.foodEstablishmentCertStatus !== chefApp.foodEstablishmentCertStatus) {
+            if (chefApp.foodEstablishmentCertStatus === "approved") {
               toast({
                 title: "✅ Food Establishment Certificate Approved",
                 description: "Your Food Establishment Certificate has been approved!",
               });
-            } else if (currentApp.foodEstablishmentCertStatus === "rejected") {
+            } else if (chefApp.foodEstablishmentCertStatus === "rejected") {
               toast({
                 title: "📄 Document Update Required",
                 description: "Your Food Establishment Certificate needs to be updated. Please check the feedback and resubmit.",
@@ -478,8 +542,8 @@ export default function ApplicantDashboard() {
     }
     
     // Update the ref for next comparison
-    prevApplicationsRef.current = applications || null;
-  }, [applications]);
+    prevApplicationsRef.current = userDisplayInfo.applications || null;
+  }, [userDisplayInfo.applications]);
 
   // Query microlearning completion status (only for chefs)
   const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
@@ -595,7 +659,7 @@ export default function ApplicantDashboard() {
     // Refetch when applications change to immediately reflect access level changes
     refetchInterval: (data) => {
       // Check if user has applications under review (might get approved soon)
-      const hasApplicationsUnderReview = applications?.some(app => app.status === "inReview");
+      const hasApplicationsUnderReview = userDisplayInfo.applications?.some((app: AnyApplication) => app.status === "inReview");
       
       if (hasApplicationsUnderReview) {
         // More frequent updates when applications are being reviewed
@@ -825,8 +889,8 @@ export default function ApplicantDashboard() {
   };
 
   // Check if user is fully verified for vendor portal access
-  const isUserFullyVerified = applications && applications.length > 0 && (() => {
-    const latestApp = applications[0];
+  const isUserFullyVerified = userDisplayInfo.applications && userDisplayInfo.applications.length > 0 && (() => {
+    const latestApp = userDisplayInfo.applications[0];
     return latestApp.foodSafetyLicenseStatus === 'approved' && 
       (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
   })();
@@ -1134,12 +1198,12 @@ export default function ApplicantDashboard() {
               {/* Application Management - Full Width */}
               <div className="space-y-4 w-full">
                 <h4 className="font-semibold text-gray-900">Application Management</h4>
-                {applications && applications.length > 0 ? (
+                {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
                   (() => {
                     // Set default selected application to the latest one
                     const defaultApp = selectedApplicationId 
-                      ? applications.find(app => app.id === selectedApplicationId) || applications[0]
-                      : applications[0];
+                      ? userDisplayInfo.applications.find((app: AnyApplication) => app.id === selectedApplicationId) || userDisplayInfo.applications[0]
+                      : userDisplayInfo.applications[0];
                     
                     const hasActiveApplication = defaultApp.status !== 'cancelled' && defaultApp.status !== 'rejected';
                     return (
@@ -1155,7 +1219,7 @@ export default function ApplicantDashboard() {
                               <SelectValue placeholder="Select an application" />
                             </SelectTrigger>
                             <SelectContent>
-                              {applications.map((app) => (
+                              {userDisplayInfo.applications.map((app: AnyApplication) => (
                                 <SelectItem key={app.id} value={app.id.toString()}>
                                   <div className="flex items-center justify-between w-full">
                                     <span className="font-medium">#{app.id} - {app.fullName}</span>
@@ -1305,8 +1369,8 @@ export default function ApplicantDashboard() {
                             </>
                           ) : (
                             <Button asChild className="flex-1 rounded-xl">
-                              <Link href="/apply">
-                                <ChefHat className="mr-2 h-4 w-4" />
+                              <Link href={userDisplayInfo.applicationFormUrl}>
+                                <userDisplayInfo.icon className="mr-2 h-4 w-4" />
                                 Apply Again
                               </Link>
                             </Button>
@@ -1318,13 +1382,13 @@ export default function ApplicantDashboard() {
                 ) : (
                   <div className="text-center py-8">
                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mx-auto mb-4">
-                      <ChefHat className="h-8 w-8 text-blue-600" />
+                      <userDisplayInfo.icon className="h-8 w-8 text-blue-600" />
                     </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">Ready to Cook?</h4>
-                    <p className="text-gray-600 mb-6">Start your culinary journey with Local Cooks by submitting your application.</p>
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">Ready to Start?</h4>
+                    <p className="text-gray-600 mb-6">{userDisplayInfo.description}</p>
                     <Button asChild className="rounded-xl">
-                      <Link href="/apply">
-                        <ChefHat className="mr-2 h-4 w-4" />
+                      <Link href={userDisplayInfo.applicationFormUrl}>
+                        <userDisplayInfo.icon className="mr-2 h-4 w-4" />
                         Start Application
                       </Link>
                     </Button>
@@ -1354,9 +1418,9 @@ export default function ApplicantDashboard() {
                 </div>
               </div>
               
-              {applications && applications.length > 0 ? (
+              {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
                 (() => {
-                  const latestApp = applications[0];
+                  const latestApp = userDisplayInfo.applications[0];
                   const hasDocuments = latestApp.foodSafetyLicenseUrl || latestApp.foodEstablishmentCertUrl;
                   const isFullyVerified = latestApp.foodSafetyLicenseStatus === 'approved' && 
                     (!latestApp.foodEstablishmentCertUrl || latestApp.foodEstablishmentCertStatus === 'approved');
@@ -1379,8 +1443,8 @@ export default function ApplicantDashboard() {
                         </p>
                         <div className="space-y-3 w-full">
                           <Button asChild className="rounded-xl w-full">
-                            <Link href="/apply">
-                              <ChefHat className="mr-2 h-4 w-4" />
+                            <Link href={userDisplayInfo.applicationFormUrl}>
+                              <userDisplayInfo.icon className="mr-2 h-4 w-4" />
                               Submit New Application
                             </Link>
                           </Button>
