@@ -487,6 +487,67 @@ function AdminDashboard() {
     },
   });
 
+  // Mutation to update delivery partner document verification status
+  const updateDeliveryDocumentStatusMutation = useMutation({
+    mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      const updateData = { [field]: status };
+      const response = await fetch(`/api/delivery-partner-applications/${id}/document-verification`, {
+        method: 'PATCH',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(updateData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+      
+      return response.json();
+    },
+    onSuccess: async (data, variables) => {
+      // Force comprehensive refresh after document status update
+      await forceAdminRefresh();
+      
+      // Additional immediate refresh for other components that might be listening
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/delivery-partner-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] })
+      ]);
+      
+      // Additional delayed refresh to catch any async database updates
+      setTimeout(async () => {
+        await forceAdminRefresh();
+      }, 1000);
+      
+      const documentName = variables.field === 'driversLicenseStatus' ? 'Driver\'s License' : 
+                          variables.field === 'vehicleRegistrationStatus' ? 'Vehicle Registration' : 'Vehicle Insurance';
+      
+      toast({
+        title: "Document status updated",
+        description: `${documentName} status changed to ${variables.status}. Email notification sent to user.`,
+      });
+      
+      console.log('Admin: Delivery partner document status updated', {
+        applicationId: variables.id,
+        field: variables.field,
+        newStatus: variables.status,
+        timestamp: new Date().toISOString()
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error updating document status",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Helper function to get document status badge
   const getDocumentStatusBadge = (status: string | null) => {
     switch (status) {
@@ -971,7 +1032,7 @@ function AdminDashboard() {
           >
             {/* Main Admin Tabs */}
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-3 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
                   Chef Applications
@@ -2097,100 +2158,185 @@ function AdminDashboard() {
                       </div>
 
                       {/* Document Verification Section */}
-                      {app.status === "approved" && (
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
-                          <h4 className="text-sm font-semibold mb-4 text-blue-800 flex items-center gap-2">
-                            <Shield className="h-5 w-5" />
-                            Document Verification
-                          </h4>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {/* Driver's License */}
-                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
-                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                                <Shield className="h-4 w-4 text-blue-600" />
-                                Driver's License
-                              </h5>
-                              {app.driversLicenseUrl ? (
-                                <div className="space-y-3">
-                                  <a 
-                                    href={app.driversLicenseUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold mb-4 text-blue-800 flex items-center gap-2">
+                          <Shield className="h-5 w-5" />
+                          Document Verification
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Driver's License */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                            <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-blue-600" />
+                              Driver's License
+                            </h5>
+                            {app.driversLicenseUrl ? (
+                              <div className="space-y-3">
+                                <a 
+                                  href={app.driversLicenseUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  View Document
+                                </a>
+                                <div className="flex items-center justify-between">
+                                  {getDocumentStatusBadge(app.driversLicenseStatus)}
+                                </div>
+                                {/* Document Status Controls */}
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant={app.driversLicenseStatus === 'approved' ? 'default' : 'outline'}
+                                    onClick={() => updateDeliveryDocumentStatusMutation.mutate({ 
+                                      id: app.id, 
+                                      field: 'driversLicenseStatus', 
+                                      status: 'approved' 
+                                    })}
+                                    disabled={updateDeliveryDocumentStatusMutation.isPending}
+                                    className="flex-1 text-xs"
                                   >
-                                    <ExternalLink className="h-4 w-4" />
-                                    View Document
-                                  </a>
-                                  <div className="flex items-center justify-between">
-                                    {getDocumentStatusBadge(app.driversLicenseStatus)}
-                                  </div>
+                                    {updateDeliveryDocumentStatusMutation.isPending ? 'Updating...' : 'Approve'}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={app.driversLicenseStatus === 'rejected' ? 'destructive' : 'outline'}
+                                    onClick={() => updateDeliveryDocumentStatusMutation.mutate({ 
+                                      id: app.id, 
+                                      field: 'driversLicenseStatus', 
+                                      status: 'rejected' 
+                                    })}
+                                    disabled={updateDeliveryDocumentStatusMutation.isPending}
+                                    className="flex-1 text-xs"
+                                  >
+                                    {updateDeliveryDocumentStatusMutation.isPending ? 'Updating...' : 'Reject'}
+                                  </Button>
                                 </div>
-                              ) : (
-                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                                  No document uploaded
-                                </div>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                No document uploaded
+                              </div>
+                            )}
+                          </div>
 
-                            {/* Vehicle Registration */}
-                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
-                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                                <Shield className="h-4 w-4 text-blue-600" />
-                                Vehicle Registration
-                              </h5>
-                              {app.vehicleRegistrationUrl ? (
-                                <div className="space-y-3">
-                                  <a 
-                                    href={app.vehicleRegistrationUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                          {/* Vehicle Registration */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                            <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-blue-600" />
+                              Vehicle Registration
+                            </h5>
+                            {app.vehicleRegistrationUrl ? (
+                              <div className="space-y-3">
+                                <a 
+                                  href={app.vehicleRegistrationUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  View Document
+                                </a>
+                                <div className="flex items-center justify-between">
+                                  {getDocumentStatusBadge(app.vehicleRegistrationStatus)}
+                                </div>
+                                {/* Document Status Controls */}
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant={app.vehicleRegistrationStatus === 'approved' ? 'default' : 'outline'}
+                                    onClick={() => updateDeliveryDocumentStatusMutation.mutate({ 
+                                      id: app.id, 
+                                      field: 'vehicleRegistrationStatus', 
+                                      status: 'approved' 
+                                    })}
+                                    disabled={updateDeliveryDocumentStatusMutation.isPending}
+                                    className="flex-1 text-xs"
                                   >
-                                    <ExternalLink className="h-4 w-4" />
-                                    View Document
-                                  </a>
-                                  <div className="flex items-center justify-between">
-                                    {getDocumentStatusBadge(app.vehicleRegistrationStatus)}
-                                  </div>
+                                    {updateDeliveryDocumentStatusMutation.isPending ? 'Updating...' : 'Approve'}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={app.vehicleRegistrationStatus === 'rejected' ? 'destructive' : 'outline'}
+                                    onClick={() => updateDeliveryDocumentStatusMutation.mutate({ 
+                                      id: app.id, 
+                                      field: 'vehicleRegistrationStatus', 
+                                      status: 'rejected' 
+                                    })}
+                                    disabled={updateDeliveryDocumentStatusMutation.isPending}
+                                    className="flex-1 text-xs"
+                                  >
+                                    {updateDeliveryDocumentStatusMutation.isPending ? 'Updating...' : 'Reject'}
+                                  </Button>
                                 </div>
-                              ) : (
-                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                                  No document uploaded
-                                </div>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                No document uploaded
+                              </div>
+                            )}
+                          </div>
 
-                            {/* Vehicle Insurance */}
-                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
-                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                                <Shield className="h-4 w-4 text-blue-600" />
-                                Vehicle Insurance
-                              </h5>
-                              {app.insuranceUrl ? (
-                                <div className="space-y-3">
-                                  <a 
-                                    href={app.insuranceUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                          {/* Vehicle Insurance */}
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                            <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-blue-600" />
+                              Vehicle Insurance
+                            </h5>
+                            {app.insuranceUrl ? (
+                              <div className="space-y-3">
+                                <a 
+                                  href={app.insuranceUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  View Document
+                                </a>
+                                <div className="flex items-center justify-between">
+                                  {getDocumentStatusBadge(app.insuranceStatus)}
+                                </div>
+                                {/* Document Status Controls */}
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant={app.insuranceStatus === 'approved' ? 'default' : 'outline'}
+                                    onClick={() => updateDeliveryDocumentStatusMutation.mutate({ 
+                                      id: app.id, 
+                                      field: 'insuranceStatus', 
+                                      status: 'approved' 
+                                    })}
+                                    disabled={updateDeliveryDocumentStatusMutation.isPending}
+                                    className="flex-1 text-xs"
                                   >
-                                    <ExternalLink className="h-4 w-4" />
-                                    View Document
-                                  </a>
-                                  <div className="flex items-center justify-between">
-                                    {getDocumentStatusBadge(app.insuranceStatus)}
-                                  </div>
+                                    {updateDeliveryDocumentStatusMutation.isPending ? 'Updating...' : 'Approve'}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={app.insuranceStatus === 'rejected' ? 'destructive' : 'outline'}
+                                    onClick={() => updateDeliveryDocumentStatusMutation.mutate({ 
+                                      id: app.id, 
+                                      field: 'insuranceStatus', 
+                                      status: 'rejected' 
+                                    })}
+                                    disabled={updateDeliveryDocumentStatusMutation.isPending}
+                                    className="flex-1 text-xs"
+                                  >
+                                    {updateDeliveryDocumentStatusMutation.isPending ? 'Updating...' : 'Reject'}
+                                  </Button>
                                 </div>
-                              ) : (
-                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                                  No document uploaded
-                                </div>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                No document uploaded
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
+                      </div>
 
                       {/* Full Application Details */}
                       <div className="pt-4 border-t">

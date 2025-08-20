@@ -90,11 +90,9 @@ export default function DocumentVerification() {
         driversLicenseUrl: app.drivers_license_url || app.driversLicenseUrl,
         vehicleRegistrationUrl: app.vehicle_registration_url || app.vehicleRegistrationUrl,
         insuranceUrl: app.insurance_url || app.insuranceUrl,
-        backgroundCheckUrl: app.background_check_url || app.backgroundCheckUrl,
         driversLicenseStatus: app.drivers_license_status || app.driversLicenseStatus,
         vehicleRegistrationStatus: app.vehicle_registration_status || app.vehicleRegistrationStatus,
         insuranceStatus: app.insurance_status || app.insuranceStatus,
-        backgroundCheckStatus: app.background_check_status || app.backgroundCheckStatus,
         documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
         documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
         documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
@@ -246,7 +244,7 @@ export default function DocumentVerification() {
 
   // Helper functions for document-specific logic
   const hasChefDocuments = verification && (verification.foodSafetyLicenseUrl || verification.foodEstablishmentCertUrl);
-  const hasDeliveryDocuments = latestDeliveryApp && (latestDeliveryApp.driversLicenseUrl || latestDeliveryApp.vehicleRegistrationUrl || latestDeliveryApp.insuranceUrl || latestDeliveryApp.backgroundCheckUrl);
+  const hasDeliveryDocuments = latestDeliveryApp && (latestDeliveryApp.driversLicenseUrl || latestDeliveryApp.vehicleRegistrationUrl || latestDeliveryApp.insuranceUrl);
   
   const hasDocuments = shouldShowChefDocuments ? hasChefDocuments : hasDeliveryDocuments;
 
@@ -257,8 +255,7 @@ export default function DocumentVerification() {
   const isDeliveryFullyVerified = latestDeliveryApp && 
     latestDeliveryApp.driversLicenseStatus === "approved" && 
     latestDeliveryApp.vehicleRegistrationStatus === "approved" && 
-    latestDeliveryApp.insuranceStatus === "approved" && 
-    latestDeliveryApp.backgroundCheckStatus === "approved";
+    latestDeliveryApp.insuranceStatus === "approved";
   
   const isFullyVerified = shouldShowChefDocuments ? isChefFullyVerified : isDeliveryFullyVerified;
 
@@ -282,15 +279,13 @@ export default function DocumentVerification() {
       
       const allApproved = latestDeliveryApp?.driversLicenseStatus === "approved" && 
                          latestDeliveryApp?.vehicleRegistrationStatus === "approved" && 
-                         latestDeliveryApp?.insuranceStatus === "approved" && 
-                         latestDeliveryApp?.backgroundCheckStatus === "approved";
+                         latestDeliveryApp?.insuranceStatus === "approved";
       
       if (allApproved) return "Verified";
       
       const anyRejected = latestDeliveryApp?.driversLicenseStatus === "rejected" || 
                          latestDeliveryApp?.vehicleRegistrationStatus === "rejected" || 
-                         latestDeliveryApp?.insuranceStatus === "rejected" || 
-                         latestDeliveryApp?.backgroundCheckStatus === "rejected";
+                         latestDeliveryApp?.insuranceStatus === "rejected";
       if (anyRejected) return "Needs Attention";
       
       return "Under Review";
@@ -313,15 +308,13 @@ export default function DocumentVerification() {
       
       const allApproved = latestDeliveryApp?.driversLicenseStatus === "approved" && 
                          latestDeliveryApp?.vehicleRegistrationStatus === "approved" && 
-                         latestDeliveryApp?.insuranceStatus === "approved" && 
-                         latestDeliveryApp?.backgroundCheckStatus === "approved";
+                         latestDeliveryApp?.insuranceStatus === "approved";
       
       if (allApproved) return "Complete";
       
       const anyApproved = latestDeliveryApp?.driversLicenseStatus === "approved" || 
                          latestDeliveryApp?.vehicleRegistrationStatus === "approved" || 
-                         latestDeliveryApp?.insuranceStatus === "approved" || 
-                         latestDeliveryApp?.backgroundCheckStatus === "approved";
+                         latestDeliveryApp?.insuranceStatus === "approved";
       if (anyApproved) return "Partial";
       
       return "Pending";
@@ -429,8 +422,7 @@ export default function DocumentVerification() {
                       (latestDeliveryApp ? 
                         (latestDeliveryApp.driversLicenseUrl ? 1 : 0) + 
                         (latestDeliveryApp.vehicleRegistrationUrl ? 1 : 0) + 
-                        (latestDeliveryApp.insuranceUrl ? 1 : 0) + 
-                        (latestDeliveryApp.backgroundCheckUrl ? 1 : 0) : 0
+                        (latestDeliveryApp.insuranceUrl ? 1 : 0) : 0
                       )
                     } Uploaded
                   </p>
@@ -619,36 +611,7 @@ export default function DocumentVerification() {
                          </div>
                        </div>
                        
-                       {/* Background Check */}
-                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                         <div className="flex items-center justify-between mb-3">
-                           <h4 className="font-medium text-gray-900">Background Check</h4>
-                           {latestDeliveryApp.backgroundCheckStatus && (
-                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                               latestDeliveryApp.backgroundCheckStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                               latestDeliveryApp.backgroundCheckStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                               'bg-red-100 text-red-800'
-                             }`}>
-                               {latestDeliveryApp.backgroundCheckStatus.charAt(0).toUpperCase() + latestDeliveryApp.backgroundCheckStatus.slice(1)}
-                             </span>
-                           )}
-                         </div>
-                         <div className="space-y-2">
-                           {latestDeliveryApp.backgroundCheckUrl ? (
-                             <a href={latestDeliveryApp.backgroundCheckUrl} target="_blank" rel="noopener noreferrer" 
-                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                               <FileText className="h-4 w-4" />
-                               View Document
-                             </a>
-                           ) : (
-                             <div className="flex items-center gap-2 text-gray-500 text-sm">
-                               <FileText className="h-4 w-4" />
-                               Not uploaded
-                             </div>
-                           )}
-                           <p className="text-xs text-gray-600">Required for delivery operations</p>
-                         </div>
-                       </div>
+
                      </div>
                      
                      {/* Document Upload Component */}

@@ -6132,6 +6132,158 @@ app.put('/api/firebase/delivery-partner-applications/:id', requireFirebaseAuthWi
   }
 });
 
+// Update delivery partner application document verification status (admin only)
+app.patch("/api/delivery-partner-applications/:id/document-verification", async (req, res) => {
+  try {
+    // Check if user is authenticated and is an admin
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+    const userId = user.id;
+
+    const applicationId = parseInt(req.params.id);
+    if (isNaN(applicationId)) {
+      return res.status(400).json({ message: "Invalid application ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    // Get the application to find the user_id
+    const appResult = await pool.query(`
+      SELECT user_id FROM delivery_partner_applications WHERE id = $1
+    `, [applicationId]);
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    const targetUserId = appResult.rows[0].user_id;
+
+    // Build update data for delivery_partner_applications table (document verification fields)
+    const updateData = {
+      documents_reviewed_by: userId,
+      documents_reviewed_at: new Date()
+    };
+
+    // Map camelCase field names to snake_case database column names
+    const fieldMapping = {
+      'driversLicenseStatus': 'drivers_license_status',
+      'vehicleRegistrationStatus': 'vehicle_registration_status',
+      'insuranceStatus': 'insurance_status',
+      'documentsAdminFeedback': 'documents_admin_feedback'
+    };
+
+    // Apply field mapping and add to update data
+    Object.keys(req.body).forEach(key => {
+      const mappedKey = fieldMapping[key] || key;
+      updateData[mappedKey] = req.body[key];
+    });
+
+    // Update the application record directly with document verification status
+    const setClause = Object.keys(updateData).map((key, index) => `${key} = $${index + 2}`).join(', ');
+    const values = [applicationId, ...Object.values(updateData)];
+    
+    const result = await pool.query(`
+      UPDATE delivery_partner_applications 
+      SET ${setClause}
+      WHERE id = $1
+      RETURNING *;
+    `, values);
+
+    if (result.rowCount === 0) {
+      return res.status(500).json({ message: "Failed to update document verification" });
+    }
+
+    const updatedApplication = result.rows[0];
+
+    console.log(`Delivery partner document verification updated for application ${applicationId}:`, {
+      driversLicenseStatus: updatedApplication.drivers_license_status,
+      vehicleRegistrationStatus: updatedApplication.vehicle_registration_status,
+      insuranceStatus: updatedApplication.insurance_status,
+      reviewedBy: userId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Send email notification for document status changes
+    try {
+      if (updatedApplication.email) {
+        // Import the email functions
+        const { sendEmail, generateDeliveryPartnerDocumentStatusChangeEmail } = await import('../server/email.js');
+
+        // Send email for each document that was updated
+        if (req.body.driversLicenseStatus) {
+          const emailContent = generateDeliveryPartnerDocumentStatusChangeEmail({
+            fullName: updatedApplication.full_name || "Delivery Partner",
+            email: updatedApplication.email,
+            documentType: "driversLicense",
+            status: req.body.driversLicenseStatus,
+            adminFeedback: req.body.documentsAdminFeedback
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `delivery_doc_status_dl_${updatedApplication.id}_${req.body.driversLicenseStatus}_${Date.now()}`
+          });
+          
+          console.log(`Driver's License status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.driversLicenseStatus}`);
+        }
+
+        if (req.body.vehicleRegistrationStatus) {
+          const emailContent = generateDeliveryPartnerDocumentStatusChangeEmail({
+            fullName: updatedApplication.full_name || "Delivery Partner",
+            email: updatedApplication.email,
+            documentType: "vehicleRegistration",
+            status: req.body.vehicleRegistrationStatus,
+            adminFeedback: req.body.documentsAdminFeedback
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `delivery_doc_status_vr_${updatedApplication.id}_${req.body.vehicleRegistrationStatus}_${Date.now()}`
+          });
+          
+          console.log(`Vehicle Registration status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.vehicleRegistrationStatus}`);
+        }
+
+        if (req.body.insuranceStatus) {
+          const emailContent = generateDeliveryPartnerDocumentStatusChangeEmail({
+            fullName: updatedApplication.full_name || "Delivery Partner",
+            email: updatedApplication.email,
+            documentType: "insurance",
+            status: req.body.insuranceStatus,
+            adminFeedback: req.body.documentsAdminFeedback
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `delivery_doc_status_ins_${updatedApplication.id}_${req.body.insuranceStatus}_${Date.now()}`
+          });
+          
+          console.log(`Insurance status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.insuranceStatus}`);
+        }
+      } else {
+        console.warn(`Cannot send document status change email for delivery partner application ${updatedApplication.id}: No email address found`);
+      }
+    } catch (emailError) {
+      // Log the error but don't fail the request
+      console.error("Error sending delivery partner document status change email:", emailError);
+    }
+
+    // Return the application data in the format expected by the frontend
+    const responseData = updatedApplication;
+
+    return res.status(200).json(responseData);
+  } catch (error) {
+    console.error("Error updating delivery partner application document verification:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // ===============================
 // FIREBASE MICROLEARNING ENDPOINTS
 // ===============================

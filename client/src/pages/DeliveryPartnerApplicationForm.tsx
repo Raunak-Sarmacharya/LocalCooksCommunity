@@ -5,10 +5,27 @@ import DeliveryPartnerPersonalInfoForm from "@/components/application/DeliveryPa
 import DeliveryPartnerVehicleForm from "@/components/application/DeliveryPartnerVehicleForm";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { DeliveryPartnerApplication } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+
+// Helper to check if an application is active (not cancelled, rejected)
+const isApplicationActive = (app: DeliveryPartnerApplication) => {
+  return app.status !== 'cancelled' && app.status !== 'rejected';
+};
+
+// Helper to check if user already has an active application
+const hasActiveApplication = (applications?: DeliveryPartnerApplication[]) => {
+  if (!applications || applications.length === 0) return false;
+  return applications.some(isApplicationActive);
+};
 
 // Progress indicator component
 function ProgressIndicator({ step }: { step: number }) {
@@ -160,8 +177,92 @@ export default function DeliveryPartnerApplicationForm() {
     }
   }, [authLoading, user, navigate]);
 
+  // Fetch delivery partner applications
+  const { data: applications, isLoading: applicationsLoading } = useQuery<DeliveryPartnerApplication[]>({
+    queryKey: ["/api/firebase/delivery-partner-applications/my"],
+    queryFn: async ({ queryKey }) => {
+      if (!user?.uid) {
+        throw new Error("User not authenticated");
+      }
+
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await firebaseUser.getIdToken();
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+
+      const response = await fetch(queryKey[0] as string, {
+        credentials: 'include',
+        headers
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || response.statusText);
+      }
+
+      const rawData = await response.json();
+
+      // Convert snake_case to camelCase for database fields
+      const normalizedData = rawData.map((app: any) => ({
+        id: app.id,
+        userId: app.user_id || app.userId,
+        fullName: app.full_name || app.fullName,
+        email: app.email,
+        phone: app.phone,
+        address: app.address,
+        city: app.city,
+        province: app.province,
+        postalCode: app.postal_code || app.postalCode,
+        vehicleType: app.vehicle_type || app.vehicleType,
+        vehicleMake: app.vehicle_make || app.vehicleMake,
+        vehicleModel: app.vehicle_model || app.vehicleModel,
+        vehicleYear: app.vehicle_year || app.vehicleYear,
+        licensePlate: app.license_plate || app.licensePlate,
+        driversLicenseUrl: app.drivers_license_url || app.driversLicenseUrl,
+        vehicleRegistrationUrl: app.vehicle_registration_url || app.vehicleRegistrationUrl,
+        insuranceUrl: app.insurance_url || app.insuranceUrl,
+        driversLicenseStatus: app.drivers_license_status || app.driversLicenseStatus,
+        vehicleRegistrationStatus: app.vehicle_registration_status || app.vehicleRegistrationStatus,
+        insuranceStatus: app.insurance_status || app.insuranceStatus,
+        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
+        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
+        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
+        feedback: app.feedback,
+        status: app.status,
+        createdAt: app.created_at || app.createdAt
+      }));
+
+      return normalizedData;
+    },
+    enabled: !!user, // Only run if user is logged in
+  });
+
+  // Check if user has active applications
+  const activeApplication = hasActiveApplication(applications);
+
+  // Redirect to dashboard if user already has an active application
+  useEffect(() => {
+    if (!applicationsLoading && activeApplication) {
+      // Set a small timeout to ensure UI renders before redirect
+      const timer = setTimeout(() => {
+        navigate("/dashboard");
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [applicationsLoading, activeApplication, navigate]);
+
   // Show loading while checking authentication
-  if (authLoading) {
+  const isLoading = authLoading || (user && applicationsLoading);
+
+  // Show loading state while checking authentication
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
@@ -178,9 +279,31 @@ export default function DeliveryPartnerApplicationForm() {
     <div className="min-h-screen flex flex-col bg-light-gray">
       <Header />
       <main className="flex-grow py-8">
-        <DeliveryPartnerFormProvider>
-          <FormStep />
-        </DeliveryPartnerFormProvider>
+        {activeApplication ? (
+          <motion.div
+            className="container mx-auto px-4 max-w-2xl"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Active Application Exists</AlertTitle>
+              <AlertDescription>
+                You already have an active delivery partner application. Please cancel your existing application before submitting a new one.
+              </AlertDescription>
+            </Alert>
+            <div className="flex justify-center">
+              <Button onClick={() => navigate("/dashboard")} className="mt-4">
+                Go to Dashboard
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <DeliveryPartnerFormProvider>
+            <FormStep />
+          </DeliveryPartnerFormProvider>
+        )}
       </main>
       <Footer />
     </div>

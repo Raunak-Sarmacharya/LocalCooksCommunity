@@ -60,6 +60,44 @@ const isChefApplication = (app: AnyApplication): app is Application => {
   return 'kitchenPreference' in app && 'foodSafetyLicense' in app;
 };
 
+// Helper function to get status badge for documents
+const getStatusBadge = (status: string | null, hasDocument: boolean) => {
+  if (!hasDocument) {
+    return (
+      <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+        Required
+      </span>
+    );
+  }
+  
+  switch (status) {
+    case "pending":
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          Pending Review
+        </span>
+      );
+    case "approved":
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          Approved
+        </span>
+      );
+    case "rejected":
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          Rejected
+        </span>
+      );
+    default:
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          Pending Review
+        </span>
+      );
+  }
+};
+
 // Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -1699,15 +1737,21 @@ export default function ApplicantDashboard() {
                            <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Driver's License</h4>
-                               <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                 Required
-                               </span>
+                               {getStatusBadge(deliveryApp.driversLicenseStatus, !!deliveryApp.driversLicenseUrl)}
                              </div>
                              <div className="space-y-2">
-                               <div className="flex items-center gap-2 text-gray-500 text-sm">
-                                 <FileText className="h-4 w-4" />
-                                 Valid driver's license
-                               </div>
+                               {deliveryApp.driversLicenseUrl ? (
+                                 <a href={deliveryApp.driversLicenseUrl} target="_blank" rel="noopener noreferrer" 
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                   <FileText className="h-4 w-4" />
+                                   View Document
+                                 </a>
+                               ) : (
+                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
+                                   <Upload className="h-4 w-4" />
+                                   Not uploaded
+                                 </div>
+                               )}
                                <p className="text-xs text-gray-600">Required for delivery operations</p>
                              </div>
                            </div>
@@ -1716,15 +1760,21 @@ export default function ApplicantDashboard() {
                            <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
-                               <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                 Required
-                               </span>
+                               {getStatusBadge(deliveryApp.vehicleRegistrationStatus, !!deliveryApp.vehicleRegistrationUrl)}
                              </div>
                              <div className="space-y-2">
-                               <div className="flex items-center gap-2 text-gray-500 text-sm">
-                                 <FileText className="h-4 w-4" />
-                                 Vehicle documentation
-                               </div>
+                               {deliveryApp.vehicleRegistrationUrl ? (
+                                 <a href={deliveryApp.vehicleRegistrationUrl} target="_blank" rel="noopener noreferrer" 
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                   <FileText className="h-4 w-4" />
+                                   View Document
+                                 </a>
+                               ) : (
+                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
+                                   <Upload className="h-4 w-4" />
+                                   Not uploaded
+                                 </div>
+                               )}
                                <p className="text-xs text-gray-600">Required for delivery operations</p>
                              </div>
                            </div>
@@ -1733,25 +1783,39 @@ export default function ApplicantDashboard() {
                            <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
-                               <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                 Required
-                               </span>
+                               {getStatusBadge(deliveryApp.insuranceStatus, !!deliveryApp.insuranceUrl)}
                              </div>
                              <div className="space-y-2">
-                               <div className="flex items-center gap-2 text-gray-500 text-sm">
-                                 <FileText className="h-4 w-4" />
-                                 Vehicle insurance
-                               </div>
+                               {deliveryApp.insuranceUrl ? (
+                                 <a href={deliveryApp.insuranceUrl} target="_blank" rel="noopener noreferrer" 
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                   <FileText className="h-4 w-4" />
+                                   View Document
+                                 </a>
+                               ) : (
+                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
+                                   <Upload className="h-4 w-4" />
+                                   Not uploaded
+                                 </div>
+                               )}
                                <p className="text-xs text-gray-600">Required for delivery operations</p>
                              </div>
                            </div>
+                           
+                           {/* Admin Feedback */}
+                           {deliveryApp.documentsAdminFeedback && (
+                             <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-xl border border-yellow-200">
+                               <p className="text-sm text-yellow-800 font-medium">Admin Feedback:</p>
+                               <p className="text-sm text-yellow-700 mt-1">{deliveryApp.documentsAdminFeedback}</p>
+                             </div>
+                           )}
                          </div>
                          
                          <div className="space-y-3 pt-4 border-t border-gray-200">
                            <Button asChild className="w-full rounded-xl">
                              <Link href="/document-verification">
                                <Upload className="mr-2 h-4 w-4" />
-                               {deliveryApp.driversLicenseUrl || deliveryApp.insuranceUrl ? 'Manage Documents' : 'Upload Documents'}
+                               {deliveryApp.driversLicenseUrl || deliveryApp.vehicleRegistrationUrl || deliveryApp.insuranceUrl ? 'Manage Documents' : 'Upload Documents'}
                              </Link>
                            </Button>
                            <p className="text-xs text-gray-500">Manage your delivery partner documents and verification status</p>
