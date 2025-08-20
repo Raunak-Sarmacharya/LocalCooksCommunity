@@ -7,34 +7,35 @@ import { auth } from "@/lib/firebase";
 
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
 import {
-    formatApplicationStatus
+  formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-    BookOpen,
-    CheckCircle,
-    ChefHat,
-    Clock,
-    FileText,
-    Shield,
-    Upload,
-    XCircle
+  BookOpen,
+  CheckCircle,
+  ChefHat,
+  Clock,
+  FileText,
+  Shield,
+  Truck,
+  Upload,
+  XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -94,6 +95,8 @@ export default function ApplicantDashboard() {
     isLoggedIn: !!user,
     userId: user?.uid,
     userRole: user?.role,
+    isChef: (user as any)?.isChef,
+    isDeliveryPartner: (user as any)?.isDeliveryPartner,
     localStorageUserId: localStorage.getItem('userId')
   });
 
@@ -164,7 +167,7 @@ export default function ApplicantDashboard() {
     }
   };
 
-  // Fetch applicant's applications with user ID in header (skip for admins)
+  // Fetch chef applications (only for users who are chefs)
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
@@ -172,8 +175,8 @@ export default function ApplicantDashboard() {
         throw new Error("User not authenticated");
       }
       
-      // Admins don't have applications - return empty array
-      if (user.role === "admin") {
+      // Only fetch chef applications if user is a chef
+      if (user.role === "admin" || !(user as any)?.isChef) {
         return [];
       }
 
@@ -244,7 +247,7 @@ export default function ApplicantDashboard() {
       console.log('ApplicantDashboard: Normalized application data', normalizedData);
       return normalizedData;
     },
-    enabled: !!user && user.role !== "admin", // Disable for admins
+    enabled: !!user && user.role !== "admin" && !!(user as any)?.isChef, // Only for chefs
     // Intelligent auto-refresh logic for user applications
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) {
@@ -304,6 +307,101 @@ export default function ApplicantDashboard() {
     // Enhanced cache invalidation strategy
     staleTime: 0, // Consider data stale immediately - always check for updates
     gcTime: 10000, // Keep in cache for only 10 seconds
+  });
+
+  // Fetch delivery partner applications (only for users who are delivery partners)
+  const { data: deliveryApplications = [], isLoading: isLoadingDelivery, error: deliveryError } = useQuery({
+    queryKey: ["/api/firebase/delivery-applications/my"],
+    queryFn: async ({ queryKey }) => {
+      if (!user?.uid) {
+        throw new Error("User not authenticated");
+      }
+      
+      // Only fetch delivery partner applications if user is a delivery partner
+      if (user.role === "admin" || !(user as any)?.isDeliveryPartner) {
+        return [];
+      }
+
+      console.log('ApplicantDashboard: Fetching delivery partner applications...');
+
+      // Get Firebase token for authentication
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await firebaseUser.getIdToken();
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      };
+
+      const response = await fetch(queryKey[0] as string, {
+        credentials: 'include',
+        headers
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Account sync required. Please click 'Sync Account' below to connect your Firebase account to our database.");
+        }
+        
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
+        } catch (parseError) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+      }
+
+      const rawData = await response.json();
+      console.log('ApplicantDashboard: Delivery partner data fetched', rawData);
+
+      // Normalize delivery partner application data
+      const normalizedData = rawData.map((app: any) => ({
+        id: app.id,
+        userId: app.user_id || app.userId,
+        fullName: app.full_name || app.fullName,
+        email: app.email,
+        phone: app.phone,
+        address: app.address,
+        city: app.city,
+        province: app.province,
+        postalCode: app.postal_code || app.postalCode,
+        vehicleType: app.vehicle_type || app.vehicleType,
+        vehicleMake: app.vehicle_make || app.vehicleMake,
+        vehicleModel: app.vehicle_model || app.vehicleModel,
+        vehicleYear: app.vehicle_year || app.vehicleYear,
+        licensePlate: app.license_plate || app.licensePlate,
+        driversLicenseUrl: app.drivers_license_url || app.driversLicenseUrl,
+        vehicleRegistrationUrl: app.vehicle_registration_url || app.vehicleRegistrationUrl,
+        insuranceUrl: app.insurance_url || app.insuranceUrl,
+        backgroundCheckUrl: app.background_check_url || app.backgroundCheckUrl,
+        driversLicenseStatus: app.drivers_license_status || app.driversLicenseStatus,
+        vehicleRegistrationStatus: app.vehicle_registration_status || app.vehicleRegistrationStatus,
+        insuranceStatus: app.insurance_status || app.insuranceStatus,
+        backgroundCheckStatus: app.background_check_status || app.backgroundCheckStatus,
+        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
+        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
+        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
+        feedback: app.feedback,
+        status: app.status,
+        createdAt: app.created_at || app.createdAt,
+      }));
+
+      return normalizedData;
+    },
+    enabled: !!user && user.role !== "admin" && !!(user as any)?.isDeliveryPartner, // Only for delivery partners
+    refetchInterval: 20000, // 20 seconds
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    staleTime: 0,
+    gcTime: 10000,
   });
 
   // Monitor application status changes and microlearning completion
@@ -383,11 +481,16 @@ export default function ApplicantDashboard() {
     prevApplicationsRef.current = applications || null;
   }, [applications]);
 
-  // Query microlearning completion status
+  // Query microlearning completion status (only for chefs)
   const { data: microlearningCompletion, isLoading: isLoadingCompletion } = useQuery({
     queryKey: ["microlearning-completion", user?.uid],
     queryFn: async () => {
       if (!user?.uid) return null;
+      
+      // Only chefs have microlearning
+      if (!(user as any)?.isChef) {
+        return null;
+      }
       
       try {
         // Get Firebase token for authentication
@@ -420,7 +523,7 @@ export default function ApplicantDashboard() {
         return null;
       }
     },
-    enabled: Boolean(user?.uid),
+    enabled: Boolean(user?.uid) && !!(user as any)?.isChef, // Only for chefs
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
   });
@@ -432,11 +535,20 @@ export default function ApplicantDashboard() {
     }
   }, [microlearningCompletion]);
 
-  // Query training access level and progress
+  // Query training access level and progress (only for chefs)
   const { data: trainingAccess, isLoading: isLoadingTrainingAccess } = useQuery({
     queryKey: ["training-access", user?.uid],
     queryFn: async () => {
       if (!user?.uid) return null;
+      
+      // Only chefs need training access
+      if (!(user as any)?.isChef) {
+        return {
+          accessLevel: 'none',
+          hasApprovedApplication: false,
+          applicationInfo: { message: 'Training only available for chefs' }
+        };
+      }
       
       try {
         // Get Firebase token for authentication
@@ -461,7 +573,7 @@ export default function ApplicantDashboard() {
             return {
               accessLevel: 'limited',
               hasApprovedApplication: false,
-              applicationInfo: { message: 'Submit application for full training access' }
+              applicationInfo: { message: 'Submit chef application for full training access' }
             };
           }
           throw new Error("Failed to fetch training access");
@@ -473,11 +585,11 @@ export default function ApplicantDashboard() {
         return {
           accessLevel: 'limited',
           hasApprovedApplication: false,
-          applicationInfo: { message: 'Submit application for full training access' }
+          applicationInfo: { message: 'Submit chef application for full training access' }
         };
       }
     },
-    enabled: Boolean(user?.uid),
+    enabled: Boolean(user?.uid) && !!(user as any)?.isChef, // Only for chefs
     staleTime: 30 * 1000, // 30 seconds - shorter cache for real-time training access updates
     refetchOnWindowFocus: true,
     // Refetch when applications change to immediately reflect access level changes
@@ -871,15 +983,34 @@ export default function ApplicantDashboard() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
-                  Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'Applicant'}
+                  Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
                 </h1>
-                <p className="text-sm sm:text-base text-gray-500 truncate">Manage your applications and training progress</p>
+                <p className="text-sm sm:text-base text-gray-500 truncate">
+                  {(() => {
+                    const isChef = (user as any)?.isChef;
+                    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+                    
+                    if (isChef && isDeliveryPartner) {
+                      return "Manage your chef and delivery partner applications";
+                    } else if (isChef) {
+                      return "Manage your chef applications and training progress";
+                    } else if (isDeliveryPartner) {
+                      return "Manage your delivery partner applications";
+                    } else {
+                      return "Get started by selecting your role";
+                    }
+                  })()}
+                </p>
               </div>
             </div>
           </motion.div>
 
           {/* Quick Stats Cards - Mobile Optimized */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className={`grid gap-3 sm:gap-4 mb-6 sm:mb-8 ${
+            (user as any)?.isChef && (user as any)?.isDeliveryPartner 
+              ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+              : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-4'
+          }`}>
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -891,11 +1022,34 @@ export default function ApplicantDashboard() {
                   <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">Applications</p>
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">
+                    {(user as any)?.isChef && (user as any)?.isDeliveryPartner ? 'Chef Apps' : 
+                     (user as any)?.isChef ? 'Chef Apps' : 'Applications'}
+                  </p>
                   <p className="text-lg sm:text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
                 </div>
               </div>
             </motion.div>
+
+            {/* Delivery Partner Applications Card - Only show if user is a delivery partner AND has chef role too */}
+            {(user as any)?.isChef && (user as any)?.isDeliveryPartner && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                    <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">Delivery Apps</p>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{deliveryApplications?.length || 0}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -910,7 +1064,8 @@ export default function ApplicantDashboard() {
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-gray-500 truncate">Training</p>
                   <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
-                    {microlearningCompletion?.confirmed 
+                    {!(user as any)?.isChef ? "N/A" :
+                     microlearningCompletion?.confirmed 
                       ? "Completed" 
                       : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
                         ? "In Progress"

@@ -86,7 +86,7 @@ export default function DeliveryPartnerDocumentsForm() {
       // Get Firebase token for authentication
       const token = await auth.currentUser?.getIdToken();
       
-      const response = await fetch('/api/delivery-partner-applications', {
+      const response = await fetch('/api/firebase/delivery-partner-applications', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

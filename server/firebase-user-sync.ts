@@ -6,13 +6,15 @@ export interface FirebaseUserData {
   email: string | null;
   displayName?: string;
   emailVerified: boolean;
-  role?: 'admin' | 'applicant';
+  role?: 'admin' | 'chef' | 'delivery_partner';
 }
 
 interface CreateUserData {
   username: string;
   password: string;
-  role: 'admin' | 'applicant';
+  role: 'admin' | 'chef' | 'delivery_partner';
+  isChef: boolean;
+  isDeliveryPartner: boolean;
   firebaseUid: string;
   isVerified: boolean;
 }
@@ -59,7 +61,9 @@ export async function syncFirebaseUserToNeon(params: {
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
-      role: role as 'admin' | 'applicant',
+      role: role as 'admin' | 'chef' | 'delivery_partner',
+      isChef: (role as string) === "chef" || !role, // Default to chef if no role specified
+      isDeliveryPartner: (role as string) === "delivery_partner",
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
     };

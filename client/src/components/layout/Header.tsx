@@ -231,7 +231,7 @@ export default function Header() {
                 About Us
               </a>
             </li>
-            {user && user.role !== 'admin' && (
+            {user && user.role !== 'admin' && (user as any).isChef && (
               <li>
                 <Link 
                   href="/microlearning/overview" 
@@ -360,7 +360,7 @@ export default function Header() {
             </li>
             {user && (
               <>
-                {user.role !== 'admin' && (
+                {user.role !== 'admin' && (user as any).isChef && (
                   <li>
                     <Link 
                       href="/microlearning" 

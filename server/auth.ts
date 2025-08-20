@@ -13,7 +13,9 @@ declare global {
     interface User {
       id: number;
       username: string;
-      role: "admin" | "applicant";
+      role: "admin" | "chef" | "delivery_partner";
+      isChef?: boolean;
+      isDeliveryPartner?: boolean;
     }
   }
 }
@@ -38,7 +40,9 @@ declare module "../server/storage" {
   interface IStorage {
     createOAuthUser(user: { 
       username: string;
-      role: "admin" | "applicant";
+      role: "admin" | "chef" | "delivery_partner";
+      isChef?: boolean;
+      isDeliveryPartner?: boolean;
       oauth_provider: string;
       oauth_id: string;
       profile_data?: string;
@@ -122,12 +126,17 @@ export function setupAuth(app: Express) {
                 oauth_provider: "facebook",
                 oauth_id: profile.id,
                 username: profile.emails?.[0]?.value || `facebook_${profile.id}`,
-                role: "applicant" as const,
+                role: "chef" as const,
                 profile_data: JSON.stringify(profile)
               };
 
               console.log('Creating new Facebook OAuth user:', userData.username);
-              user = await storage.createOAuthUser(userData);
+              user = await storage.createOAuthUser({
+                ...userData,
+                role: "chef", // Default Facebook users to chef role
+                isChef: true,
+                isDeliveryPartner: false
+              });
             }
             
             console.log('Facebook OAuth authentication successful for user:', user.id);
@@ -174,7 +183,9 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         username: req.body.username,
         password: hashedPassword,
-        role: req.body.role || "applicant" // Default to applicant if not specified
+        role: req.body.role || "chef", // Default to chef if not specified
+        isChef: req.body.role === "chef" || !req.body.role, // Default to chef if no role specified
+        isDeliveryPartner: req.body.role === "delivery_partner"
       });
       
       // Log the user in
@@ -240,6 +251,8 @@ export function setupAuth(app: Express) {
       id: user.id,
       username: user.username,
       role: user.role,
+      isChef: user.isChef,
+      isDeliveryPartner: user.isDeliveryPartner,
       is_verified: user.isVerified,
       has_seen_welcome: (user as any).has_seen_welcome,
       googleId: user.googleId,

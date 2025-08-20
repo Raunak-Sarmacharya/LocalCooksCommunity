@@ -18,14 +18,18 @@ export interface IStorage {
   createUser(user: {
     username: string;
     password: string;
-    role?: "admin" | "applicant";
+    role?: "admin" | "chef" | "delivery_partner";
+    isChef?: boolean;
+    isDeliveryPartner?: boolean;
     googleId?: string;
     facebookId?: string;
     firebaseUid?: string;
   }): Promise<User>;
   createOAuthUser(user: {
     username: string;
-    role: "admin" | "applicant";
+    role: "admin" | "chef" | "delivery_partner";
+    isChef?: boolean;
+    isDeliveryPartner?: boolean;
     oauth_provider: string;
     oauth_id: string;
     profile_data?: string;
@@ -106,6 +110,8 @@ export class MemStorage implements IStorage {
       firebaseUid: null,
       isVerified: true,
       has_seen_welcome: true,
+      isChef: false,
+      isDeliveryPartner: false,
       applicationType: null,
     };
     this.users.set(adminUser.id, adminUser);
@@ -166,12 +172,14 @@ export class MemStorage implements IStorage {
       id: this.userCurrentId++,
       username: insertUser.username,
       password: insertUser.password,
-      role: insertUser.role || "applicant",
+      role: insertUser.role || "chef",
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
       firebaseUid: insertUser.firebaseUid || null,
       isVerified: (insertUser as any).isVerified !== undefined ? (insertUser as any).isVerified : false,
       has_seen_welcome: (insertUser as any).has_seen_welcome !== undefined ? (insertUser as any).has_seen_welcome : false,
+      isChef: insertUser.isChef || false,
+      isDeliveryPartner: insertUser.isDeliveryPartner || false,
       applicationType: (insertUser as any).applicationType || null,
     };
 
@@ -629,16 +637,18 @@ export class DatabaseStorage implements IStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
           [
             insertUser.username,
             insertUser.password,
-            insertUser.role || 'applicant',
+            insertUser.role || 'chef',
             insertUser.googleId || null,
             insertUser.facebookId || null,
             insertUser.firebaseUid,
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
-            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false
+            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
+            insertUser.isChef || false,
+            insertUser.isDeliveryPartner || false
           ]
         );
         return result.rows[0];
@@ -654,11 +664,13 @@ export class DatabaseStorage implements IStorage {
       .values({
         username: insertUser.username,
         password: insertUser.password,
-        role: insertUser.role || "applicant",
+        role: insertUser.role || "chef",
         googleId: insertUser.googleId || null,
         facebookId: insertUser.facebookId || null,
         isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
+        isChef: insertUser.isChef || false,
+        isDeliveryPartner: insertUser.isDeliveryPartner || false,
       })
       .returning();
 

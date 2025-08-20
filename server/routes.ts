@@ -652,7 +652,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.createUser({
         username: req.body.username,
         password: hashedPassword,
-        role: req.body.role || "applicant" // Default to applicant if not specified
+        role: req.body.role || "chef", // Default to chef if not specified
+        isChef: req.body.role === "chef" || !req.body.role, // Default to chef if no role specified
+        isDeliveryPartner: req.body.role === "delivery_partner"
       });
       
       // Log the user in
@@ -1698,7 +1700,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           user = await storage.createUser({
             username: displayName || email,
             password: '', // Empty password for Firebase users
-            role: (role as "admin" | "applicant") || 'applicant',
+            role: (role as "admin" | "chef" | "delivery_partner") || 'chef',
+            isChef: (role as string) === "chef" || !role, // Default to chef if no role specified
+            isDeliveryPartner: (role as string) === "delivery_partner",
             firebaseUid: uid
           });
         }

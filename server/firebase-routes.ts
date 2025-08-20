@@ -1,12 +1,14 @@
 import { insertApplicationSchema } from '@shared/schema';
 import { Express, Request, Response } from 'express';
+import fs from 'fs';
 import { fromZodError } from 'zod-validation-error';
 import { pool } from './db';
+import { getFileUrl, upload, uploadToBlob } from './fileUpload';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-  requireAdmin,
-  requireFirebaseAuthWithUser,
-  verifyFirebaseAuth
+    requireAdmin,
+    requireFirebaseAuthWithUser,
+    verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
@@ -564,7 +566,7 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
-  // 🔥 Update User Application Type (Firebase Auth, NO SESSIONS)
+  // 🔥 Update User Application Type (Firebase Auth, NO SESSIONS) - DEPRECATED
   app.post('/api/firebase/user/update-application-type', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       const { applicationType } = req.body;
@@ -591,6 +593,93 @@ export function registerFirebaseRoutes(app: Express) {
       });
     }
   });
+
+  // 🔥 Update User Roles (Firebase Auth, NO SESSIONS)
+  app.post('/api/firebase/user/update-roles', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const { isChef, isDeliveryPartner } = req.body;
+
+      if (typeof isChef !== 'boolean' || typeof isDeliveryPartner !== 'boolean') {
+        return res.status(400).json({
+          error: 'Invalid role data. isChef and isDeliveryPartner must be boolean values'
+        });
+      }
+
+      if (!isChef && !isDeliveryPartner) {
+        return res.status(400).json({
+          error: 'User must have at least one role (chef or delivery partner)'
+        });
+      }
+
+      console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Chef: ${isChef}, Delivery: ${isDeliveryPartner}`);
+
+      await firebaseStorage.updateUserRoles(req.neonUser!.id, { isChef, isDeliveryPartner });
+
+      res.json({
+        success: true,
+        message: 'User roles updated successfully'
+      });
+    } catch (error) {
+      console.error('Error updating user roles:', error);
+      res.status(500).json({
+        error: 'Failed to update user roles',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // 🔥 File Upload Endpoint (Firebase Auth, NO SESSIONS)
+  app.post('/api/upload', 
+    upload.single('file'), 
+    requireFirebaseAuthWithUser,
+    async (req: Request, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No file uploaded" });
+        }
+
+        const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+        let fileUrl: string;
+        let fileName: string;
+
+        if (isProduction) {
+          // Upload to Vercel Blob in production
+          fileUrl = await uploadToBlob(req.file, req.neonUser!.id);
+          // Extract filename from Vercel Blob URL for response
+          fileName = fileUrl.split('/').pop() || req.file.originalname;
+        } else {
+          // Use local storage in development
+          fileUrl = getFileUrl(req.file.filename);
+          fileName = req.file.filename;
+        }
+
+        // Return success response with file information
+        return res.status(200).json({
+          success: true,
+          url: fileUrl,
+          fileName: fileName,
+          size: req.file.size,
+          type: req.file.mimetype
+        });
+      } catch (error) {
+        console.error("Firebase file upload error:", error);
+        
+        // Clean up uploaded file on error (development only)
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (e) {
+            console.error('Error cleaning up file:', e);
+          }
+        }
+        
+        return res.status(500).json({ 
+          error: "File upload failed",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    }
+  );
 
   // 🔥 Microlearning Progress Endpoint (Firebase Auth, NO SESSIONS)
   app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
