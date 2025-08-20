@@ -1,22 +1,22 @@
 import { auth, db } from "@/lib/firebase";
 import { queryClient } from "@/lib/queryClient";
 import {
-    createUserWithEmailAndPassword,
-    GoogleAuthProvider,
-    isSignInWithEmailLink,
-    onAuthStateChanged,
-    sendEmailVerification,
-    sendSignInLinkToEmail,
-    signInWithEmailAndPassword,
-    signInWithEmailLink,
-    signInWithPopup,
-    signOut,
-    updateProfile
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  isSignInWithEmailLink,
+  onAuthStateChanged,
+  sendEmailVerification,
+  sendSignInLinkToEmail,
+  signInWithEmailAndPassword,
+  signInWithEmailLink,
+  signInWithPopup,
+  signOut,
+  updateProfile
 } from "firebase/auth";
 import {
-    doc,
-    serverTimestamp,
-    setDoc
+  doc,
+  serverTimestamp,
+  setDoc
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
@@ -413,43 +413,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLoading(true);
     try {
-      if (!isRegistration) {
-        // For sign-in, first check if user exists
-        const { checkUserExistsForGoogleAuth } = await import('@/utils/user-existence-check');
-        const existenceCheck = await checkUserExistsForGoogleAuth();
-        
-        if (existenceCheck.error) {
-          throw new Error(existenceCheck.error);
-        }
-        
-        if (!existenceCheck.canSignIn) {
-          throw new Error(
-            existenceCheck.canRegister 
-              ? 'This Google account is not registered with Local Cooks. Please create an account first.'
-              : 'Unable to sign in with this Google account.'
-          );
-        }
-        
-        // User exists and can sign in - they're already signed in from the check
-        console.log('✅ GOOGLE SIGN-IN COMPLETE (existing user)');
-        setPendingSync(true);
-        return;
-      }
-      
-      // For registration or if user check passed, proceed with normal flow
-      setPendingSync(true); // Force sync on Google sign in
-      setPendingRegistration(isRegistration); // Set registration flag
+      // Set up Google Auth Provider
       const provider = new GoogleAuthProvider();
-      // Add prompt to ensure account selection
       provider.setCustomParameters({
         prompt: 'select_account'
       });
-      const result = await signInWithPopup(auth, provider);
-      console.log('✅ GOOGLE SIGN-IN COMPLETE:', result.user.uid);
-      
-      // For Google registration, manually trigger sync since user is immediately available
+
       if (isRegistration) {
-        console.log('🔥 GOOGLE REGISTRATION - Manually triggering sync');
+        // For REGISTRATION: Sign in directly and create user
+        console.log('🔥 GOOGLE REGISTRATION - Starting registration flow');
+        setPendingSync(true);
+        setPendingRegistration(true);
+        
+        const result = await signInWithPopup(auth, provider);
+        console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
+        
+        // Manually trigger sync for registration
         const syncSuccess = await syncUserWithBackend(result.user, "applicant", true);
         if (syncSuccess) {
           console.log('✅ Google registration sync completed');
@@ -457,11 +436,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPendingRegistration(false);
         } else {
           console.error('❌ Google registration sync failed');
+          throw new Error('Failed to create account. Please try again.');
+        }
+      } else {
+        // For SIGN-IN: Check if user exists using a simple backend call first
+        console.log('🔍 GOOGLE SIGN-IN - Checking user existence...');
+        
+        // First, sign in to get the user's email/UID
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        
+        if (!user.email) {
+          await auth.signOut();
+          throw new Error('No email found in Google account');
+        }
+        
+        console.log(`🔍 Checking if user exists in backend: ${user.email}`);
+        
+        // Check if user exists in our backend system
+        const token = await user.getIdToken();
+        const response = await fetch('/api/user', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          // User exists in backend - sign in successful
+          console.log('✅ GOOGLE SIGN-IN - User exists, completing sign-in');
+          setPendingSync(true);
+        } else if (response.status === 404) {
+          // User doesn't exist in backend - they need to register
+          console.log('❌ User does not exist in backend - needs to register');
+          await auth.signOut();
+          throw new Error('This Google account is not registered with Local Cooks. Please create an account first.');
+        } else {
+          // Some other error
+          console.error('❌ Error checking user existence:', response.status);
+          await auth.signOut();
+          throw new Error('Failed to verify user account. Please try again.');
         }
       }
     } catch (e: any) {
-      // Don't set raw Firebase error - let the components handle user-friendly messages
-      // setError(e.message);
+      // Clean up state on error
       setPendingSync(false);
       setPendingRegistration(false);
       
