@@ -153,10 +153,10 @@ export default function DeliveryPartnerApplicationForm() {
     window.scrollTo(0, 0);
   }, []);
 
-  // Redirect to auth page if user is not logged in
+  // Redirect to driver auth page if user is not logged in
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth?redirect=/delivery-partner-apply");
+      navigate("/driver-auth?redirect=/delivery-partner-apply");
     }
   }, [authLoading, user, navigate]);
 
