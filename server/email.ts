@@ -858,6 +858,106 @@ export const generateApplicationWithoutDocumentsEmail = (
   };
 };
 
+// Generate delivery partner application submission email for applications WITH documents
+export const generateDeliveryPartnerApplicationWithDocumentsEmail = (
+  applicationData: {
+    fullName: string;
+    email: string;
+  }
+): EmailContent => {
+  const supportEmail = getSupportEmail();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delivery Partner Application and Documents Received - Under Review</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        Thank you for submitting your delivery partner application to Local Cooks! We have received both your application and your supporting documents.
+      </p>
+      <p class="message">
+        Our team will now review your application and documents together. You'll receive another email once the review is complete.
+      </p>
+      <div class="status-badge">Status: Under Review</div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: applicationData.email,
+    subject: 'Delivery Partner Application and Documents Received - Under Review',
+    html
+  };
+};
+
+// Generate delivery partner application submission email for applications WITHOUT documents
+export const generateDeliveryPartnerApplicationWithoutDocumentsEmail = (
+  applicationData: {
+    fullName: string;
+    email: string;
+  }
+): EmailContent => {
+  const supportEmail = getSupportEmail();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delivery Partner Application Confirmation - Next Steps</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
+      <p class="message">
+        Thank you for submitting your delivery partner application to Local Cooks! We have received your application and it will be reviewed soon.
+      </p>
+      <p class="message">
+        <strong>Next Steps:</strong> Please visit your dashboard to upload the required documents (Driver's License, Vehicle Registration, and Vehicle Insurance) to complete your application.
+      </p>
+      <div class="status-badge">Status: Under Review</div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: applicationData.email,
+    subject: 'Delivery Partner Application Confirmation - Next Steps',
+    html
+  };
+};
+
 // Generate document verification status change email with unified design
 export const generateDocumentStatusChangeEmail = (
   userData: {

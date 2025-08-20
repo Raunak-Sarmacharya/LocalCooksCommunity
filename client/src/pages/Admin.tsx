@@ -73,9 +73,12 @@ import {
     Clock,
     ExternalLink,
     Gift,
+    Mail,
+    Phone,
     RefreshCw,
     Search,
     Shield,
+    Truck,
     User as UserIcon,
     XCircle
 } from "lucide-react";
@@ -253,6 +256,124 @@ function AdminDashboard() {
     gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
+  // Fetch all delivery partner applications - session-based auth only
+  const { data: deliveryApplications = [], isLoading: isLoadingDelivery, error: deliveryError } = useQuery<any[]>({
+    queryKey: ["/api/delivery-partner-applications"],
+    queryFn: async ({ queryKey }) => {
+      if (!user) {
+        throw new Error("Admin not authenticated");
+      }
+      
+      console.log('Admin: Fetching delivery partner applications data via session auth...', {
+        endpoint: queryKey[0],
+        hasSessionUser: !!sessionUser
+      });
+      
+      const headers: Record<string, string> = {
+        // Add cache busting headers to ensure fresh data
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      };
+
+      const response = await fetch(queryKey[0] as string, {
+        credentials: 'include',
+        headers
+      });
+
+      if (!response.ok) {
+        // Handle specific error cases
+        if (response.status === 401) {
+          throw new Error("Admin authentication required. Please ensure you're logged in as an admin.");
+        }
+        if (response.status === 403) {
+          throw new Error("Admin access denied. Please contact support if you believe this is an error.");
+        }
+        
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
+        } catch (parseError) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+      }
+
+      const rawData = await response.json();
+      console.log('Admin: Fresh delivery partner data fetched', rawData);
+
+      // Convert snake_case to camelCase for database fields
+      const normalizedData = rawData.map((app: any) => ({
+        id: app.id,
+        userId: app.user_id || app.userId,
+        fullName: app.full_name || app.fullName,
+        email: app.email,
+        phone: app.phone,
+        address: app.address,
+        city: app.city,
+        province: app.province,
+        postalCode: app.postal_code || app.postalCode,
+        vehicleType: app.vehicle_type || app.vehicleType,
+        vehicleMake: app.vehicle_make || app.vehicleMake,
+        vehicleModel: app.vehicle_model || app.vehicleModel,
+        vehicleYear: app.vehicle_year || app.vehicleYear,
+        licensePlate: app.license_plate || app.licensePlate,
+        driversLicenseUrl: app.drivers_license_url || app.driversLicenseUrl,
+        vehicleRegistrationUrl: app.vehicle_registration_url || app.vehicleRegistrationUrl,
+        insuranceUrl: app.insurance_url || app.insuranceUrl,
+        driversLicenseStatus: app.drivers_license_status || app.driversLicenseStatus,
+        vehicleRegistrationStatus: app.vehicle_registration_status || app.vehicleRegistrationStatus,
+        insuranceStatus: app.insurance_status || app.insuranceStatus,
+        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
+        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
+        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
+        feedback: app.feedback,
+        status: app.status,
+        createdAt: app.created_at || app.createdAt,
+        applicantUsername: app.applicant_username || app.applicantUsername,
+      }));
+
+      console.log('Admin: Normalized delivery partner application data', normalizedData);
+      return normalizedData;
+    },
+    enabled: !!user && isAdmin, // Only fetch if user is admin
+    // Intelligent auto-refresh for admin dashboard
+    refetchInterval: (data) => {
+      if (!data || !Array.isArray(data)) return 20000; // 20 seconds if no data or invalid data
+
+      // Check for any pending document reviews across all applications
+      const hasPendingDocumentReviews = data.some(app => 
+        app.status === "approved" && (
+          app.driversLicenseStatus === "pending" ||
+          app.vehicleRegistrationStatus === "pending" ||
+          app.insuranceStatus === "pending"
+        )
+      );
+
+      // Check for new applications awaiting review
+      const hasNewApplications = data.some(app => 
+        app.status === "inReview"
+      );
+
+      if (hasPendingDocumentReviews) {
+        // Very frequent updates when documents need admin review
+        return 5000; // 5 seconds - match other components
+      } else if (hasNewApplications) {
+        // Moderate frequency for general application reviews
+        return 15000; // 15 seconds
+      } else {
+        // Default case - still refresh frequently
+        return 30000; // 30 seconds
+      }
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnReconnect: true, // Refetch when network reconnects
+    // Enhanced cache invalidation strategy
+    staleTime: 0, // Consider data stale immediately - always check for updates
+    gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
+  });
+
   // Mutation to update application status
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number, status: string }) => {
@@ -394,6 +515,62 @@ function AdminDashboard() {
         return (
           <Badge variant="secondary" className="bg-gray-100 text-gray-800 border-gray-300">
             Not Set
+          </Badge>
+        );
+    }
+  };
+
+  // Helper function to get status badge color
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "inReview":
+        return "border-l-amber-500";
+      case "approved":
+        return "border-l-green-500";
+      case "rejected":
+        return "border-l-red-500";
+      case "cancelled":
+        return "border-l-gray-500";
+      default:
+        return "border-l-gray-400";
+    }
+  };
+
+  // Helper function to get status badge
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "inReview":
+        return (
+          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-amber-100 text-amber-800 border-amber-300">
+            <Clock className="h-3 w-3 mr-1" />
+            In Review
+          </Badge>
+        );
+      case "approved":
+        return (
+          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-green-100 text-green-800 border-green-300">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Approved
+          </Badge>
+        );
+      case "rejected":
+        return (
+          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-red-100 text-red-800 border-red-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Rejected
+          </Badge>
+        );
+      case "cancelled":
+        return (
+          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-gray-100 text-gray-800 border-gray-300">
+            <XCircle className="h-3 w-3 mr-1" />
+            Cancelled
+          </Badge>
+        );
+      default:
+        return (
+          <Badge className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-gray-100 text-gray-800 border-gray-300">
+            Unknown
           </Badge>
         );
     }
@@ -797,7 +974,11 @@ function AdminDashboard() {
               <TabsList className="grid w-full grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
-                  Application Management
+                  Chef Applications
+                </TabsTrigger>
+                <TabsTrigger value="delivery-applications" className="flex items-center gap-2 rounded-lg">
+                  <Truck className="h-4 w-4" />
+                  Delivery Applications
                 </TabsTrigger>
                 <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
                   <Gift className="h-4 w-4" />
@@ -925,6 +1106,148 @@ function AdminDashboard() {
                   </TabsContent>
                   <TabsContent value="rejected" className="mt-6">
                     {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
+
+              {/* Delivery Partner Applications Tab Content */}
+              <TabsContent value="delivery-applications" className="mt-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
+                    <Truck className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Delivery Partner Applications</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Review and manage delivery partner applications</p>
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="mb-4 sm:mb-6">
+                  <div className="relative w-full sm:max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search delivery partners by name, email, phone, or ID..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-blue-300 focus:ring-blue-200 text-sm sm:text-base"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Filter Buttons */}
+                <div className="mb-4 sm:mb-6">
+                  <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                    <Button
+                      variant={quickFilters.needsDocumentReview ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
+                      className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
+                    >
+                      <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <span className="hidden xs:inline">Needs </span>Doc Review
+                      {deliveryApplications.filter(app => 
+                        app.status === "approved" && (
+                          app.driversLicenseStatus === "pending" ||
+                          app.vehicleRegistrationStatus === "pending" ||
+                          app.insuranceStatus === "pending"
+                        )
+                      ).length > 0 && (
+                        <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                          {deliveryApplications.filter(app => 
+                            app.status === "approved" && (
+                              app.driversLicenseStatus === "pending" ||
+                              app.vehicleRegistrationStatus === "pending" ||
+                              app.insuranceStatus === "pending"
+                            )
+                          ).length}
+                        </span>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      variant={quickFilters.recentApplications ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
+                      className="rounded-xl"
+                    >
+                      <CalendarDays className="h-4 w-4 mr-2" />
+                      Recent (3 days)
+                    </Button>
+                    
+                    <Button
+                      variant={quickFilters.hasDocuments ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
+                      className="rounded-xl"
+                    >
+                      <Truck className="h-4 w-4 mr-2" />
+                      Has Documents
+                    </Button>
+                    
+                    {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
+                        className="rounded-xl text-gray-500 hover:text-gray-700"
+                      >
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Status Tabs - Mobile Optimized */}
+                <Tabs defaultValue="all" className="w-full">
+                  <TabsList className="rounded-xl bg-gray-100 p-1 grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
+                    <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <Truck className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                      <span className="hidden xs:inline">All</span>
+                      <span className="xs:hidden">All</span>
+                      <span className="ml-1 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
+                        {deliveryApplications.length}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="inReview" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                      <span className="hidden xs:inline">In Review</span>
+                      <span className="xs:hidden">Review</span>
+                      <span className="ml-1 bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full">
+                        {deliveryApplications.filter(app => app.status === "inReview").length}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="approved" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                      <span className="hidden xs:inline">Approved</span>
+                      <span className="xs:hidden">Approved</span>
+                      <span className="ml-1 bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
+                        {deliveryApplications.filter(app => app.status === "approved").length}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="rejected" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                      <XCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                      <span className="hidden xs:inline">Rejected</span>
+                      <span className="xs:hidden">Rejected</span>
+                      <span className="ml-1 bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded-full">
+                        {deliveryApplications.filter(app => app.status === "rejected").length}
+                      </span>
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="all" className="mt-4">
+                    {renderDeliveryApplicationList(deliveryApplications)}
+                  </TabsContent>
+                  <TabsContent value="inReview" className="mt-4">
+                    {renderDeliveryApplicationList(deliveryApplications.filter(app => app.status === "inReview"))}
+                  </TabsContent>
+                  <TabsContent value="approved" className="mt-4">
+                    {renderDeliveryApplicationList(deliveryApplications.filter(app => app.status === "approved"))}
+                  </TabsContent>
+                  <TabsContent value="rejected" className="mt-4">
+                    {renderDeliveryApplicationList(deliveryApplications.filter(app => app.status === "rejected"))}
                   </TabsContent>
                 </Tabs>
               </TabsContent>
@@ -1548,6 +1871,323 @@ function AdminDashboard() {
                                 );
                               }
                             })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Full Application Details */}
+                      <div className="pt-4 border-t">
+                        <h4 className="text-sm font-semibold mb-3">Complete Application Details</h4>
+                        <div className="bg-white p-4 rounded-lg border">
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-600 mb-1">Application ID</h5>
+                              <p className="font-medium text-sm">#{app.id}</p>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-600 mb-1">Submitted</h5>
+                              <p className="font-medium text-sm">{new Date(app.createdAt).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          
+                          {app.feedback && (
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-600 mb-1">Feedback/Questions</h5>
+                              <p className="font-medium text-sm bg-gray-50 p-3 rounded-md border">
+                                {app.feedback}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Status Change Dropdown */}
+                        <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                          <div className="flex items-center text-xs text-gray-600">
+                            <CalendarDays className="h-3 w-3 mr-1" />
+                            Submitted on {new Date(app.createdAt).toLocaleDateString()}
+                          </div>
+                          <div>
+                            {app.status === "cancelled" ? (
+                              <div className="flex items-center space-x-2 text-xs text-gray-500">
+                                <XCircle className="h-3 w-3" />
+                                <span>Application Cancelled - No modifications allowed</span>
+                              </div>
+                            ) : (
+                              <Select
+                                defaultValue={app.status}
+                                onValueChange={(value) => handleStatusChange(app.id, value)}
+                              >
+                                <SelectTrigger className="h-8 w-[140px]">
+                                  <SelectValue placeholder="Update Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="inReview">In Review</SelectItem>
+                                  <SelectItem value="approved">Approve</SelectItem>
+                                  <SelectItem value="rejected">Reject</SelectItem>
+                                  <SelectItem value="cancelled">Cancel</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+    );
+  }
+
+  // Helper function to render delivery partner application list
+  function renderDeliveryApplicationList(apps: any[]) {
+    if (isLoadingDelivery) {
+      return (
+        <div className="text-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4">Loading delivery partner applications...</p>
+        </div>
+      );
+    }
+
+    if (deliveryError) {
+      return (
+        <div className="text-center py-12">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-red-800 mb-2">Unable to Load Delivery Applications</h3>
+            <p className="text-red-600 mb-4 text-sm">
+              {deliveryError.message || "There was an issue loading the delivery partner applications data."}
+            </p>
+            <Button
+              onClick={forceAdminRefresh}
+              disabled={isLoadingDelivery}
+              variant="outline"
+              size="sm"
+              className="border-red-300 text-red-700 hover:bg-red-50"
+            >
+              {isLoadingDelivery ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-red-500 mr-2"></div>
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    if (apps.length === 0) {
+      return (
+        <div className="text-center py-12 border rounded-lg bg-muted/20">
+          <h2 className="text-xl font-semibold mb-2">No delivery partner applications found</h2>
+          <p className="text-muted-foreground">
+            {searchTerm ? 'Try adjusting your search criteria' : 'No delivery partner applications in this category'}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-4"
+      >
+        {apps.map((app: any) => {
+          const isExpanded = expandedCards.has(app.id);
+          
+          return (
+            <motion.div key={app.id} variants={itemVariants} className="w-full">
+              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm">
+                
+                {/* COMPACT VIEW - Always Visible */}
+                <CardContent className="p-0">
+                  <div className={`p-3 sm:p-4 lg:p-6 border-l-4 ${getStatusBadgeColor(app.status)}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
+                            <Truck className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                                {app.fullName}
+                              </h3>
+                              {getStatusBadge(app.status)}
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs sm:text-sm text-gray-600">
+                              <div className="flex items-center gap-1">
+                                <Mail className="h-3 w-3 sm:h-4 sm:w-4" />
+                                <span className="truncate">{app.email}</span>
+                              </div>
+                              {app.phone && (
+                                <div className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3 sm:h-4 sm:w-4" />
+                                  <span>{app.phone}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="mt-2 text-xs text-gray-500">
+                              <span className="font-medium">Vehicle:</span> {app.vehicleYear} {app.vehicleMake} {app.vehicleModel} ({app.vehicleType})
+                              <br />
+                              <span className="font-medium">License Plate:</span> {app.licensePlate}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggleCardExpansion(app.id)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* EXPANDED VIEW - Conditionally Visible */}
+                  {isExpanded && (
+                    <div className="px-3 sm:px-4 lg:px-6 pb-6 space-y-4">
+                      {/* Vehicle Details */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold mb-3 text-blue-800 flex items-center gap-2">
+                          <Truck className="h-4 w-4" />
+                          Vehicle Information
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <h5 className="text-xs font-medium text-blue-700 mb-1">Vehicle Details</h5>
+                            <p className="text-sm">{app.vehicleYear} {app.vehicleMake} {app.vehicleModel}</p>
+                            <p className="text-xs text-blue-600">Type: {app.vehicleType}</p>
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-medium text-blue-700 mb-1">License Plate</h5>
+                            <p className="text-sm font-mono">{app.licensePlate}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Address Information */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold mb-3 text-gray-800">Address Information</h4>
+                        <div className="text-sm">
+                          <p>{app.address}</p>
+                          <p>{app.city}, {app.province} {app.postalCode}</p>
+                        </div>
+                      </div>
+
+                      {/* Document Verification Section */}
+                      {app.status === "approved" && (
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold mb-4 text-blue-800 flex items-center gap-2">
+                            <Shield className="h-5 w-5" />
+                            Document Verification
+                          </h4>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Driver's License */}
+                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-blue-600" />
+                                Driver's License
+                              </h5>
+                              {app.driversLicenseUrl ? (
+                                <div className="space-y-3">
+                                  <a 
+                                    href={app.driversLicenseUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                    View Document
+                                  </a>
+                                  <div className="flex items-center justify-between">
+                                    {getDocumentStatusBadge(app.driversLicenseStatus)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                  No document uploaded
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Vehicle Registration */}
+                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-blue-600" />
+                                Vehicle Registration
+                              </h5>
+                              {app.vehicleRegistrationUrl ? (
+                                <div className="space-y-3">
+                                  <a 
+                                    href={app.vehicleRegistrationUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                    View Document
+                                  </a>
+                                  <div className="flex items-center justify-between">
+                                    {getDocumentStatusBadge(app.vehicleRegistrationStatus)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                  No document uploaded
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Vehicle Insurance */}
+                            <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                              <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-blue-600" />
+                                Vehicle Insurance
+                              </h5>
+                              {app.insuranceUrl ? (
+                                <div className="space-y-3">
+                                  <a 
+                                    href={app.insuranceUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                    View Document
+                                  </a>
+                                  <div className="flex items-center justify-between">
+                                    {getDocumentStatusBadge(app.insuranceStatus)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-gray-500 text-sm bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                  No document uploaded
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}

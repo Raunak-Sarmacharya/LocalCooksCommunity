@@ -516,6 +516,20 @@ export default function ApplicantDashboard() {
   // Now we can safely create userDisplayInfo after the queries are defined
   const userDisplayInfo = getUserDisplayInfo(applications, deliveryApplications, isLoading, isLoadingDelivery, error, deliveryError);
 
+  // Set default selected application when applications load
+  useEffect(() => {
+    if (userDisplayInfo.applications && userDisplayInfo.applications.length > 0 && !selectedApplicationId) {
+      // First try to find an inReview application
+      const inReviewApp = userDisplayInfo.applications.find((app: AnyApplication) => app.status === 'inReview');
+      if (inReviewApp) {
+        setSelectedApplicationId(inReviewApp.id);
+      } else {
+        // If no inReview, select the first application
+        setSelectedApplicationId(userDisplayInfo.applications[0].id);
+      }
+    }
+  }, [userDisplayInfo.applications, selectedApplicationId]);
+
   // Monitor application status changes and microlearning completion
   useEffect(() => {
     if (userDisplayInfo.applications && prevApplicationsRef.current) {
@@ -1263,10 +1277,17 @@ export default function ApplicantDashboard() {
                 <h4 className="font-semibold text-gray-900">Application Management</h4>
                 {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
                   (() => {
-                    // Set default selected application to the latest one
+                    // Set default selected application - prioritize inReview status
                     const defaultApp = selectedApplicationId 
                       ? userDisplayInfo.applications.find((app: AnyApplication) => app.id === selectedApplicationId) || userDisplayInfo.applications[0]
-                      : userDisplayInfo.applications[0];
+                      : (() => {
+                          // First try to find an inReview application
+                          const inReviewApp = userDisplayInfo.applications.find((app: AnyApplication) => app.status === 'inReview');
+                          if (inReviewApp) return inReviewApp;
+                          
+                          // If no inReview, return the first application
+                          return userDisplayInfo.applications[0];
+                        })();
                     
                     const hasActiveApplication = defaultApp.status !== 'cancelled' && defaultApp.status !== 'rejected';
                     return (
@@ -1275,7 +1296,7 @@ export default function ApplicantDashboard() {
                         <div className="space-y-2">
                           <label className="text-sm text-gray-600">Select Application:</label>
                           <Select
-                            value={selectedApplicationId?.toString() || applications[0]?.id?.toString()}
+                            value={selectedApplicationId?.toString() || defaultApp?.id?.toString()}
                             onValueChange={(value) => setSelectedApplicationId(parseInt(value))}
                           >
                             <SelectTrigger className="w-full">
