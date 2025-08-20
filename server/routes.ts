@@ -1664,59 +1664,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Firebase user sync endpoint
-  app.post('/api/firebase-sync-user', async (req: Request, res: Response) => {
-    const { uid, email, displayName, role } = req.body;
-    
-    if (!uid || !email) {
-      return res.status(400).json({ error: 'Missing uid or email' });
-    }
-    
-    try {
-      // Check if user exists by firebase_uid first, then by username/email
-      let user = await storage.getUserByFirebaseUid(uid);
-      
-      if (!user) {
-        // Try to find by username and update with firebase_uid
-        if (displayName) {
-          const existingUser = await storage.getUserByUsername(displayName);
-          if (existingUser) {
-            // Update this user to set firebase_uid
-            user = await storage.updateUserFirebaseUid(existingUser.id, uid) || existingUser;
-          }
-        }
-        
-        // If not found by username, try by email in username field
-        if (!user && email) {
-          const existingUser = await storage.getUserByUsername(email);
-          if (existingUser) {
-            // Update this user to set firebase_uid
-            user = await storage.updateUserFirebaseUid(existingUser.id, uid) || existingUser;
-          }
-        }
-        
-        // If still not found, create new user
-        if (!user) {
-          user = await storage.createUser({
-            username: displayName || email,
-            password: '', // Empty password for Firebase users
-            role: (role as "admin" | "chef" | "delivery_partner") || 'chef',
-            isChef: false, // No default roles - user must choose
-            isDeliveryPartner: false, // No default roles - user must choose
-            firebaseUid: uid
-          });
-        }
-      }
-      
-      res.json({ success: true, user });
-    } catch (error) {
-      console.error('Error syncing Firebase user:', error);
-      res.status(500).json({ 
-        error: 'Failed to sync user', 
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
+    // NOTE: Firebase user sync endpoint has been moved to firebase-routes.ts with proper authentication
+  // This old endpoint has been removed to prevent conflicts
 
   // Admin endpoint to send promo emails
   app.post('/api/admin/send-promo-email', async (req: Request, res: Response) => {
