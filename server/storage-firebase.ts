@@ -267,6 +267,39 @@ export class FirebaseStorage {
       throw error;
     }
   }
+
+  // ===== USER APPLICATION TYPE MANAGEMENT =====
+  
+  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<void> {
+    try {
+      await db
+        .update(users)
+        .set({ applicationType })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      console.error('Error updating user application type:', error);
+      throw error;
+    }
+  }
+
+  // ===== DELIVERY PARTNER APPLICATION METHODS =====
+  // Note: These are placeholder methods - delivery partner functionality would need
+  // the full delivery partner table schema and implementation
+  
+  async createDeliveryPartnerApplication(applicationData: any): Promise<any> {
+    // This would need proper delivery partner application table implementation
+    throw new Error('Delivery partner applications not yet implemented in Firebase storage');
+  }
+
+  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<any[]> {
+    // This would need proper delivery partner application table implementation
+    throw new Error('Delivery partner applications not yet implemented in Firebase storage');
+  }
+
+  async getAllDeliveryPartnerApplications(): Promise<any[]> {
+    // This would need proper delivery partner application table implementation
+    throw new Error('Delivery partner applications not yet implemented in Firebase storage');
+  }
 }
 
 // Create Firebase storage instance

@@ -4,10 +4,10 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { motion } from 'framer-motion';
 import {
-    ArrowRight,
-    CheckCircle,
-    ChefHat,
-    Truck
+  ArrowRight,
+  CheckCircle,
+  ChefHat,
+  Truck
 } from 'lucide-react';
 import { useState } from 'react';
 import { useLocation } from 'wouter';
@@ -37,7 +37,7 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
         const token = await currentUser.getIdToken();
         
         // Update user's application type in the database
-        const response = await fetch('/api/user/update-application-type', {
+        const response = await fetch('/api/firebase/user/update-application-type', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

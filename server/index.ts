@@ -65,7 +65,7 @@ app.use((req, res, next) => {
       log('⚠️ Vehicle data cache warmup failed, will load on-demand');
     }
   } catch (error) {
-    log('⚠️ Vehicle data cache warmup failed, will load on-demand:', error);
+    log('⚠️ Vehicle data cache warmup failed, will load on-demand:', String(error));
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
