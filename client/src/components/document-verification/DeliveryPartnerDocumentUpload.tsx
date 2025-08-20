@@ -31,12 +31,6 @@ const documentFields = [
     label: 'Vehicle Insurance',
     description: 'Upload your vehicle insurance certificate',
     required: true
-  },
-  {
-    key: 'backgroundCheckUrl',
-    label: 'Background Check',
-    description: 'Upload your background check certificate (if required)',
-    required: false
   }
 ];
 

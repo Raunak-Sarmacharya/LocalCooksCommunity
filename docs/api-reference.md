@@ -705,6 +705,180 @@ Current implementation does not have explicit rate limiting, but consider implem
 
 ---
 
+## 🚚 Delivery Partner API Endpoints
+
+### Submit Delivery Partner Application
+```http
+POST /api/firebase/delivery-partner-applications
+Content-Type: application/json
+
+{
+  "fullName": "John Doe",
+  "email": "john@example.com",
+  "phone": "555-123-4567",
+  "address": "123 Main St",
+  "city": "St. John's",
+  "province": "NL",
+  "postalCode": "A1A 1A1",
+  "vehicleType": "car",
+  "vehicleMake": "Toyota",
+  "vehicleModel": "Camry",
+  "vehicleYear": 2020,
+  "licensePlate": "ABC123"
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "message": "Delivery partner application submitted successfully",
+  "application": {
+    "id": 1,
+    "fullName": "John Doe",
+    "email": "john@example.com",
+    "status": "inReview",
+    "createdAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Get My Delivery Partner Applications
+```http
+GET /api/firebase/delivery-partner-applications/my
+Authorization: Bearer <firebase_token>
+```
+
+**Response** (200 OK):
+```json
+{
+  "applications": [
+    {
+      "id": 1,
+      "fullName": "John Doe",
+      "email": "john@example.com",
+      "phone": "555-123-4567",
+      "address": "123 Main St",
+      "city": "St. John's",
+      "province": "NL",
+      "postalCode": "A1A 1A1",
+      "vehicleType": "car",
+      "vehicleMake": "Toyota",
+      "vehicleModel": "Camry",
+      "vehicleYear": 2020,
+      "licensePlate": "ABC123",
+      "driversLicenseUrl": "https://...",
+      "vehicleRegistrationUrl": "https://...",
+      "insuranceUrl": "https://...",
+      "driversLicenseStatus": "pending",
+      "vehicleRegistrationStatus": "approved",
+      "insuranceStatus": "pending",
+      "status": "inReview",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+### Update Delivery Partner Application
+```http
+PUT /api/firebase/delivery-partner-applications/:id
+Content-Type: application/json
+Authorization: Bearer <firebase_token>
+
+{
+  "driversLicenseUrl": "https://new-url.com/license.pdf",
+  "vehicleRegistrationUrl": "https://new-url.com/registration.pdf"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "message": "Application updated successfully",
+  "application": {
+    "id": 1,
+    "driversLicenseUrl": "https://new-url.com/license.pdf",
+    "vehicleRegistrationUrl": "https://new-url.com/registration.pdf",
+    "updatedAt": "2024-01-15T11:00:00Z"
+  }
+}
+```
+
+### Admin: Get All Delivery Partner Applications
+```http
+GET /api/delivery-partner-applications
+Authorization: Bearer <admin_token>
+```
+
+**Response** (200 OK):
+```json
+{
+  "applications": [
+    {
+      "id": 1,
+      "fullName": "John Doe",
+      "email": "john@example.com",
+      "status": "inReview",
+      "driversLicenseStatus": "pending",
+      "vehicleRegistrationStatus": "approved",
+      "insuranceStatus": "pending",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+### Admin: Update Document Verification Status
+```http
+PATCH /api/delivery-partner-applications/:id/document-verification
+Content-Type: application/json
+Authorization: Bearer <admin_token>
+
+{
+  "driversLicenseStatus": "approved",
+  "documentsAdminFeedback": "Driver's license approved successfully"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "message": "Document verification status updated",
+  "application": {
+    "id": 1,
+    "driversLicenseStatus": "approved",
+    "documentsAdminFeedback": "Driver's license approved successfully",
+    "documentsReviewedBy": 1,
+    "documentsReviewedAt": "2024-01-15T11:30:00Z"
+  }
+}
+```
+
+### Admin: Update Application Status
+```http
+PATCH /api/delivery-partner-applications/:id/status
+Content-Type: application/json
+Authorization: Bearer <admin_token>
+
+{
+  "status": "approved",
+  "feedback": "Application approved. Welcome to the team!"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "message": "Application status updated",
+  "application": {
+    "id": 1,
+    "status": "approved",
+    "feedback": "Application approved. Welcome to the team!",
+    "updatedAt": "2024-01-15T12:00:00Z"
+  }
+}
+```
+
 ## 🧪 Testing Examples
 
 ### Using cURL

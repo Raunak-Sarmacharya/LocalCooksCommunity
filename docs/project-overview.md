@@ -10,6 +10,8 @@
 - **Admin Dashboard**: Comprehensive review and approval workflow
 - **Document Verification**: Secure file upload with admin verification tools
 - **Status Notifications**: Email updates for application status changes
+- **Role-Based Access**: Separate chef and delivery partner application flows
+- **Dual Role Support**: Users can apply for both chef and delivery partner roles
 
 ### **Training & Preparation System**
 - **Microlearning Platform**: 10-module Newfoundland food safety training preparation
@@ -27,6 +29,8 @@
 - **Interactive Progress**: Visual progress indicators and next-step guidance
 - **Session Management**: Secure authentication with automatic route management
 - **Modern UI/UX**: Responsive design with Tailwind CSS and Radix UI components
+- **Role-Based Routing**: Separate authentication flows for chefs and delivery partners
+- **Unified Dashboard**: Single dashboard supporting both chef and delivery partner experiences
 
 ## 🏗️ Technical Architecture
 
@@ -85,12 +89,18 @@
 4. **Training** → Access full 10-module training preparation system (100% progress)
 5. **Completion** → Complete training preparation and receive certificate - ready for skillpass.nl
 
+### **Delivery Partner Experience**
+1. **Registration** → Create account via `/driver-auth` (20% progress)
+2. **Application** → Submit delivery partner application with vehicle documents (50% progress)
+3. **Review** → Admin review and document verification (75% progress)
+4. **Approval** → Application approved and ready for delivery operations (100% progress)
+
 ### **Admin Experience**
-1. **Dashboard Access** → Comprehensive application management
-2. **Document Review** → Verify uploaded documents
-3. **Status Management** → Approve/reject with feedback
-4. **Email Notifications** → Automated status update emails
-5. **Progress Monitoring** → Track user training completion
+1. **Dashboard Access** → Comprehensive application management for both chefs and delivery partners
+2. **Document Review** → Verify uploaded documents for both application types
+3. **Status Management** → Approve/reject with feedback for both roles
+4. **Email Notifications** → Automated status update emails for both user types
+5. **Progress Monitoring** → Track user training completion and delivery partner verification
 
 ## 🚀 Deployment Architecture
 

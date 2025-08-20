@@ -29,9 +29,9 @@ The schema supports:
 │ googleId        │         │ phone                           │
 │ facebookId      │         │ foodSafetyLicense               │
 │ isVerified      │         │ foodEstablishmentCert           │
-└─────────────────┘         │ kitchenPreference               │
-                            │ feedback                        │
-                            │ status                          │
+│ isChef          │         │ kitchenPreference               │
+│ isDeliveryPartner│        │ feedback                        │
+└─────────────────┘         │ status                          │
                             │ foodSafetyLicenseUrl            │
                             │ foodEstablishmentCertUrl        │
                             │ foodSafetyLicenseStatus         │
@@ -39,6 +39,37 @@ The schema supports:
                             │ documentsAdminFeedback          │
                             │ documentsReviewedBy (FK users)  │
                             │ documentsReviewedAt             │
+                            │ createdAt                       │
+                            └─────────────────────────────────┘
+
+┌─────────────────┐         ┌─────────────────────────────────┐
+│     users       │         │ delivery_partner_applications   │
+├─────────────────┤         ├─────────────────────────────────┤
+│ id (PK)         │◄────────┤ userId (FK)                     │
+│ username        │         │ id (PK)                         │
+│ password        │         │ fullName                        │
+│ role            │         │ email                           │
+│ googleId        │         │ phone                           │
+│ facebookId      │         │ address                         │
+│ isVerified      │         │ city                            │
+│ isChef          │         │ province                        │
+│ isDeliveryPartner│        │ postalCode                      │
+└─────────────────┘         │ vehicleType                     │
+                            │ vehicleMake                     │
+                            │ vehicleModel                    │
+                            │ vehicleYear                     │
+                            │ licensePlate                    │
+                            │ driversLicenseUrl               │
+                            │ vehicleRegistrationUrl          │
+                            │ insuranceUrl                    │
+                            │ driversLicenseStatus            │
+                            │ vehicleRegistrationStatus       │
+                            │ insuranceStatus                 │
+                            │ documentsAdminFeedback          │
+                            │ documentsReviewedBy (FK users)  │
+                            │ documentsReviewedAt             │
+                            │ feedback                        │
+                            │ status                          │
                             │ createdAt                       │
                             └─────────────────────────────────┘
 ```
@@ -72,10 +103,17 @@ export const users = pgTable("users", {
 | `googleId` | `TEXT` | Google OAuth ID (if OAuth user) | `UNIQUE`, nullable |
 | `facebookId` | `TEXT` | Facebook OAuth ID (if OAuth user) | `UNIQUE`, nullable |
 | `isVerified` | `BOOLEAN` | Whether user account is verified | `DEFAULT false`, `NOT NULL` |
+| `isChef` | `BOOLEAN` | Whether user has chef role | `DEFAULT false`, `NOT NULL` |
+| `isDeliveryPartner` | `BOOLEAN` | Whether user has delivery partner role | `DEFAULT false`, `NOT NULL` |
 
 ### User Roles
 - **`applicant`** (default) - Can submit applications, view own applications
 - **`admin`** - Can view all applications, approve/reject, verify documents
+
+### Role-Based Access
+- **`isChef: true`** - User can access chef features and training
+- **`isDeliveryPartner: true`** - User can access delivery partner features
+- **Dual Role** - Users can have both roles for comprehensive access
 
 ## 📝 Applications Table
 
@@ -134,6 +172,98 @@ export const applications = pgTable("applications", {
 - **`approved`** - Document verified and approved
 - **`rejected`** - Document rejected, needs resubmission
 
+## 🚚 Delivery Partner Applications Table
+
+### Drizzle Schema
+
+```typescript
+export const vehicleTypeEnum = pgEnum('vehicle_type', ['car', 'motorcycle', 'van', 'truck']);
+export const deliveryApplicationStatusEnum = pgEnum('delivery_application_status', ['inReview', 'approved', 'rejected', 'cancelled']);
+
+export const deliveryPartnerApplications = pgTable("delivery_partner_applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  address: text("address").notNull(),
+  city: text("city").notNull(),
+  province: text("province").notNull(),
+  postalCode: text("postal_code").notNull(),
+  vehicleType: vehicleTypeEnum("vehicle_type").notNull(),
+  vehicleMake: text("vehicle_make").notNull(),
+  vehicleModel: text("vehicle_model").notNull(),
+  vehicleYear: integer("vehicle_year").notNull(),
+  licensePlate: text("license_plate").notNull(),
+  
+  // Document URLs
+  driversLicenseUrl: text("drivers_license_url"),
+  vehicleRegistrationUrl: text("vehicle_registration_url"),
+  insuranceUrl: text("insurance_url"),
+  
+  // Document verification status
+  driversLicenseStatus: documentVerificationStatusEnum("drivers_license_status").default("pending"),
+  vehicleRegistrationStatus: documentVerificationStatusEnum("vehicle_registration_status").default("pending"),
+  insuranceStatus: documentVerificationStatusEnum("insurance_status").default("pending"),
+  
+  // Admin review fields
+  documentsAdminFeedback: text("documents_admin_feedback"),
+  documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
+  documentsReviewedAt: timestamp("documents_reviewed_at"),
+  
+  feedback: text("feedback"),
+  status: deliveryApplicationStatusEnum("status").default("inReview").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+```
+
+### Field Descriptions
+
+| Field | Type | Description | Constraints |
+|-------|------|-------------|-------------|
+| `id` | `SERIAL` | Primary key, auto-incrementing | `PRIMARY KEY` |
+| `userId` | `INTEGER` | Foreign key to users table | `REFERENCES users(id)` |
+| `fullName` | `TEXT` | Applicant's full name | `NOT NULL` |
+| `email` | `TEXT` | Contact email address | `NOT NULL` |
+| `phone` | `TEXT` | Contact phone number | `NOT NULL` |
+| `address` | `TEXT` | Street address | `NOT NULL` |
+| `city` | `TEXT` | City | `NOT NULL` |
+| `province` | `TEXT` | Province/State | `NOT NULL` |
+| `postalCode` | `TEXT` | Postal/ZIP code | `NOT NULL` |
+| `vehicleType` | `vehicle_type` | Type of vehicle | `NOT NULL` |
+| `vehicleMake` | `TEXT` | Vehicle manufacturer | `NOT NULL` |
+| `vehicleModel` | `TEXT` | Vehicle model | `NOT NULL` |
+| `vehicleYear` | `INTEGER` | Vehicle year | `NOT NULL` |
+| `licensePlate` | `TEXT` | License plate number | `NOT NULL` |
+| `driversLicenseUrl` | `TEXT` | URL to uploaded driver's license | nullable |
+| `vehicleRegistrationUrl` | `TEXT` | URL to uploaded vehicle registration | nullable |
+| `insuranceUrl` | `TEXT` | URL to uploaded insurance document | nullable |
+| `driversLicenseStatus` | `document_verification_status` | Driver's license verification status | `DEFAULT 'pending'` |
+| `vehicleRegistrationStatus` | `document_verification_status` | Vehicle registration verification status | `DEFAULT 'pending'` |
+| `insuranceStatus` | `document_verification_status` | Insurance verification status | `DEFAULT 'pending'` |
+| `documentsAdminFeedback` | `TEXT` | Admin feedback on documents | nullable |
+| `documentsReviewedBy` | `INTEGER` | Admin who reviewed documents | `REFERENCES users(id)`, nullable |
+| `documentsReviewedAt` | `TIMESTAMP` | When documents were reviewed | nullable |
+| `feedback` | `TEXT` | Admin feedback (if rejected) | nullable |
+| `status` | `delivery_application_status` | Current application status | `DEFAULT 'inReview'`, `NOT NULL` |
+| `createdAt` | `TIMESTAMP` | When application was created | `DEFAULT NOW()`, `NOT NULL` |
+
+### Key Fields
+
+| Field | Description | Possible Values |
+|-------|-------------|-----------------|
+| `status` | Application status | `inReview`, `approved`, `rejected`, `cancelled` |
+| `vehicleType` | Type of vehicle | `car`, `motorcycle`, `van`, `truck` |
+| `driversLicenseStatus` | Driver's license verification | `pending`, `approved`, `rejected` |
+| `vehicleRegistrationStatus` | Vehicle registration verification | `pending`, `approved`, `rejected` |
+| `insuranceStatus` | Insurance verification | `pending`, `approved`, `rejected` |
+
+### Application Status Flow
+1. **`inReview`** - Being reviewed by admin
+2. **`approved`** - Application approved
+3. **`rejected`** - Application rejected
+4. **`cancelled`** - Cancelled by applicant
+
 ## 🔗 Relationships
 
 ### Foreign Key Constraints
@@ -144,17 +274,31 @@ applications.user_id → users.id
 
 -- Document reviewer is a user (admin)
 applications.documents_reviewed_by → users.id
+
+-- Delivery partner applications belong to users
+delivery_partner_applications.user_id → users.id
+
+-- Document reviewer is a user (admin)
+delivery_partner_applications.documents_reviewed_by → users.id
 ```
 
 ### Relationship Types
 
 1. **User → Applications** (One-to-Many)
-   - One user can have multiple applications
+   - One user can have multiple chef applications
    - Each application belongs to exactly one user
 
-2. **Admin → Document Reviews** (One-to-Many)
+2. **User → Delivery Partner Applications** (One-to-Many)
+   - One user can have multiple delivery partner applications
+   - Each delivery partner application belongs to exactly one user
+
+3. **Admin → Document Reviews** (One-to-Many)
    - One admin can review many applications' documents
    - Each document review is done by one admin
+
+4. **User → Roles** (Many-to-Many)
+   - Users can have multiple roles (chef, delivery partner)
+   - Roles are stored as boolean flags in the users table
 
 ## 📋 Validation Rules
 
@@ -281,6 +425,39 @@ CREATE TABLE applications (
   documents_reviewed_by INTEGER REFERENCES users(id),
   documents_reviewed_at TIMESTAMP,
   
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- Create delivery partner applications table
+CREATE TABLE delivery_partner_applications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  full_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  address TEXT NOT NULL,
+  city TEXT NOT NULL,
+  province TEXT NOT NULL,
+  postal_code TEXT NOT NULL,
+  vehicle_type vehicle_type NOT NULL,
+  vehicle_make TEXT NOT NULL,
+  vehicle_model TEXT NOT NULL,
+  vehicle_year INTEGER NOT NULL,
+  license_plate TEXT NOT NULL,
+  
+  drivers_license_url TEXT,
+  vehicle_registration_url TEXT,
+  insurance_url TEXT,
+  drivers_license_status document_verification_status DEFAULT 'pending',
+  vehicle_registration_status document_verification_status DEFAULT 'pending',
+  insurance_status document_verification_status DEFAULT 'pending',
+  
+  documents_admin_feedback TEXT,
+  documents_reviewed_by INTEGER REFERENCES users(id),
+  documents_reviewed_at TIMESTAMP,
+  
+  feedback TEXT,
+  status delivery_application_status DEFAULT 'inReview' NOT NULL,
   created_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
 
