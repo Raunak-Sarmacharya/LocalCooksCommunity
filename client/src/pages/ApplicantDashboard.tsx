@@ -155,7 +155,7 @@ export default function ApplicantDashboard() {
       return {
         primaryRole: 'none',
         applications: [],
-        applicationFormUrl: '/auth',
+        applicationFormUrl: '/role-selection',
         roleName: 'Select Your Role',
         icon: ChefHat,
         description: 'Please select your role to get started with Local Cooks.',
@@ -1418,7 +1418,7 @@ export default function ApplicantDashboard() {
                     {userDisplayInfo.primaryRole === 'none' ? (
                       // No role selected - show role selection button
                       <Button asChild className="rounded-xl bg-blue-600 hover:bg-blue-700">
-                        <Link href="/auth">
+                        <Link href="/role-selection">
                           <ChefHat className="mr-2 h-4 w-4" />
                           Choose Your Role
                         </Link>
