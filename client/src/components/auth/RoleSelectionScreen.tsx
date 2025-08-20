@@ -56,7 +56,25 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
         });
 
         if (response.ok) {
-          console.log(`✅ User roles updated:`, selectedRoles);
+          console.log(`✅ User roles updated in Neon database:`, selectedRoles);
+          const responseData = await response.json();
+          console.log('✅ Backend response:', responseData);
+          
+          // Also update Firestore with the selected roles
+          try {
+            const { doc, setDoc } = await import('firebase/firestore');
+            const { db } = await import('@/lib/firebase');
+            await setDoc(doc(db, 'users', currentUser.uid), {
+              isChef: selectedRoles.isChef,
+              isDeliveryPartner: selectedRoles.isDeliveryPartner,
+              role: selectedRoles.isChef && selectedRoles.isDeliveryPartner ? 'chef' : selectedRoles.isChef ? 'chef' : 'delivery_partner',
+              updatedAt: new Date()
+            }, { merge: true });
+            console.log('✅ User roles updated in Firestore:', selectedRoles);
+          } catch (firestoreError) {
+            console.error('❌ Failed to update Firestore roles:', firestoreError);
+          }
+          
           onRoleSelected(selectedRoles);
         } else {
           console.error('❌ Failed to update user roles:', response.status);

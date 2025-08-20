@@ -1,13 +1,13 @@
 import type {
-    Application,
-    DeliveryPartnerApplication,
-    InsertApplication,
-    InsertDeliveryPartnerApplication,
-    InsertUser,
-    UpdateApplicationDocuments,
-    UpdateApplicationStatus,
-    UpdateDocumentVerification,
-    User
+  Application,
+  DeliveryPartnerApplication,
+  InsertApplication,
+  InsertDeliveryPartnerApplication,
+  InsertUser,
+  UpdateApplicationDocuments,
+  UpdateApplicationStatus,
+  UpdateDocumentVerification,
+  User
 } from "@shared/schema";
 import { applications, deliveryPartnerApplications, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -288,13 +288,32 @@ export class FirebaseStorage {
   
   async updateUserRoles(userId: number, roles: { isChef: boolean; isDeliveryPartner: boolean }): Promise<void> {
     try {
+      // Determine the main role based on selected roles
+      let mainRole = 'chef'; // default
+      if (roles.isDeliveryPartner && !roles.isChef) {
+        mainRole = 'delivery_partner';
+      } else if (roles.isChef && roles.isDeliveryPartner) {
+        mainRole = 'chef'; // For dual roles, default to chef
+      } else if (roles.isChef) {
+        mainRole = 'chef';
+      }
+
+      console.log(`🎯 Updating user ${userId} roles:`, {
+        isChef: roles.isChef,
+        isDeliveryPartner: roles.isDeliveryPartner,
+        mainRole: mainRole
+      });
+
       await db
         .update(users)
         .set({ 
           isChef: roles.isChef,
-          isDeliveryPartner: roles.isDeliveryPartner
+          isDeliveryPartner: roles.isDeliveryPartner,
+          role: mainRole as any // Update main role field too
         })
         .where(eq(users.id, userId));
+        
+      console.log(`✅ Successfully updated user ${userId} roles in database`);
     } catch (error) {
       console.error('Error updating user roles:', error);
       throw error;

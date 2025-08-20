@@ -119,7 +119,9 @@ export default function EnhancedAuthPage() {
               username: userData.username,
               is_verified: userData.is_verified,
               has_seen_welcome: userData.has_seen_welcome,
-              role: userData.role
+              role: userData.role,
+              isChef: userData.isChef,
+              isDeliveryPartner: userData.isDeliveryPartner
             });
             
             setUserMeta(userData);
@@ -211,9 +213,18 @@ export default function EnhancedAuthPage() {
           });
         }
         
-        // Redirect to appropriate page
+        // Redirect to appropriate page  
         const redirectPath = getRedirectPath();
-        const targetPath = redirectPath !== '/' ? redirectPath : (userMeta?.role === 'admin' ? '/admin' : '/dashboard');
+        let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
+        
+        // Smart redirect based on user roles
+        if (redirectPath === '/' || redirectPath === '/dashboard') {
+          if (userMeta?.role === 'admin') {
+            targetPath = '/admin';
+          } else {
+            targetPath = '/dashboard'; // Dashboard adapts to user roles
+          }
+        }
         console.log(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
         setLocation(targetPath);
       } else {
@@ -310,7 +321,26 @@ export default function EnhancedAuthPage() {
 
       // User has completed role selection and welcome or doesn't need them - proceed with redirect
       const redirectPath = getRedirectPath();
-      const targetPath = redirectPath !== '/' ? redirectPath : (userMeta.role === 'admin' ? '/admin' : '/dashboard');
+      let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
+      
+      // Smart redirect based on user roles
+      if (redirectPath === '/' || redirectPath === '/dashboard') {
+        if (userMeta.role === 'admin') {
+          targetPath = '/admin';
+        } else if (userMeta.isDeliveryPartner && !userMeta.isChef) {
+          // Pure delivery partner - might want different default behavior
+          targetPath = '/dashboard';
+        } else if (userMeta.isChef && !userMeta.isDeliveryPartner) {
+          // Pure chef
+          targetPath = '/dashboard';
+        } else if (userMeta.isChef && userMeta.isDeliveryPartner) {
+          // Dual role - default to dashboard
+          targetPath = '/dashboard';
+        } else {
+          // No roles selected yet - should not happen but fallback to dashboard
+          targetPath = '/dashboard';
+        }
+      }
       
       if (location !== targetPath && targetPath !== '/auth') {
         redirectTimeoutRef.current = setTimeout(() => {
