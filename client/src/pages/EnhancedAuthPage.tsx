@@ -257,15 +257,18 @@ export default function EnhancedAuthPage() {
   };
 
   // Handle role selection completion
-  const handleRoleSelected = async (role: 'chef' | 'delivery_partner') => {
+  const handleRoleSelected = async (roles: { isChef: boolean; isDeliveryPartner: boolean }) => {
     try {
-      console.log(`🎯 ROLE SELECTED: ${role}`);
+      console.log(`🎯 ROLES SELECTED:`, roles);
       
       // Update local user meta
       if (userMeta) {
         setUserMeta({
           ...userMeta,
-          application_type: role
+          isChef: roles.isChef,
+          isDeliveryPartner: roles.isDeliveryPartner,
+          // Keep application_type for backward compatibility, but use the new role flags primarily
+          application_type: roles.isChef && roles.isDeliveryPartner ? 'chef' : roles.isChef ? 'chef' : 'delivery_partner'
         });
       }
       

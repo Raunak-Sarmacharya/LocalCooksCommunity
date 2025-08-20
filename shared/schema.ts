@@ -12,7 +12,7 @@ export const certificationStatusEnum = pgEnum('certification_status', ['yes', 'n
 export const applicationStatusEnum = pgEnum('application_status', ['inReview', 'approved', 'rejected', 'cancelled']);
 
 // Define an enum for user roles
-export const userRoleEnum = pgEnum('user_role', ['admin', 'applicant']);
+export const userRoleEnum = pgEnum('user_role', ['admin', 'chef', 'delivery_partner']);
 
 // Define an enum for document verification status
 export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
@@ -23,18 +23,21 @@ export const applicationTypeEnum = pgEnum('application_type', ['chef', 'delivery
 // Define an enum for vehicle types (4-wheeled vehicles only)
 export const vehicleTypeEnum = pgEnum('vehicle_type', ['car', 'suv', 'truck', 'van']);
 
-// Define users table (for both admins and applicants)
+// Define users table (for both admins and users)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  role: userRoleEnum("role").default("applicant").notNull(),
+  role: userRoleEnum("role").default("chef").notNull(),
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
   firebaseUid: text("firebase_uid").unique(),
   isVerified: boolean("is_verified").default(false).notNull(),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
-  applicationType: applicationTypeEnum("application_type"), // NEW: tracks whether user is chef or delivery partner
+  // Support dual roles - users can be both chef and delivery partner
+  isChef: boolean("is_chef").default(false).notNull(),
+  isDeliveryPartner: boolean("is_delivery_partner").default(false).notNull(),
+  applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
 });
 
 // Define the applications table (for chefs)
@@ -161,10 +164,12 @@ export type UpdateDocumentVerification = z.infer<typeof updateDocumentVerificati
 export const insertUserSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["admin", "applicant"]).default("applicant"),
+  role: z.enum(["admin", "chef", "delivery_partner"]).default("chef"),
   googleId: z.string().optional(),
   facebookId: z.string().optional(),
   firebaseUid: z.string().optional(),
+  isChef: z.boolean().default(false),
+  isDeliveryPartner: z.boolean().default(false),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

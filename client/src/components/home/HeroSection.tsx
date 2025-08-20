@@ -2,10 +2,11 @@ import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
-import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
+import { ChefHat, Clock, CreditCard, DollarSign, Route, ShoppingBag, Truck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import chefCookingImage from "../../assets/chef-cooking.png";
+import foodDeliveryImage from "../../assets/food-delivery.png";
 
 export default function HeroSection() {
   const [, navigate] = useLocation();
@@ -17,7 +18,21 @@ export default function HeroSection() {
   const [currentText, setCurrentText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   
-  const words = ["Cooks", "Company", "Community"];
+  // Dynamic words based on user roles
+  const getWords = () => {
+    const isChef = (user as any)?.isChef;
+    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+    
+    if (isChef && isDeliveryPartner) {
+      return ["Cooks", "Drivers", "Community"];
+    } else if (isDeliveryPartner) {
+      return ["Drivers", "Delivery", "Community"];
+    } else {
+      return ["Cooks", "Company", "Community"];
+    }
+  };
+  
+  const words = getWords();
   
   useEffect(() => {
     const word = words[currentWordIndex];
@@ -44,7 +59,7 @@ export default function HeroSection() {
     }, shouldDelete ? 100 : 150); // Faster deleting, slower typing
     
     return () => clearTimeout(timeout);
-  }, [currentText, isDeleting, currentWordIndex]);
+  }, [currentText, isDeleting, currentWordIndex, words]);
 
   const handlePrimaryClick = () => {
     if (!user) {
@@ -73,37 +88,131 @@ export default function HeroSection() {
             </span>
           </h1>
           <h2 className="text-lg md:text-2xl font-semibold mb-3 md:mb-4 text-gray-700">
-            Bringing Communities Together Through Homemade Meals
+            {(() => {
+              const isChef = (user as any)?.isChef;
+              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+              
+              if (isChef && isDeliveryPartner) {
+                return "Cooking Excellence, Delivery Excellence";
+              } else if (isDeliveryPartner) {
+                return "Connecting Communities Through Fast Delivery";
+              } else {
+                return "Bringing Communities Together Through Homemade Meals";
+              }
+            })()}
           </h2>
           <p className="text-base md:text-lg mb-4 md:mb-6 text-gray-600 leading-relaxed">
-            Local Cooks is where your culinary passion meets limitless possibility. Whether you're a professional chef ready to break free from the line or a home cook with treasured family recipes, we provide the platform, resources, and community you need to transform your kitchen into a thriving business.
+            {(() => {
+              const isChef = (user as any)?.isChef;
+              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+              
+              if (isChef && isDeliveryPartner) {
+                return "You're part of our complete ecosystem! Cook amazing meals and deliver exceptional service. Manage both your chef and delivery partner businesses from one unified platform.";
+              } else if (isDeliveryPartner) {
+                return "Join our delivery network and become an essential part of the local food community. Help bring delicious homemade meals from local cooks to hungry customers with flexible scheduling and competitive earnings.";
+              } else {
+                return "Local Cooks is where your culinary passion meets limitless possibility. Whether you're a professional chef ready to break free from the line or a home cook with treasured family recipes, we provide the platform, resources, and community you need to transform your kitchen into a thriving business.";
+              }
+            })()}
           </p>
           
           <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
-                <ChefHat className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
-              </div>
-              <span className="text-xs md:text-sm font-medium">Showcase your talent</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
-                <Users className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
-              </div>
-              <span className="text-xs md:text-sm font-medium">Expand your network</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
-                <ShoppingBag className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
-              </div>
-              <span className="text-xs md:text-sm font-medium">We handle delivery</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
-                <CreditCard className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
-              </div>
-              <span className="text-xs md:text-sm font-medium">Get paid weekly</span>
-            </div>
+            {(() => {
+              const isChef = (user as any)?.isChef;
+              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+              
+              if (isDeliveryPartner && !isChef) {
+                // Delivery partner only
+                return (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
+                        <Truck className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Flexible delivery work</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
+                        <Clock className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Choose your hours</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
+                        <Route className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Optimized routes</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
+                        <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Competitive earnings</span>
+                    </div>
+                  </>
+                );
+              } else if (isChef && isDeliveryPartner) {
+                // Both chef and delivery partner
+                return (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
+                        <ChefHat className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Cook & deliver</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
+                        <Truck className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Dual income streams</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
+                        <Users className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Expand your network</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
+                        <CreditCard className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Weekly payments</span>
+                    </div>
+                  </>
+                );
+              } else {
+                // Chef only or no role selected
+                return (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
+                        <ChefHat className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Showcase your talent</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
+                        <Users className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Expand your network</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
+                        <ShoppingBag className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">We handle delivery</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
+                        <CreditCard className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
+                      </div>
+                      <span className="text-xs md:text-sm font-medium">Get paid weekly</span>
+                    </div>
+                  </>
+                );
+              }
+            })()}
           </div>
           
           <Button 
@@ -125,11 +234,30 @@ export default function HeroSection() {
           <div className="absolute inset-0 bg-primary/5 rounded-2xl -rotate-3 transform hidden md:block"></div>
           <div className="absolute inset-0 bg-primary/5 rounded-2xl rotate-3 transform hidden md:block"></div>
           <div className="relative overflow-hidden rounded-xl shadow-xl">
-            <img 
-              src={chefCookingImage} 
-              alt="Professional chef cooking in home kitchen" 
-              className="w-full h-64 md:h-full object-cover rounded-xl shadow-lg"
-            />
+            {(() => {
+              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+              const isChef = (user as any)?.isChef;
+              
+              // Show delivery image for delivery partners (unless they're also a chef)
+              if (isDeliveryPartner && !isChef) {
+                return (
+                  <img 
+                    src={foodDeliveryImage} 
+                    alt="Delivery partner bringing food to customer" 
+                    className="w-full h-64 md:h-full object-cover rounded-xl shadow-lg"
+                  />
+                );
+              } else {
+                // Default to chef image for chefs or dual-role users
+                return (
+                  <img 
+                    src={chefCookingImage} 
+                    alt="Professional chef cooking in home kitchen" 
+                    className="w-full h-64 md:h-full object-cover rounded-xl shadow-lg"
+                  />
+                );
+              }
+            })()}
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
           </div>
         </motion.div>

@@ -14,7 +14,7 @@ declare global {
       neonUser?: {
         id: number;
         username: string;
-        role: "admin" | "applicant";
+        role: "admin" | "chef" | "delivery_partner";
         firebaseUid?: string;
       };
     }

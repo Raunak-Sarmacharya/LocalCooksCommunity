@@ -31,26 +31,36 @@ export default function CTASection() {
   const getHeadingText = () => {
     if (user?.role === "admin") {
       return "Manage Local Cooks";
-    } else if (user?.application_type === "delivery_partner") {
+    } else if ((user as any)?.isChef && (user as any)?.isDeliveryPartner) {
+      return "Ready to Cook and Deliver?";
+    } else if ((user as any)?.isDeliveryPartner) {
       return "Ready to Start Delivering?";
-    } else {
+    } else if ((user as any)?.isChef) {
       return "Ready to Start Cooking?";
+    } else {
+      return "Ready to Join Local Cooks?";
     }
   };
 
   const getDescriptionText = () => {
     if (user?.role === "admin") {
       return "Review applications, manage documents, and oversee the Local Cooks community platform.";
-    } else if (user?.application_type === "delivery_partner") {
+    } else if ((user as any)?.isChef && (user as any)?.isDeliveryPartner) {
+      return "You're part of our community as both a chef and delivery partner. Manage your applications and grow your business with us.";
+    } else if ((user as any)?.isDeliveryPartner) {
       return "Join our delivery network and earn money while connecting local cooks with hungry customers.";
-    } else {
+    } else if ((user as any)?.isChef) {
       return "Join our growing community of local cooks and share your culinary creations with food lovers in St. John's.";
+    } else {
+      return "Join our growing community of local cooks and delivery partners. Choose your path and start your journey with us.";
     }
   };
 
   const getDeliveryPartnerDescription = () => {
     if (user?.role === "admin") {
       return "Manage both chef and delivery partner applications.";
+    } else if ((user as any)?.isDeliveryPartner) {
+      return "You're already a delivery partner! Manage your delivery applications and documentation.";
     } else {
       return "Or become a delivery partner and help bring delicious food to our community.";
     }
@@ -74,8 +84,8 @@ export default function CTASection() {
           </Button>
         </div>
 
-        {/* Delivery Partner CTA - Only show for non-admin users */}
-        {user?.role !== "admin" && (
+        {/* Delivery Partner CTA - Only show for non-admin users who aren't already delivery partners */}
+        {user?.role !== "admin" && !(user as any)?.isDeliveryPartner && (
           <div className="mt-8">
             <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
               {getDeliveryPartnerDescription()}
@@ -87,6 +97,15 @@ export default function CTASection() {
             >
               Become a Delivery Partner
             </Button>
+          </div>
+        )}
+
+        {/* Show role status for existing users */}
+        {user?.role !== "admin" && ((user as any)?.isDeliveryPartner || (user as any)?.isChef) && (
+          <div className="mt-8">
+            <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
+              {getDeliveryPartnerDescription()}
+            </p>
           </div>
         )}
       </div>

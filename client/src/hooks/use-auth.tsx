@@ -28,7 +28,9 @@ interface AuthUser {
   emailVerified: boolean;
   providers: string[];
   role?: string;
-  application_type?: 'chef' | 'delivery_partner';
+  application_type?: 'chef' | 'delivery_partner'; // DEPRECATED: kept for backward compatibility
+  isChef?: boolean;
+  isDeliveryPartner?: boolean;
   is_verified?: boolean;
   has_seen_welcome?: boolean;
 }
@@ -134,9 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             if (response.ok) {
               const userData = await response.json();
-              role = userData.role || "applicant";
+              role = userData.role || "chef";
               applicationData = {
-                application_type: userData.application_type,
+                application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
+                isChef: userData.isChef || userData.is_chef || false,
+                isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner || false,
                 is_verified: userData.is_verified,
                 has_seen_welcome: userData.has_seen_welcome
               };
@@ -195,7 +199,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             emailVerified: firebaseUser.emailVerified,
             providers,
             role,
-            application_type: applicationData?.application_type,
+            application_type: applicationData?.application_type, // DEPRECATED: kept for backward compatibility
+            isChef: applicationData?.isChef,
+            isDeliveryPartner: applicationData?.isDeliveryPartner,
             is_verified: applicationData?.is_verified,
             has_seen_welcome: applicationData?.has_seen_welcome,
           });

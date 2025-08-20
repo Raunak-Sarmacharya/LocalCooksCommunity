@@ -1,13 +1,15 @@
 import type {
     Application,
+    DeliveryPartnerApplication,
     InsertApplication,
+    InsertDeliveryPartnerApplication,
     InsertUser,
     UpdateApplicationDocuments,
     UpdateApplicationStatus,
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, users } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { db, pool } from "./db";
 
@@ -282,23 +284,58 @@ export class FirebaseStorage {
     }
   }
 
-  // ===== DELIVERY PARTNER APPLICATION METHODS =====
-  // Note: These are placeholder methods - delivery partner functionality would need
-  // the full delivery partner table schema and implementation
+  // ===== USER ROLES MANAGEMENT =====
   
-  async createDeliveryPartnerApplication(applicationData: any): Promise<any> {
-    // This would need proper delivery partner application table implementation
-    throw new Error('Delivery partner applications not yet implemented in Firebase storage');
+  async updateUserRoles(userId: number, roles: { isChef: boolean; isDeliveryPartner: boolean }): Promise<void> {
+    try {
+      await db
+        .update(users)
+        .set({ 
+          isChef: roles.isChef,
+          isDeliveryPartner: roles.isDeliveryPartner
+        })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      console.error('Error updating user roles:', error);
+      throw error;
+    }
   }
 
-  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<any[]> {
-    // This would need proper delivery partner application table implementation
-    throw new Error('Delivery partner applications not yet implemented in Firebase storage');
+  // ===== DELIVERY PARTNER APPLICATION METHODS =====
+  
+  async createDeliveryPartnerApplication(applicationData: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
+    try {
+      const [inserted] = await db
+        .insert(deliveryPartnerApplications)
+        .values(applicationData)
+        .returning();
+      
+      return inserted;
+    } catch (error) {
+      console.error('Error creating delivery partner application:', error);
+      throw error;
+    }
   }
 
-  async getAllDeliveryPartnerApplications(): Promise<any[]> {
-    // This would need proper delivery partner application table implementation
-    throw new Error('Delivery partner applications not yet implemented in Firebase storage');
+  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
+    try {
+      return await db
+        .select()
+        .from(deliveryPartnerApplications)
+        .where(eq(deliveryPartnerApplications.userId, userId));
+    } catch (error) {
+      console.error('Error getting delivery partner applications by user ID:', error);
+      throw error;
+    }
+  }
+
+  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
+    try {
+      return await db.select().from(deliveryPartnerApplications);
+    } catch (error) {
+      console.error('Error getting all delivery partner applications:', error);
+      throw error;
+    }
   }
 }
 

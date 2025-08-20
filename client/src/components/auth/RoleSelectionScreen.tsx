@@ -13,21 +13,30 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 
 interface RoleSelectionScreenProps {
-  onRoleSelected: (role: 'chef' | 'delivery_partner') => void;
+  onRoleSelected: (roles: { isChef: boolean; isDeliveryPartner: boolean }) => void;
 }
 
 export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScreenProps) {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
-  const [selectedRole, setSelectedRole] = useState<'chef' | 'delivery_partner' | null>(null);
+  const [selectedRoles, setSelectedRoles] = useState<{isChef: boolean; isDeliveryPartner: boolean}>({
+    isChef: false,
+    isDeliveryPartner: false
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleRoleSelect = (role: 'chef' | 'delivery_partner') => {
-    setSelectedRole(role);
+  const handleRoleToggle = (role: 'chef' | 'delivery_partner') => {
+    setSelectedRoles(prev => ({
+      ...prev,
+      isChef: role === 'chef' ? !prev.isChef : prev.isChef,
+      isDeliveryPartner: role === 'delivery_partner' ? !prev.isDeliveryPartner : prev.isDeliveryPartner
+    }));
   };
 
+  const hasSelectedRoles = selectedRoles.isChef || selectedRoles.isDeliveryPartner;
+
   const handleContinue = async () => {
-    if (!selectedRole) return;
+    if (!hasSelectedRoles) return;
     
     setIsSubmitting(true);
     try {
@@ -36,34 +45,32 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
       if (currentUser) {
         const token = await currentUser.getIdToken();
         
-        // Update user's application type in the database
-        const response = await fetch('/api/firebase/user/update-application-type', {
+        // Update user's roles in the database
+        const response = await fetch('/api/firebase/user/update-roles', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            applicationType: selectedRole
-          })
+          body: JSON.stringify(selectedRoles)
         });
 
         if (response.ok) {
-          console.log(`✅ Application type set to: ${selectedRole}`);
-          onRoleSelected(selectedRole);
+          console.log(`✅ User roles updated:`, selectedRoles);
+          onRoleSelected(selectedRoles);
         } else {
-          console.error('❌ Failed to update application type:', response.status);
+          console.error('❌ Failed to update user roles:', response.status);
           // Still continue with the role selection
-          onRoleSelected(selectedRole);
+          onRoleSelected(selectedRoles);
         }
       } else {
         console.warn("⚠️ No Firebase user available");
-        onRoleSelected(selectedRole);
+        onRoleSelected(selectedRoles);
       }
     } catch (error) {
-      console.error('❌ Error updating application type:', error);
+      console.error('❌ Error updating user roles:', error);
       // Still continue with the role selection
-      onRoleSelected(selectedRole);
+      onRoleSelected(selectedRoles);
     } finally {
       setIsSubmitting(false);
     }
@@ -122,7 +129,7 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
             </h1>
             
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Choose how you'd like to join our community. You can always change this later.
+              Choose how you'd like to join our community. You can select both roles if you want to be both a chef and delivery partner.
             </p>
           </motion.div>
 
@@ -137,11 +144,11 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
               >
                 <Card 
                   className={`cursor-pointer transition-all duration-300 hover:shadow-xl ${
-                    selectedRole === role.id 
+                    (role.id === 'chef' && selectedRoles.isChef) || (role.id === 'delivery_partner' && selectedRoles.isDeliveryPartner)
                       ? 'ring-2 ring-primary ring-offset-2 scale-105' 
                       : 'hover:scale-105'
                   }`}
-                  onClick={() => handleRoleSelect(role.id)}
+                  onClick={() => handleRoleToggle(role.id)}
                 >
                   <CardContent className="p-6">
                     <div className="text-center mb-4">
@@ -177,7 +184,7 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
           >
             <Button 
               onClick={handleContinue}
-              disabled={!selectedRole || isSubmitting}
+              disabled={!hasSelectedRoles || isSubmitting}
               size="lg"
               className="bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -188,7 +195,17 @@ export default function RoleSelectionScreen({ onRoleSelected }: RoleSelectionScr
                 </>
               ) : (
                 <>
-                  Continue as {selectedRole === 'chef' ? 'Local Chef' : selectedRole === 'delivery_partner' ? 'Delivery Partner' : '...'}
+                  Continue as {(() => {
+                    if (selectedRoles.isChef && selectedRoles.isDeliveryPartner) {
+                      return 'Chef & Delivery Partner';
+                    } else if (selectedRoles.isChef) {
+                      return 'Local Chef';
+                    } else if (selectedRoles.isDeliveryPartner) {
+                      return 'Delivery Partner';
+                    } else {
+                      return '...';
+                    }
+                  })()}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </>
               )}
