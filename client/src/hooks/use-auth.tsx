@@ -333,7 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Wait a moment for profile update to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const syncSuccess = await syncUserWithBackend(updatedUser, null, true, password);
+      const syncSuccess = await syncUserWithBackend(updatedUser, undefined, true, password);
       
       if (syncSuccess) {
         console.log('✅ User synced successfully during registration');
@@ -431,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
         
         // Manually trigger sync for registration - NO DEFAULT ROLE, user will choose
-        const syncSuccess = await syncUserWithBackend(result.user, null, true);
+        const syncSuccess = await syncUserWithBackend(result.user, undefined, true);
         
         // Also create initial Firestore document for Google users
         try {
