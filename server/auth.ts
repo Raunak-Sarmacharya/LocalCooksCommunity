@@ -133,9 +133,9 @@ export function setupAuth(app: Express) {
               console.log('Creating new Facebook OAuth user:', userData.username);
               user = await storage.createOAuthUser({
                 ...userData,
-                role: "chef", // Default Facebook users to chef role
-                isChef: true,
-                isDeliveryPartner: false
+                role: "chef", // Base role but don't set flags - let user choose
+                isChef: false, // No default roles - user must choose
+                isDeliveryPartner: false // No default roles - user must choose
               });
             }
             
@@ -183,9 +183,9 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         username: req.body.username,
         password: hashedPassword,
-        role: req.body.role || "chef", // Default to chef if not specified
-        isChef: req.body.role === "chef" || !req.body.role, // Default to chef if no role specified
-        isDeliveryPartner: req.body.role === "delivery_partner"
+        role: req.body.role || "chef", // Base role but don't set flags
+        isChef: false, // No default roles - user must choose
+        isDeliveryPartner: false // No default roles - user must choose
       });
       
       // Log the user in

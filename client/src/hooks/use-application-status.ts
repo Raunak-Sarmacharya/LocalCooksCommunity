@@ -141,10 +141,14 @@ export function useApplicationStatus() {
     } else if (user.role === "admin") {
       return "Go to Admin Dashboard";
     } else if (shouldShowStartApplication()) {
-      if (user.application_type === "delivery_partner") {
+      if ((user as any).isDeliveryPartner && !(user as any).isChef) {
         return "Start Delivery Partner Application";
-      } else {
+      } else if ((user as any).isChef && !(user as any).isDeliveryPartner) {
         return defaultText.includes("Start") ? defaultText : "Start Chef Application";
+      } else if ((user as any).isChef && (user as any).isDeliveryPartner) {
+        return "Choose Application Type";
+      } else {
+        return "Select Your Role First";
       }
     } else {
       return "Go To Dashboard";
@@ -160,11 +164,17 @@ export function useApplicationStatus() {
     } else if (user.role === "admin") {
       return "/admin";
     } else if (shouldShowStartApplication()) {
-      // Direct to appropriate application form based on user's application type
-      if (user.application_type === "delivery_partner") {
+      // Direct to appropriate application form based on user's roles
+      if ((user as any).isDeliveryPartner && !(user as any).isChef) {
         return "/delivery-partner-apply";
-      } else {
+      } else if ((user as any).isChef && !(user as any).isDeliveryPartner) {
         return "/apply";
+      } else if ((user as any).isChef && (user as any).isDeliveryPartner) {
+        // For dual-role users, default to chef application or show selection
+        return "/apply";
+      } else {
+        // No roles selected - redirect to role selection
+        return "/auth";
       }
     } else {
       return "/dashboard";
