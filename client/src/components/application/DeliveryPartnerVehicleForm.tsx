@@ -42,6 +42,7 @@ export default function DeliveryPartnerVehicleForm() {
   const [years, setYears] = useState<number[]>([]);
   const [selectedMakeId, setSelectedMakeId] = useState<number | null>(null);
   const [selectedMakeName, setSelectedMakeName] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Loading states for individual fields
@@ -102,26 +103,22 @@ export default function DeliveryPartnerVehicleForm() {
     }
   }, [formData.vehicleType]);
 
-  // Load models and years sequentially when make is selected (debounced to avoid rapid API calls)
+  // Load models when make is selected (debounced to avoid rapid API calls)
   const debouncedMakeName = useDebounce(selectedMakeName, 300);
   useEffect(() => {
     if (debouncedMakeName) {
-      const loadModelsAndYears = async () => {
+      const loadModels = async () => {
         // Cancel any existing requests
         if (modelsRequestRef.current) {
           modelsRequestRef.current.abort();
-        }
-        if (yearsRequestRef.current) {
-          yearsRequestRef.current.abort();
         }
         
         const modelsController = new AbortController();
         modelsRequestRef.current = modelsController;
         
         try {
-          // Step 1: Load models first
+          // Load models
           setModelsLoading(true);
-          setYearsLoading(false);
           setError(null);
           
           // Clear existing data
@@ -143,22 +140,6 @@ export default function DeliveryPartnerVehicleForm() {
           
           setModelsLoading(false);
           
-          // Step 2: Load years after models are loaded successfully
-          const yearsController = new AbortController();
-          yearsRequestRef.current = yearsController;
-          
-          setYearsLoading(true);
-          
-          const yearsData = await VehicleAPIClient.getYears(selectedMakeId!, yearsController.signal);
-          
-          // Check if request was cancelled
-          if (yearsController.signal.aborted) return;
-          
-          if (yearsData && yearsData.length > 0) {
-            setYears(yearsData);
-          }
-          // Note: Don't show error for years since it's optional
-          
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') return; // Request was cancelled
           setError('Failed to load vehicle data. Please try selecting a different make.');
@@ -166,13 +147,10 @@ export default function DeliveryPartnerVehicleForm() {
           if (!modelsController.signal.aborted) {
             setModelsLoading(false);
           }
-          if (!yearsRequestRef.current?.signal.aborted) {
-            setYearsLoading(false);
-          }
         }
       };
 
-      loadModelsAndYears();
+      loadModels();
     }
   }, [debouncedMakeName]);
 
@@ -189,6 +167,7 @@ export default function DeliveryPartnerVehicleForm() {
       });
       setSelectedMakeId(null);
       setSelectedMakeName(null);
+      setSelectedModelId(null);
       setModels([]);
       setYears([]);
     }
@@ -197,6 +176,7 @@ export default function DeliveryPartnerVehicleForm() {
   const handleMakeChange = useCallback((makeId: string) => {
     const makeIdNum = parseInt(makeId);
     setSelectedMakeId(makeIdNum);
+    setSelectedModelId(null);
     setError(null);
     
     // Find the make name and update form
@@ -215,8 +195,9 @@ export default function DeliveryPartnerVehicleForm() {
     setYears([]);
   }, [makes, updateFormData]);
 
-  const handleModelChange = useCallback((modelId: string) => {
+  const handleModelChange = useCallback(async (modelId: string) => {
     const modelIdNum = parseInt(modelId);
+    setSelectedModelId(modelIdNum);
     setError(null);
     
     // Find the model name and update form
@@ -226,7 +207,23 @@ export default function DeliveryPartnerVehicleForm() {
         vehicleModel: selectedModel.name
       });
     }
-  }, [models, updateFormData]);
+
+    // Load years when model is selected (if make is selected)
+    if (selectedMakeId) {
+      try {
+        setYearsLoading(true);
+        const yearsData = await VehicleAPIClient.getYears(selectedMakeId);
+        if (yearsData && yearsData.length > 0) {
+          setYears(yearsData);
+        }
+      } catch (error) {
+        console.error('Error loading years:', error);
+        // Don't show error for years since it's optional
+      } finally {
+        setYearsLoading(false);
+      }
+    }
+  }, [models, updateFormData, selectedMakeId]);
 
   // Cleanup function for component unmount
   useEffect(() => {
@@ -344,7 +341,7 @@ export default function DeliveryPartnerVehicleForm() {
                 Vehicle Model *
               </Label>
               <Select
-                value={formData.vehicleModel || ""}
+                value={selectedModelId?.toString() || ""}
                 onValueChange={handleModelChange}
                 disabled={!selectedMakeId || modelsLoading}
               >
