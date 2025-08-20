@@ -18,7 +18,7 @@ export default function CTASection() {
 
   const handleDeliveryPartnerClick = () => {
     if (!user) {
-      navigate(`/auth?redirect=/delivery-partner-apply`);
+      navigate(`/driver-auth?redirect=/delivery-partner-apply`);
     } else {
       navigate('/delivery-partner-apply');
     }
