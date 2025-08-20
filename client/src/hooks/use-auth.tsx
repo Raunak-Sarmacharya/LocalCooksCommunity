@@ -310,7 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await setDoc(userDocRef, {
             email: cred.user.email,
             displayName: displayName,
-            role: "chef", // Base role - user will choose specific roles later
+            role: null, // No default role - user will choose specific roles later
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -333,7 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Wait a moment for profile update to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const syncSuccess = await syncUserWithBackend(updatedUser, "chef", true, password);
+      const syncSuccess = await syncUserWithBackend(updatedUser, null, true, password);
       
       if (syncSuccess) {
         console.log('✅ User synced successfully during registration');
@@ -431,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
         
         // Manually trigger sync for registration - NO DEFAULT ROLE, user will choose
-        const syncSuccess = await syncUserWithBackend(result.user, "chef", true);
+        const syncSuccess = await syncUserWithBackend(result.user, null, true);
         
         // Also create initial Firestore document for Google users
         try {
@@ -439,7 +439,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await setDoc(userDocRef, {
             email: result.user.email,
             displayName: result.user.displayName,
-            role: "chef", // Base role - user will choose specific roles later
+            role: null, // No default role - user will choose specific roles later
             isChef: false, // Will be updated when user selects roles
             isDeliveryPartner: false, // Will be updated when user selects roles
             createdAt: serverTimestamp(),
@@ -726,7 +726,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           photoURL: firebaseUser.photoURL,
           emailVerified: firebaseUser.emailVerified,
           providers: firebaseUser.providerData.map((p: any) => p.providerId),
-          role: userData.role || "chef",
+          role: userData.role, // Don't set default role - let it be null if no role selected
           application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
           isChef: userData.isChef || userData.is_chef || false,
           isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner || false,
