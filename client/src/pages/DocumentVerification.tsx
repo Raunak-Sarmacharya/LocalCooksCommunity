@@ -5,20 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
+import { auth } from "@/lib/firebase";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-    CheckCircle,
-    Clock,
-    FileText,
-    Shield,
-    XCircle,
-    Truck,
-    ChefHat
+  CheckCircle,
+  ChefHat,
+  Clock,
+  FileText,
+  Shield,
+  Truck,
+  XCircle
 } from "lucide-react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { auth } from "@/lib/firebase";
-import { DeliveryPartnerApplication } from "@shared/schema";
 
 export default function DocumentVerification() {
   const { user } = useFirebaseAuth();
