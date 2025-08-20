@@ -7,35 +7,35 @@ import { auth } from "@/lib/firebase";
 
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from "@/components/ui/select";
 import {
-  formatApplicationStatus
+    formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application, DeliveryPartnerApplication } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  BookOpen,
-  CheckCircle,
-  ChefHat,
-  Clock,
-  FileText,
-  Shield,
-  Truck,
-  Upload,
-  XCircle
+    BookOpen,
+    CheckCircle,
+    ChefHat,
+    Clock,
+    FileText,
+    Shield,
+    Truck,
+    Upload,
+    XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -82,10 +82,10 @@ export default function ApplicantDashboard() {
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   
   // Use localStorage to track if vendor popup has been shown for this user
-  const getVendorPopupKey = () => `vendorPopupShown_${user?.uid}`;
   const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(() => {
     if (typeof window !== 'undefined' && user?.uid) {
-      return localStorage.getItem(getVendorPopupKey()) === 'true';
+      const vendorPopupKey = `vendorPopupShown_${user.uid}`;
+      return localStorage.getItem(vendorPopupKey) === 'true';
     }
     return false;
   });
@@ -923,7 +923,8 @@ export default function ApplicantDashboard() {
   // Sync localStorage state when user changes
   useEffect(() => {
     if (user?.uid) {
-      const hasShownPopup = localStorage.getItem(getVendorPopupKey()) === 'true';
+      const vendorPopupKey = `vendorPopupShown_${user?.uid}`;
+    const hasShownPopup = localStorage.getItem(vendorPopupKey) === 'true';
       setHasClosedVendorPopup(hasShownPopup);
     }
   }, [user?.uid]);
@@ -944,7 +945,8 @@ export default function ApplicantDashboard() {
     setHasClosedVendorPopup(true);
     // Save to localStorage that this user has seen the popup
     if (user?.uid) {
-      localStorage.setItem(getVendorPopupKey(), 'true');
+              const vendorPopupKey = `vendorPopupShown_${user?.uid}`;
+        localStorage.setItem(vendorPopupKey, 'true');
     }
   };
 
