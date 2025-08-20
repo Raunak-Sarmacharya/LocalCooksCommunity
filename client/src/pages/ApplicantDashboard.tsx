@@ -55,6 +55,11 @@ const canApplyAgain = (applications: AnyApplication[]) => {
   return !applications.some(isApplicationActive);
 };
 
+// Type guard to check if application is a chef application
+const isChefApplication = (app: AnyApplication): app is Application => {
+  return 'kitchenPreference' in app && 'foodSafetyLicense' in app;
+};
+
 // Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -90,7 +95,7 @@ export default function ApplicantDashboard() {
     return false;
   });
 
-  const prevApplicationsRef = useRef<Application[] | null>(null);
+  const prevApplicationsRef = useRef<AnyApplication[] | null>(null);
   const { showConfirm } = useCustomAlerts();
 
   // Debug authentication state
@@ -1347,14 +1352,18 @@ export default function ApplicantDashboard() {
                             <div className="space-y-3">
                               <h6 className="font-medium text-gray-800 text-sm">Application Details</h6>
                               <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">Kitchen Preference:</span>
-                                  <span className="font-medium text-gray-900 capitalize">{defaultApp.kitchenPreference?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">Food Safety License:</span>
-                                  <span className="font-medium text-gray-900 capitalize">{defaultApp.foodSafetyLicense?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
-                                </div>
+                                {isChefApplication(defaultApp) && (
+                                  <>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Kitchen Preference:</span>
+                                      <span className="font-medium text-gray-900 capitalize">{defaultApp.kitchenPreference?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Food Safety License:</span>
+                                      <span className="font-medium text-gray-900 capitalize">{defaultApp.foodSafetyLicense?.replace('notSure', 'Not Sure') || 'Not specified'}</span>
+                                    </div>
+                                  </>
+                                )}
                                 <div className="flex justify-between">
                                   <span className="text-gray-600">Submitted:</span>
                                   <span className="font-medium text-gray-900">{defaultApp.createdAt ? new Date(defaultApp.createdAt).toLocaleDateString() : 'N/A'}</span>
@@ -1364,7 +1373,7 @@ export default function ApplicantDashboard() {
                           </div>
 
                           {/* Document Status */}
-                          {(defaultApp.foodSafetyLicenseStatus || defaultApp.foodEstablishmentCertStatus) && (
+                          {isChefApplication(defaultApp) && (defaultApp.foodSafetyLicenseStatus || defaultApp.foodEstablishmentCertStatus) && (
                             <div className="pt-4 border-t border-gray-200">
                               <h6 className="font-medium text-gray-800 text-sm mb-3">Document Verification Status</h6>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

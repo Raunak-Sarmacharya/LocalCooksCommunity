@@ -61,7 +61,7 @@ export async function syncFirebaseUserToNeon(params: {
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
-      role: role || null, // Don't set default role - let user choose
+      role: (role === 'admin' || role === 'chef' || role === 'delivery_partner') ? role : 'chef', // Use provided role or default to chef
       isChef: false, // No default roles - user must choose
       isDeliveryPartner: false, // No default roles - user must choose
       firebaseUid: uid,

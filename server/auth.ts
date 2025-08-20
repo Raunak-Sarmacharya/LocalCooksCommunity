@@ -13,7 +13,7 @@ declare global {
     interface User {
       id: number;
       username: string;
-      role: "admin" | "chef" | "delivery_partner";
+      role: "admin" | "chef" | "delivery_partner" | null;
       isChef?: boolean;
       isDeliveryPartner?: boolean;
     }
