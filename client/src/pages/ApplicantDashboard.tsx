@@ -1728,12 +1728,12 @@ export default function ApplicantDashboard() {
                          
                          <div className="space-y-3 pt-4 border-t border-gray-200">
                            <Button asChild className="w-full rounded-xl">
-                             <Link href="/delivery-partner-apply">
+                             <Link href="/document-verification">
                                <Upload className="mr-2 h-4 w-4" />
-                               Upload Delivery Documents
+                               {deliveryApp.driversLicenseUrl || deliveryApp.insuranceUrl ? 'Manage Documents' : 'Upload Documents'}
                              </Link>
                            </Button>
-                           <p className="text-xs text-gray-500">You'll be able to upload documents after submitting your delivery partner application</p>
+                           <p className="text-xs text-gray-500">Manage your delivery partner documents and verification status</p>
                          </div>
                        </div>
                      );
