@@ -5490,6 +5490,68 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
   }
 });
 
+// 🔥 Update User Roles (Firebase Auth, NO SESSIONS)
+app.post('/api/firebase/user/update-roles', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    const { isChef, isDeliveryPartner } = req.body;
+
+    if (typeof isChef !== 'boolean' || typeof isDeliveryPartner !== 'boolean') {
+      return res.status(400).json({
+        error: 'Invalid role data. isChef and isDeliveryPartner must be boolean values'
+      });
+    }
+
+    if (!isChef && !isDeliveryPartner) {
+      return res.status(400).json({
+        error: 'User must have at least one role (chef or delivery partner)'
+      });
+    }
+
+    console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id} → Chef: ${isChef}, Delivery: ${isDeliveryPartner}`);
+
+    // Update user roles in database
+    if (pool) {
+      // Determine the main role based on selected roles
+      let mainRole = 'chef'; // default
+      if (isDeliveryPartner && !isChef) {
+        mainRole = 'delivery_partner';
+      } else if (isChef && isDeliveryPartner) {
+        mainRole = 'chef'; // For dual roles, default to chef
+      } else if (isChef) {
+        mainRole = 'chef';
+      }
+
+      await pool.query(
+        `UPDATE users SET 
+          is_chef = $1, 
+          is_delivery_partner = $2, 
+          role = $3 
+        WHERE id = $4`,
+        [isChef, isDeliveryPartner, mainRole, req.neonUser.id]
+      );
+    } else {
+      // In-memory fallback
+      const user = Array.from(users.values()).find(u => u.id === req.neonUser.id);
+      if (user) {
+        user.isChef = isChef;
+        user.isDeliveryPartner = isDeliveryPartner;
+        user.role = isDeliveryPartner && !isChef ? 'delivery_partner' : 'chef';
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'User roles updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating user roles:', error);
+    res.status(500).json({
+      error: 'Failed to update user roles',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Enhanced Submit Application
 app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req, res) => {
   try {
