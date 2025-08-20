@@ -1,4 +1,4 @@
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { queryClient } from "@/lib/queryClient";
 import {
   createUserWithEmailAndPassword,
@@ -13,6 +13,11 @@ import {
   signOut,
   updateProfile
 } from "firebase/auth";
+import {
+  doc,
+  serverTimestamp,
+  setDoc
+} from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
 interface AuthUser {
@@ -298,9 +303,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await updateProfile(cred.user, { displayName });
         console.log('📝 Updated Firebase profile with displayName:', displayName);
         
-        // NOTE: We don't use Firestore for data storage - using Neon database instead
-        // User data is handled by the backend sync process
-        console.log('📝 User displayName will be synced via backend API');
+        // Also update Firestore document with displayName
+        try {
+          const userDocRef = doc(db, "users", cred.user.uid);
+          await setDoc(userDocRef, {
+            email: cred.user.email,
+            displayName: displayName,
+            role: "chef", // Base role - user will choose specific roles later
+            createdAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          console.log('📝 Updated Firestore with displayName:', displayName);
+        } catch (firestoreError) {
+          console.error('❌ Failed to update Firestore:', firestoreError);
+          // Don't fail registration if Firestore fails
+        }
       }
 
       // IMPORTANT: Manually sync the user before signing them out
@@ -413,6 +431,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Manually trigger sync for registration - NO DEFAULT ROLE, user will choose
         const syncSuccess = await syncUserWithBackend(result.user, "chef", true);
+        
+        // Also create initial Firestore document for Google users
+        try {
+          const userDocRef = doc(db, "users", result.user.uid);
+          await setDoc(userDocRef, {
+            email: result.user.email,
+            displayName: result.user.displayName,
+            role: "chef", // Base role - user will choose specific roles later
+            isChef: false, // Will be updated when user selects roles
+            isDeliveryPartner: false, // Will be updated when user selects roles
+            createdAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          console.log('📝 Created Firestore document for Google user');
+        } catch (firestoreError) {
+          console.error('❌ Failed to create Firestore document:', firestoreError);
+          // Don't fail registration if Firestore fails
+        }
         if (syncSuccess) {
           console.log('✅ Google registration sync completed');
           setPendingSync(false);
