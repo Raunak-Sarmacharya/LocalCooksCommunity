@@ -309,7 +309,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await setDoc(userDocRef, {
             email: cred.user.email,
             displayName: displayName,
-            role: "applicant",
+            role: "chef", // Base role - user will choose specific roles later
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -331,7 +331,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Wait a moment for profile update to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const syncSuccess = await syncUserWithBackend(updatedUser, "applicant", true, password);
+      const syncSuccess = await syncUserWithBackend(updatedUser, "chef", true, password);
       
       if (syncSuccess) {
         console.log('✅ User synced successfully during registration');

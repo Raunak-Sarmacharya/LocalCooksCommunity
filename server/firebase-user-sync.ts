@@ -57,13 +57,13 @@ export async function syncFirebaseUserToNeon(params: {
       return existingUser;
     }
 
-    // Create new user with appropriate verification status
+    // Create new user with NO default roles - let them choose
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
-      role: role as 'admin' | 'chef' | 'delivery_partner',
-      isChef: (role as string) === "chef" || !role, // Default to chef if no role specified
-      isDeliveryPartner: (role as string) === "delivery_partner",
+      role: role === 'admin' ? 'admin' : 'chef', // Use chef as base role but don't set the flags
+      isChef: false, // No default roles - user must choose
+      isDeliveryPartner: false, // No default roles - user must choose
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
     };

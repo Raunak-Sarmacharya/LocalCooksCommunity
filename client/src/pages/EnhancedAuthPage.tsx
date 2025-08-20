@@ -147,9 +147,9 @@ export default function EnhancedAuthPage() {
             if (userData.is_verified && !userData.has_seen_welcome) {
               console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
               
-              // Check if user needs to select a role first
-              if (!userData.application_type) {
-                console.log('🎯 ROLE SELECTION REQUIRED - User needs to choose role');
+              // Check if user needs to select a role first (no roles selected)
+              if (!userData.isChef && !userData.isDeliveryPartner) {
+                console.log('🎯 ROLE SELECTION REQUIRED - User needs to choose roles');
                 setShowRoleSelection(true);
                 return; // Don't proceed with redirect, let the render logic handle role selection
               }
@@ -326,8 +326,8 @@ export default function EnhancedAuthPage() {
     return <WelcomeScreen onContinue={handleWelcomeContinue} />;
   }
 
-  // Show role selection screen if user is verified but hasn't selected a role
-  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.application_type && showRoleSelection) {
+  // Show role selection screen if user is verified but hasn't selected any roles
+  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.isChef && !userMeta.isDeliveryPartner && showRoleSelection) {
     return <RoleSelectionScreen onRoleSelected={handleRoleSelected} />;
   }
 

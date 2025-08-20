@@ -5062,8 +5062,8 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           
           try {
             const insertResult = await pool.query(
-              'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-              [email, hashedPassword, role || 'applicant', uid, isUserVerified, false]
+              'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+              [email, hashedPassword, role || 'chef', uid, isUserVerified, false, false, false]
             );
             user = insertResult.rows[0];
             wasCreated = true;
