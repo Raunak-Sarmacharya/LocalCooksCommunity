@@ -7,35 +7,35 @@ import { auth } from "@/lib/firebase";
 
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
 } from "@/components/ui/dialog";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
 import {
-    formatApplicationStatus
+  formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application, DeliveryPartnerApplication } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-    BookOpen,
-    CheckCircle,
-    ChefHat,
-    Clock,
-    FileText,
-    Shield,
-    Truck,
-    Upload,
-    XCircle
+  BookOpen,
+  CheckCircle,
+  ChefHat,
+  Clock,
+  FileText,
+  Shield,
+  Truck,
+  Upload,
+  XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
