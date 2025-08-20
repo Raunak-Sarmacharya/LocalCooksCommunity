@@ -1171,30 +1171,32 @@ export default function ApplicantDashboard() {
               </motion.div>
             )}
 
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
-            >
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+            {/* Training Card - Only show for chefs */}
+            {((user as any)?.isChef) && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">Training</p>
+                    <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
+                      {microlearningCompletion?.confirmed 
+                        ? "Completed" 
+                        : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
+                          ? "In Progress"
+                          : "Not Started"
+                      }
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">Training</p>
-                  <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
-                    {!(user as any)?.isChef ? "Select Role" :
-                     microlearningCompletion?.confirmed 
-                      ? "Completed" 
-                      : trainingAccess?.progress && trainingAccess.progress.length > 0 && trainingAccess?.hasApprovedApplication
-                        ? "In Progress"
-                        : "Not Started"
-                    }
-                  </p>
-                </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            )}
 
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -1945,10 +1947,12 @@ export default function ApplicantDashboard() {
                       <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                       <span>Documents Verified</span>
                     </div>
-                    <div className="flex items-center gap-3 text-green-700">
-                      <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                      <span>Training Complete</span>
-                    </div>
+                    {((user as any)?.isChef) && (
+                      <div className="flex items-center gap-3 text-green-700">
+                        <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                        <span>Training Complete</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-3 text-green-700">
                       <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                       <span>Application Approved</span>
