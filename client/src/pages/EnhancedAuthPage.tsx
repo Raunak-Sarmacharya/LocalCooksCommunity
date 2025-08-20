@@ -14,7 +14,7 @@ import { useLocation } from "wouter";
 
 export default function EnhancedAuthPage() {
   const [location, setLocation] = useLocation();
-  const { user, loading, logout } = useFirebaseAuth();
+  const { user, loading, logout, refreshUserData } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -267,8 +267,19 @@ export default function EnhancedAuthPage() {
         console.log('✅ Local user meta updated:', updatedUserMeta);
       }
       
-      // Refresh user metadata from backend to ensure sync
+      // Refresh user data in auth context to ensure sync
       try {
+        console.log('🔄 Refreshing auth context after role selection...');
+        await refreshUserData();
+        console.log('✅ Auth context refreshed after role selection');
+        
+        // Invalidate all application status queries to force refresh
+        const { queryClient } = await import('@/lib/queryClient');
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/user-session"] });
+        console.log('✅ Query cache invalidated after role selection');
+        
+        // Also refresh local user meta
         const firebaseUser = auth.currentUser;
         if (firebaseUser) {
           const token = await firebaseUser.getIdToken();
@@ -281,7 +292,7 @@ export default function EnhancedAuthPage() {
           
           if (response.ok) {
             const refreshedUserData = await response.json();
-            console.log('✅ USER DATA REFRESHED after role selection:', refreshedUserData);
+            console.log('✅ Local user meta refreshed after role selection:', refreshedUserData);
             setUserMeta(refreshedUserData);
           }
         }

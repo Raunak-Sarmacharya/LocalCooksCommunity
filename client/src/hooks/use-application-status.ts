@@ -39,7 +39,7 @@ export function useApplicationStatus() {
       }
     },
     retry: false,
-    staleTime: 30 * 1000,
+    staleTime: 10 * 1000, // Shorter cache time to pick up role changes faster
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     enabled: true
@@ -51,13 +51,26 @@ export function useApplicationStatus() {
   // Debug logging for application status hook
   console.log('useApplicationStatus: Auth state', {
     sessionUser: sessionUser ? { role: sessionUser.role, id: sessionUser.id } : null,
-    firebaseUser: firebaseAuth.user ? { role: firebaseAuth.user.role, uid: firebaseAuth.user.uid } : null,
-    finalUser: user ? { role: user.role, id: user.id || user.uid } : null
+    firebaseUser: firebaseAuth.user ? { 
+      role: firebaseAuth.user.role, 
+      uid: firebaseAuth.user.uid,
+      isChef: (firebaseAuth.user as any)?.isChef,
+      isDeliveryPartner: (firebaseAuth.user as any)?.isDeliveryPartner
+    } : null,
+    finalUser: user ? { 
+      role: user.role, 
+      id: user.id || user.uid,
+      isChef: (user as any)?.isChef,
+      isDeliveryPartner: (user as any)?.isDeliveryPartner
+    } : null
   });
+
+  // Create a cache key that includes role data to ensure refresh when roles change
+  const userRoleKey = user ? `${user.uid || user.id}-${(user as any)?.isChef}-${(user as any)?.isDeliveryPartner}` : 'no-user';
 
   // Fetch user's applications to determine CTA logic
   const { data: applications = [], isLoading: applicationsLoading } = useQuery<Application[]>({
-    queryKey: ["/api/firebase/applications/my"],
+    queryKey: ["/api/firebase/applications/my", userRoleKey],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid || user.role === "admin") {
         return [];
@@ -107,6 +120,8 @@ export function useApplicationStatus() {
       return normalizedData;
     },
     enabled: !!user && user.role !== "admin", // Only run if user is logged in and not admin
+    staleTime: 5 * 1000, // Short cache time to ensure fresh data after role changes
+    refetchOnWindowFocus: true,
   });
 
   /**
@@ -141,14 +156,22 @@ export function useApplicationStatus() {
     } else if (user.role === "admin") {
       return "Go to Admin Dashboard";
     } else if (shouldShowStartApplication()) {
-      if ((user as any).isDeliveryPartner && !(user as any).isChef) {
+      const isChef = (user as any)?.isChef;
+      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+      
+      console.log('🔍 getButtonText: checking roles', { isChef, isDeliveryPartner, user });
+      
+      if (isDeliveryPartner && !isChef) {
         return "Start Delivery Partner Application";
-      } else if ((user as any).isChef && !(user as any).isDeliveryPartner) {
+      } else if (isChef && !isDeliveryPartner) {
         return defaultText.includes("Start") ? defaultText : "Start Chef Application";
-      } else if ((user as any).isChef && (user as any).isDeliveryPartner) {
+      } else if (isChef && isDeliveryPartner) {
         return "Choose Application Type";
       } else {
-        return "Select Your Role First";
+        // Fallback: If roles are not detected but user is logged in, default to generic text
+        // This prevents getting stuck on "Select Your Role First" due to timing issues
+        console.warn('⚠️ No roles detected for logged in user, using fallback text');
+        return defaultText;
       }
     } else {
       return "Go To Dashboard";
@@ -165,16 +188,23 @@ export function useApplicationStatus() {
       return "/admin";
     } else if (shouldShowStartApplication()) {
       // Direct to appropriate application form based on user's roles
-      if ((user as any).isDeliveryPartner && !(user as any).isChef) {
+      const isChef = (user as any)?.isChef;
+      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+      
+      console.log('🔍 getNavigationPath: checking roles', { isChef, isDeliveryPartner });
+      
+      if (isDeliveryPartner && !isChef) {
         return "/delivery-partner-apply";
-      } else if ((user as any).isChef && !(user as any).isDeliveryPartner) {
+      } else if (isChef && !isDeliveryPartner) {
         return "/apply";
-      } else if ((user as any).isChef && (user as any).isDeliveryPartner) {
+      } else if (isChef && isDeliveryPartner) {
         // For dual-role users, default to chef application or show selection
         return "/apply";
       } else {
-        // No roles selected - redirect to role selection
-        return "/auth";
+        // Fallback: If no roles detected but user is logged in, go to dashboard
+        // This prevents redirecting to auth page when user is already authenticated
+        console.warn('⚠️ No roles detected for logged in user, redirecting to dashboard instead of auth');
+        return "/dashboard";
       }
     } else {
       return "/dashboard";
