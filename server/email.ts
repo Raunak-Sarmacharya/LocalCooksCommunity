@@ -1194,6 +1194,115 @@ Visit: ${getWebsiteUrl()}
   };
 };
 
+// Generate delivery partner application status change email
+export const generateDeliveryPartnerStatusChangeEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+    status: string;
+  }
+): EmailContent => {
+  // Create professional, non-promotional subject line
+  const getSubjectLine = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'Application Approved - Local Cooks Community';
+      case 'rejected':
+        return 'Application Update Required - Local Cooks Community';
+      case 'cancelled':
+        return 'Application Cancelled - Local Cooks Community';
+      default:
+        return 'Application Status Update - Local Cooks Community';
+    }
+  };
+
+  const subject = getSubjectLine(userData.status);
+
+  // Generate plain text version for better deliverability
+  const generatePlainText = (status: string, fullName: string) => {
+    const statusMessages = {
+      approved: 'Congratulations! Your delivery partner application has been approved.',
+      rejected: 'Your delivery partner application requires some updates before it can be approved.',
+      cancelled: 'Your delivery partner application has been cancelled.',
+      inReview: 'Your delivery partner application is being reviewed by our team.'
+    };
+
+    return `Hello ${fullName},
+
+${statusMessages[status as keyof typeof statusMessages] || 'Your delivery partner application status has been updated.'}
+
+Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
+
+${status === 'approved' ? `Access your dashboard: ${getDashboardUrl()}` : status === 'rejected' ? `Please update your application and resubmit: ${getDashboardUrl()}` : ''}
+
+If you have any questions, please contact us at ${getSupportEmail()}.
+
+Best regards,
+Local Cooks Community Team
+
+Visit: ${getWebsiteUrl()}
+`;
+  };
+
+  const getMessage = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'Congratulations! Your delivery partner application has been approved by our team. You are now ready to start delivering for Local Cooks Community.';
+      case 'rejected':
+        return 'Your delivery partner application could not be approved at this time. Please review the feedback and update your application accordingly.';
+      case 'cancelled':
+        return 'Your delivery partner application has been cancelled. If you would like to reapply, please submit a new application.';
+      case 'inReview':
+        return 'Your delivery partner application is currently being reviewed by our team. We will notify you once the review is complete.';
+      default:
+        return 'Your delivery partner application status has been updated. Please check your dashboard for more details.';
+    }
+  };
+
+  const message = getMessage(userData.status);
+
+  // Use uniform email template with proper styling
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
+      <p class="message">${message}</p>
+      <div class="status-badge${userData.status === 'approved' ? ' approved' : userData.status === 'rejected' ? ' rejected' : userData.status === 'cancelled' ? ' cancelled' : ''}">
+        📋 Application Status: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
+      </div>
+      ${userData.status === 'approved' ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === 'rejected' ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Application</a>` : ''}
+      <div class="divider"></div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: userData.email,
+    subject,
+    text: generatePlainText(userData.status, userData.fullName),
+    html
+  };
+};
+
 export async function sendApplicationReceivedEmail(applicationData: any) {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();

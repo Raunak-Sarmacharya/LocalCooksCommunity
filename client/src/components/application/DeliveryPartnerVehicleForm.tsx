@@ -3,6 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, ChevronsUpDown, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 import VehicleAPIClient, { VehicleMake, VehicleModel } from "@/lib/vehicleApi";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -33,6 +37,100 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+// Searchable Combobox Component
+interface SearchableComboboxProps {
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+  options: { id: number; name: string }[];
+  loading?: boolean;
+  disabled?: boolean;
+  searchPlaceholder?: string;
+  emptyMessage?: string;
+}
+
+function SearchableCombobox({
+  value,
+  onValueChange,
+  placeholder,
+  options,
+  loading = false,
+  disabled = false,
+  searchPlaceholder = "Search...",
+  emptyMessage = "No options found."
+}: SearchableComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  const filteredOptions = useMemo(() => {
+    if (!searchValue) return options;
+    return options.filter(option =>
+      option.name.toLowerCase().includes(searchValue.toLowerCase())
+    );
+  }, [options, searchValue]);
+
+  const selectedOption = options.find(option => option.id.toString() === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          disabled={disabled || loading}
+        >
+          {loading ? (
+            <div className="flex items-center gap-2">
+              <LoadingSpinner size="sm" />
+              <span>Loading...</span>
+            </div>
+          ) : selectedOption ? (
+            selectedOption.name
+          ) : (
+            placeholder
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0" align="start">
+        <Command>
+          <CommandInput 
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {filteredOptions.map((option) => (
+                <CommandItem
+                  key={option.id}
+                  value={option.id.toString()}
+                  onSelect={(currentValue) => {
+                    onValueChange(currentValue);
+                    setOpen(false);
+                    setSearchValue("");
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.id.toString() ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {option.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function DeliveryPartnerVehicleForm() {
   const { formData, updateFormData, goToNextStep, goToPreviousStep, canGoToNextStep } = useDeliveryPartnerForm();
   
@@ -54,8 +152,6 @@ export default function DeliveryPartnerVehicleForm() {
   const makesRequestRef = useRef<AbortController | null>(null);
   const modelsRequestRef = useRef<AbortController | null>(null);
   const yearsRequestRef = useRef<AbortController | null>(null);
-
-
 
   // Load makes filtered by vehicle type when vehicle type changes
   const loadMakesForType = async (vehicleType: string) => {
@@ -305,7 +401,6 @@ export default function DeliveryPartnerVehicleForm() {
     >
       <div className="space-y-6">
 
-
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-sm text-red-700">{error}</p>
@@ -342,56 +437,47 @@ export default function DeliveryPartnerVehicleForm() {
               <Label htmlFor="vehicleMake" className="text-sm font-medium text-gray-700">
                 Vehicle Make *
               </Label>
-              <Select
-                value={selectedMakeId?.toString() || ""}
-                onValueChange={handleMakeChange}
-                disabled={!formData.vehicleType || makesLoading}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={
+              <div className="mt-1">
+                <SearchableCombobox
+                  value={selectedMakeId?.toString() || ""}
+                  onValueChange={handleMakeChange}
+                  placeholder={
                     !formData.vehicleType ? "Select vehicle type first" :
                     makesLoading ? "Loading makes..." : 
-                    "Select vehicle make"
-                  } />
-                </SelectTrigger>
-                <SelectContent>
-                  {makes.map((make) => (
-                    <SelectItem key={make.id} value={make.id.toString()}>
-                      {make.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    "Search and select vehicle make"
+                  }
+                  options={makes}
+                  loading={makesLoading}
+                  disabled={!formData.vehicleType}
+                  searchPlaceholder="Search makes..."
+                  emptyMessage="No makes found. Try a different search term."
+                />
+              </div>
               {makesLoading && (
                 <LoadingSpinner size="sm" text="Loading vehicle makes..." className="mt-1" />
               )}
-
             </div>
 
             <div>
               <Label htmlFor="vehicleModel" className="text-sm font-medium text-gray-700">
                 Vehicle Model *
               </Label>
-              <Select
-                value={selectedModelId?.toString() || ""}
-                onValueChange={handleModelChange}
-                disabled={!selectedMakeId || modelsLoading}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={
+              <div className="mt-1">
+                <SearchableCombobox
+                  value={selectedModelId?.toString() || ""}
+                  onValueChange={handleModelChange}
+                  placeholder={
                     !selectedMakeId ? "Select make first" :
                     modelsLoading ? "Loading models..." :
-                    "Select vehicle model"
-                  } />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id.toString()}>
-                      {model.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    "Search and select vehicle model"
+                  }
+                  options={models}
+                  loading={modelsLoading}
+                  disabled={!selectedMakeId}
+                  searchPlaceholder="Search models..."
+                  emptyMessage="No models found for this make. Try a different search term."
+                />
+              </div>
               {modelsLoading && (
                 <LoadingSpinner size="sm" text="Loading models..." className="mt-1" />
               )}
