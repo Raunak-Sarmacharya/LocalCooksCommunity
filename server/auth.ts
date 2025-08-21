@@ -8,6 +8,7 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { promisify } from "util";
 import { storage } from "./storage";
 
+
 declare global {
   namespace Express {
     interface User {
