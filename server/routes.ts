@@ -1,5 +1,5 @@
 import type { User } from "@shared/schema";
-import { insertApplicationSchema, updateApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
+import { insertApplicationSchema, updateApplicationStatusSchema, updateDeliveryPartnerApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
 import type { Express, Request, Response } from "express";
 import fs from "fs";
 import { createServer, type Server } from "http";
@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -443,6 +443,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error updating application status:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update delivery partner application status endpoint (admin only)
+  app.patch("/api/delivery-partner-applications/:id/status", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated and is an admin
+      console.log('Delivery partner status update request - Auth info:', {
+        isAuthenticated: req.isAuthenticated(),
+        userRole: req.user?.role,
+        userId: req.user?.id
+      });
+
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      if (req.user!.role !== "admin") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+
+      // Check if the application exists
+      const application = await storage.getDeliveryPartnerApplicationById(id);
+      if (!application) {
+        return res.status(404).json({ message: "Delivery partner application not found" });
+      }
+
+      // Validate the request body using Zod schema
+      const parsedData = updateDeliveryPartnerApplicationStatusSchema.safeParse({
+        id,
+        ...req.body
+      });
+
+      if (!parsedData.success) {
+        const validationError = fromZodError(parsedData.error);
+        return res.status(400).json({
+          message: "Validation error",
+          errors: validationError.details
+        });
+      }
+
+      // Update the application in storage
+      const updatedApplication = await storage.updateDeliveryPartnerApplicationStatus(parsedData.data);
+      if (!updatedApplication) {
+        return res.status(404).json({ message: "Application not found or could not be updated" });
+      }
+
+      // Send email notification about status change
+      try {
+        if (updatedApplication.email) {
+          const emailContent = generateDeliveryPartnerStatusChangeEmail({
+            fullName: updatedApplication.fullName || "Delivery Partner",
+            email: updatedApplication.email,
+            status: updatedApplication.status
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `delivery_status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
+          });
+          
+          console.log(`Delivery partner status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+        } else {
+          console.warn(`Cannot send status change email for delivery partner application ${updatedApplication.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending delivery partner status change email:", emailError);
+      }
+
+      return res.status(200).json(updatedApplication);
+    } catch (error) {
+      console.error("Error updating delivery partner application status:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });

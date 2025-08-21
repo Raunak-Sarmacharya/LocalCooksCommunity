@@ -3,8 +3,7 @@ import PromoCodeSender from "@/components/admin/PromoCodeSender";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
-    formatKitchenPreference,
-    getStatusBadgeColor
+    formatKitchenPreference
 } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -487,6 +486,61 @@ function AdminDashboard() {
     },
   });
 
+  // Mutation to update delivery partner application status
+  const updateDeliveryStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number, status: string }) => {
+      try {
+        console.log(`Updating delivery partner application ${id} status to ${status}`);
+        
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        const response = await fetch(`/api/delivery-partner-applications/${id}/status`, {
+          method: 'PATCH',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ status })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
+        }
+        
+        console.log('Delivery partner status update response:', response.status);
+        return response.json();
+      } catch (error) {
+        console.error('Error updating delivery partner application status:', error);
+        throw error;
+      }
+    },
+    onSuccess: async (data) => {
+      // Force comprehensive refresh after status update
+      await forceAdminRefresh();
+      
+      // Additional immediate refresh for other components that might be listening
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/delivery-partner-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] })
+      ]);
+      
+      toast({
+        title: "Delivery partner status updated",
+        description: `Application status changed to ${data.status}. Email notification sent.`,
+      });
+
+      console.log('Delivery partner status update successful with email notification:', data);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error updating delivery partner status",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Mutation to update delivery partner document verification status
   const updateDeliveryDocumentStatusMutation = useMutation({
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
@@ -688,6 +742,11 @@ function AdminDashboard() {
   // Handle document status change
   const handleDocumentStatusUpdate = (id: number, field: string, status: string) => {
     updateDocumentStatusMutation.mutate({ id, field, status });
+  };
+
+  // Handle delivery partner status change
+  const handleDeliveryStatusChange = (id: number, newStatus: string) => {
+    updateDeliveryStatusMutation.mutate({ id, status: newStatus });
   };
 
   // Handle logout - session-based logout
@@ -2363,7 +2422,7 @@ function AdminDashboard() {
                           )}
                         </div>
 
-                        {/* Status Change Dropdown */}
+                        {/* Status Change Dropdown - Delivery Partner */}
                         <div className="mt-4 pt-4 border-t flex justify-between items-center">
                           <div className="flex items-center text-xs text-gray-600">
                             <CalendarDays className="h-3 w-3 mr-1" />
@@ -2378,7 +2437,7 @@ function AdminDashboard() {
                             ) : (
                               <Select
                                 defaultValue={app.status}
-                                onValueChange={(value) => handleStatusChange(app.id, value)}
+                                onValueChange={(value) => handleDeliveryStatusChange(app.id, value)}
                               >
                                 <SelectTrigger className="h-8 w-[140px]">
                                   <SelectValue placeholder="Update Status" />
