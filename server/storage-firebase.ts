@@ -1,13 +1,13 @@
 import type {
-  Application,
-  DeliveryPartnerApplication,
-  InsertApplication,
-  InsertDeliveryPartnerApplication,
-  InsertUser,
-  UpdateApplicationDocuments,
-  UpdateApplicationStatus,
-  UpdateDocumentVerification,
-  User
+    Application,
+    DeliveryPartnerApplication,
+    InsertApplication,
+    InsertDeliveryPartnerApplication,
+    InsertUser,
+    UpdateApplicationDocuments,
+    UpdateApplicationStatus,
+    UpdateDocumentVerification,
+    User
 } from "@shared/schema";
 import { applications, deliveryPartnerApplications, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -353,6 +353,33 @@ export class FirebaseStorage {
       return await db.select().from(deliveryPartnerApplications);
     } catch (error) {
       console.error('Error getting all delivery partner applications:', error);
+      throw error;
+    }
+  }
+
+  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
+    try {
+      const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
+      return application || undefined;
+    } catch (error) {
+      console.error('Error getting delivery partner application by ID:', error);
+      throw error;
+    }
+  }
+
+  async updateDeliveryPartnerApplicationStatus(update: { id: number; status: string }): Promise<DeliveryPartnerApplication | undefined> {
+    try {
+      const { id, status } = update;
+
+      const [updatedApplication] = await db
+        .update(deliveryPartnerApplications)
+        .set({ status })
+        .where(eq(deliveryPartnerApplications.id, id))
+        .returning();
+
+      return updatedApplication || undefined;
+    } catch (error) {
+      console.error('Error updating delivery partner application status:', error);
       throw error;
     }
   }

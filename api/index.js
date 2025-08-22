@@ -8185,154 +8185,33 @@ app.post('/api/check-user-exists', async (req, res) => {
       return res.status(400).json({ error: 'Email required' });
     }
 
-    console.log(`🔍 Checking if user exists: ${email}`);
+    // SECURITY FIX: Don't reveal whether an email exists or not
+    // This prevents attackers from enumerating valid email addresses
+    console.log(`🔒 Email existence check requested for: ${email} (response: always available)`);
     
-    let firebaseExists = false;
-    let neonExists = false;
-    let firebaseUser = null;
-    let neonUser = null;
-    let firebaseError = null;
-
-    // Check Firebase with better error handling
-    try {
-      console.log(`🔥 Attempting Firebase check for: ${email}`);
-      
-             // Check if we have Firebase Admin configured (using VITE_ variables)
-       console.log(`🔥 Environment check:`, {
-         VITE_FIREBASE_API_KEY: !!process.env.VITE_FIREBASE_API_KEY,
-         VITE_FIREBASE_AUTH_DOMAIN: !!process.env.VITE_FIREBASE_AUTH_DOMAIN,
-         VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID,
-         VITE_FIREBASE_STORAGE_BUCKET: !!process.env.VITE_FIREBASE_STORAGE_BUCKET,
-         VITE_FIREBASE_MESSAGING_SENDER_ID: !!process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-         VITE_FIREBASE_APP_ID: !!process.env.VITE_FIREBASE_APP_ID
-       });
-       
-       if (!process.env.VITE_FIREBASE_PROJECT_ID) {
-         console.log(`🔥 Firebase Admin not configured (missing VITE_FIREBASE_PROJECT_ID)`);
-         firebaseError = 'Firebase not configured';
-      } else {
-        // Use dynamic import for ES modules compatibility
-        const admin = await import('firebase-admin');
-        
-        if (!admin.default.apps.length) {
-          console.log(`🔥 Firebase Admin not initialized - attempting to initialize`);
-          
-                     // Try to initialize Firebase Admin using VITE_ variables
-           try {
-             const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
-             
-             console.log(`🔥 Attempting Firebase Admin initialization with project: ${projectId}`);
-
-             // Since we only have client-side variables, try to initialize without service account
-             // This will work in some environments or we'll rely on client-side checks
-             if (projectId) {
-               try {
-                 admin.default.initializeApp({
-                   projectId: projectId,
-                 });
-                 console.log(`🔥 Firebase Admin initialized with default credentials for project: ${projectId}`);
-               } catch (initError) {
-                 console.log(`🔥 Firebase Admin initialization failed, will use client-side checks only:`, initError.message);
-                 firebaseError = 'Firebase Admin unavailable, using client-side checks';
-               }
-             } else {
-               console.log(`🔥 No Firebase project ID available`);
-               firebaseError = 'Firebase project not configured';
-             }
-          } catch (initError) {
-            console.error(`🔥 Firebase Admin initialization failed:`, initError.message);
-            firebaseError = 'Firebase initialization failed';
-          }
-        }
-        
-        // Try to check user if Firebase is available
-        if (admin.default.apps.length > 0) {
-          try {
-            const userRecord = await admin.default.auth().getUserByEmail(email);
-            firebaseExists = true;
-            firebaseUser = {
-              uid: userRecord.uid,
-              email: userRecord.email,
-              emailVerified: userRecord.emailVerified,
-              disabled: userRecord.disabled
-            };
-            console.log(`🔥 Firebase: User EXISTS (${userRecord.uid})`);
-          } catch (getUserError) {
-            if (getUserError.code === 'auth/user-not-found') {
-              console.log(`🔥 Firebase: User does NOT exist`);
-              firebaseExists = false;
-            } else {
-              console.error(`🔥 Firebase getUserByEmail error:`, getUserError.message);
-              firebaseError = getUserError.message;
-            }
-          }
-        }
-      }
-    } catch (firebaseError) {
-      console.error('🔥 Firebase check failed:', firebaseError.message);
-      firebaseError = firebaseError.message;
-    }
-
-    // Check NeonDB
-    try {
-      if (pool) {
-        const result = await pool.query('SELECT id, username, role, firebase_uid FROM users WHERE LOWER(username) = LOWER($1)', [email]);
-        if (result.rows.length > 0) {
-          neonExists = true;
-          neonUser = result.rows[0];
-          console.log(`🗃️  NeonDB: User EXISTS (ID: ${neonUser.id})`);
-        } else {
-          console.log(`🗃️  NeonDB: User does NOT exist`);
-        }
-      }
-    } catch (neonError) {
-      console.error('NeonDB check error:', neonError.message);
-    }
-
-    // Determine the result
-    let canRegister = !firebaseExists && !neonExists;
-    let status = 'available';
-    let message = 'Email is available for registration';
-    
-    if (firebaseExists && neonExists) {
-      status = 'exists_both';
-      message = 'User exists in both Firebase and NeonDB';
-      canRegister = false;
-    } else if (firebaseExists) {
-      status = 'exists_firebase';
-      message = 'User exists in Firebase but not in NeonDB';
-      canRegister = false;
-    } else if (neonExists) {
-      status = 'exists_neon';
-      message = 'User exists in NeonDB but not in Firebase';
-      canRegister = false;
-    }
-
-    console.log(`📊 Result for ${email}: ${status} (canRegister: ${canRegister})`);
-
-         return res.json({
-       email,
-       canRegister,
-       status,
-       message,
-       firebase: {
-         exists: firebaseExists,
-         user: firebaseUser,
-         error: firebaseError
-       },
-       neon: {
-         exists: neonExists,
-         user: neonUser
-       },
-       suggestion: !canRegister ? 
-         'Email already exists. Try the client-side Firebase check or use a different email.' : 
-         'Email is available for registration.'
-     });
+    // Always return that the email is available for registration
+    // This prevents email enumeration attacks while still allowing registration flow
+    return res.json({
+      email,
+      canRegister: true,
+      status: 'available',
+      message: 'Email is available for registration',
+      firebase: {
+        exists: false,
+        user: null,
+        error: null
+      },
+      neon: {
+        exists: false,
+        user: null
+      },
+      suggestion: 'Email is available for registration.'
+    });
   } catch (error) {
-    console.error('❌ Error checking user existence:', error);
+    console.error('❌ Error in email existence check:', error);
     res.status(500).json({ 
-      error: 'Failed to check user existence', 
-      message: error.message 
+      error: 'Failed to process request', 
+      message: 'An error occurred while processing your request' 
     });
   }
 });
