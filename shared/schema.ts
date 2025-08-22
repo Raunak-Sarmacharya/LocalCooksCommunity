@@ -237,7 +237,13 @@ export type InsertVideoProgress = z.infer<typeof insertVideoProgressSchema>;
 export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliveryPartnerApplications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string().regex(/^\+?[0-9\s\(\)-]{10,15}$/, "Please enter a valid phone number"),
+  phone: z.string()
+    .min(13, "Phone numbers must be 10 digits")
+    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone numbers must be 10 digits")
+    .refine((val) => {
+      const digitsOnly = val.replace(/\D/g, '');
+      return digitsOnly.length === 11 && digitsOnly.startsWith('1');
+    }, "Phone numbers must be 10 digits"),
   address: z.string().min(5, "Address must be at least 5 characters"),
   city: z.string().min(2, "City must be at least 2 characters"),
   province: z.string().min(2, "Province must be at least 2 characters"),
@@ -248,10 +254,10 @@ export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliver
   vehicleYear: z.number().min(1900).max(new Date().getFullYear() + 1, "Please enter a valid vehicle year"),
   licensePlate: z.string().min(1, "License plate is required"),
   userId: z.number().optional(),
-  // Document fields are optional during initial application submission
+  // Document fields - insurance is required, others are optional during initial submission
   driversLicenseUrl: z.string().optional(),
   vehicleRegistrationUrl: z.string().optional(),
-  insuranceUrl: z.string().optional(),
+  insuranceUrl: z.string().min(1, "Vehicle insurance is required"),
 }).omit({ 
   id: true, 
   status: true, 

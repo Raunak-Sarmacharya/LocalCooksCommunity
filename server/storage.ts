@@ -436,13 +436,11 @@ export class MemStorage implements IStorage {
       driversLicenseUrl: insertApplication.driversLicenseUrl || null,
       vehicleRegistrationUrl: insertApplication.vehicleRegistrationUrl || null,
       insuranceUrl: insertApplication.insuranceUrl || null,
-      backgroundCheckUrl: insertApplication.backgroundCheckUrl || null,
       
       // Document verification status
       driversLicenseStatus: "pending",
       vehicleRegistrationStatus: "pending",
       insuranceStatus: "pending",
-      backgroundCheckStatus: "pending",
       
       // Admin fields
       documentsAdminFeedback: null,

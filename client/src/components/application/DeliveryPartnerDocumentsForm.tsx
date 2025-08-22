@@ -80,6 +80,29 @@ export default function DeliveryPartnerDocumentsForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate that all required documents are uploaded
+    const requiredDocuments = ['driversLicenseUrl', 'vehicleRegistrationUrl', 'insuranceUrl'];
+    const missingDocuments = requiredDocuments.filter(doc => !formData[doc as keyof typeof formData]);
+    
+    if (missingDocuments.length > 0) {
+      const missingNames = missingDocuments.map(doc => {
+        switch (doc) {
+          case 'driversLicenseUrl': return "Driver's License";
+          case 'vehicleRegistrationUrl': return "Vehicle Registration";
+          case 'insuranceUrl': return "Vehicle Insurance";
+          default: return doc;
+        }
+      });
+      
+      toast({
+        title: "Required documents missing",
+        description: `Please upload: ${missingNames.join(', ')}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -126,6 +149,12 @@ export default function DeliveryPartnerDocumentsForm() {
     return { uploaded: false, icon: <AlertCircle className="h-4 w-4 text-gray-400" /> };
   };
 
+  // Check if all required documents are uploaded
+  const allRequiredDocumentsUploaded = () => {
+    const requiredDocuments = ['driversLicenseUrl', 'vehicleRegistrationUrl', 'insuranceUrl'];
+    return requiredDocuments.every(doc => formData[doc as keyof typeof formData]);
+  };
+
   const documentFields = [
     {
       key: 'driversLicenseUrl',
@@ -163,6 +192,7 @@ export default function DeliveryPartnerDocumentsForm() {
             <li>• Accepted formats: JPEG, PNG, PDF</li>
             <li>• Maximum file size: 5MB per document</li>
             <li>• Documents will be securely stored and encrypted</li>
+            <li>• <strong>All documents marked with * are required</strong></li>
           </ul>
         </div>
 
@@ -234,7 +264,7 @@ export default function DeliveryPartnerDocumentsForm() {
         </Button>
         <Button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !allRequiredDocumentsUploaded()}
           className="flex-1 bg-primary hover:bg-primary/90 text-white font-medium py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? (

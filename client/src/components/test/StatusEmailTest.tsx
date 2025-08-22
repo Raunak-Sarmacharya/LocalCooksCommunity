@@ -403,11 +403,16 @@ export default function StatusEmailTest() {
               <Input
                 id="verification-phone"
                 type="tel"
-                placeholder="(555) 123-4567"
+                placeholder="+1 (555) 123-4567"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                pattern="^\+1\s[0-9\s\(\)\-\.]+$"
+                title="Please enter a valid phone number in format: +1 (555) 123-4567"
                 required
               />
+              <p className="text-xs text-gray-500">
+                Format: +1 (555) 123-4567
+              </p>
             </div>
 
             <Button

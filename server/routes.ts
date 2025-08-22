@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -1214,47 +1214,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Removed duplicate email logic to prevent double emails
       }
 
-      // Send email notification for document status changes
+      // Check if all documents are approved and send consolidated email
       try {
         if (updatedApplication.email) {
-          // Send email for each document that was updated
-          if (req.body.foodSafetyLicenseStatus) {
-            const emailContent = generateDocumentStatusChangeEmail({
+          // Check if all documents are approved
+          const hasFoodSafetyLicense = updatedApplication.foodSafetyLicenseUrl;
+          const hasFoodEstablishmentCert = updatedApplication.foodEstablishmentCertUrl;
+          
+          const foodSafetyApproved = updatedApplication.foodSafetyLicenseStatus === "approved";
+          const foodEstablishmentApproved = !hasFoodEstablishmentCert || updatedApplication.foodEstablishmentCertStatus === "approved";
+          
+          // If all documents are approved, send consolidated email
+          if (foodSafetyApproved && foodEstablishmentApproved) {
+            const approvedDocuments = [];
+            if (hasFoodSafetyLicense) approvedDocuments.push("Food Safety License");
+            if (hasFoodEstablishmentCert) approvedDocuments.push("Food Establishment Certificate");
+            
+            const emailContent = generateChefAllDocumentsApprovedEmail({
               fullName: updatedApplication.fullName || "Applicant",
               email: updatedApplication.email,
-              documentType: "foodSafetyLicenseStatus",
-              status: req.body.foodSafetyLicenseStatus,
+              approvedDocuments: approvedDocuments,
               adminFeedback: req.body.documentsAdminFeedback
             });
 
             await sendEmail(emailContent, {
-              trackingId: `doc_status_fsl_${updatedApplication.id}_${req.body.foodSafetyLicenseStatus}_${Date.now()}`
+              trackingId: `all_docs_approved_chef_${updatedApplication.id}_${Date.now()}`
             });
             
-            console.log(`Food Safety License status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodSafetyLicenseStatus}`);
-          }
-
-          if (req.body.foodEstablishmentCertStatus) {
-            const emailContent = generateDocumentStatusChangeEmail({
-              fullName: updatedApplication.fullName || "Applicant",
-              email: updatedApplication.email,
-              documentType: "foodEstablishmentCertStatus",
-              status: req.body.foodEstablishmentCertStatus,
-              adminFeedback: req.body.documentsAdminFeedback
-            });
-
-            await sendEmail(emailContent, {
-              trackingId: `doc_status_fec_${updatedApplication.id}_${req.body.foodEstablishmentCertStatus}_${Date.now()}`
-            });
-            
-            console.log(`Food Establishment Certificate status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodEstablishmentCertStatus}`);
+            console.log(`All documents approved email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
           }
         } else {
-          console.warn(`Cannot send document status change email for application ${updatedApplication.id}: No email address found`);
+          console.warn(`Cannot send all documents approved email for application ${updatedApplication.id}: No email address found`);
         }
       } catch (emailError) {
         // Log the error but don't fail the request
-        console.error("Error sending document status change email:", emailError);
+        console.error("Error sending all documents approved email:", emailError);
       }
 
       return res.status(200).json(updatedApplication);

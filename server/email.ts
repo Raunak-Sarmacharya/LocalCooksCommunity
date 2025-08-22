@@ -2615,3 +2615,183 @@ Visit: ${getPromoUrl()}
     }
   };
 };
+
+// Generate consolidated document approval email for chefs when all documents are approved
+export const generateChefAllDocumentsApprovedEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+    approvedDocuments: string[];
+    adminFeedback?: string;
+  }
+): EmailContent => {
+  const subject = 'All Documents Approved - Welcome to Local Cooks Community!';
+  
+  // Generate plain text version
+  const generatePlainText = (fullName: string, approvedDocuments: string[], adminFeedback?: string) => {
+    const docList = approvedDocuments.join(', ');
+    
+    return `Hello ${fullName},
+
+🎉 Congratulations! All your submitted documents have been approved by our verification team.
+
+Approved Documents: ${docList}
+
+You are now fully verified and can start using Local Cooks Community as a chef.
+
+${adminFeedback ? `Admin Feedback: ${adminFeedback}\n\n` : ''}Access your dashboard: ${getDashboardUrl()}
+
+If you have any questions, please contact us at ${getSupportEmail()}.
+
+Best regards,
+Local Cooks Community Team
+
+Visit: ${getWebsiteUrl()}
+`;
+  };
+
+  const docList = userData.approvedDocuments.join(', ');
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
+      <p class="message">
+        🎉 <strong>Congratulations!</strong> All your submitted documents have been approved by our verification team.
+      </p>
+      <p class="message">
+        You are now fully verified and can start using Local Cooks Community as a chef.
+      </p>
+      <div class="status-badge approved">
+        ✅ All Documents Approved
+      </div>
+      <div class="info-box">
+        <strong>📄 Approved Documents:</strong><br>
+        ${userData.approvedDocuments.map(doc => `• ${doc}`).join('<br>')}
+      </div>
+      ${userData.adminFeedback ? `
+      <div class="info-box">
+        <strong>💬 Admin Feedback:</strong><br>
+        ${userData.adminFeedback}
+      </div>` : ''}
+      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <div class="divider"></div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Welcome to <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: userData.email,
+    subject,
+    text: generatePlainText(userData.fullName, userData.approvedDocuments, userData.adminFeedback),
+    html
+  };
+};
+
+// Generate consolidated document approval email for delivery partners when all documents are approved
+export const generateDeliveryPartnerAllDocumentsApprovedEmail = (
+  userData: {
+    fullName: string;
+    email: string;
+    approvedDocuments: string[];
+    adminFeedback?: string;
+  }
+): EmailContent => {
+  const subject = 'All Documents Approved - Welcome to Local Cooks Community!';
+  
+  // Generate plain text version
+  const generatePlainText = (fullName: string, approvedDocuments: string[], adminFeedback?: string) => {
+    const docList = approvedDocuments.join(', ');
+    
+    return `Hello ${fullName},
+
+🎉 Congratulations! All your submitted documents have been approved by our verification team.
+
+Approved Documents: ${docList}
+
+You are now fully verified and can start using Local Cooks Community as a delivery partner.
+
+${adminFeedback ? `Admin Feedback: ${adminFeedback}\n\n` : ''}Access your dashboard: ${getDashboardUrl()}
+
+If you have any questions, please contact us at ${getSupportEmail()}.
+
+Best regards,
+Local Cooks Community Team
+
+Visit: ${getWebsiteUrl()}
+`;
+  };
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting">Hello ${userData.fullName},</h2>
+      <p class="message">
+        🎉 <strong>Congratulations!</strong> All your submitted documents have been approved by our verification team.
+      </p>
+      <p class="message">
+        You are now fully verified and can start using Local Cooks Community as a delivery partner.
+      </p>
+      <div class="status-badge approved">
+        ✅ All Documents Approved
+      </div>
+      <div class="info-box">
+        <strong>📄 Approved Documents:</strong><br>
+        ${userData.approvedDocuments.map(doc => `• ${doc}`).join('<br>')}
+      </div>
+      ${userData.adminFeedback ? `
+      <div class="info-box">
+        <strong>💬 Admin Feedback:</strong><br>
+        ${userData.adminFeedback}
+      </div>` : ''}
+      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <div class="divider"></div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Welcome to <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
+      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: userData.email,
+    subject,
+    text: generatePlainText(userData.fullName, userData.approvedDocuments, userData.adminFeedback),
+    html
+  };
+};
