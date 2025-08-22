@@ -3013,50 +3013,44 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // Send email notification for document status changes
+    // Check if all documents are approved and send consolidated email
     try {
       if (updatedApplication.email) {
         // Import the email functions
-        const { sendEmail, generateDocumentStatusChangeEmail } = await import('../server/email.js');
+        const { sendEmail, generateChefAllDocumentsApprovedEmail } = await import('../server/email.js');
 
-        // Send email for each document that was updated
-        if (req.body.foodSafetyLicenseStatus) {
-          const emailContent = generateDocumentStatusChangeEmail({
+        // Check if all documents are approved
+        const hasFoodSafetyLicense = updatedApplication.food_safety_license_url;
+        const hasFoodEstablishmentCert = updatedApplication.food_establishment_cert_url;
+        
+        const foodSafetyApproved = updatedApplication.food_safety_license_status === "approved";
+        const foodEstablishmentApproved = !hasFoodEstablishmentCert || updatedApplication.food_establishment_cert_status === "approved";
+        
+        // If all documents are approved, send consolidated email
+        if (foodSafetyApproved && foodEstablishmentApproved) {
+          const approvedDocuments = [];
+          if (hasFoodSafetyLicense) approvedDocuments.push("Food Safety License");
+          if (hasFoodEstablishmentCert) approvedDocuments.push("Food Establishment Certificate");
+          
+          const emailContent = generateChefAllDocumentsApprovedEmail({
             fullName: updatedApplication.full_name || updatedApplication.applicant_name || "Applicant",
             email: updatedApplication.email,
-            documentType: "foodSafetyLicenseStatus",
-            status: req.body.foodSafetyLicenseStatus,
+            approvedDocuments: approvedDocuments,
             adminFeedback: req.body.documentsAdminFeedback
           });
 
           await sendEmail(emailContent, {
-            trackingId: `doc_status_fsl_${updatedApplication.id}_${req.body.foodSafetyLicenseStatus}_${Date.now()}`
+            trackingId: `all_docs_approved_chef_${updatedApplication.id}_${Date.now()}`
           });
           
-          console.log(`Food Safety License status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodSafetyLicenseStatus}`);
-        }
-
-        if (req.body.foodEstablishmentCertStatus) {
-          const emailContent = generateDocumentStatusChangeEmail({
-            fullName: updatedApplication.full_name || updatedApplication.applicant_name || "Applicant",
-            email: updatedApplication.email,
-            documentType: "foodEstablishmentCertStatus",
-            status: req.body.foodEstablishmentCertStatus,
-            adminFeedback: req.body.documentsAdminFeedback
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `doc_status_fec_${updatedApplication.id}_${req.body.foodEstablishmentCertStatus}_${Date.now()}`
-          });
-          
-          console.log(`Food Establishment Certificate status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.foodEstablishmentCertStatus}`);
+          console.log(`All documents approved email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         }
       } else {
-        console.warn(`Cannot send document status change email for application ${updatedApplication.id}: No email address found`);
+        console.warn(`Cannot send all documents approved email for application ${updatedApplication.id}: No email address found`);
       }
     } catch (emailError) {
       // Log the error but don't fail the request
-      console.error("Error sending document status change email:", emailError);
+      console.error("Error sending all documents approved email:", emailError);
     }
 
     // Check if both documents are approved, then update user verification status
@@ -5830,7 +5824,7 @@ app.get('/api/firebase/dashboard', requireFirebaseAuthWithUser, async (req, res)
 app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithUser, async (req, res) => {
   try {
     // Validate required fields
-    const requiredFields = ['fullName', 'email', 'phone', 'address', 'city', 'province', 'postalCode', 'vehicleType', 'vehicleMake', 'vehicleModel', 'vehicleYear', 'licensePlate'];
+    const requiredFields = ['fullName', 'email', 'phone', 'address', 'city', 'province', 'postalCode', 'vehicleType', 'vehicleMake', 'vehicleModel', 'vehicleYear', 'licensePlate', 'insuranceUrl'];
     const missingFields = requiredFields.filter(field => !req.body[field]);
     
     if (missingFields.length > 0) {
@@ -6212,66 +6206,47 @@ app.patch("/api/delivery-partner-applications/:id/document-verification", async 
       timestamp: new Date().toISOString()
     });
 
-    // Send email notification for document status changes
+    // Check if all documents are approved and send consolidated email
     try {
       if (updatedApplication.email) {
         // Import the email functions
-        const { sendEmail, generateDeliveryPartnerDocumentStatusChangeEmail } = await import('../server/email.js');
+        const { sendEmail, generateDeliveryPartnerAllDocumentsApprovedEmail } = await import('../server/email.js');
 
-        // Send email for each document that was updated
-        if (req.body.driversLicenseStatus) {
-          const emailContent = generateDeliveryPartnerDocumentStatusChangeEmail({
+        // Check if all documents are approved
+        const hasDriversLicense = updatedApplication.drivers_license_url;
+        const hasVehicleRegistration = updatedApplication.vehicle_registration_url;
+        const hasInsurance = updatedApplication.insurance_url;
+        
+        const driversLicenseApproved = updatedApplication.drivers_license_status === "approved";
+        const vehicleRegistrationApproved = updatedApplication.vehicle_registration_status === "approved";
+        const insuranceApproved = updatedApplication.insurance_status === "approved";
+        
+        // If all documents are approved, send consolidated email
+        if (driversLicenseApproved && vehicleRegistrationApproved && insuranceApproved) {
+          const approvedDocuments = [];
+          if (hasDriversLicense) approvedDocuments.push("Driver's License");
+          if (hasVehicleRegistration) approvedDocuments.push("Vehicle Registration");
+          if (hasInsurance) approvedDocuments.push("Vehicle Insurance");
+          
+          const emailContent = generateDeliveryPartnerAllDocumentsApprovedEmail({
             fullName: updatedApplication.full_name || "Delivery Partner",
             email: updatedApplication.email,
-            documentType: "driversLicense",
-            status: req.body.driversLicenseStatus,
+            approvedDocuments: approvedDocuments,
             adminFeedback: req.body.documentsAdminFeedback
           });
 
           await sendEmail(emailContent, {
-            trackingId: `delivery_doc_status_dl_${updatedApplication.id}_${req.body.driversLicenseStatus}_${Date.now()}`
+            trackingId: `all_docs_approved_delivery_${updatedApplication.id}_${Date.now()}`
           });
           
-          console.log(`Driver's License status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.driversLicenseStatus}`);
-        }
-
-        if (req.body.vehicleRegistrationStatus) {
-          const emailContent = generateDeliveryPartnerDocumentStatusChangeEmail({
-            fullName: updatedApplication.full_name || "Delivery Partner",
-            email: updatedApplication.email,
-            documentType: "vehicleRegistration",
-            status: req.body.vehicleRegistrationStatus,
-            adminFeedback: req.body.documentsAdminFeedback
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `delivery_doc_status_vr_${updatedApplication.id}_${req.body.vehicleRegistrationStatus}_${Date.now()}`
-          });
-          
-          console.log(`Vehicle Registration status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.vehicleRegistrationStatus}`);
-        }
-
-        if (req.body.insuranceStatus) {
-          const emailContent = generateDeliveryPartnerDocumentStatusChangeEmail({
-            fullName: updatedApplication.full_name || "Delivery Partner",
-            email: updatedApplication.email,
-            documentType: "insurance",
-            status: req.body.insuranceStatus,
-            adminFeedback: req.body.documentsAdminFeedback
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `delivery_doc_status_ins_${updatedApplication.id}_${req.body.insuranceStatus}_${Date.now()}`
-          });
-          
-          console.log(`Insurance status email sent to ${updatedApplication.email} for application ${updatedApplication.id}: ${req.body.insuranceStatus}`);
+          console.log(`All documents approved email sent to ${updatedApplication.email} for delivery partner application ${updatedApplication.id}`);
         }
       } else {
-        console.warn(`Cannot send document status change email for delivery partner application ${updatedApplication.id}: No email address found`);
+        console.warn(`Cannot send all documents approved email for delivery partner application ${updatedApplication.id}: No email address found`);
       }
     } catch (emailError) {
       // Log the error but don't fail the request
-      console.error("Error sending delivery partner document status change email:", emailError);
+      console.error("Error sending all documents approved email:", emailError);
     }
 
     // Return the application data in the format expected by the frontend
@@ -6280,6 +6255,92 @@ app.patch("/api/delivery-partner-applications/:id/document-verification", async 
     return res.status(200).json(responseData);
   } catch (error) {
     console.error("Error updating delivery partner application document verification:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Update delivery partner application status endpoint (admin only)
+app.patch("/api/delivery-partner-applications/:id/status", async (req, res) => {
+  try {
+    // Check if user is authenticated and is an admin
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: "Invalid application ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    // Check if the application exists
+    const appResult = await pool.query(`
+      SELECT * FROM delivery_partner_applications WHERE id = $1
+    `, [id]);
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ message: "Delivery partner application not found" });
+    }
+
+    const application = appResult.rows[0];
+
+    // Validate the status
+    const { status } = req.body;
+    if (!status || !['pending', 'inReview', 'approved', 'rejected', 'cancelled'].includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Must be one of: pending, inReview, approved, rejected, cancelled" });
+    }
+
+    // Update the application status
+    const updateResult = await pool.query(`
+      UPDATE delivery_partner_applications 
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [status, id]);
+
+    if (updateResult.rowCount === 0) {
+      return res.status(404).json({ message: "Application not found or could not be updated" });
+    }
+
+    const updatedApplication = updateResult.rows[0];
+
+    // Send email notification about status change
+    try {
+      if (updatedApplication.email) {
+        // Import the email functions
+        const { sendEmail, generateDeliveryPartnerStatusChangeEmail } = await import('../server/email.js');
+
+        const emailContent = generateDeliveryPartnerStatusChangeEmail({
+          fullName: updatedApplication.full_name || "Delivery Partner",
+          email: updatedApplication.email,
+          status: updatedApplication.status
+        });
+
+        await sendEmail(emailContent, {
+          trackingId: `delivery_status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
+        });
+        
+        console.log(`Delivery partner status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+      } else {
+        console.warn(`Cannot send status change email for delivery partner application ${updatedApplication.id}: No email address found`);
+      }
+    } catch (emailError) {
+      // Log the error but don't fail the request
+      console.error("Error sending delivery partner status change email:", emailError);
+    }
+
+    return res.status(200).json(updatedApplication);
+  } catch (error) {
+    console.error("Error updating delivery partner application status:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 });

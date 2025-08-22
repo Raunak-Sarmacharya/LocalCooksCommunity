@@ -58,7 +58,7 @@ export function DeliveryPartnerFormProvider({ children }: DeliveryPartnerFormPro
       case 3: // Vehicle Details
         return !!(formData.vehicleType && formData.vehicleMake && formData.vehicleModel && formData.licensePlate);
       case 4: // Documents
-        return true; // Documents are optional during initial submission
+        return !!(formData.driversLicenseUrl && formData.vehicleRegistrationUrl && formData.insuranceUrl); // All documents are required
       default:
         return false;
     }
