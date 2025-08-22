@@ -1,6 +1,6 @@
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { checkUserExistsByEmail } from "@/utils/user-existence-check";
+// SECURITY FIX: Removed email existence check import to prevent enumeration attacks
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Lock, Mail } from "lucide-react";
@@ -60,23 +60,11 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     defaultValues: { email: "", password: "" },
   });
 
-  // Check user existence when email changes
+  // SECURITY FIX: Removed email existence check to prevent enumeration attacks
+  // Users should attempt login directly, and the system will handle authentication
   const checkUserExistence = async (email: string) => {
-    if (!email || !email.includes('@')) {
-      setUserExists(null);
-      return;
-    }
-
-    setIsCheckingUser(true);
-    try {
-      const result = await checkUserExistsByEmail(email);
-      setUserExists(result.exists && result.canSignIn);
-    } catch (error) {
-      console.error('Error checking user existence:', error);
-      setUserExists(null);
-    } finally {
-      setIsCheckingUser(false);
-    }
+    // Always set to null to prevent UI from showing existence hints
+    setUserExists(null);
   };
 
   const handleSubmit = async (data: LoginFormData) => {

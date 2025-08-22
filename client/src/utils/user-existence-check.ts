@@ -1,5 +1,5 @@
 import { auth } from '@/lib/firebase';
-import { fetchSignInMethodsForEmail, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 export interface UserExistenceResult {
   exists: boolean;
@@ -113,45 +113,22 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
 }
 
 /**
- * Check if a user exists by email (for client-side validation)
+ * SECURITY FIX: Removed email existence check to prevent email enumeration attacks
+ * The previous checkUserExistsByEmail function was a security vulnerability
+ * that allowed attackers to determine if an email address exists in the system.
+ * 
+ * Instead, users should attempt registration directly, and the system will
+ * handle duplicate email detection during the registration process.
  */
 export async function checkUserExistsByEmail(email: string): Promise<UserExistenceResult> {
-  try {
-    console.log(`🔍 Checking if user exists by email: ${email}`);
-    
-    const response = await fetch('/api/check-user-exists', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email })
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      return {
-        exists: data.status === 'exists_both' || data.status === 'exists_firebase',
-        email,
-        canSignIn: data.status === 'exists_both',
-        canRegister: data.status === 'available' || data.status === 'exists_neon'
-      };
-    } else {
-      return {
-        exists: false,
-        email,
-        canSignIn: false,
-        canRegister: true,
-        error: 'Failed to check user existence'
-      };
-    }
-  } catch (error: any) {
-    console.error('❌ Error checking user by email:', error);
-    return {
-      exists: false,
-      email,
-      canSignIn: false,
-      canRegister: true,
-      error: error.message || 'Failed to check user existence'
-    };
-  }
+  // SECURITY FIX: Always return that email is available to prevent enumeration
+  console.log(`🔒 Email existence check requested for: ${email} (security: always available)`);
+  
+  return {
+    exists: false,
+    email,
+    canSignIn: false,
+    canRegister: true,
+    error: 'Email existence check disabled for security'
+  };
 } 
