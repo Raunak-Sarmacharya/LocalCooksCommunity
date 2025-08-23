@@ -896,6 +896,69 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
+  // 🔥 Cancel Delivery Partner Application (Firebase Auth, NO SESSIONS)
+  app.patch('/api/firebase/delivery-partner-applications/:id/cancel', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+
+      // First get the application to verify ownership
+      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
+
+      if (!application) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+
+      // Check if the application belongs to the authenticated user (unless admin)
+      if (application.userId !== req.neonUser!.id && req.neonUser!.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
+      }
+
+      const updateData = {
+        id,
+        status: "cancelled" as const
+      };
+
+      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
+
+      if (!updatedApplication) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+
+      // Send email notification about application cancellation
+      try {
+        if (updatedApplication.email) {
+          const { generateDeliveryPartnerStatusChangeEmail, sendEmail } = await import('./email');
+          
+          const emailContent = generateDeliveryPartnerStatusChangeEmail({
+            fullName: updatedApplication.fullName || "Delivery Partner",
+            email: updatedApplication.email,
+            status: 'cancelled'
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `cancel_dp_${updatedApplication.id}_${Date.now()}`
+          });
+          
+          console.log(`Delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
+        } else {
+          console.warn(`Cannot send cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending delivery partner cancellation email:", emailError);
+      }
+
+      return res.status(200).json(updatedApplication);
+    } catch (error) {
+      console.error("Error cancelling delivery partner application:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // 🔥 Admin Cancel Delivery Partner Application (Firebase Auth + Admin Role, NO SESSIONS)
   app.patch('/api/firebase/admin/delivery-partner-applications/:id/cancel', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
