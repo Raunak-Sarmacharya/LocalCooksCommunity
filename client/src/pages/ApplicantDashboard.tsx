@@ -7,35 +7,35 @@ import { auth } from "@/lib/firebase";
 
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
 } from "@/components/ui/select";
 import {
-  formatApplicationStatus
+    formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Application, DeliveryPartnerApplication } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  BookOpen,
-  CheckCircle,
-  ChefHat,
-  Clock,
-  FileText,
-  Shield,
-  Truck,
-  Upload,
-  XCircle
+    BookOpen,
+    CheckCircle,
+    ChefHat,
+    Clock,
+    FileText,
+    Shield,
+    Truck,
+    Upload,
+    XCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -1033,7 +1033,7 @@ export default function ApplicantDashboard() {
     }
   };
 
-  const handleCancelApplication = () => {
+  const handleCancelApplication = (applicationType: 'chef' | 'delivery' = 'chef', applicationId?: number) => {
     showConfirm({
       title: "Cancel Application",
       description: "Are you sure you want to cancel this application? This action cannot be undone.",
@@ -1045,8 +1045,15 @@ export default function ApplicantDashboard() {
           setIsSyncing(true);
           const token = await auth.currentUser?.getIdToken();
           
-          const response = await fetch('/api/firebase/application/cancel', {
-            method: 'POST',
+          // Determine the endpoint based on application type
+          const endpoint = applicationType === 'delivery' 
+            ? `/api/firebase/delivery-partner-applications/${applicationId}/cancel`
+            : `/api/firebase/applications/${applicationId}/cancel`;
+          
+          const method = 'PATCH'; // Both endpoints use PATCH method
+          
+          const response = await fetch(endpoint, {
+            method,
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
@@ -1054,8 +1061,13 @@ export default function ApplicantDashboard() {
           });
 
           if (response.ok) {
-            // Refresh the application data to show the updated status
-            queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
+            // Refresh the appropriate application data
+            if (applicationType === 'delivery') {
+              queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] });
+            } else {
+              queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
+            }
+            
             toast({
               title: "Application cancelled",
               description: "Your application has been cancelled successfully.",
@@ -1483,7 +1495,10 @@ export default function ApplicantDashboard() {
                                 <Button 
                                   variant="outline" 
                                   className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
-                                  onClick={handleCancelApplication}
+                                  onClick={() => handleCancelApplication(
+                                    isChefApplication(defaultApp) ? 'chef' : 'delivery',
+                                    defaultApp.id
+                                  )}
                                   disabled={isSyncing}
                                 >
                                   <XCircle className="mr-2 h-4 w-4" />

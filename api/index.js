@@ -6259,6 +6259,157 @@ app.patch("/api/delivery-partner-applications/:id/document-verification", async 
   }
 });
 
+// Cancel delivery partner application endpoint (users can cancel their own applications)
+app.patch('/api/delivery-partner-applications/:id/cancel', async (req, res) => {
+  console.log('🚫 CANCEL DELIVERY PARTNER APPLICATION - Request received:', {
+    applicationId: req.params.id,
+    sessionId: req.session.id,
+    sessionUserId: req.session.userId || null,
+    headerUserId: req.headers['x-user-id'] || null,
+    method: req.method,
+    url: req.url
+  });
+
+  // Get user ID from session or header
+  const rawUserId = req.session.userId || req.headers['x-user-id'];
+
+  if (!rawUserId) {
+    console.log('🚫 CANCEL ERROR: No userId in session or header');
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  console.log('🚫 Looking up user for rawUserId:', rawUserId);
+
+  // Convert Firebase UID to integer user ID
+  const user = await getUser(rawUserId);
+  if (!user) {
+    console.log('🚫 CANCEL ERROR: User not found for ID:', rawUserId);
+    return res.status(401).json({ error: 'User not found' });
+  }
+  const userId = user.id;
+
+  console.log('🚫 User lookup successful:', {
+    firebaseUid: rawUserId,
+    integerUserId: userId,
+    userRole: user.role,
+    userEmail: user.email
+  });
+
+  // Store user ID in session if it's not there
+  if (!req.session.userId && rawUserId) {
+    console.log('Storing userId in session from header:', rawUserId);
+    req.session.userId = rawUserId;
+    await new Promise(resolve => req.session.save(resolve));
+  }
+
+  try {
+    const { id } = req.params;
+
+    // Get from database if available
+    if (pool) {
+      // Check if delivery_partner_applications table exists
+      const tableCheck = await pool.query(`
+        SELECT to_regclass('public.delivery_partner_applications') as table_exists;
+      `);
+
+      if (!tableCheck.rows[0].table_exists) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      // Update the application
+      let result;
+      if (user.role === 'admin') {
+        // Admins can cancel any delivery partner application
+        result = await pool.query(`
+          UPDATE delivery_partner_applications
+          SET status = 'cancelled'
+          WHERE id = $1
+          RETURNING *;
+        `, [id]);
+      } else {
+        // Users can only cancel their own delivery partner applications
+        result = await pool.query(`
+          UPDATE delivery_partner_applications
+          SET status = 'cancelled'
+          WHERE id = $1 AND user_id = $2
+          RETURNING *;
+        `, [id, userId]);
+      }
+
+      console.log('🚫 Database update result:', {
+        rowCount: result.rowCount,
+        applicationId: id,
+        userId: userId,
+        success: result.rowCount > 0
+      });
+
+      if (result.rowCount === 0) {
+        console.log('🚫 CANCEL ERROR: Delivery partner application not found or not owned by user');
+        return res.status(404).json({ error: 'Application not found or not owned by you' });
+      }
+
+      // Get the user_id for the cancelled application
+      const cancelledApp = result.rows[0];
+      const cancelledUserId = cancelledApp.user_id;
+
+      console.log('🚫 Delivery partner application cancelled successfully:', {
+        applicationId: cancelledApp.id,
+        status: cancelledApp.status,
+        userId: cancelledUserId
+      });
+
+      // Get document URLs before deletion for blob cleanup
+      const docResult = await pool.query(`
+        SELECT drivers_license_url, vehicle_registration_url, insurance_url 
+        FROM delivery_partner_applications
+        WHERE id = $1
+      `, [result.rows[0].id]);
+
+      // Clean up Vercel blob files if they exist
+      if (docResult.rows.length > 0) {
+        const docUrls = docResult.rows[0];
+        await cleanupBlobFiles([
+          docUrls.drivers_license_url,
+          docUrls.vehicle_registration_url,
+          docUrls.insurance_url
+        ]);
+      }
+
+      // Send email notification about application cancellation
+      try {
+        // Import the email functions
+        const { sendEmail, generateDeliveryPartnerStatusChangeEmail } = await import('../server/email.js');
+
+        if (cancelledApp.email) {
+          const emailContent = generateDeliveryPartnerStatusChangeEmail({
+            fullName: cancelledApp.full_name || cancelledApp.applicant_name || "Delivery Partner",
+            email: cancelledApp.email,
+            status: 'cancelled'
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `delivery_cancel_${cancelledApp.id}_${Date.now()}`
+          });
+          console.log(`Delivery partner cancellation email sent to ${cancelledApp.email} for application ${cancelledApp.id}`);
+        } else {
+          console.warn(`Cannot send delivery partner cancellation email for application ${cancelledApp.id}: No email address found`);
+        }
+      } catch (emailError) {
+        // Log the error but don't fail the request
+        console.error("Error sending delivery partner cancellation email:", emailError);
+      }
+
+      return res.status(200).json(cancelledApp);
+    }
+
+    // Fallback error - no storage
+    res.status(500).json({ error: 'No storage available' });
+  } catch (error) {
+    console.error('Cancel delivery partner application error:', error);
+    res.status(500).json({ error: 'Failed to cancel delivery partner application' });
+  }
+});
+
 // Update delivery partner application status endpoint (admin only)
 app.patch("/api/delivery-partner-applications/:id/status", async (req, res) => {
   try {
