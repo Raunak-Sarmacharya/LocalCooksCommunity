@@ -8,9 +8,9 @@ export default function CTASection() {
   const { user } = useFirebaseAuth();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
 
-  const handlePrimaryClick = () => {
+  const handleChefClick = () => {
     if (!user) {
-      navigate(`/auth?redirect=/dashboard`);
+      navigate(`/auth`);
     } else {
       navigate(getNavigationPath());
     }
@@ -18,7 +18,7 @@ export default function CTASection() {
 
   const handleDeliveryPartnerClick = () => {
     if (!user) {
-      navigate(`/driver-auth?redirect=/delivery-partner-apply`);
+      navigate(`/driver-auth`);
     } else {
       navigate('/delivery-partner-apply');
     }
@@ -31,28 +31,24 @@ export default function CTASection() {
   const getHeadingText = () => {
     if (user?.role === "admin") {
       return "Manage Local Cooks";
-    } else if ((user as any)?.isChef && (user as any)?.isDeliveryPartner) {
-      return "Ready to Cook and Deliver?";
     } else if ((user as any)?.isDeliveryPartner) {
       return "Ready to Start Delivering?";
     } else if ((user as any)?.isChef) {
       return "Ready to Start Cooking?";
     } else {
-      return "Ready to Join Local Cooks?";
+      return "Join Local Cooks";
     }
   };
 
   const getDescriptionText = () => {
     if (user?.role === "admin") {
       return "Manage applications, users, and platform settings from your admin dashboard.";
-    } else if ((user as any)?.isChef && (user as any)?.isDeliveryPartner) {
-      return "You can apply for both chef and delivery partner roles. Choose which application to start with.";
     } else if ((user as any)?.isDeliveryPartner) {
-      return "Join our delivery network and start earning money while serving your community.";
+      return "Manage your delivery applications and documentation.";
     } else if ((user as any)?.isChef) {
-      return "Unlock your culinary potential and build a sustainable cooking business with Local Cooks.";
+      return "Manage your chef applications and start cooking.";
     } else {
-      return "Join our growing community and start your journey with Local Cooks today.";
+      return "Choose your path and start your journey with Local Cooks.";
     }
   };
 
@@ -61,6 +57,8 @@ export default function CTASection() {
       return "Manage both chef and delivery partner applications.";
     } else if ((user as any)?.isDeliveryPartner) {
       return "You're already a delivery partner! Manage your delivery applications and documentation.";
+    } else if ((user as any)?.isChef) {
+      return "You're registered as a chef. To become a delivery partner, please contact support.";
     } else {
       return "Or become a delivery partner and help bring delicious food to our community.";
     }
@@ -74,62 +72,61 @@ export default function CTASection() {
           {getDescriptionText()}
         </p>
 
-        <div className="flex justify-center gap-4 flex-wrap mb-6">
-          <Button
-            onClick={handlePrimaryClick}
-            disabled={isLoading}
-            className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
-          >
-            {isLoading ? "Loading..." : getPrimaryButtonText()}
-          </Button>
-        </div>
+        {/* Guest Users - Show both options clearly */}
+        {!user && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+              {/* Chef Registration */}
+              <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Chef</h3>
+                  <p className="text-gray-600 text-sm mb-4">Share your culinary skills with the community</p>
+                  <Button
+                    onClick={handleChefClick}
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-full"
+                  >
+                    Apply as Chef
+                  </Button>
+                </div>
+              </div>
 
-        {/* Dual Role CTA - Show both application options for dual role users */}
-        {user?.role !== "admin" && (user as any)?.isChef && (user as any)?.isDeliveryPartner && (
-          <div className="mt-8">
-            <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
-              Choose which application to start with:
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                onClick={() => navigate('/apply')}
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
-              >
-                Start Chef Application
-              </Button>
-              <Button
-                onClick={() => navigate('/delivery-partner-apply')}
-                variant="outline"
-                className="border-2 border-blue-600 text-blue-600 hover:bg-blue-50 font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow transition-all duration-300"
-              >
-                Start Delivery Application
-              </Button>
+              {/* Delivery Partner Registration */}
+              <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0M15 17a2 2 0 104 0" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Delivery Partner</h3>
+                  <p className="text-gray-600 text-sm mb-4">Connect communities through reliable delivery</p>
+                  <Button
+                    onClick={handleDeliveryPartnerClick}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-full"
+                  >
+                    Apply as Driver
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Single Role CTA - Show delivery partner option for non-delivery users */}
-        {user?.role !== "admin" && !(user as any)?.isDeliveryPartner && (user as any)?.isChef && (
-          <div className="mt-8">
-            <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
-              {getDeliveryPartnerDescription()}
-            </p>
+        {/* Logged-in Users - Show personalized button */}
+        {user && (
+          <div className="flex justify-center gap-4 flex-wrap mb-6">
             <Button
-              onClick={handleDeliveryPartnerClick}
-              variant="outline"
-              className="border-2 border-primary text-primary hover:bg-primary hover:text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow transition-all duration-300"
+              onClick={handleChefClick}
+              disabled={isLoading}
+              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
             >
-              Become a Delivery Partner
+              {isLoading ? "Loading..." : getPrimaryButtonText()}
             </Button>
-          </div>
-        )}
-
-        {/* Show role status for existing users */}
-        {user?.role !== "admin" && ((user as any)?.isDeliveryPartner || (user as any)?.isChef) && !(user as any)?.isChef && (
-          <div className="mt-8">
-            <p className="text-sm text-gray-600 mb-4 max-w-lg mx-auto">
-              {getDeliveryPartnerDescription()}
-            </p>
           </div>
         )}
       </div>

@@ -187,20 +187,16 @@ export function useApplicationStatus() {
     } else if (user.role === "admin") {
       return "/admin";
     } else if (shouldShowStartApplication()) {
-      // Direct to appropriate application form based on user's roles
+      // Direct to appropriate application form based on user's exclusive role
       const isChef = (user as any)?.isChef;
       const isDeliveryPartner = (user as any)?.isDeliveryPartner;
       
-      console.log('🔍 getNavigationPath: checking roles', { isChef, isDeliveryPartner });
+      console.log('🔍 getNavigationPath: checking exclusive roles', { isChef, isDeliveryPartner });
       
-      if (isDeliveryPartner && !isChef) {
+      if (isDeliveryPartner && user.role !== "admin") {
         return "/delivery-partner-apply";
-      } else if (isChef && !isDeliveryPartner) {
+      } else if (isChef && user.role !== "admin") {
         return "/apply";
-      } else if (isChef && isDeliveryPartner) {
-        // For dual-role users, show a selection page or default to dashboard
-        // They can choose which application to start from the dashboard
-        return "/dashboard";
       } else {
         // Fallback: If no roles detected but user is logged in, go to dashboard
         // This prevents redirecting to auth page when user is already authenticated

@@ -1,22 +1,22 @@
 import { auth, db } from "@/lib/firebase";
 import { queryClient } from "@/lib/queryClient";
 import {
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  isSignInWithEmailLink,
-  onAuthStateChanged,
-  sendEmailVerification,
-  sendSignInLinkToEmail,
-  signInWithEmailAndPassword,
-  signInWithEmailLink,
-  signInWithPopup,
-  signOut,
-  updateProfile
+    createUserWithEmailAndPassword,
+    GoogleAuthProvider,
+    isSignInWithEmailLink,
+    onAuthStateChanged,
+    sendEmailVerification,
+    sendSignInLinkToEmail,
+    signInWithEmailAndPassword,
+    signInWithEmailLink,
+    signInWithPopup,
+    signOut,
+    updateProfile
 } from "firebase/auth";
 import {
-  doc,
-  serverTimestamp,
-  setDoc
+    doc,
+    serverTimestamp,
+    setDoc
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 
@@ -68,6 +68,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const token = await firebaseUser.getIdToken();
       
+      // Auto-determine role based on current URL path during registration
+      let finalRole = role;
+      if (isRegistration && !finalRole) {
+        const currentPath = window.location.pathname;
+        if (currentPath === '/driver-auth') {
+          finalRole = 'delivery_partner';
+          console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
+        } else if (currentPath === '/auth') {
+          finalRole = 'chef';
+          console.log('👨‍🍳 Auto-setting role to chef based on /auth URL');
+        } else {
+          finalRole = 'chef'; // Default fallback
+        }
+      }
+      
       // Use different endpoints based on whether this is registration or sign-in
       const endpoint = isRegistration ? "/api/firebase-register-user" : "/api/firebase-sync-user";
       
@@ -82,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
-          role: role, // Don't set default role - let backend handle
+          role: finalRole, // Use auto-determined role
           isRegistration: isRegistration,
           password: password // Include password for email/password registrations
         })

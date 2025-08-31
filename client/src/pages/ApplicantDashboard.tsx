@@ -153,22 +153,9 @@ export default function ApplicantDashboard() {
     const isChef = (user as any)?.isChef;
     const isDeliveryPartner = (user as any)?.isDeliveryPartner;
     
-    if (isChef && isDeliveryPartner) {
-      // Dual role - enhanced experience
-      return {
-        primaryRole: 'dual',
-        applications: applications as AnyApplication[],
-        deliveryApplications: deliveryApplications,
-        applicationFormUrl: '/apply', // Default to chef, but we'll show both options
-        roleName: 'Chef & Delivery Partner',
-        icon: ChefHat,
-        description: 'You can apply for both chef and delivery partner roles. Choose which application to start with.',
-        isLoading: isLoading || isLoadingDelivery,
-        error: error || deliveryError,
-        isDualRole: true
-      };
-    } else if (isDeliveryPartner) {
-      // Pure delivery partner
+    // Roles are mutually exclusive - users can only be chef OR delivery partner
+    if (isDeliveryPartner) {
+      // Delivery partner role
       return {
         primaryRole: 'deliveryPartner',
         applications: deliveryApplications as AnyApplication[],
@@ -181,7 +168,7 @@ export default function ApplicantDashboard() {
         isDualRole: false
       };
     } else if (isChef) {
-      // Pure chef
+      // Chef role
       return {
         primaryRole: 'chef',
         applications: applications as AnyApplication[],
@@ -194,14 +181,14 @@ export default function ApplicantDashboard() {
         isDualRole: false
       };
     } else {
-      // No role selected yet - show role selection
+      // No role assigned yet - new user
       return {
         primaryRole: 'none',
         applications: [] as AnyApplication[],
-        applicationFormUrl: '/role-selection',
-        roleName: 'Select Your Role',
+        applicationFormUrl: '/apply', // Direct to application form
+        roleName: 'Get Started',
         icon: ChefHat,
-        description: 'Please select your role to get started with Local Cooks.',
+        description: 'Welcome to Local Cooks! Start your application below.',
         isLoading: false,
         error: null,
         isDualRole: false
@@ -464,8 +451,8 @@ export default function ApplicantDashboard() {
         throw new Error("User not authenticated");
       }
       
-      // Only fetch delivery partner applications if user is a delivery partner
-      if (user.role === "admin" || !(user as any)?.isDeliveryPartner) {
+      // Only fetch delivery partner applications if user is a delivery partner or admin
+      if (!(user as any)?.isDeliveryPartner && user.role !== "admin") {
         return [];
       }
 
@@ -1176,9 +1163,7 @@ export default function ApplicantDashboard() {
                     const isChef = (user as any)?.isChef;
                     const isDeliveryPartner = (user as any)?.isDeliveryPartner;
                     
-                    if (isChef && isDeliveryPartner) {
-                      return "Manage your chef and delivery partner applications";
-                    } else if (isChef) {
+                    if (isChef) {
                       return "Manage your chef applications and training progress";
                     } else if (isDeliveryPartner) {
                       return "Manage your delivery partner applications";
@@ -1192,11 +1177,7 @@ export default function ApplicantDashboard() {
           </motion.div>
 
           {/* Quick Stats Cards - Mobile Optimized */}
-          <div className={`grid gap-3 sm:gap-4 mb-6 sm:mb-8 ${
-            (user as any)?.isChef && (user as any)?.isDeliveryPartner 
-              ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
-              : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-4'
-          }`}>
+          <div className="grid gap-3 sm:gap-4 mb-6 sm:mb-8 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1209,8 +1190,7 @@ export default function ApplicantDashboard() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-gray-500 truncate">
-                    {(user as any)?.isChef && (user as any)?.isDeliveryPartner ? 'Chef Apps' : 
-                     (user as any)?.isChef ? 'Chef Apps' : 
+                    {(user as any)?.isChef ? 'Chef Apps' : 
                      (user as any)?.isDeliveryPartner ? 'Delivery Apps' : 'Applications'}
                   </p>
                   <p className="text-lg sm:text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
@@ -1218,25 +1198,7 @@ export default function ApplicantDashboard() {
               </div>
             </motion.div>
 
-            {/* Delivery Partner Applications Card - Only show if user is a delivery partner AND has chef role too */}
-            {(user as any)?.isChef && (user as any)?.isDeliveryPartner && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                    <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm text-gray-500 truncate">Delivery Apps</p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{deliveryApplications?.length || 0}</p>
-                  </div>
-                </div>
-              </motion.div>
-            )}
+
 
             {/* Training Card - Only show for chefs */}
             {((user as any)?.isChef) && (
@@ -1529,31 +1491,15 @@ export default function ApplicantDashboard() {
                     <p className="text-gray-600 mb-6">{userDisplayInfo.description}</p>
                     
                     {userDisplayInfo.primaryRole === 'none' ? (
-                      // No role selected - show role selection button
+                      // No role assigned - show start application button
                       <Button asChild className="rounded-xl bg-blue-600 hover:bg-blue-700">
-                        <Link href="/role-selection">
+                        <Link href="/apply">
                           <ChefHat className="mr-2 h-4 w-4" />
-                          Choose Your Role
+                          Start Application
                         </Link>
                       </Button>
-                    ) : userDisplayInfo.isDualRole ? (
-                      // Dual role - show both application options
-                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                        <Button asChild className="rounded-xl bg-orange-600 hover:bg-orange-700">
-                          <Link href="/apply">
-                            <ChefHat className="mr-2 h-4 w-4" />
-                            Start Chef Application
-                          </Link>
-                        </Button>
-                        <Button asChild variant="outline" className="rounded-xl border-blue-600 text-blue-600 hover:bg-blue-50">
-                          <Link href="/delivery-partner-apply">
-                            <Truck className="mr-2 h-4 w-4" />
-                            Start Delivery Application
-                          </Link>
-                        </Button>
-                      </div>
                     ) : (
-                      // Single role - show single application button
+                      // Single role - show single application button (roles are mutually exclusive)
                       <Button asChild className="rounded-xl">
                         <Link href={userDisplayInfo.applicationFormUrl}>
                           <userDisplayInfo.icon className="mr-2 h-4 w-4" />

@@ -18,14 +18,11 @@ export default function HeroSection() {
   const [currentText, setCurrentText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // Dynamic words based on user roles
+  // Dynamic words based on user roles (mutually exclusive)
   const getWords = () => {
-    const isChef = (user as any)?.isChef;
     const isDeliveryPartner = (user as any)?.isDeliveryPartner;
     
-    if (isChef && isDeliveryPartner) {
-      return ["Cooks", "Drivers", "Community"];
-    } else if (isDeliveryPartner) {
+    if (isDeliveryPartner) {
       return ["Drivers", "Delivery", "Community"];
     } else {
       return ["Cooks", "Company", "Community"];
@@ -61,11 +58,19 @@ export default function HeroSection() {
     return () => clearTimeout(timeout);
   }, [currentText, isDeleting, currentWordIndex, words]);
 
-  const handlePrimaryClick = () => {
+  const handleChefClick = () => {
     if (!user) {
-      navigate(`/auth?redirect=/dashboard`);
+      navigate(`/auth`);
     } else {
       navigate(getNavigationPath());
+    }
+  };
+
+  const handleDeliveryPartnerClick = () => {
+    if (!user) {
+      navigate(`/driver-auth`);
+    } else {
+      navigate('/delivery-partner-apply');
     }
   };
 
@@ -89,39 +94,36 @@ export default function HeroSection() {
           </h1>
           <h2 className="text-lg md:text-2xl font-semibold mb-3 md:mb-4 text-gray-700">
             {(() => {
-              const isChef = (user as any)?.isChef;
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
-              if (isChef && isDeliveryPartner) {
-                return "Cooking Excellence, Delivery Excellence";
-              } else if (isDeliveryPartner) {
+              if (user && isDeliveryPartner) {
                 return "Connecting Communities Through Fast Delivery";
-              } else {
+              } else if (user) {
                 return "Bringing Communities Together Through Homemade Meals";
+              } else {
+                return "Connect Communities Through Food";
               }
             })()}
           </h2>
           <p className="text-base md:text-lg mb-4 md:mb-6 text-gray-600 leading-relaxed">
             {(() => {
-              const isChef = (user as any)?.isChef;
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
-              if (isChef && isDeliveryPartner) {
-                return "You're part of our complete ecosystem! Cook amazing meals and deliver exceptional service. Manage both your chef and delivery partner businesses from one unified platform.";
-              } else if (isDeliveryPartner) {
-                return "Join our delivery network and become an essential part of the local food community. Help bring delicious homemade meals from local cooks to hungry customers with flexible scheduling and competitive earnings.";
+              if (user && isDeliveryPartner) {
+                return "Manage your delivery applications and start earning with flexible scheduling.";
+              } else if (user) {
+                return "Manage your chef applications and transform your culinary passion into a business.";
               } else {
-                return "Local Cooks is where your culinary passion meets limitless possibility. Whether you're a professional chef ready to break free from the line or a home cook with treasured family recipes, we provide the platform, resources, and community you need to transform your kitchen into a thriving business.";
+                return "Join Local Cooks as a chef to share your culinary skills, or as a delivery partner to connect communities with fresh, homemade meals.";
               }
             })()}
           </p>
           
           <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
             {(() => {
-              const isChef = (user as any)?.isChef;
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
-              if (isDeliveryPartner && !isChef) {
+              if (isDeliveryPartner) {
                 // Delivery partner only
                 return (
                   <>
@@ -151,38 +153,8 @@ export default function HeroSection() {
                     </div>
                   </>
                 );
-              } else if (isChef && isDeliveryPartner) {
-                // Both chef and delivery partner
-                return (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
-                        <ChefHat className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-medium">Cook & deliver</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
-                        <Truck className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-medium">Dual income streams</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
-                        <Users className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-medium">Expand your network</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
-                        <CreditCard className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-medium">Weekly payments</span>
-                    </div>
-                  </>
-                );
               } else {
-                // Chef only or no role selected
+                // Chef or no role selected
                 return (
                   <>
                     <div className="flex items-center gap-2">
@@ -215,14 +187,36 @@ export default function HeroSection() {
             })()}
           </div>
           
-          <Button 
-            onClick={handlePrimaryClick}
-            disabled={isLoading}
-            size="lg"
-            className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto"
-          >
-            {isLoading ? "Loading..." : getPrimaryButtonText()}
-          </Button>
+          {!user ? (
+            // Guest users - show both options
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <Button 
+                onClick={handleChefClick}
+                size="lg"
+                className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial"
+              >
+                Apply as Chef
+              </Button>
+              <Button 
+                onClick={handleDeliveryPartnerClick}
+                size="lg"
+                variant="outline"
+                className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial"
+              >
+                Apply as Driver
+              </Button>
+            </div>
+          ) : (
+            // Logged-in users - show personalized button
+            <Button 
+              onClick={handleChefClick}
+              disabled={isLoading}
+              size="lg"
+              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto"
+            >
+              {isLoading ? "Loading..." : getPrimaryButtonText()}
+            </Button>
+          )}
         </motion.div>
         
         <motion.div 
@@ -236,10 +230,9 @@ export default function HeroSection() {
           <div className="relative overflow-hidden rounded-xl shadow-xl">
             {(() => {
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-              const isChef = (user as any)?.isChef;
               
-              // Show delivery image for delivery partners (unless they're also a chef)
-              if (isDeliveryPartner && !isChef) {
+              // Show delivery image for delivery partners, chef image for chefs or no role
+              if (isDeliveryPartner) {
                 return (
                   <img 
                     src={foodDeliveryImage} 
@@ -248,7 +241,7 @@ export default function HeroSection() {
                   />
                 );
               } else {
-                // Default to chef image for chefs or dual-role users
+                // Default to chef image for chefs or no role selected
                 return (
                   <img 
                     src={chefCookingImage} 
