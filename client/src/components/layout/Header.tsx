@@ -243,15 +243,24 @@ export default function Header() {
               </li>
             )}
             {!user && (
-              <li>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="border-primary text-primary hover:bg-primary hover:text-white hover-standard"
-                >
-                  <Link href="/auth">Login / Register</Link>
-                </Button>
-              </li>
+              <>
+                <li>
+                  <Link 
+                    href="/auth"
+                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors text-sm font-medium"
+                  >
+                    Chef Login
+                  </Link>
+                </li>
+                <li>
+                  <Link 
+                    href="/driver-auth"
+                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors text-sm font-medium"
+                  >
+                    Driver Login
+                  </Link>
+                </li>
+              </>
             )}
 
             {user && (
@@ -399,12 +408,19 @@ export default function Header() {
               </>
             )}
             {!user && (
-              <li className="pt-2">
+              <li className="pt-2 space-y-2">
                 <Button
                   asChild
-                  className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white"
                 >
-                  <Link href="/auth" onClick={closeMenu}>Login / Register</Link>
+                  <Link href="/auth" onClick={closeMenu}>Chef Login</Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="w-full border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white"
+                >
+                  <Link href="/driver-auth" onClick={closeMenu}>Driver Login</Link>
                 </Button>
               </li>
             )}

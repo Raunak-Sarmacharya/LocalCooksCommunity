@@ -57,13 +57,24 @@ export async function syncFirebaseUserToNeon(params: {
       return existingUser;
     }
 
-    // Create new user with NO default roles - let them choose
+    // Enforce mutually exclusive roles - users can only be chef OR delivery partner, not both
+    // Exception: Admin users have access to both chef and delivery partner data/functionality
+    const finalRole = (role === 'admin' || role === 'chef' || role === 'delivery_partner') ? role : 'chef';
+    const isChef = (finalRole === 'chef' || finalRole === 'admin');
+    const isDeliveryPartner = (finalRole === 'delivery_partner' || finalRole === 'admin');
+    
+    if (finalRole === 'admin') {
+      console.log(`🎯 Admin role assignment: role="admin" → isChef=true, isDeliveryPartner=true (admin has full access)`);
+    } else {
+      console.log(`🎯 Exclusive role assignment: role="${finalRole}" → isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner} (mutually exclusive)`);
+    }
+    
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
-      role: (role === 'admin' || role === 'chef' || role === 'delivery_partner') ? role : 'chef', // Use provided role or default to chef
-      isChef: false, // No default roles - user must choose
-      isDeliveryPartner: false, // No default roles - user must choose
+      role: finalRole,
+      isChef: isChef, // Auto-set based on role
+      isDeliveryPartner: isDeliveryPartner, // Auto-set based on role
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
     };

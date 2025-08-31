@@ -37,7 +37,7 @@ const MicrolearningOverview = lazy(() => import("@/pages/MicrolearningOverview")
 const MicrolearningPlayer = lazy(() => import("@/pages/MicrolearningPlayer"));
 const EmailVerificationTest = lazy(() => import("@/components/EmailVerificationTest"));
 const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
-const RoleSelection = lazy(() => import("@/pages/RoleSelection"));
+
 
 // Loading component
 const LoadingSpinner = () => (
@@ -59,7 +59,7 @@ function Router() {
         <Route path="/success" component={Success} />
         <Route path="/auth" component={EnhancedAuthPage} />
         <Route path="/driver-auth" component={DriverAuthPage} />
-        <ProtectedRoute path="/role-selection" component={RoleSelection} />
+
         <Route path="/auth-test" component={AuthTest} />
         <Route path="/admin-test" component={AdminLoginTest} />
         <Route path="/email-action" component={EmailAction} />

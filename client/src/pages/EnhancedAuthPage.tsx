@@ -1,7 +1,7 @@
 import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
-import RoleSelectionScreen from "@/components/auth/RoleSelectionScreen";
+
 
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -22,7 +22,7 @@ export default function EnhancedAuthPage() {
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
-  const [showRoleSelection, setShowRoleSelection] = useState(false);
+
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
 
@@ -130,14 +130,6 @@ export default function EnhancedAuthPage() {
             // Show welcome screen if user is verified but hasn't seen welcome
             if (userData.is_verified && !userData.has_seen_welcome) {
               console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
-              
-              // Check if user needs to select a role first (no roles selected)
-              if (!userData.isChef && !userData.isDeliveryPartner) {
-                console.log('🎯 ROLE SELECTION REQUIRED - User needs to choose roles');
-                setShowRoleSelection(true);
-                return; // Don't proceed with redirect, let the render logic handle role selection
-              }
-              
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
@@ -249,67 +241,6 @@ export default function EnhancedAuthPage() {
     }
   };
 
-  // Handle role selection completion
-  const handleRoleSelected = async (roles: { isChef: boolean; isDeliveryPartner: boolean }) => {
-    try {
-      console.log(`🎯 ROLES SELECTED:`, roles);
-      
-      // Update local user meta immediately for UI responsiveness
-      if (userMeta) {
-        const updatedUserMeta = {
-          ...userMeta,
-          isChef: roles.isChef,
-          isDeliveryPartner: roles.isDeliveryPartner,
-          // Keep application_type for backward compatibility, but use the new role flags primarily
-          application_type: roles.isChef && roles.isDeliveryPartner ? 'chef' : roles.isChef ? 'chef' : 'delivery_partner'
-        };
-        setUserMeta(updatedUserMeta);
-        console.log('✅ Local user meta updated:', updatedUserMeta);
-      }
-      
-      // Refresh user data in auth context to ensure sync
-      try {
-        console.log('🔄 Refreshing auth context after role selection...');
-        await refreshUserData();
-        console.log('✅ Auth context refreshed after role selection');
-        
-        // Invalidate all application status queries to force refresh
-        const { queryClient } = await import('@/lib/queryClient');
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/user-session"] });
-        console.log('✅ Query cache invalidated after role selection');
-        
-        // Also refresh local user meta
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          const token = await firebaseUser.getIdToken();
-          const response = await fetch('/api/user/profile', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (response.ok) {
-            const refreshedUserData = await response.json();
-            console.log('✅ Local user meta refreshed after role selection:', refreshedUserData);
-            setUserMeta(refreshedUserData);
-          }
-        }
-      } catch (refreshError) {
-        console.error('❌ Error refreshing user data after role selection:', refreshError);
-        // Don't fail the flow if refresh fails
-      }
-      
-      // Show welcome screen after role selection
-      setShowRoleSelection(false);
-    } catch (error) {
-      console.error('❌ Error handling role selection:', error);
-      // Still proceed to welcome screen
-      setShowRoleSelection(false);
-    }
-  };
-
   // Redirect logic for authenticated users after login attempt
   useEffect(() => {
     if (redirectTimeoutRef.current) {
@@ -318,19 +249,13 @@ export default function EnhancedAuthPage() {
     }
 
     if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
-      // Check if user needs role selection first
-      if (userMeta.is_verified && !userMeta.isChef && !userMeta.isDeliveryPartner && showRoleSelection) {
-        console.log('🎯 ROLE SELECTION REQUIRED - Not redirecting yet');
-        return; // Don't redirect, show role selection screen
-      }
-
       // Check if user needs welcome screen
       if (userMeta.is_verified && !userMeta.has_seen_welcome) {
         console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
         return; // Don't redirect, show welcome screen
       }
 
-      // User has completed role selection and welcome or doesn't need them - proceed with redirect
+      // User has completed welcome or doesn't need it - proceed with redirect
       const redirectPath = getRedirectPath();
       let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
       
@@ -359,7 +284,7 @@ export default function EnhancedAuthPage() {
         }, 300);
       }
     }
-  }, [loading, isInitialLoad, user, hasAttemptedLogin, userMeta, showRoleSelection, location, setLocation]);
+  }, [loading, isInitialLoad, user, hasAttemptedLogin, userMeta, location, setLocation]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -375,12 +300,7 @@ export default function EnhancedAuthPage() {
     setHasAttemptedLogin(true);
   };
 
-  // Show role selection screen FIRST if user is verified but hasn't selected any roles
-  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.isChef && !userMeta.isDeliveryPartner && showRoleSelection) {
-    return <RoleSelectionScreen onRoleSelected={handleRoleSelected} />;
-  }
-
-  // Show welcome screen if user is verified but hasn't seen welcome (AFTER role selection)
+  // Show welcome screen if user is verified but hasn't seen welcome
   if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     return <WelcomeScreen onContinue={handleWelcomeContinue} />;
   }

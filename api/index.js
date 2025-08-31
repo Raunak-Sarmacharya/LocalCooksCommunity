@@ -5167,9 +5167,20 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           }
           
           try {
+            // Enforce mutually exclusive roles - users can only be chef OR delivery partner, not both
+            // Exception: Admin users have access to both chef and delivery partner data/functionality
+            const isChef = (role === 'chef' || role === 'admin');
+            const isDeliveryPartner = (role === 'delivery_partner' || role === 'admin');
+            
+            if (role === 'admin') {
+              console.log(`🎯 Admin role assignment: role="admin" → isChef=true, isDeliveryPartner=true (admin has full access)`);
+            } else {
+              console.log(`🎯 Exclusive role assignment: role="${role}" → isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner} (mutually exclusive)`);
+            }
+            
             const insertResult = await pool.query(
               'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-              [email, hashedPassword, role || 'chef', uid, isUserVerified, false, false, false]
+              [email, hashedPassword, role || 'chef', uid, isUserVerified, false, isChef, isDeliveryPartner]
             );
             user = insertResult.rows[0];
             wasCreated = true;
