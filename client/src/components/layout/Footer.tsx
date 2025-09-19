@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useApplicationStatus } from "@/hooks/use-application-status";
-import { ChefHat, Heart, Mail, MapPin, Phone } from "lucide-react";
+import { ChefHat, Heart, Mail, MapPin, Phone, Truck } from "lucide-react";
 import { FaFacebook, FaLinkedin } from "react-icons/fa";
 import { Link, useLocation } from "wouter";
 
@@ -11,6 +11,10 @@ export default function Footer() {
 
   const handleCTAClick = () => {
     navigate(getNavigationPath());
+  };
+
+  const handleDriverClick = () => {
+    navigate('/driver-auth');
   };
 
   const getCTAButtonText = () => {
@@ -32,15 +36,25 @@ export default function Footer() {
             <p className="text-gray-300 mb-6 max-w-md">
               Connecting talented home chefs with hungry customers. We're building more than a platform – we're creating a community where cooks and customers connect directly.
             </p>
-            <Button
-              onClick={handleCTAClick}
-              disabled={isLoading}
-              variant="outline"
-              className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white"
-            >
-              <ChefHat className="mr-2 h-4 w-4" />
-              {isLoading ? "Loading..." : getCTAButtonText()}
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                onClick={handleCTAClick}
+                disabled={isLoading}
+                variant="outline"
+                className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white"
+              >
+                <ChefHat className="mr-2 h-4 w-4" />
+                {isLoading ? "Loading..." : getCTAButtonText()}
+              </Button>
+              <Button
+                onClick={handleDriverClick}
+                variant="outline"
+                className="rounded-full border-blue-400/50 bg-blue-500/10 hover:bg-blue-500/20 hover-standard text-blue-300 hover:text-blue-100"
+              >
+                <Truck className="mr-2 h-4 w-4" />
+                Join as Driver
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 md:w-3/5">
@@ -87,6 +101,14 @@ export default function Footer() {
                     className="text-gray-300 hover:text-white hover-text cursor-pointer bg-transparent border-none p-0 text-left"
                   >
                     {isLoading ? "Loading..." : getApplyLinkText()}
+                  </button>
+                </li>
+                <li>
+                  <button 
+                    onClick={handleDriverClick}
+                    className="text-gray-300 hover:text-white hover-text cursor-pointer bg-transparent border-none p-0 text-left"
+                  >
+                    Apply as Driver
                   </button>
                 </li>
               </ul>
