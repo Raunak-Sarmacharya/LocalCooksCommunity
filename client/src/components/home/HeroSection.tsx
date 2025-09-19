@@ -18,7 +18,7 @@ export default function HeroSection() {
   const [currentText, setCurrentText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // Dynamic words based on user roles (mutually exclusive)
+  // Dynamic words based on user roles
   const getWords = () => {
     const isDeliveryPartner = (user as any)?.isDeliveryPartner;
     
@@ -74,6 +74,7 @@ export default function HeroSection() {
     }
   };
 
+
   const getPrimaryButtonText = () => {
     return getButtonText("Start Your Application");
   };
@@ -114,7 +115,7 @@ export default function HeroSection() {
               } else if (user) {
                 return "Manage your chef applications and transform your culinary passion into a business.";
               } else {
-                return "Join Local Cooks as a chef to share your culinary skills, or as a delivery partner to connect communities with fresh, homemade meals.";
+                return "Join Local Cooks as a chef to share your culinary skills and connect communities with fresh, homemade meals.";
               }
             })()}
           </p>
@@ -124,7 +125,7 @@ export default function HeroSection() {
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
               if (isDeliveryPartner) {
-                // Delivery partner only
+                // Delivery partner benefits
                 return (
                   <>
                     <div className="flex items-center gap-2">
@@ -154,7 +155,7 @@ export default function HeroSection() {
                   </>
                 );
               } else {
-                // Chef or no role selected
+                // Chef benefits (for chefs or no role)
                 return (
                   <>
                     <div className="flex items-center gap-2">
@@ -188,7 +189,7 @@ export default function HeroSection() {
           </div>
           
           {!user ? (
-            // Guest users - show both options
+            // Guest users - show only chef option
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
               <Button 
                 onClick={handleChefClick}
@@ -196,14 +197,6 @@ export default function HeroSection() {
                 className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial"
               >
                 Apply as Chef
-              </Button>
-              <Button 
-                onClick={handleDeliveryPartnerClick}
-                size="lg"
-                variant="outline"
-                className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial"
-              >
-                Apply as Driver
               </Button>
             </div>
           ) : (
