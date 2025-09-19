@@ -52,7 +52,7 @@ export default function Footer() {
                 className="rounded-full border-blue-400/50 bg-blue-500/10 hover:bg-blue-500/20 hover-standard text-blue-300 hover:text-blue-100"
               >
                 <Truck className="mr-2 h-4 w-4" />
-                Join as Driver
+                Join as Delivery Partner
               </Button>
             </div>
           </div>
@@ -108,7 +108,7 @@ export default function Footer() {
                     onClick={handleDriverClick}
                     className="text-gray-300 hover:text-white hover-text cursor-pointer bg-transparent border-none p-0 text-left"
                   >
-                    Apply as Driver
+                    Apply as Delivery Partner
                   </button>
                 </li>
               </ul>
