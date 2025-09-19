@@ -23,7 +23,7 @@ export default function HeroSection() {
     const isDeliveryPartner = (user as any)?.isDeliveryPartner;
     
     if (isDeliveryPartner) {
-      return ["Drivers", "Delivery", "Community"];
+      return ["Delivery Partners", "Delivery", "Community"];
     } else {
       return ["Cooks", "Company", "Community"];
     }

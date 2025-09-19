@@ -4,19 +4,19 @@ import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 import { motion } from 'framer-motion';
 import {
-  ArrowRight,
-  BarChart3,
-  CheckCircle,
-  ChefHat,
-  Clock,
-  FileText,
-  GraduationCap,
-  HeartHandshake,
-  MapPin,
-  Rocket,
-  Shield,
-  Truck,
-  Upload
+    ArrowRight,
+    BarChart3,
+    CheckCircle,
+    ChefHat,
+    Clock,
+    FileText,
+    GraduationCap,
+    HeartHandshake,
+    MapPin,
+    Rocket,
+    Shield,
+    Truck,
+    Upload
 } from 'lucide-react';
 import { useState } from 'react';
 
