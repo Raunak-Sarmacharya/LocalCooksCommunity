@@ -785,8 +785,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('Admin login attempt for:', username);
 
-      // Get admin user
-      const admin = await storage.getUserByUsername(username);
+      // Get admin user from FirebaseStorage
+      const admin = await firebaseStorage.getUserByUsername(username);
 
       if (!admin) {
         console.log('Admin user not found:', username);
@@ -821,19 +821,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('Admin login successful for:', username);
 
-      // Use Passport.js login to set session
-      req.login(admin, (err) => {
-        if (err) {
-          console.error('Error setting session:', err);
-          return res.status(500).json({ error: 'Session creation failed' });
-        }
+      // Set session data directly (simpler than Passport login)
+      req.session.userId = admin.id;
+      req.session.user = {
+        id: admin.id,
+        username: admin.username,
+        role: admin.role,
+        isChef: admin.isChef,
+        isDeliveryPartner: admin.isDeliveryPartner
+      };
 
-        // Remove sensitive info
-        const { password: _, ...adminWithoutPassword } = admin;
+      // Remove sensitive info
+      const { password: _, ...adminWithoutPassword } = admin;
 
-        // Return user data
-        return res.status(200).json(adminWithoutPassword);
-      });
+      // Return user data
+      return res.status(200).json(adminWithoutPassword);
     } catch (error) {
       console.error('Admin login error:', error);
       res.status(500).json({ error: 'Admin login failed', message: error instanceof Error ? error.message : 'Unknown error' });
