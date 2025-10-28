@@ -305,7 +305,14 @@ async function createLocation({ name, address, managerId }) {
     
     console.log('createLocation called with:', { name, address, managerId });
     
-    const managerIdParam = managerId && managerId !== '' ? parseInt(managerId) : null;
+    // Handle optional managerId - only include if it's provided and valid
+    let managerIdParam = null;
+    if (managerId !== undefined && managerId !== null && managerId !== '') {
+      managerIdParam = parseInt(managerId);
+      if (isNaN(managerIdParam)) {
+        managerIdParam = null;
+      }
+    }
     
     console.log('Executing SQL query with params:', { name, address, managerId: managerIdParam });
     
@@ -320,6 +327,8 @@ async function createLocation({ name, address, managerId }) {
   } catch (error) {
     console.error('Error in createLocation function:', error);
     console.error('Error details:', error.message, error.stack);
+    console.error('Error code:', error.code);
+    console.error('Error detail:', error.detail);
     throw error;
   }
 }
