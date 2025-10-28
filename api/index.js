@@ -323,21 +323,6 @@ async function createLocation({ name, address, managerId }) {
     throw error;
   }
 }
-    
-    const managerIdParam = managerId && managerId !== '' ? parseInt(managerId) : null;
-    
-    const result = await pool.query(`
-      INSERT INTO locations (name, address, manager_id)
-      VALUES ($1, $2, $3)
-      RETURNING id, name, address, manager_id as "managerId", created_at, updated_at
-    `, [name, address, managerIdParam]);
-    
-    return result.rows[0];
-  } catch (error) {
-    console.error('Error creating location in database:', error);
-    throw error;
-  }
-}
 
 // Get all kitchens from database
 async function getAllKitchens() {
