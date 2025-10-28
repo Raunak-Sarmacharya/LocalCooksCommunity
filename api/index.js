@@ -178,6 +178,7 @@ try {
 
 // In-memory fallback for users
 const users = new Map();
+const locations = []; // In-memory storage for locations
 
 // Middleware  
 app.use(express.json({ limit: '12mb' }));
@@ -10608,7 +10609,7 @@ app.get("/api/admin/locations", async (req, res) => {
     }
 
     // Return empty array for now - would need database logic
-    res.json([]);
+    res.json(locations);
   } catch (error) {
     console.error("Error fetching locations:", error);
     res.status(500).json({ error: "Failed to fetch locations" });
@@ -10631,7 +10632,9 @@ app.post("/api/admin/locations", async (req, res) => {
     const { name, address, managerId } = req.body;
     
     // Return success for now - would need database logic
-    res.status(201).json({ success: true, id: Date.now(), name, address, managerId });
+    const location = { id: locations.length + 1, name, address, managerId: managerId || null };
+    locations.push(location);
+    res.status(201).json(location);
   } catch (error) {
     console.error("Error creating location:", error);
     res.status(500).json({ error: "Failed to create location" });
