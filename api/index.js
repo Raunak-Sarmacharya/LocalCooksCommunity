@@ -274,6 +274,9 @@ async function getUserByUsername(username) {
   for (const user of users.values()) {
     if (user.username === username) return user;
   }
+  
+  return null;
+}
 
 // Helper functions to interact with locations table in Neon DB
 
@@ -369,9 +372,6 @@ async function createKitchen({ locationId, name, description, isActive }) {
     console.error('Error creating kitchen in database:', error);
     throw error;
   }
-}
-
-  return null;
 }
 
 async function getUser(id) {
