@@ -390,9 +390,22 @@ export class FirebaseStorage {
     try {
       console.log('Inserting location into database:', locationData);
       
+      // Build the insert data, excluding managerId if it's undefined
+      const insertData: any = {
+        name: locationData.name,
+        address: locationData.address,
+      };
+      
+      // Only include managerId if it's provided and valid
+      if (locationData.managerId !== undefined && locationData.managerId !== null) {
+        insertData.managerId = locationData.managerId;
+      }
+      
+      console.log('Insert data:', insertData);
+      
       const [location] = await db
         .insert(locations)
-        .values(locationData)
+        .values(insertData)
         .returning();
       
       console.log('Location created successfully:', location);
@@ -462,13 +475,39 @@ export class FirebaseStorage {
   
   async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean }): Promise<any> {
     try {
+      console.log('Inserting kitchen into database:', kitchenData);
+      
+      // Build the insert data, excluding optional fields if undefined
+      const insertData: any = {
+        locationId: kitchenData.locationId,
+        name: kitchenData.name,
+      };
+      
+      // Only include description if provided
+      if (kitchenData.description !== undefined && kitchenData.description !== null && kitchenData.description !== '') {
+        insertData.description = kitchenData.description;
+      }
+      
+      // Only include isActive if provided, default to true
+      if (kitchenData.isActive !== undefined) {
+        insertData.isActive = kitchenData.isActive;
+      } else {
+        insertData.isActive = true;
+      }
+      
+      console.log('Insert data:', insertData);
+      
       const [kitchen] = await db
         .insert(kitchens)
-        .values(kitchenData)
+        .values(insertData)
         .returning();
+      
+      console.log('Kitchen created successfully:', kitchen);
       return kitchen;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating kitchen:', error);
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
       throw error;
     }
   }
@@ -517,8 +556,13 @@ export class FirebaseStorage {
 
   // ===== KITCHEN AVAILABILITY MANAGEMENT =====
   
-  async setKitchenAvailability(kitchenId: number, availability: { dayOfWeek: number; startTime: string; endTime: string; isAvailable: boolean }): Promise<any> {
+  async setKitchenAvailability(kitchenId: number, availability: { dayOfWeek: number; startTime: string; endTime: string; isAvailable?: boolean }): Promise<any> {
     try {
+      console.log('Setting kitchen availability:', { kitchenId, ...availability });
+      
+      // Use default value for isAvailable if not provided
+      const isAvailable = availability.isAvailable !== undefined ? availability.isAvailable : true;
+      
       // Check if availability exists for this kitchen and day
       const existing = await db
         .select()
@@ -535,7 +579,7 @@ export class FirebaseStorage {
           .set({
             startTime: availability.startTime,
             endTime: availability.endTime,
-            isAvailable: availability.isAvailable
+            isAvailable: isAvailable
           })
           .where(and(
             eq(kitchenAvailability.kitchenId, kitchenId),
@@ -545,17 +589,28 @@ export class FirebaseStorage {
         return updated;
       } else {
         // Create new
+        const insertData = {
+          kitchenId,
+          dayOfWeek: availability.dayOfWeek,
+          startTime: availability.startTime,
+          endTime: availability.endTime,
+          isAvailable: isAvailable
+        };
+        
+        console.log('Insert data:', insertData);
+        
         const [created] = await db
           .insert(kitchenAvailability)
-          .values({
-            kitchenId,
-            ...availability
-          })
+          .values(insertData)
           .returning();
+        
+        console.log('Availability set successfully:', created);
         return created;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error setting kitchen availability:', error);
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
       throw error;
     }
   }
@@ -576,16 +631,35 @@ export class FirebaseStorage {
   
   async createKitchenBooking(bookingData: { chefId: number; kitchenId: number; bookingDate: Date; startTime: string; endTime: string; specialNotes?: string }): Promise<any> {
     try {
+      console.log('Inserting kitchen booking into database:', bookingData);
+      
+      // Build the insert data, excluding optional fields if undefined
+      const insertData: any = {
+        chefId: bookingData.chefId,
+        kitchenId: bookingData.kitchenId,
+        bookingDate: bookingData.bookingDate,
+        startTime: bookingData.startTime,
+        endTime: bookingData.endTime,
+      };
+      
+      // Only include specialNotes if provided
+      if (bookingData.specialNotes !== undefined && bookingData.specialNotes !== null && bookingData.specialNotes !== '') {
+        insertData.specialNotes = bookingData.specialNotes;
+      }
+      
+      console.log('Insert data:', insertData);
+      
       const [booking] = await db
         .insert(kitchenBookings)
-        .values({
-          ...bookingData,
-          bookingDate: bookingData.bookingDate
-        })
+        .values(insertData)
         .returning();
+      
+      console.log('Kitchen booking created successfully:', booking);
       return booking;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating kitchen booking:', error);
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
       throw error;
     }
   }
