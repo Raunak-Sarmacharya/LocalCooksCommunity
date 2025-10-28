@@ -788,14 +788,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log('Admin login attempt for:', username);
+      console.log('Storage type:', storage.constructor.name);
+      console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
 
       // Get admin user
-      const admin = await storage.getUserByUsername(username);
+      let admin;
+      try {
+        admin = await storage.getUserByUsername(username);
+      } catch (dbError) {
+        console.error('Database error fetching user:', dbError);
+        return res.status(500).json({ 
+          error: 'Database connection failed',
+          message: dbError instanceof Error ? dbError.message : 'Unknown database error'
+        });
+      }
 
       if (!admin) {
         console.log('Admin user not found:', username);
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
+      
+      console.log('Admin user found:', { id: admin.id, username: admin.username, role: admin.role });
 
       // Verify admin role
       if (admin.role !== 'admin') {
