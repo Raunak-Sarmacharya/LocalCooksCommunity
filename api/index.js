@@ -10573,7 +10573,13 @@ app.get('/api/vehicles/years/:makeId', async (req, res) => {
 // Create manager account
 app.post("/api/admin/managers", async (req, res) => {
   try {
-    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -10591,7 +10597,13 @@ app.post("/api/admin/managers", async (req, res) => {
 // Get all locations (admin)
 app.get("/api/admin/locations", async (req, res) => {
   try {
-    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -10606,7 +10618,13 @@ app.get("/api/admin/locations", async (req, res) => {
 // Create location (admin)
 app.post("/api/admin/locations", async (req, res) => {
   try {
-    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -10623,7 +10641,13 @@ app.post("/api/admin/locations", async (req, res) => {
 // Create kitchen (admin)
 app.post("/api/admin/kitchens", async (req, res) => {
   try {
-    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
