@@ -3234,21 +3234,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create manager account
   app.post("/api/admin/managers", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+      // Check authentication - support both session and Firebase auth
+      const isSessionAuth = req.isAuthenticated?.();
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!isSessionAuth && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { username, password, email, name } = req.body;
       
       // Check if user already exists
-      const existingUser = await storage.getUserByUsername(username);
+      const existingUser = await firebaseStorage.getUserByUsername(username);
       if (existingUser) {
         return res.status(400).json({ error: "Username already exists" });
       }
 
       // Create manager user
       const hashedPassword = await hashPassword(password);
-      const manager = await storage.createUser({
+      const manager = await firebaseStorage.createUser({
         username,
         password: hashedPassword,
         role: "manager",
@@ -3257,16 +3266,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json({ success: true, managerId: manager.id });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating manager:", error);
-      res.status(500).json({ error: "Failed to create manager" });
+      console.error("Error details:", error.message, error.stack);
+      res.status(500).json({ error: error.message || "Failed to create manager" });
     }
   });
 
   // Get all locations (admin)
   app.get("/api/admin/locations", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+      // Check authentication - support both session and Firebase auth
+      const isSessionAuth = req.isAuthenticated?.();
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!isSessionAuth && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
@@ -3281,7 +3300,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create location (admin)
   app.post("/api/admin/locations", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+      // Check authentication - support both session and Firebase auth
+      const isSessionAuth = req.isAuthenticated?.();
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!isSessionAuth && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
@@ -3310,16 +3338,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create kitchen (admin)
   app.post("/api/admin/kitchens", async (req: Request, res: Response) => {
     try {
-      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+      // Check authentication - support both session and Firebase auth
+      const isSessionAuth = req.isAuthenticated?.();
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!isSessionAuth && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { locationId, name, description } = req.body;
       const kitchen = await firebaseStorage.createKitchen({ locationId, name, description, isActive: true });
       res.status(201).json(kitchen);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating kitchen:", error);
-      res.status(500).json({ error: "Failed to create kitchen" });
+      console.error("Error details:", error.message, error.stack);
+      res.status(500).json({ error: error.message || "Failed to create kitchen" });
     }
   });
 
