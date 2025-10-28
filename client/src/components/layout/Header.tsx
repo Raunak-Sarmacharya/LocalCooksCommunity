@@ -182,6 +182,11 @@ export default function Header() {
         href: "/admin",
         text: `${user.displayName || user.username || 'Admin'}'s Admin Dashboard`
       };
+    } else if (user?.role === "manager") {
+      return {
+        href: "/manager/dashboard",
+        text: "Manager Dashboard"
+      };
     } else {
       return {
         href: "/dashboard",

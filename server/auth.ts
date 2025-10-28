@@ -14,7 +14,7 @@ declare global {
     interface User {
       id: number;
       username: string;
-      role: "admin" | "chef" | "delivery_partner" | null;
+      role: "admin" | "chef" | "delivery_partner" | "manager" | null;
       isChef?: boolean;
       isDeliveryPartner?: boolean;
     }
@@ -41,7 +41,7 @@ declare module "../server/storage" {
   interface IStorage {
     createOAuthUser(user: { 
       username: string;
-      role: "admin" | "chef" | "delivery_partner";
+      role: "admin" | "chef" | "delivery_partner" | "manager";
       isChef?: boolean;
       isDeliveryPartner?: boolean;
       oauth_provider: string;

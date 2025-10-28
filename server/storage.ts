@@ -18,7 +18,7 @@ export interface IStorage {
   createUser(user: {
     username: string;
     password: string;
-    role?: "admin" | "chef" | "delivery_partner";
+    role?: "admin" | "chef" | "delivery_partner" | "manager";
     isChef?: boolean;
     isDeliveryPartner?: boolean;
     googleId?: string;
@@ -27,7 +27,7 @@ export interface IStorage {
   }): Promise<User>;
   createOAuthUser(user: {
     username: string;
-    role: "admin" | "chef" | "delivery_partner";
+    role: "admin" | "chef" | "delivery_partner" | "manager";
     isChef?: boolean;
     isDeliveryPartner?: boolean;
     oauth_provider: string;

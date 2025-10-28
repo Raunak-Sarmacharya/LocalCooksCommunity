@@ -1091,7 +1091,7 @@ function AdminDashboard() {
           >
             {/* Main Admin Tabs */}
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 rounded-xl bg-gray-100 p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-4 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
                   Chef Applications
@@ -1103,6 +1103,10 @@ function AdminDashboard() {
                 <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
                   <Gift className="h-4 w-4" />
                   Send Promo Codes
+                </TabsTrigger>
+                <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
+                  <ExternalLink className="h-4 w-4" />
+                  Manage Kitchens
                 </TabsTrigger>
               </TabsList>
 
@@ -1375,6 +1379,19 @@ function AdminDashboard() {
               {/* Promo Codes Tab Content */}
               <TabsContent value="promos" className="mt-0">
                 <PromoCodeSender />
+              </TabsContent>
+
+              <TabsContent value="kitchen-management" className="mt-0">
+                <div className="text-center py-12">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Kitchen Management</h3>
+                  <p className="text-gray-600 mb-6">Create and manage commercial kitchen locations and facilities</p>
+                  <Button
+                    onClick={() => navigate("/admin/manage-locations")}
+                    className="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
+                  >
+                    Open Kitchen Management →
+                  </Button>
+                </div>
               </TabsContent>
             </Tabs>
           </motion.div>
