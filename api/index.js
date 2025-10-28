@@ -299,8 +299,30 @@ async function getAllLocations() {
 async function createLocation({ name, address, managerId }) {
   try {
     if (!pool) {
+      console.error('createLocation: Database pool not available');
       throw new Error('Database not available');
     }
+    
+    console.log('createLocation called with:', { name, address, managerId });
+    
+    const managerIdParam = managerId && managerId !== '' ? parseInt(managerId) : null;
+    
+    console.log('Executing SQL query with params:', { name, address, managerId: managerIdParam });
+    
+    const result = await pool.query(`
+      INSERT INTO locations (name, address, manager_id)
+      VALUES ($1, $2, $3)
+      RETURNING id, name, address, manager_id as "managerId", created_at, updated_at
+    `, [name, address, managerIdParam]);
+    
+    console.log('Location created successfully:', result.rows[0]);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error in createLocation function:', error);
+    console.error('Error details:', error.message, error.stack);
+    throw error;
+  }
+}
     
     const managerIdParam = managerId && managerId !== '' ? parseInt(managerId) : null;
     
