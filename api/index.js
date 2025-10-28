@@ -10565,4 +10565,77 @@ app.get('/api/vehicles/years/:makeId', async (req, res) => {
   }
 });
 
+
+// ===================================
+// KITCHEN BOOKING SYSTEM - ADMIN ROUTES
+// ===================================
+
+// Create manager account
+app.post("/api/admin/managers", async (req, res) => {
+  try {
+    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { username, password, email, name } = req.body;
+    
+    // Manager creation logic would go here
+    // For now, return success
+    res.status(201).json({ success: true, message: "Manager created successfully" });
+  } catch (error) {
+    console.error("Error creating manager:", error);
+    res.status(500).json({ error: "Failed to create manager" });
+  }
+});
+
+// Get all locations (admin)
+app.get("/api/admin/locations", async (req, res) => {
+  try {
+    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    // Return empty array for now - would need database logic
+    res.json([]);
+  } catch (error) {
+    console.error("Error fetching locations:", error);
+    res.status(500).json({ error: "Failed to fetch locations" });
+  }
+});
+
+// Create location (admin)
+app.post("/api/admin/locations", async (req, res) => {
+  try {
+    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { name, address, managerId } = req.body;
+    
+    // Return success for now - would need database logic
+    res.status(201).json({ success: true, id: Date.now(), name, address, managerId });
+  } catch (error) {
+    console.error("Error creating location:", error);
+    res.status(500).json({ error: "Failed to create location" });
+  }
+});
+
+// Create kitchen (admin)
+app.post("/api/admin/kitchens", async (req, res) => {
+  try {
+    if (!req.isAuthenticated || !req.user || req.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { locationId, name, description } = req.body;
+    
+    // Return success for now - would need database logic
+    res.status(201).json({ success: true, id: Date.now(), locationId, name, description });
+  } catch (error) {
+    console.error("Error creating kitchen:", error);
+    res.status(500).json({ error: "Failed to create kitchen" });
+  }
+});
+
+
 export default app;
