@@ -3258,11 +3258,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { name, address, managerId } = req.body;
-      const location = await firebaseStorage.createLocation({ name, address, managerId });
+      
+      // Convert managerId to number or undefined
+      const managerIdNum = managerId && managerId !== '' 
+        ? parseInt(managerId.toString()) 
+        : undefined;
+      
+      console.log('Creating location with:', { name, address, managerId: managerIdNum });
+      
+      const location = await firebaseStorage.createLocation({ 
+        name, 
+        address, 
+        managerId: managerIdNum 
+      });
       res.status(201).json(location);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating location:", error);
-      res.status(500).json({ error: "Failed to create location" });
+      console.error("Error details:", error.message, error.stack);
+      res.status(500).json({ error: error.message || "Failed to create location" });
     }
   });
 

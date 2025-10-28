@@ -388,14 +388,31 @@ export class FirebaseStorage {
   
   async createLocation(locationData: { name: string; address: string; managerId?: number }): Promise<any> {
     try {
+      console.log('Inserting location into database:', locationData);
+      
       const [location] = await db
         .insert(locations)
         .values(locationData)
         .returning();
+      
+      console.log('Location created successfully:', location);
       return location;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating location:', error);
-      throw error;
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      console.error('Error detail:', error.detail);
+      
+      // Provide a more user-friendly error message
+      if (error.code === '23503') { // Foreign key constraint violation
+        throw new Error('The selected manager does not exist or is invalid.');
+      } else if (error.code === '23505') { // Unique constraint violation
+        throw new Error('A location with this information already exists.');
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('Failed to create location due to a database error.');
+      }
     }
   }
 
