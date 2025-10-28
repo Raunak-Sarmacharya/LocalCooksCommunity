@@ -371,6 +371,9 @@ async function createKitchen({ locationId, name, description, isActive }) {
   }
 }
 
+  return null;
+}
+
 async function getUser(id) {
   // Try database first
   if (pool) {
