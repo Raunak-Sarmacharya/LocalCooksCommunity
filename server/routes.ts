@@ -789,14 +789,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('Admin login attempt for:', username);
 
-      // Get admin user from FirebaseStorage
-      let admin;
-      try {
-        admin = await firebaseStorage.getUserByUsername(username);
-      } catch (err) {
-        console.error('Error fetching user from firebaseStorage:', err);
-        return res.status(500).json({ error: 'Failed to fetch user data' });
-      }
+      // Get admin user
+      const admin = await storage.getUserByUsername(username);
 
       if (!admin) {
         console.log('Admin user not found:', username);
@@ -831,26 +825,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('Admin login successful for:', username);
 
-      // Set session data directly (simpler than Passport login)
-      try {
-        req.session.userId = admin.id;
-        req.session.user = {
-          id: admin.id,
-          username: admin.username,
-          role: admin.role,
-          isChef: admin.isChef,
-          isDeliveryPartner: admin.isDeliveryPartner
-        };
-      } catch (sessionError) {
-        console.error('Error setting session:', sessionError);
-        return res.status(500).json({ error: 'Failed to create session' });
-      }
+      // Use Passport.js login to set session
+      req.login(admin, (err) => {
+        if (err) {
+          console.error('Error setting session:', err);
+          return res.status(500).json({ error: 'Session creation failed' });
+        }
 
-      // Remove sensitive info
-      const { password: _, ...adminWithoutPassword } = admin;
+        // Remove sensitive info
+        const { password: _, ...adminWithoutPassword } = admin;
 
-      // Return user data
-      return res.status(200).json(adminWithoutPassword);
+        // Return user data
+        return res.status(200).json(adminWithoutPassword);
+      });
     } catch (error) {
       console.error('Admin login error:', error);
       console.error('Error details:', error instanceof Error ? error.stack : error);
