@@ -794,12 +794,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get admin user
       let admin;
       try {
+        console.log('Calling storage.getUserByUsername...');
         admin = await storage.getUserByUsername(username);
-      } catch (dbError) {
+        console.log('Storage call completed, user:', admin ? 'found' : 'not found');
+      } catch (dbError: any) {
         console.error('Database error fetching user:', dbError);
+        console.error('Error stack:', dbError?.stack);
+        console.error('Error code:', dbError?.code);
+        console.error('Error detail:', dbError?.detail);
         return res.status(500).json({ 
           error: 'Database connection failed',
-          message: dbError instanceof Error ? dbError.message : 'Unknown database error'
+          message: dbError instanceof Error ? dbError.message : 'Unknown database error',
+          code: dbError?.code
         });
       }
 
