@@ -67,14 +67,16 @@ export class FirebaseStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
           [
             insertUser.username,
             insertUser.password || '', // Empty password for Firebase users
             insertUser.role || 'applicant',
             insertUser.firebaseUid,
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
-            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false
+            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
+            insertUser.isChef !== undefined ? insertUser.isChef : false,
+            insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false
           ]
         );
         return result.rows[0];
@@ -93,6 +95,8 @@ export class FirebaseStorage {
         role: insertUser.role || "applicant",
         isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
+        isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,
+        isDeliveryPartner: insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
       })
       .returning();
 
@@ -508,7 +512,18 @@ export class FirebaseStorage {
       console.error('Error creating kitchen:', error);
       console.error('Error message:', error.message);
       console.error('Error code:', error.code);
-      throw error;
+      console.error('Error detail:', error.detail);
+      
+      // Provide a more user-friendly error message
+      if (error.code === '23503') { // Foreign key constraint violation
+        throw new Error('The selected location does not exist or is invalid.');
+      } else if (error.code === '23505') { // Unique constraint violation
+        throw new Error('A kitchen with this name already exists in this location.');
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('Failed to create kitchen due to a database error.');
+      }
     }
   }
 
