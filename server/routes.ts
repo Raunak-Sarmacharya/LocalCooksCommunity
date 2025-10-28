@@ -8,10 +8,11 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateBookingNotificationEmail, generateBookingConfirmationEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
+import { firebaseStorage } from "./storage-firebase";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -2977,6 +2978,307 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'Failed to fetch vehicle years',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  // ===================================
+  // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
+  // ===================================
+
+  // Middleware to require manager authentication
+  async function requireManager(req: Request, res: Response, next: () => void) {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    if (req.user!.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+    next();
+  }
+
+  // Get all locations for manager
+  app.get("/api/manager/locations", requireManager, async (req: Request, res: Response) => {
+    try {
+      const locations = await firebaseStorage.getLocationsByManager(req.user!.id);
+      res.json(locations);
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
+  // Get kitchens for a location
+  app.get("/api/manager/kitchens/:locationId", requireManager, async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      const kitchens = await firebaseStorage.getKitchensByLocation(locationId);
+      res.json(kitchens);
+    } catch (error) {
+      console.error("Error fetching kitchens:", error);
+      res.status(500).json({ error: "Failed to fetch kitchens" });
+    }
+  });
+
+  // Set kitchen availability
+  app.post("/api/manager/availability", requireManager, async (req: Request, res: Response) => {
+    try {
+      const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
+      await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error setting availability:", error);
+      res.status(500).json({ error: "Failed to set availability" });
+    }
+  });
+
+  // Get kitchen availability
+  app.get("/api/manager/availability/:kitchenId", requireManager, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const availability = await firebaseStorage.getKitchenAvailability(kitchenId);
+      res.json(availability);
+    } catch (error) {
+      console.error("Error fetching availability:", error);
+      res.status(500).json({ error: "Failed to fetch availability" });
+    }
+  });
+
+  // Get all bookings for manager
+  app.get("/api/manager/bookings", requireManager, async (req: Request, res: Response) => {
+    try {
+      const bookings = await firebaseStorage.getBookingsByManager(req.user!.id);
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching bookings:", error);
+      res.status(500).json({ error: "Failed to fetch bookings" });
+    }
+  });
+
+  // Update booking status
+  app.put("/api/manager/bookings/:id/status", requireManager, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body;
+      await firebaseStorage.updateKitchenBookingStatus(id, status);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating booking status:", error);
+      res.status(500).json({ error: "Failed to update booking status" });
+    }
+  });
+
+  // ===================================
+  // KITCHEN BOOKING SYSTEM - CHEF ROUTES
+  // ===================================
+
+  // Middleware to require chef authentication
+  async function requireChef(req: Request, res: Response, next: () => void) {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    if (!req.user!.isChef) {
+      return res.status(403).json({ error: "Chef access required" });
+    }
+    next();
+  }
+
+  // Get all kitchens
+  app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchens = await firebaseStorage.getAllKitchens();
+      res.json(kitchens);
+    } catch (error) {
+      console.error("Error fetching kitchens:", error);
+      res.status(500).json({ error: "Failed to fetch kitchens" });
+    }
+  });
+
+  // Get available time slots for a kitchen on a specific date
+  app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { date } = req.query;
+      const bookingDate = date ? new Date(date as string) : new Date();
+      const slots = await firebaseStorage.getAvailableTimeSlots(kitchenId, bookingDate);
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching available slots:", error);
+      res.status(500).json({ error: "Failed to fetch available slots" });
+    }
+  });
+
+  // Create a booking
+  app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
+      
+      // Check for conflicts
+      const hasConflict = await firebaseStorage.checkBookingConflict(kitchenId, new Date(bookingDate), startTime, endTime);
+      if (hasConflict) {
+        return res.status(409).json({ error: "Time slot is not available" });
+      }
+
+      const booking = await firebaseStorage.createKitchenBooking({
+        chefId: req.user!.id,
+        kitchenId,
+        bookingDate: new Date(bookingDate),
+        startTime,
+        endTime,
+        specialNotes
+      });
+
+      // Send email notifications (background)
+      try {
+        // Get kitchen and location details
+        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        if (kitchen) {
+          const location = await firebaseStorage.getLocationById(kitchen.locationId);
+          
+          // Get chef and manager details
+          const chef = await storage.getUser(req.user!.id);
+          const manager = location?.managerId ? await storage.getUser(location.managerId) : null;
+
+          if (chef && kitchen && manager) {
+            // Send confirmation to chef
+            const chefEmail = generateBookingConfirmationEmail({
+              chefEmail: chef.username,
+              chefName: (chef as any).displayName || chef.username,
+              kitchenName: kitchen.name,
+              bookingDate: bookingDate,
+              startTime,
+              endTime,
+              specialNotes
+            });
+            await sendEmail(chefEmail);
+
+            // Send notification to manager
+            const managerEmail = generateBookingNotificationEmail({
+              managerEmail: manager.username,
+              chefName: (chef as any).displayName || chef.username,
+              kitchenName: kitchen.name,
+              bookingDate: bookingDate,
+              startTime,
+              endTime,
+              specialNotes
+            });
+            await sendEmail(managerEmail);
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending booking emails:", emailError);
+        // Don't fail the booking if emails fail
+      }
+      
+      res.status(201).json(booking);
+    } catch (error) {
+      console.error("Error creating booking:", error);
+      res.status(500).json({ error: "Failed to create booking" });
+    }
+  });
+
+  // Get chef's bookings
+  app.get("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
+    try {
+      const bookings = await firebaseStorage.getBookingsByChef(req.user!.id);
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching bookings:", error);
+      res.status(500).json({ error: "Failed to fetch bookings" });
+    }
+  });
+
+  // Cancel a booking
+  app.put("/api/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error cancelling booking:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
+    }
+  });
+
+  // ===================================
+  // KITCHEN BOOKING SYSTEM - ADMIN ROUTES
+  // ===================================
+
+  // Create manager account
+  app.post("/api/admin/managers", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { username, password, email, name } = req.body;
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+
+      // Create manager user
+      const hashedPassword = await hashPassword(password);
+      const manager = await storage.createUser({
+        username,
+        password: hashedPassword,
+        role: "manager",
+        isChef: false,
+        isDeliveryPartner: false
+      });
+
+      res.status(201).json({ success: true, managerId: manager.id });
+    } catch (error) {
+      console.error("Error creating manager:", error);
+      res.status(500).json({ error: "Failed to create manager" });
+    }
+  });
+
+  // Get all locations (admin)
+  app.get("/api/admin/locations", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const locations = await firebaseStorage.getAllLocations();
+      res.json(locations);
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
+  // Create location (admin)
+  app.post("/api/admin/locations", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { name, address, managerId } = req.body;
+      const location = await firebaseStorage.createLocation({ name, address, managerId });
+      res.status(201).json(location);
+    } catch (error) {
+      console.error("Error creating location:", error);
+      res.status(500).json({ error: "Failed to create location" });
+    }
+  });
+
+  // Create kitchen (admin)
+  app.post("/api/admin/kitchens", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated() || req.user!.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { locationId, name, description } = req.body;
+      const kitchen = await firebaseStorage.createKitchen({ locationId, name, description, isActive: true });
+      res.status(201).json(kitchen);
+    } catch (error) {
+      console.error("Error creating kitchen:", error);
+      res.status(500).json({ error: "Failed to create kitchen" });
     }
   });
 

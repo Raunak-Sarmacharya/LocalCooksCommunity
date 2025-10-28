@@ -10,6 +10,7 @@ import { queryClient } from "./lib/queryClient";
 
 // Immediate load components (small/critical)
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
+import ManagerProtectedRoute from "@/components/manager/ManagerProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminLoginTest from "@/pages/AdminLoginTest";
@@ -37,6 +38,12 @@ const MicrolearningOverview = lazy(() => import("@/pages/MicrolearningOverview")
 const MicrolearningPlayer = lazy(() => import("@/pages/MicrolearningPlayer"));
 const EmailVerificationTest = lazy(() => import("@/components/EmailVerificationTest"));
 const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
+
+// Kitchen Booking System components
+const ManagerDashboard = lazy(() => import("@/pages/ManagerDashboard"));
+const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
+const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
+const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 
 
 // Loading component
@@ -132,12 +139,34 @@ function Router() {
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />
         <ProtectedRoute path="/microlearning" component={MicrolearningOverview} />
+        
+        {/* Kitchen Booking Routes */}
+        <ProtectedRoute path="/book-kitchen" component={KitchenBookingCalendar} />
+        
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin">
           <AdminProtectedRoute>
             <Admin />
           </AdminProtectedRoute>
         </Route>
+        <Route path="/admin/manage-locations">
+          <AdminProtectedRoute>
+            <AdminManageLocations />
+          </AdminProtectedRoute>
+        </Route>
+        
+        {/* Manager Routes */}
+        <Route path="/manager/dashboard">
+          <ManagerProtectedRoute>
+            <ManagerDashboard />
+          </ManagerProtectedRoute>
+        </Route>
+        <Route path="/manager/availability">
+          <ManagerProtectedRoute>
+            <KitchenAvailabilityManagement />
+          </ManagerProtectedRoute>
+        </Route>
+        
         <Route component={NotFound} />
       </Switch>
     </Suspense>

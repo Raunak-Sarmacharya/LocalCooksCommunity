@@ -12,7 +12,7 @@ export const certificationStatusEnum = pgEnum('certification_status', ['yes', 'n
 export const applicationStatusEnum = pgEnum('application_status', ['inReview', 'approved', 'rejected', 'cancelled']);
 
 // Define an enum for user roles
-export const userRoleEnum = pgEnum('user_role', ['admin', 'chef', 'delivery_partner']);
+export const userRoleEnum = pgEnum('user_role', ['admin', 'chef', 'delivery_partner', 'manager']);
 
 // Define an enum for document verification status
 export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
@@ -22,6 +22,9 @@ export const applicationTypeEnum = pgEnum('application_type', ['chef', 'delivery
 
 // Define an enum for vehicle types (4-wheeled vehicles only)
 export const vehicleTypeEnum = pgEnum('vehicle_type', ['car', 'suv', 'truck', 'van']);
+
+// Define an enum for booking status
+export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'cancelled']);
 
 // Define users table (for both admins and users)
 export const users = pgTable("users", {
@@ -162,7 +165,7 @@ export type UpdateDocumentVerification = z.infer<typeof updateDocumentVerificati
 export const insertUserSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["admin", "chef", "delivery_partner"]).default("chef"),
+  role: z.enum(["admin", "chef", "delivery_partner", "manager"]).default("chef"),
   googleId: z.string().optional(),
   facebookId: z.string().optional(),
   firebaseUid: z.string().optional(),
@@ -307,3 +310,133 @@ export type UpdateDeliveryPartnerApplicationStatus = z.infer<typeof updateDelive
 export type UpdateDeliveryPartnerDocuments = z.infer<typeof updateDeliveryPartnerDocumentsSchema>;
 export type UpdateDeliveryPartnerDocumentVerification = z.infer<typeof updateDeliveryPartnerDocumentVerificationSchema>;
 export type UpdateUserApplicationType = z.infer<typeof updateUserApplicationTypeSchema>;
+
+// ===== KITCHEN BOOKING SYSTEM TABLES =====
+
+// Define locations table
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  address: text("address").notNull(),
+  managerId: integer("manager_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Define kitchens table
+export const kitchens = pgTable("kitchens", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Define kitchen availability table
+export const kitchenAvailability = pgTable("kitchen_availability", {
+  id: serial("id").primaryKey(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  dayOfWeek: integer("day_of_week").notNull(), // 0-6, Sunday is 0
+  startTime: text("start_time").notNull(), // HH:MM format
+  endTime: text("end_time").notNull(), // HH:MM format
+  isAvailable: boolean("is_available").default(true).notNull(),
+});
+
+// Define kitchen bookings table
+export const kitchenBookings = pgTable("kitchen_bookings", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  bookingDate: timestamp("booking_date").notNull(),
+  startTime: text("start_time").notNull(), // HH:MM format
+  endTime: text("end_time").notNull(), // HH:MM format
+  status: bookingStatusEnum("status").default("pending").notNull(),
+  specialNotes: text("special_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod schemas for kitchen booking system
+
+export const insertLocationSchema = createInsertSchema(locations, {
+  name: z.string().min(2, "Location name must be at least 2 characters"),
+  address: z.string().min(5, "Address must be at least 5 characters"),
+  managerId: z.number().optional(),
+}).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLocationSchema = z.object({
+  id: z.number(),
+  name: z.string().min(2).optional(),
+  address: z.string().min(5).optional(),
+  managerId: z.number().optional(),
+});
+
+export const insertKitchenSchema = createInsertSchema(kitchens, {
+  locationId: z.number(),
+  name: z.string().min(1, "Kitchen name is required"),
+  description: z.string().optional(),
+  isActive: z.boolean().optional(),
+}).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateKitchenSchema = z.object({
+  id: z.number(),
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailability, {
+  kitchenId: z.number(),
+  dayOfWeek: z.number().min(0).max(6),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  isAvailable: z.boolean().optional(),
+}).omit({ 
+  id: true,
+});
+
+export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
+  chefId: z.number(),
+  kitchenId: z.number(),
+  bookingDate: z.string().or(z.date()),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  specialNotes: z.string().optional(),
+}).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateKitchenBookingSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  specialNotes: z.string().optional(),
+});
+
+// Type exports
+export type Location = typeof locations.$inferSelect;
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
+export type UpdateLocation = z.infer<typeof updateLocationSchema>;
+
+export type Kitchen = typeof kitchens.$inferSelect;
+export type InsertKitchen = z.infer<typeof insertKitchenSchema>;
+export type UpdateKitchen = z.infer<typeof updateKitchenSchema>;
+
+export type KitchenAvailability = typeof kitchenAvailability.$inferSelect;
+export type InsertKitchenAvailability = z.infer<typeof insertKitchenAvailabilitySchema>;
+
+export type KitchenBooking = typeof kitchenBookings.$inferSelect;
+export type InsertKitchenBooking = z.infer<typeof insertKitchenBookingSchema>;
+export type UpdateKitchenBooking = z.infer<typeof updateKitchenBookingSchema>;
