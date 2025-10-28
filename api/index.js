@@ -274,6 +274,87 @@ async function getUserByUsername(username) {
   for (const user of users.values()) {
     if (user.username === username) return user;
   }
+
+// Helper functions to interact with locations table in Neon DB
+
+// Get all locations from database
+async function getAllLocations() {
+  try {
+    if (!pool) {
+      return [];
+    }
+    const result = await pool.query(`
+      SELECT id, name, address, manager_id as "managerId", created_at, updated_at 
+      FROM locations 
+      ORDER BY created_at DESC
+    `);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching locations from database:', error);
+    return [];
+  }
+}
+
+// Create a location in the database
+async function createLocation({ name, address, managerId }) {
+  try {
+    if (!pool) {
+      throw new Error('Database not available');
+    }
+    
+    const managerIdParam = managerId && managerId !== '' ? parseInt(managerId) : null;
+    
+    const result = await pool.query(`
+      INSERT INTO locations (name, address, manager_id)
+      VALUES ($1, $2, $3)
+      RETURNING id, name, address, manager_id as "managerId", created_at, updated_at
+    `, [name, address, managerIdParam]);
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error creating location in database:', error);
+    throw error;
+  }
+}
+
+// Get all kitchens from database
+async function getAllKitchens() {
+  try {
+    if (!pool) {
+      return [];
+    }
+    const result = await pool.query(`
+      SELECT id, location_id as "locationId", name, description, is_active as "isActive", created_at, updated_at 
+      FROM kitchens 
+      ORDER BY created_at DESC
+    `);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching kitchens from database:', error);
+    return [];
+  }
+}
+
+// Create a kitchen in the database
+async function createKitchen({ locationId, name, description, isActive }) {
+  try {
+    if (!pool) {
+      throw new Error('Database not available');
+    }
+    
+    const result = await pool.query(`
+      INSERT INTO kitchens (location_id, name, description, is_active)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, location_id as "locationId", name, description, is_active as "isActive", created_at, updated_at
+    `, [locationId, name, description, isActive !== false]);
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error creating kitchen in database:', error);
+    throw error;
+  }
+}
+
   return null;
 }
 
@@ -10632,8 +10713,7 @@ app.post("/api/admin/locations", async (req, res) => {
     const { name, address, managerId } = req.body;
     
     // Return success for now - would need database logic
-    const location = { id: locations.length + 1, name, address, managerId: managerId || null };
-    locations.push(location);
+    const location = await createLocation({ name, address, managerId });
     res.status(201).json(location);
   } catch (error) {
     console.error("Error creating location:", error);
@@ -10656,8 +10736,8 @@ app.post("/api/admin/kitchens", async (req, res) => {
 
     const { locationId, name, description } = req.body;
     
-    // Return success for now - would need database logic
-    res.status(201).json({ success: true, id: Date.now(), locationId, name, description });
+    const kitchen = await createKitchen({ locationId, name, description, isActive: true });
+    res.status(201).json(kitchen);
   } catch (error) {
     console.error("Error creating kitchen:", error);
     res.status(500).json({ error: "Failed to create kitchen" });
