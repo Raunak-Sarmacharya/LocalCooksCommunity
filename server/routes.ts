@@ -783,10 +783,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { username, password } = req.body;
 
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
       console.log('Admin login attempt for:', username);
 
       // Get admin user from FirebaseStorage
-      const admin = await firebaseStorage.getUserByUsername(username);
+      let admin;
+      try {
+        admin = await firebaseStorage.getUserByUsername(username);
+      } catch (err) {
+        console.error('Error fetching user from firebaseStorage:', err);
+        return res.status(500).json({ error: 'Failed to fetch user data' });
+      }
 
       if (!admin) {
         console.log('Admin user not found:', username);
@@ -822,14 +832,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Admin login successful for:', username);
 
       // Set session data directly (simpler than Passport login)
-      req.session.userId = admin.id;
-      req.session.user = {
-        id: admin.id,
-        username: admin.username,
-        role: admin.role,
-        isChef: admin.isChef,
-        isDeliveryPartner: admin.isDeliveryPartner
-      };
+      try {
+        req.session.userId = admin.id;
+        req.session.user = {
+          id: admin.id,
+          username: admin.username,
+          role: admin.role,
+          isChef: admin.isChef,
+          isDeliveryPartner: admin.isDeliveryPartner
+        };
+      } catch (sessionError) {
+        console.error('Error setting session:', sessionError);
+        return res.status(500).json({ error: 'Failed to create session' });
+      }
 
       // Remove sensitive info
       const { password: _, ...adminWithoutPassword } = admin;
@@ -838,7 +853,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(200).json(adminWithoutPassword);
     } catch (error) {
       console.error('Admin login error:', error);
-      res.status(500).json({ error: 'Admin login failed', message: error instanceof Error ? error.message : 'Unknown error' });
+      console.error('Error details:', error instanceof Error ? error.stack : error);
+      res.status(500).json({ 
+        error: 'Admin login failed', 
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: process.env.NODE_ENV === 'development' ? error : undefined
+      });
     }
   });
 
