@@ -68,12 +68,27 @@ export function useKitchenBookings() {
     queryKey: ["/api/chef/kitchens"],
     queryFn: async () => {
       const headers = await getAuthHeaders();
+      console.log('🔍 Fetching kitchens from /api/chef/kitchens with headers:', headers);
+      
       const response = await fetch("/api/chef/kitchens", {
         credentials: "include",
         headers,
       });
-      if (!response.ok) throw new Error("Failed to fetch kitchens");
-      return response.json();
+      
+      console.log('📡 Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to fetch kitchens. Status:', response.status);
+        console.error('❌ Error response:', errorText);
+        throw new Error(`Failed to fetch kitchens: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Received kitchens data:', data);
+      console.log('✅ Number of kitchens:', Array.isArray(data) ? data.length : 'Not an array');
+      
+      return data;
     },
   });
 
@@ -137,6 +152,7 @@ export function useKitchenBookings() {
     isLoadingBookings: bookingsQuery.isLoading,
     kitchens: kitchensQuery.data || [],
     isLoadingKitchens: kitchensQuery.isLoading,
+    kitchensQuery, // Expose the full query object for error handling
     getAvailableSlots,
     createBooking,
     cancelBooking,

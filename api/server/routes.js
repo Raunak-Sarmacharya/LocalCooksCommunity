@@ -3072,24 +3072,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================================
 
   // Middleware to require chef authentication
-  async function requireChef(req: Request, res: Response, next: () => void) {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ error: "Not authenticated" });
+  // Helper function to verify Firebase token
+  async function verifyFirebaseToken(token) {
+    try {
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth();
+      const decodedToken = await auth.verifyIdToken(token);
+      return decodedToken;
+    } catch (error) {
+      console.error('Firebase token verification error:', error);
+      return null;
     }
-    if (!req.user!.isChef) {
-      return res.status(403).json({ error: "Chef access required" });
+  }
+
+  async function requireChef(req, res, next) {
+    try {
+      // First, try Firebase authentication
+      const authHeader = req.headers.authorization;
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const decodedToken = await verifyFirebaseToken(token);
+        
+        if (decodedToken) {
+          const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
+          
+          if (neonUser && neonUser.isChef) {
+            req.firebaseUser = {
+              uid: decodedToken.uid,
+              email: decodedToken.email,
+              email_verified: decodedToken.email_verified,
+            };
+            req.user = neonUser;
+            console.log(`✅ Chef authenticated via Firebase: ${neonUser.username} (ID: ${neonUser.id})`);
+            return next();
+          } else if (neonUser && !neonUser.isChef) {
+            return res.status(403).json({ error: "Chef access required" });
+          }
+        }
+      }
+      
+      // Fall back to session authentication
+      if (req.isAuthenticated && req.isAuthenticated() && req.user && req.user.isChef) {
+        console.log(`✅ Chef authenticated via session: ${req.user.username} (ID: ${req.user.id})`);
+        return next();
+      }
+      
+      return res.status(401).json({ error: "Authentication required. Please sign in as a chef." });
+    } catch (error) {
+      console.error('Error in requireChef middleware:', error);
+      return res.status(401).json({ error: "Authentication failed" });
     }
-    next();
   }
 
   // Get all kitchens
-  app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
+  app.get("/api/chef/kitchens", requireChef, async (req, res) => {
     try {
-      const kitchens = await firebaseStorage.getAllKitchens();
-      res.json(kitchens);
+      console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown', 'ID:', req.user?.id);
+      console.log('📍 Firebase user:', req.firebaseUser?.uid || 'N/A');
+      
+      const allKitchens = await firebaseStorage.getAllKitchens();
+      console.log(`✅ Found ${allKitchens.length} total kitchens in database`);
+      
+      if (allKitchens.length > 0) {
+        console.log('📦 Sample kitchen data:', JSON.stringify(allKitchens[0], null, 2));
+      }
+      
+      // Filter to only return active kitchens - handle both camelCase and snake_case
+      const activeKitchens = allKitchens.filter(k => {
+        const isActive = k.isActive !== undefined ? k.isActive : k.is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      console.log(`✅ Returning ${activeKitchens.length} active kitchens (filtered from ${allKitchens.length} total)`);
+      
+      res.json(activeKitchens);
     } catch (error) {
-      console.error("Error fetching kitchens:", error);
-      res.status(500).json({ error: "Failed to fetch kitchens" });
+      console.error("❌ Error fetching kitchens:", error);
+      res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
     }
   });
 

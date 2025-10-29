@@ -6,7 +6,7 @@ import Footer from "@/components/layout/Footer";
 import { useToast } from "@/hooks/use-toast";
 
 export default function KitchenBookingCalendar() {
-  const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking } = useKitchenBookings();
+  const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking, kitchensQuery } = useKitchenBookings();
   const { toast } = useToast();
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -168,6 +168,26 @@ export default function KitchenBookingCalendar() {
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Kitchen</h2>
             {isLoadingKitchens ? (
               <p className="text-gray-500">Loading kitchens...</p>
+            ) : kitchensQuery.isError ? (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 font-medium">Error loading kitchens</p>
+                <p className="text-red-600 text-sm mt-1">
+                  {(kitchensQuery.error as Error)?.message || "Failed to fetch kitchens"}
+                </p>
+                <p className="text-red-600 text-xs mt-2">
+                  Check the console for more details.
+                </p>
+              </div>
+            ) : kitchens.length === 0 ? (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-yellow-800 font-medium">No kitchens available</p>
+                <p className="text-yellow-600 text-sm mt-1">
+                  There are currently no active commercial kitchens in the system.
+                </p>
+                <p className="text-yellow-600 text-xs mt-2">
+                  Kitchen count: {kitchens.length} | Loading: {isLoadingKitchens ? 'Yes' : 'No'} | Error: {kitchensQuery.isError ? 'Yes' : 'No'}
+                </p>
+              </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {kitchens.map((kitchen) => (
