@@ -152,14 +152,26 @@ export default function KitchenAvailabilityManagement() {
         credentials: "include",
       });
       if (!response.ok) {
+        // If 404, it might just mean no date overrides exist yet - that's OK
+        if (response.status === 404) {
+          console.log('No date overrides found - returning empty array');
+          return [];
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || errorData.error || 'Failed to fetch date availability');
       }
-      return response.json();
+      const data = await response.json();
+      // Empty array is valid - means no date overrides set yet
+      console.log(`✅ Loaded ${Array.isArray(data) ? data.length : 0} date overrides`);
+      return data;
     },
     enabled: !!selectedKitchenId,
     staleTime: 30000, // Consider data fresh for 30 seconds
     retry: 2, // Retry failed requests twice
+    // Don't treat empty results as an error
+    onError: (error) => {
+      console.error('Error loading date overrides:', error);
+    },
   });
 
   // Fetch bookings for selected kitchen
