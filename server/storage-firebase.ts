@@ -548,9 +548,19 @@ export class FirebaseStorage {
 
   async getAllKitchens(): Promise<any[]> {
     try {
-      return await db.select().from(kitchens);
+      const result = await db.select().from(kitchens);
+      console.log('📦 getAllKitchens - Raw result from DB:', JSON.stringify(result, null, 2));
+      console.log('📦 Total kitchens in DB:', result.length);
+      
+      // The drizzle ORM should handle snake_case to camelCase conversion automatically
+      // But let's log to verify
+      if (result.length > 0) {
+        console.log('📦 First kitchen sample:', result[0]);
+      }
+      
+      return result;
     } catch (error) {
-      console.error('Error getting all kitchens:', error);
+      console.error('❌ Error getting all kitchens:', error);
       throw error;
     }
   }
@@ -573,7 +583,7 @@ export class FirebaseStorage {
   
   async setKitchenAvailability(kitchenId: number, availability: { dayOfWeek: number; startTime: string; endTime: string; isAvailable?: boolean }): Promise<any> {
     try {
-      console.log('Setting kitchen availability:', { kitchenId, ...availability });
+      console.log('🕒 Setting kitchen availability:', { kitchenId, ...availability });
       
       // Use default value for isAvailable if not provided
       const isAvailable = availability.isAvailable !== undefined ? availability.isAvailable : true;
@@ -587,7 +597,10 @@ export class FirebaseStorage {
           eq(kitchenAvailability.dayOfWeek, availability.dayOfWeek)
         ));
 
+      console.log(`🔍 Found ${existing.length} existing availability records for kitchen ${kitchenId}, day ${availability.dayOfWeek}`);
+      
       if (existing.length > 0) {
+        console.log('🔄 Updating existing availability record:', existing[0].id);
         // Update existing
         const [updated] = await db
           .update(kitchenAvailability)
@@ -601,8 +614,10 @@ export class FirebaseStorage {
             eq(kitchenAvailability.dayOfWeek, availability.dayOfWeek)
           ))
           .returning();
+        console.log('✅ Updated availability:', updated);
         return updated;
       } else {
+        console.log('➕ Creating new availability record');
         // Create new
         const insertData = {
           kitchenId,
@@ -612,14 +627,14 @@ export class FirebaseStorage {
           isAvailable: isAvailable
         };
         
-        console.log('Insert data:', insertData);
+        console.log('📝 Insert data:', insertData);
         
         const [created] = await db
           .insert(kitchenAvailability)
           .values(insertData)
           .returning();
         
-        console.log('Availability set successfully:', created);
+        console.log('✅ Availability created successfully:', created);
         return created;
       }
     } catch (error: any) {
