@@ -1,6 +1,8 @@
 import { Calendar, Clock, MapPin } from "lucide-react";
 import { useState } from "react";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
+import ManagerHeader from "@/components/layout/ManagerHeader";
+import Footer from "@/components/layout/Footer";
 
 export default function ManagerDashboard() {
   const { locations, bookings, isLoadingLocations, isLoadingBookings } = useManagerDashboard();
@@ -34,11 +36,14 @@ export default function ManagerDashboard() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
-        <p className="text-gray-600 mt-2">Manage your locations, kitchens, and bookings</p>
-      </div>
+    <div className="min-h-screen flex flex-col">
+      <ManagerHeader />
+      <main className="flex-1 pt-24 pb-8">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
+            <p className="text-gray-600 mt-2">Manage your locations, kitchens, and bookings</p>
+          </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Stats Cards */}
@@ -171,6 +176,9 @@ export default function ManagerDashboard() {
           )}
         </div>
       </div>
+        </div>
+      </main>
+      <Footer />
     </div>
   );
 }

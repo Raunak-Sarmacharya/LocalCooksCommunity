@@ -1,6 +1,8 @@
 import { Clock, Save, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
+import ManagerHeader from "@/components/layout/ManagerHeader";
+import Footer from "@/components/layout/Footer";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sunday" },
@@ -61,11 +63,14 @@ export default function KitchenAvailabilityManagement() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Manage Kitchen Availability</h1>
-        <p className="text-gray-600 mt-2">Set up weekly schedules for each kitchen</p>
-      </div>
+    <div className="min-h-screen flex flex-col">
+      <ManagerHeader />
+      <main className="flex-1 pt-24 pb-8">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Manage Kitchen Availability</h1>
+            <p className="text-gray-600 mt-2">Set up weekly schedules for each kitchen</p>
+          </div>
 
       {isLoadingLocations ? (
         <div className="text-center py-12">
@@ -162,6 +167,9 @@ export default function KitchenAvailabilityManagement() {
           </div>
         </div>
       )}
+        </div>
+      </main>
+      <Footer />
     </div>
   );
 }
