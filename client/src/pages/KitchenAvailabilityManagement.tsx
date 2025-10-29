@@ -28,7 +28,7 @@ export default function KitchenAvailabilityManagement() {
       fetch(`/api/manager/kitchens/${selectedLocationId}`, { credentials: "include" })
         .then(res => res.json())
         .then(data => setKitchens(data))
-        .catch(err => console.error("Error fetching kitchens:", err));
+        .catch(() => {});
     }
   }, [selectedLocationId]);
 
@@ -37,7 +37,7 @@ export default function KitchenAvailabilityManagement() {
       fetch(`/api/manager/availability/${selectedKitchenId}`, { credentials: "include" })
         .then(res => res.json())
         .then(data => setAvailability(data))
-        .catch(err => console.error("Error fetching availability:", err));
+        .catch(() => {});
     }
   }, [selectedKitchenId]);
 
@@ -52,7 +52,6 @@ export default function KitchenAvailabilityManagement() {
       setTimeout(() => setSaveStatus(""), 3000);
     } catch (error) {
       setSaveStatus("Error saving availability");
-      console.error("Error:", error);
     } finally {
       setIsSaving(false);
     }
