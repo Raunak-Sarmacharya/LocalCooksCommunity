@@ -10880,6 +10880,187 @@ app.get("/api/manager/bookings", async (req, res) => {
   }
 });
 
+// Set kitchen availability (manager)
+app.post("/api/manager/availability", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
+    if (!kitchenId || dayOfWeek === undefined || !startTime || !endTime) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Verify the manager has access to this kitchen
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    const kitchenResult = await pool.query(`
+      SELECT k.id 
+      FROM kitchens k
+      INNER JOIN locations l ON k.location_id = l.id
+      WHERE k.id = $1 AND l.manager_id = $2
+    `, [kitchenId, user.id]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Check if availability exists for this kitchen and day
+    const existingResult = await pool.query(`
+      SELECT id FROM kitchen_availability 
+      WHERE kitchen_id = $1 AND day_of_week = $2
+    `, [kitchenId, dayOfWeek]);
+
+    const isAvailableValue = isAvailable !== undefined ? isAvailable : true;
+
+    if (existingResult.rows.length > 0) {
+      // Update existing
+      await pool.query(`
+        UPDATE kitchen_availability 
+        SET start_time = $1, end_time = $2, is_available = $3
+        WHERE kitchen_id = $4 AND day_of_week = $5
+      `, [startTime, endTime, isAvailableValue, kitchenId, dayOfWeek]);
+    } else {
+      // Create new
+      await pool.query(`
+        INSERT INTO kitchen_availability (kitchen_id, day_of_week, start_time, end_time, is_available)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [kitchenId, dayOfWeek, startTime, endTime, isAvailableValue]);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error setting availability:", error);
+    res.status(500).json({ error: error.message || "Failed to set availability" });
+  }
+});
+
+// Get kitchen availability (manager)
+app.get("/api/manager/availability/:kitchenId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    // Verify the manager has access to this kitchen by checking if the kitchen belongs to one of their locations
+    if (!pool) {
+      return res.json([]);
+    }
+    const kitchenResult = await pool.query(`
+      SELECT k.id, k.location_id 
+      FROM kitchens k
+      INNER JOIN locations l ON k.location_id = l.id
+      WHERE k.id = $1 AND l.manager_id = $2
+    `, [kitchenId, user.id]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Get availability
+    const availabilityResult = await pool.query(`
+      SELECT id, kitchen_id as "kitchenId", day_of_week as "dayOfWeek", 
+             start_time as "startTime", end_time as "endTime", is_available as "isAvailable"
+      FROM kitchen_availability 
+      WHERE kitchen_id = $1
+      ORDER BY day_of_week ASC
+    `, [kitchenId]);
+    
+    res.json(availabilityResult.rows);
+  } catch (error) {
+    console.error("Error fetching availability:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch availability" });
+  }
+});
+
+// Set kitchen availability (manager)
+app.post("/api/manager/availability", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
+
+    if (!kitchenId || dayOfWeek === undefined || !startTime || !endTime) {
+      return res.status(400).json({ error: "kitchenId, dayOfWeek, startTime, and endTime are required" });
+    }
+
+    const kitchenIdNum = parseInt(kitchenId.toString());
+    if (isNaN(kitchenIdNum) || kitchenIdNum <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID format" });
+    }
+
+    // Verify the manager has access to this kitchen
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+    const kitchenResult = await pool.query(`
+      SELECT k.id, k.location_id 
+      FROM kitchens k
+      INNER JOIN locations l ON k.location_id = l.id
+      WHERE k.id = $1 AND l.manager_id = $2
+    `, [kitchenIdNum, user.id]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Check if availability already exists for this kitchen and day
+    const existingResult = await pool.query(`
+      SELECT id FROM kitchen_availability 
+      WHERE kitchen_id = $1 AND day_of_week = $2
+    `, [kitchenIdNum, dayOfWeek]);
+
+    const isAvailableValue = isAvailable !== undefined ? isAvailable : true;
+
+    if (existingResult.rows.length > 0) {
+      // Update existing
+      await pool.query(`
+        UPDATE kitchen_availability 
+        SET start_time = $1, end_time = $2, is_available = $3
+        WHERE kitchen_id = $4 AND day_of_week = $5
+      `, [startTime, endTime, isAvailableValue, kitchenIdNum, dayOfWeek]);
+    } else {
+      // Create new
+      await pool.query(`
+        INSERT INTO kitchen_availability (kitchen_id, day_of_week, start_time, end_time, is_available)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [kitchenIdNum, dayOfWeek, startTime, endTime, isAvailableValue]);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error setting availability:", error);
+    res.status(500).json({ error: error.message || "Failed to set availability" });
+  }
+});
+
 // Manager change password endpoint
 app.post("/api/manager/change-password", async (req, res) => {
   try {

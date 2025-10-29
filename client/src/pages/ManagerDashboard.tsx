@@ -1,12 +1,14 @@
-import { Calendar, Clock, MapPin } from "lucide-react";
-import { useState } from "react";
+import { Calendar, Clock, MapPin, ChefHat } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 
 export default function ManagerDashboard() {
-  const { locations, bookings, isLoadingLocations, isLoadingBookings } = useManagerDashboard();
+  const { locations, bookings, isLoadingLocations, isLoadingBookings, getKitchensForLocation } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<number | null>(null);
+  const [kitchens, setKitchens] = useState<any[]>([]);
+  const [isLoadingKitchens, setIsLoadingKitchens] = useState(false);
 
   const selectedBookings = selectedLocation
     ? bookings.filter(b => {
@@ -34,6 +36,24 @@ export default function ManagerDashboard() {
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
   };
+
+  // Load kitchens when location is selected
+  useEffect(() => {
+    if (selectedLocation) {
+      setIsLoadingKitchens(true);
+      getKitchensForLocation(selectedLocation)
+        .then(data => {
+          setKitchens(data);
+          setIsLoadingKitchens(false);
+        })
+        .catch(err => {
+          console.error("Error loading kitchens:", err);
+          setIsLoadingKitchens(false);
+        });
+    } else {
+      setKitchens([]);
+    }
+  }, [selectedLocation, getKitchensForLocation]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -118,6 +138,54 @@ export default function ManagerDashboard() {
           )}
         </div>
       </div>
+
+      {/* Kitchens Section */}
+      {selectedLocation && (
+        <div className="bg-white rounded-lg shadow mb-8">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900">Kitchens at Selected Location</h2>
+          </div>
+          <div className="p-6">
+            {isLoadingKitchens ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">Loading kitchens...</p>
+              </div>
+            ) : kitchens.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No kitchens available at this location</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {kitchens.map((kitchen) => (
+                  <div
+                    key={kitchen.id}
+                    className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="flex items-center mb-2">
+                      <ChefHat className="h-5 w-5 text-orange-600 mr-2" />
+                      <h3 className="font-semibold text-gray-900">{kitchen.name}</h3>
+                    </div>
+                    {kitchen.description && (
+                      <p className="text-sm text-gray-600 mb-2">{kitchen.description}</p>
+                    )}
+                    <div className="flex items-center mt-2">
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-medium ${
+                          kitchen.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {kitchen.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Bookings Section */}
       <div className="bg-white rounded-lg shadow">
