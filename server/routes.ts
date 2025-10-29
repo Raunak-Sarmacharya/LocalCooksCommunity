@@ -814,25 +814,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
       
-      console.log('Admin user found:', { id: admin.id, username: admin.username, role: admin.role });
+      console.log('User found:', { id: admin.id, username: admin.username, role: admin.role });
 
-      // Verify admin role
-      if (admin.role !== 'admin') {
-        console.log('User is not an admin:', username);
-        return res.status(403).json({ error: 'Not authorized as admin' });
+      // Verify user is admin or manager (both use session-based auth)
+      if (admin.role !== 'admin' && admin.role !== 'manager') {
+        console.log('User is not an admin or manager:', username, 'role:', admin.role);
+        return res.status(403).json({ error: 'Not authorized - admin or manager access required' });
       }
 
-      // Check password - first try exact match for 'localcooks'
+      // Check password - first try exact match for 'localcooks' (legacy admin password)
       let passwordMatches = false;
 
-      if (password === 'localcooks') {
+      if (password === 'localcooks' && admin.role === 'admin') {
         passwordMatches = true;
         console.log('Admin password matched with hardcoded value');
       } else {
-        // Try to compare with database password
+        // Compare with database password hash
         try {
           passwordMatches = await comparePasswords(password, admin.password);
-          console.log('Admin password compared with stored hash:', passwordMatches);
+          console.log('Password compared with stored hash:', passwordMatches);
         } catch (error) {
           console.error('Error comparing passwords:', error);
         }
@@ -842,7 +842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
 
-      console.log('Admin login successful for:', username);
+      console.log(`${admin.role} login successful for:`, username);
 
       // Store session data for admin (both Passport and direct session)
       (req.session as any).userId = admin.id;
@@ -923,7 +923,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const { password: _, ...userWithoutPassword } = user as any;
+      // Fetch full user data including has_seen_welcome from database
+      const fullUser = await storage.getUser(user.id);
+      const { password: _, ...userWithoutPassword } = (fullUser || user) as any;
+      
       return res.json({
         ...userWithoutPassword,
         authMethod: req.isAuthenticated?.() ? 'passport-session' : 'session'
@@ -3305,20 +3308,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { username, password, email, name } = req.body;
       
+      // Validate required fields
+      if (!username || !password) {
+        return res.status(400).json({ error: "Username and password are required" });
+      }
+      
       // Check if user already exists
       const existingUser = await firebaseStorage.getUserByUsername(username);
       if (existingUser) {
         return res.status(400).json({ error: "Username already exists" });
       }
 
-      // Create manager user
+      // Create manager user with hashed password
+      // Set has_seen_welcome to false to force password change on first login
       const hashedPassword = await hashPassword(password);
       const manager = await firebaseStorage.createUser({
         username,
         password: hashedPassword,
         role: "manager",
         isChef: false,
-        isDeliveryPartner: false
+        isDeliveryPartner: false,
+        has_seen_welcome: false  // Manager must change password on first login
       });
 
       res.status(201).json({ success: true, managerId: manager.id });
@@ -3326,6 +3336,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error creating manager:", error);
       console.error("Error details:", error.message, error.stack);
       res.status(500).json({ error: error.message || "Failed to create manager" });
+    }
+  });
+
+  // Manager change password endpoint
+  app.post("/api/manager/change-password", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - support both session and Firebase auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+
+      // Validate required fields
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current password and new password are required" });
+      }
+
+      // Validate new password strength
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: "New password must be at least 8 characters long" });
+      }
+
+      // Get full user data to verify current password
+      const fullUser = await storage.getUser(user.id);
+      if (!fullUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Verify current password
+      const passwordMatches = await comparePasswords(currentPassword, fullUser.password);
+      if (!passwordMatches) {
+        return res.status(400).json({ error: "Current password is incorrect" });
+      }
+
+      // Update password using direct database query
+      const hashedNewPassword = await hashPassword(newPassword);
+      const { pool } = await import('./db');
+      if (pool) {
+        await pool.query(
+          'UPDATE users SET password = $1 WHERE id = $2',
+          [hashedNewPassword, user.id]
+        );
+      } else {
+        // Fallback for in-memory storage
+        const memUser = await storage.getUser(user.id);
+        if (memUser) {
+          (memUser as any).password = hashedNewPassword;
+        }
+      }
+
+      // Mark that manager has changed password (set has_seen_welcome to true)
+      await storage.setUserHasSeenWelcome(user.id);
+
+      res.json({ success: true, message: "Password changed successfully" });
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ error: error.message || "Failed to change password" });
     }
   });
 
