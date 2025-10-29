@@ -10726,6 +10726,35 @@ app.post("/api/admin/managers", async (req, res) => {
   }
 });
 
+// Get all managers (admin only)
+app.get("/api/admin/managers", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    // Fetch all users with missing role from database
+    if (pool) {
+      const result = await pool.query(
+        'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
+        ['manager']
+      );
+      return res.json(result.rows);
+    } else {
+      return res.json([]);
+    }
+  } catch (error) {
+    console.error("Error fetching managers:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch managers" });
+  }
+});
+
 // Manager change password endpoint
 app.post("/api/manager/change-password", async (req, res) => {
   try {
