@@ -8,6 +8,7 @@ export default function AdminManageLocations() {
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
   const [kitchens, setKitchens] = useState<any[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [locationForm, setLocationForm] = useState({
@@ -199,10 +200,39 @@ export default function AdminManageLocations() {
               Add Kitchen
             </button>
           </div>
+          {locations.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Location
+              </label>
+              <select
+                value={selectedLocationId || ""}
+                onChange={(e) => {
+                  const locationId = e.target.value ? parseInt(e.target.value) : null;
+                  setSelectedLocationId(locationId);
+                  if (locationId) {
+                    loadKitchens(locationId);
+                  } else {
+                    setKitchens([]);
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              >
+                <option value="">All Locations</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {loading ? (
             <p className="text-gray-500">Loading...</p>
-          ) : kitchens.length === 0 ? (
+          ) : !selectedLocationId ? (
             <p className="text-gray-500">Select a location to view kitchens</p>
+          ) : kitchens.length === 0 ? (
+            <p className="text-gray-500">No kitchens found for this location</p>
           ) : (
             <div className="space-y-2">
               {kitchens.map((kitchen) => (
@@ -211,6 +241,9 @@ export default function AdminManageLocations() {
                   {kitchen.description && (
                     <p className="text-sm text-gray-600">{kitchen.description}</p>
                   )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Status: {kitchen.isActive ? "Active" : "Inactive"}
+                  </p>
                 </div>
               ))}
             </div>
