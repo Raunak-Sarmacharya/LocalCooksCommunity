@@ -1,5 +1,6 @@
-import { Calendar, Clock, MapPin, ChefHat } from "lucide-react";
+import { Calendar, Clock, MapPin, ChefHat, Settings } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
@@ -60,9 +61,18 @@ export default function ManagerDashboard() {
       <ManagerHeader />
       <main className="flex-1 pt-24 pb-8">
         <div className="container mx-auto px-4 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
-            <p className="text-gray-600 mt-2">Manage your locations, kitchens, and bookings</p>
+          <div className="mb-8 flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
+              <p className="text-gray-600 mt-2">Manage your locations, kitchens, and bookings</p>
+            </div>
+            <Link
+              href="/manager/availability"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Settings className="h-5 w-5" />
+              Set Kitchen Availability
+            </Link>
           </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -159,7 +169,7 @@ export default function ManagerDashboard() {
                 {kitchens.map((kitchen) => (
                   <div
                     key={kitchen.id}
-                    className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                    className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 flex flex-col"
                   >
                     <div className="flex items-center mb-2">
                       <ChefHat className="h-5 w-5 text-orange-600 mr-2" />
@@ -168,16 +178,26 @@ export default function ManagerDashboard() {
                     {kitchen.description && (
                       <p className="text-sm text-gray-600 mb-2">{kitchen.description}</p>
                     )}
-                    <div className="flex items-center mt-2">
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${
-                          kitchen.isActive
-                            ? "bg-green-100 text-green-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
+                    <div className="mt-auto pt-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-600">Status:</span>
+                        <span
+                          className={`px-2 py-1 rounded text-xs font-medium ${
+                            kitchen.isActive
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {kitchen.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/manager/availability?location=${selectedLocation}&kitchen=${kitchen.id}`}
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors w-full"
                       >
-                        {kitchen.isActive ? "Active" : "Inactive"}
-                      </span>
+                        <Settings className="h-4 w-4" />
+                        Set Booking Schedule
+                      </Link>
                     </div>
                   </div>
                 ))}

@@ -85,9 +85,16 @@ export default function ManagerHeader() {
             <>
               <Link 
                 href="/manager/dashboard"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+                className="text-gray-查出hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
               >
                 Dashboard
+              </Link>
+              
+              <Link 
+                href="/manager/availability"
+                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+              >
+                Manage Availability
               </Link>
               
               <Button

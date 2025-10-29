@@ -1,6 +1,7 @@
 import { Clock, Save, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useManagerDashboard } from "../hooks/use-manager-dashboard";
+import { useLocation } from "wouter";
+import { useManagerDashboard } from "../hooks/use-manager-dashboard区域";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 
@@ -16,21 +17,47 @@ const DAYS_OF_WEEK = [
 
 export default function KitchenAvailabilityManagement() {
   const { locations, isLoadingLocations, setKitchenAvailability } = useManagerDashboard();
-  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
-  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+  
+  // Initialize from URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlLocationId = urlParams.get('location');
+  const urlKitchenId = urlParams.get('kitchen');
+  
+  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
+    urlLocationId ? parseInt(urlLocationId) : null
+  );
+  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(
+    urlKitchenId ? parseInt(urlKitchenId) : null
+  );
   const [kitchens, setKitchens] = useState<any[]>([]);
   const [availability, setAvailability] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string>("");
 
+  // Load kitchens when location is selected
   useEffect(() => {
     if (selectedLocationId) {
       fetch(`/api/manager/kitchens/${selectedLocationId}`, { credentials: "include" })
         .then(res => res.json())
-        .then(data => setKitchens(data))
+        .then(data => {
+          setKitchens(data);
+          // Auto-select kitchen from URL if provided
+          if (urlKitchenId && data.length > 0) {
+            const kitchenId = parseInt(urlKitchenId);
+            if (!isNaN(kitchenId)) {
+              const kitchenExists = data.some((k: any) => k.id === kitchenId);
+              if (kitchenExists) {
+                setSelectedKitchenId(kitchenId);
+              }
+            }
+          }
+        })
         .catch(() => {});
+    } else {
+      setKitchens([]);
+      setSelectedKitchenId(null);
     }
-  }, [selectedLocationId]);
+  }, [selectedLocationId, urlKitchenId]);
 
   useEffect(() => {
     if (selectedKitchenId) {
