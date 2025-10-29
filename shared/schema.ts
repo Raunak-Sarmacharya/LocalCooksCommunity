@@ -358,14 +358,19 @@ export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
 });
 
 // Define kitchen bookings table
+// Booking type enum
+export const bookingTypeEnum = pgEnum("booking_type", ["chef", "manager_blocked", "external"]);
+
 export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
-  chefId: integer("chef_id").references(() => users.id).notNull(),
+  chefId: integer("chef_id").references(() => users.id), // Nullable for manager bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
   status: bookingStatusEnum("status").default("pending").notNull(),
+  bookingType: bookingTypeEnum("booking_type").default("chef").notNull(), // NEW: chef, manager_blocked, or external
+  createdBy: integer("created_by").references(() => users.id), // NEW: Manager who created manual booking
   specialNotes: text("special_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -440,12 +445,14 @@ export const updateKitchenDateOverrideSchema = z.object({
 });
 
 export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
-  chefId: z.number(),
+  chefId: z.number().optional(), // Optional for manager bookings
   kitchenId: z.number(),
   bookingDate: z.string().or(z.date()),
   startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  bookingType: z.enum(["chef", "manager_blocked", "external"]).optional(),
+  createdBy: z.number().optional(),
   specialNotes: z.string().optional(),
 }).omit({ 
   id: true, 
