@@ -63,6 +63,22 @@ export function useManagerDashboard() {
     return response.json();
   };
 
+  // Get all kitchens (across all locations for this manager)
+  const kitchensQuery = useQuery<Kitchen[]>({
+    queryKey: ["/api/manager/all-kitchens"],
+    queryFn: async () => {
+      const locations = locationsQuery.data || [];
+      if (locations.length === 0) return [];
+      
+      const allKitchens = await Promise.all(
+        locations.map(location => getKitchensForLocation(location.id))
+      );
+      
+      return allKitchens.flat();
+    },
+    enabled: !!locationsQuery.data && locationsQuery.data.length > 0,
+  });
+
   // Get all bookings for manager
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/manager/bookings"],
@@ -111,6 +127,8 @@ export function useManagerDashboard() {
   return {
     locations: locationsQuery.data || [],
     isLoadingLocations: locationsQuery.isLoading,
+    kitchens: kitchensQuery.data || [],
+    isLoadingKitchens: kitchensQuery.isLoading,
     bookings: bookingsQuery.data || [],
     isLoadingBookings: bookingsQuery.isLoading,
     getKitchensForLocation,

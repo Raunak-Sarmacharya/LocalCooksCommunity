@@ -9,8 +9,8 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenBookings } from "@shared/schema";
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings } from "@shared/schema";
+import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 
 /**
@@ -565,6 +565,46 @@ export class FirebaseStorage {
     }
   }
 
+  async getAllKitchensWithLocationAndManager(): Promise<any[]> {
+    try {
+      // Get all kitchens
+      const allKitchens = await db.select().from(kitchens);
+      
+      // Get all locations
+      const allLocations = await db.select().from(locations);
+      
+      // Get all users (managers)
+      const allUsers = await db.select().from(users);
+      
+      // Combine the data
+      const kitchensWithDetails = allKitchens.map(kitchen => {
+        const location = allLocations.find(loc => loc.id === kitchen.locationId);
+        const manager = location && location.managerId 
+          ? allUsers.find(user => user.id === location.managerId)
+          : null;
+        
+        return {
+          ...kitchen,
+          location: location ? {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+          } : null,
+          manager: manager ? {
+            id: manager.id,
+            username: manager.username,
+            fullName: manager.fullName,
+          } : null,
+        };
+      });
+      
+      return kitchensWithDetails;
+    } catch (error) {
+      console.error('❌ Error getting kitchens with location and manager:', error);
+      throw error;
+    }
+  }
+
   async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean }): Promise<any> {
     try {
       const [updated] = await db
@@ -653,6 +693,107 @@ export class FirebaseStorage {
         .where(eq(kitchenAvailability.kitchenId, kitchenId));
     } catch (error) {
       console.error('Error getting kitchen availability:', error);
+      throw error;
+    }
+  }
+
+  // ===== KITCHEN DATE OVERRIDES MANAGEMENT =====
+
+  async createKitchenDateOverride(overrideData: { 
+    kitchenId: number; 
+    specificDate: Date; 
+    startTime?: string; 
+    endTime?: string; 
+    isAvailable: boolean; 
+    reason?: string 
+  }): Promise<any> {
+    try {
+      const [override] = await db
+        .insert(kitchenDateOverrides)
+        .values(overrideData)
+        .returning();
+      return override;
+    } catch (error) {
+      console.error('Error creating kitchen date override:', error);
+      throw error;
+    }
+  }
+
+  async getKitchenDateOverrides(kitchenId: number, startDate?: Date, endDate?: Date): Promise<any[]> {
+    try {
+      let query = db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(eq(kitchenDateOverrides.kitchenId, kitchenId));
+
+      // If date range is specified, filter by it
+      if (startDate && endDate) {
+        return await query.then(results => 
+          results.filter(r => {
+            const overrideDate = new Date(r.specificDate);
+            return overrideDate >= startDate && overrideDate <= endDate;
+          })
+        );
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error getting kitchen date overrides:', error);
+      throw error;
+    }
+  }
+
+  async getKitchenDateOverrideForDate(kitchenId: number, date: Date): Promise<any | undefined> {
+    try {
+      // Normalize the date to midnight
+      const targetDate = new Date(date);
+      targetDate.setHours(0, 0, 0, 0);
+      
+      const allOverrides = await db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(eq(kitchenDateOverrides.kitchenId, kitchenId));
+      
+      // Find override for the specific date
+      const override = allOverrides.find(o => {
+        const overrideDate = new Date(o.specificDate);
+        overrideDate.setHours(0, 0, 0, 0);
+        return overrideDate.getTime() === targetDate.getTime();
+      });
+      
+      return override;
+    } catch (error) {
+      console.error('Error getting kitchen date override for specific date:', error);
+      throw error;
+    }
+  }
+
+  async updateKitchenDateOverride(id: number, updateData: { 
+    startTime?: string; 
+    endTime?: string; 
+    isAvailable?: boolean; 
+    reason?: string 
+  }): Promise<any> {
+    try {
+      const [updated] = await db
+        .update(kitchenDateOverrides)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(eq(kitchenDateOverrides.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating kitchen date override:', error);
+      throw error;
+    }
+  }
+
+  async deleteKitchenDateOverride(id: number): Promise<void> {
+    try {
+      await db
+        .delete(kitchenDateOverrides)
+        .where(eq(kitchenDateOverrides.id, id));
+    } catch (error) {
+      console.error('Error deleting kitchen date override:', error);
       throw error;
     }
   }
@@ -810,24 +951,65 @@ export class FirebaseStorage {
 
   async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
     try {
-      const dayOfWeek = date.getDay();
-      const availability = await this.getKitchenAvailability(kitchenId);
+      // First check if there's a date-specific override
+      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
       
-      const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
+      let startHour: number;
+      let endHour: number;
       
-      if (!dayAvailability || !dayAvailability.isAvailable) {
-        return [];
-      }
+      if (dateOverride) {
+        // If there's an override and it's closed, return empty slots
+        if (!dateOverride.isAvailable) {
+          return [];
+        }
+        // If override is available with custom hours, use those
+        if (dateOverride.startTime && dateOverride.endTime) {
+          startHour = parseInt(dateOverride.startTime.split(':')[0]);
+          endHour = parseInt(dateOverride.endTime.split(':')[0]);
+        } else {
+          // Override says available but no times specified - shouldn't happen, return empty
+          return [];
+        }
+      } else {
+        // No override, use regular weekly schedule
+        const dayOfWeek = date.getDay();
+        const availability = await this.getKitchenAvailability(kitchenId);
+        
+        const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
+        
+        if (!dayAvailability || !dayAvailability.isAvailable) {
+          return [];
+        }
 
-      const startHour = parseInt(dayAvailability.startTime.split(':')[0]);
-      const endHour = parseInt(dayAvailability.endTime.split(':')[0]);
+        startHour = parseInt(dayAvailability.startTime.split(':')[0]);
+        endHour = parseInt(dayAvailability.endTime.split(':')[0]);
+      }
       
+      // Generate hourly slots
       const slots: string[] = [];
       for (let hour = startHour; hour < endHour; hour++) {
         slots.push(`${hour.toString().padStart(2, '0')}:00`);
       }
       
-      return slots;
+      // Filter out already booked slots
+      const bookings = await this.getBookingsByKitchen(kitchenId);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayBookings = bookings.filter(b => {
+        const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
+        return bookingDateStr === dateStr && b.status !== 'cancelled';
+      });
+      
+      const bookedSlots = new Set<string>();
+      dayBookings.forEach(booking => {
+        const startH = parseInt(booking.startTime.split(':')[0]);
+        const endH = parseInt(booking.endTime.split(':')[0]);
+        for (let h = startH; h < endH; h++) {
+          bookedSlots.add(`${h.toString().padStart(2, '0')}:00`);
+        }
+      });
+      
+      return slots.filter(slot => !bookedSlots.has(slot));
     } catch (error) {
       console.error('Error getting available time slots:', error);
       throw error;
@@ -837,30 +1019,54 @@ export class FirebaseStorage {
   // Validate that booking time is within manager-set availability
   async validateBookingAvailability(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<{ valid: boolean; error?: string }> {
     try {
-      const dayOfWeek = bookingDate.getDay();
-      const availability = await this.getKitchenAvailability(kitchenId);
-      
-      const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-      
-      // Check if day is available
-      if (!dayAvailability || !dayAvailability.isAvailable) {
-        return { valid: false, error: "Kitchen is not available on this day" };
-      }
-
-      // Check if booking times are within availability window
-      if (startTime < dayAvailability.startTime || endTime > dayAvailability.endTime) {
-        return { valid: false, error: "Booking time must be within manager-set available hours" };
-      }
-
       // Check if start time is before end time
       if (startTime >= endTime) {
         return { valid: false, error: "End time must be after start time" };
       }
 
+      // First check if there's a date-specific override
+      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, bookingDate);
+      
+      let availabilityStartTime: string;
+      let availabilityEndTime: string;
+      
+      if (dateOverride) {
+        // If there's an override and it's closed, can't book
+        if (!dateOverride.isAvailable) {
+          return { valid: false, error: "Kitchen is closed on this date" };
+        }
+        // If override has custom hours, use those
+        if (dateOverride.startTime && dateOverride.endTime) {
+          availabilityStartTime = dateOverride.startTime;
+          availabilityEndTime = dateOverride.endTime;
+        } else {
+          return { valid: false, error: "Kitchen availability not properly configured for this date" };
+        }
+      } else {
+        // No override, use regular weekly schedule
+        const dayOfWeek = bookingDate.getDay();
+        const availability = await this.getKitchenAvailability(kitchenId);
+        
+        const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
+        
+        // Check if day is available
+        if (!dayAvailability || !dayAvailability.isAvailable) {
+          return { valid: false, error: "Kitchen is not available on this day" };
+        }
+
+        availabilityStartTime = dayAvailability.startTime;
+        availabilityEndTime = dayAvailability.endTime;
+      }
+
+      // Check if booking times are within availability window
+      if (startTime < availabilityStartTime || endTime > availabilityEndTime) {
+        return { valid: false, error: "Booking time must be within manager-set available hours" };
+      }
+
       // Check that start time aligns with available slots (hourly slots)
       const startHour = parseInt(startTime.split(':')[0]);
-      const availabilityStartHour = parseInt(dayAvailability.startTime.split(':')[0]);
-      const availabilityEndHour = parseInt(dayAvailability.endTime.split(':')[0]);
+      const availabilityStartHour = parseInt(availabilityStartTime.split(':')[0]);
+      const availabilityEndHour = parseInt(availabilityEndTime.split(':')[0]);
       
       if (startHour < availabilityStartHour || startHour >= availabilityEndHour) {
         return { valid: false, error: "Start time must be within manager-set available slot times" };

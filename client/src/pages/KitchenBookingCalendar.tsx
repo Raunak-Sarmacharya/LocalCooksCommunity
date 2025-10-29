@@ -189,22 +189,63 @@ export default function KitchenBookingCalendar() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {kitchens.map((kitchen) => (
-                  <button
-                    key={kitchen.id}
-                    onClick={() => handleKitchenChange(kitchen)}
-                    className={`p-4 rounded-lg border text-left transition-colors ${
-                      selectedKitchen?.id === kitchen.id
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <h3 className="font-semibold text-gray-900">{kitchen.name}</h3>
-                    {kitchen.description && (
-                      <p className="text-sm text-gray-600 mt-1">{kitchen.description}</p>
-                    )}
-                  </button>
+              <div className="space-y-6">
+                {/* Group kitchens by location */}
+                {Object.entries(
+                  kitchens.reduce((acc: any, kitchen: any) => {
+                    const locationName = kitchen.location?.name || 'Unknown Location';
+                    if (!acc[locationName]) {
+                      acc[locationName] = {
+                        location: kitchen.location,
+                        manager: kitchen.manager,
+                        kitchens: []
+                      };
+                    }
+                    acc[locationName].kitchens.push(kitchen);
+                    return acc;
+                  }, {})
+                ).map(([locationName, data]: [string, any]) => (
+                  <div key={locationName} className="border-b border-gray-200 pb-4 last:border-b-0">
+                    {/* Location Header */}
+                    <div className="mb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-gray-600" />
+                            {locationName}
+                          </h3>
+                          {data.location?.address && (
+                            <p className="text-sm text-gray-600 ml-6">{data.location.address}</p>
+                          )}
+                        </div>
+                        {data.manager && (
+                          <div className="text-sm text-gray-600 ml-4">
+                            <span className="font-medium">Manager:</span> {data.manager.fullName || data.manager.username}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Kitchens in this location */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 ml-6">
+                      {data.kitchens.map((kitchen: any) => (
+                        <button
+                          key={kitchen.id}
+                          onClick={() => handleKitchenChange(kitchen)}
+                          className={`p-4 rounded-lg border text-left transition-colors ${
+                            selectedKitchen?.id === kitchen.id
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <h4 className="font-semibold text-gray-900">{kitchen.name}</h4>
+                          {kitchen.description && (
+                            <p className="text-sm text-gray-600 mt-1">{kitchen.description}</p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
