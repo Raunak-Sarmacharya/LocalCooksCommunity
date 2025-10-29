@@ -11258,5 +11258,287 @@ app.post("/api/admin/kitchens", async (req, res) => {
   }
 });
 
+// ===================================
+// KITCHEN BOOKING SYSTEM - CHEF ROUTES
+// ===================================
+
+// Helper function to verify Firebase token
+async function verifyFirebaseToken(token) {
+  try {
+    const { getAuth } = await import('firebase-admin/auth');
+    const auth = getAuth();
+    const decodedToken = await auth.verifyIdToken(token);
+    return decodedToken;
+  } catch (error) {
+    console.error('Firebase token verification error:', error);
+    return null;
+  }
+}
+
+// Middleware to require chef authentication
+// Supports BOTH Firebase auth (for approved chefs) AND session auth (for admin/managers)
+async function requireChef(req, res, next) {
+  try {
+    // First, try Firebase authentication
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const decodedToken = await verifyFirebaseToken(token);
+      
+      if (decodedToken) {
+        // Load user from Firebase UID
+        if (!pool) {
+          return res.status(500).json({ error: "Database not available" });
+        }
+        
+        const result = await pool.query(
+          'SELECT * FROM users WHERE firebase_uid = $1',
+          [decodedToken.uid]
+        );
+        const neonUser = result.rows[0];
+        
+        if (neonUser && neonUser.is_chef) {
+          // Set both Firebase and user info on request
+          req.firebaseUser = {
+            uid: decodedToken.uid,
+            email: decodedToken.email,
+            email_verified: decodedToken.email_verified,
+          };
+          req.user = {
+            id: neonUser.id,
+            username: neonUser.username,
+            role: neonUser.role,
+            isChef: neonUser.is_chef,
+          };
+          console.log(`✅ Chef authenticated via Firebase: ${neonUser.username} (ID: ${neonUser.id})`);
+          return next();
+        } else if (neonUser && !neonUser.is_chef) {
+          return res.status(403).json({ error: "Chef access required" });
+        }
+      }
+    }
+    
+    // Fall back to session authentication
+    const rawUserId = req.session?.userId || req.headers['x-user-id'];
+    if (rawUserId) {
+      const user = await getUser(rawUserId);
+      if (user && user.is_chef) {
+        req.user = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          isChef: user.is_chef,
+        };
+        console.log(`✅ Chef authenticated via session: ${user.username} (ID: ${user.id})`);
+        return next();
+      }
+    }
+    
+    // Neither authentication method worked
+    return res.status(401).json({ error: "Authentication required. Please sign in as a chef." });
+  } catch (error) {
+    console.error('Error in requireChef middleware:', error);
+    return res.status(401).json({ error: "Authentication failed" });
+  }
+}
+
+// Get all kitchens
+app.get("/api/chef/kitchens", requireChef, async (req, res) => {
+  try {
+    console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown', 'ID:', req.user?.id);
+    console.log('📍 Firebase user:', req.firebaseUser?.uid || 'N/A');
+    
+    const allKitchens = await getAllKitchens();
+    console.log(`✅ Found ${allKitchens.length} total kitchens in database`);
+    
+    if (allKitchens.length > 0) {
+      console.log('📦 Sample kitchen data:', JSON.stringify(allKitchens[0], null, 2));
+      console.log('📦 isActive field type check:', allKitchens.map(k => ({
+        id: k.id,
+        name: k.name,
+        isActive: k.isActive,
+        isActiveType: typeof k.isActive,
+        isActiveValue: k.isActive,
+        locationId: k.locationId
+      })));
+    }
+    
+    // Filter to only return active kitchens
+    const activeKitchens = allKitchens.filter(k => {
+      const isActive = k.isActive !== undefined ? k.isActive : k.is_active;
+      return isActive !== false && isActive !== null;
+    });
+    
+    console.log(`✅ Returning ${activeKitchens.length} active kitchens (filtered from ${allKitchens.length} total)`);
+    console.log('📦 Active kitchens:', activeKitchens.map(k => ({ id: k.id, name: k.name, isActive: k.isActive || k.is_active })));
+    
+    res.json(activeKitchens);
+  } catch (error) {
+    console.error("❌ Error fetching kitchens:", error);
+    console.error("❌ Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
+  }
+});
+
+// Get available time slots for a kitchen on a specific date
+app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { date } = req.query;
+    const bookingDate = date ? new Date(date) : new Date();
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Get availability for the day of week
+    const dayOfWeek = bookingDate.getDay();
+    const availabilityResult = await pool.query(`
+      SELECT * FROM kitchen_availability 
+      WHERE kitchen_id = $1 AND day_of_week = $2 AND is_available = true
+    `, [kitchenId, dayOfWeek]);
+    
+    if (availabilityResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const availability = availabilityResult.rows[0];
+    const [startHour, startMin] = availability.start_time.split(':').map(Number);
+    const [endHour, endMin] = availability.end_time.split(':').map(Number);
+    
+    // Generate available time slots
+    const slots = [];
+    for (let hour = startHour; hour < endHour; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+    }
+    
+    // Get existing bookings for this date to filter them out
+    const bookingsResult = await pool.query(`
+      SELECT start_time, end_time FROM kitchen_bookings
+      WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
+      AND status != 'cancelled'
+    `, [kitchenId, bookingDate.toISOString()]);
+    
+    // Filter out booked slots
+    const bookedSlots = new Set();
+    bookingsResult.rows.forEach(booking => {
+      const [startH] = booking.start_time.split(':').map(Number);
+      const [endH] = booking.end_time.split(':').map(Number);
+      for (let h = startH; h < endH; h++) {
+        bookedSlots.add(`${h.toString().padStart(2, '0')}:00`);
+      }
+    });
+    
+    const availableSlots = slots.filter(slot => !bookedSlots.has(slot));
+    res.json(availableSlots);
+  } catch (error) {
+    console.error("Error fetching available slots:", error);
+    res.status(500).json({ error: "Failed to fetch available slots" });
+  }
+});
+
+// Create a booking
+app.post("/api/chef/bookings", requireChef, async (req, res) => {
+  try {
+    const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Check for conflicts
+    const conflictCheck = await pool.query(`
+      SELECT id FROM kitchen_bookings
+      WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
+      AND start_time < $4 AND end_time > $3
+      AND status != 'cancelled'
+    `, [kitchenId, bookingDate, startTime, endTime]);
+    
+    if (conflictCheck.rows.length > 0) {
+      return res.status(409).json({ error: "Time slot is not available" });
+    }
+    
+    // Create booking
+    const result = await pool.query(`
+      INSERT INTO kitchen_bookings (chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status)
+      VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending')
+      RETURNING *
+    `, [req.user.id, kitchenId, bookingDate, startTime, endTime, specialNotes || null]);
+    
+    const booking = result.rows[0];
+    res.status(201).json({
+      id: booking.id,
+      chefId: booking.chef_id,
+      kitchenId: booking.kitchen_id,
+      bookingDate: booking.booking_date,
+      startTime: booking.start_time,
+      endTime: booking.end_time,
+      status: booking.status,
+      specialNotes: booking.special_notes,
+      createdAt: booking.created_at,
+      updatedAt: booking.updated_at,
+    });
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    res.status(500).json({ error: "Failed to create booking", details: error.message });
+  }
+});
+
+// Get chef's bookings
+app.get("/api/chef/bookings", requireChef, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.json([]);
+    }
+    
+    const result = await pool.query(`
+      SELECT id, chef_id as "chefId", kitchen_id as "kitchenId", booking_date as "bookingDate",
+             start_time as "startTime", end_time as "endTime", status, special_notes as "specialNotes",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM kitchen_bookings 
+      WHERE chef_id = $1
+      ORDER BY booking_date DESC, start_time DESC
+    `, [req.user.id]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching bookings:", error);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
+// Cancel a booking
+app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) => {
+  try {
+    const bookingId = parseInt(req.params.bookingId);
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Verify the booking belongs to this chef
+    const checkResult = await pool.query(`
+      SELECT id FROM kitchen_bookings 
+      WHERE id = $1 AND chef_id = $2
+    `, [bookingId, req.user.id]);
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    
+    // Update booking status
+    await pool.query(`
+      UPDATE kitchen_bookings 
+      SET status = 'cancelled' 
+      WHERE id = $1
+    `, [bookingId]);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error cancelling booking:", error);
+    res.status(500).json({ error: "Failed to cancel booking" });
+  }
+});
 
 export default app;
