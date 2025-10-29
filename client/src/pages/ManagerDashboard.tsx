@@ -46,14 +46,14 @@ export default function ManagerDashboard() {
           setKitchens(data);
           setIsLoadingKitchens(false);
         })
-        .catch(err => {
-          console.error("Error loading kitchens:", err);
+        .catch(() => {
           setIsLoadingKitchens(false);
         });
     } else {
       setKitchens([]);
     }
-  }, [selectedLocation, getKitchensForLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLocation]);
 
   return (
     <div className="min-h-screen flex flex-col">
