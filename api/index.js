@@ -11262,19 +11262,6 @@ app.post("/api/admin/kitchens", async (req, res) => {
 // KITCHEN BOOKING SYSTEM - CHEF ROUTES
 // ===================================
 
-// Helper function to verify Firebase token
-async function verifyFirebaseToken(token) {
-  try {
-    const { getAuth } = await import('firebase-admin/auth');
-    const auth = getAuth();
-    const decodedToken = await auth.verifyIdToken(token);
-    return decodedToken;
-  } catch (error) {
-    console.error('Firebase token verification error:', error);
-    return null;
-  }
-}
-
 // Middleware to require chef authentication
 // Supports BOTH Firebase auth (for approved chefs) AND session auth (for admin/managers)
 async function requireChef(req, res, next) {
