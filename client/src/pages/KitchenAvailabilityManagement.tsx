@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, Save, Settings, Trash2, Plus, X } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Save, Settings, Trash2, Plus, X, ChevronLeft, ChevronRight, Copy, CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
@@ -31,6 +31,46 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
+// Helper to get days in month
+function getDaysInMonth(year: number, month: number) {
+  const date = new Date(year, month, 1);
+  const days = [];
+  while (date.getMonth() === month) {
+    days.push(new Date(date));
+    date.setDate(date.getDate() + 1);
+  }
+  return days;
+}
+
+// Helper to get calendar grid with previous/next month padding
+function getCalendarDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startingDayOfWeek = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  
+  const days: (Date | null)[] = [];
+  
+  // Add empty cells for days before month starts
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    const prevDate = new Date(year, month, -startingDayOfWeek + i + 1);
+    days.push(prevDate);
+  }
+  
+  // Add all days in current month
+  for (let day = 1; day <= daysInMonth; day++) {
+    days.push(new Date(year, month, day));
+  }
+  
+  // Add empty cells for days after month ends
+  const remainingCells = 42 - days.length; // 6 rows * 7 days
+  for (let i = 1; i <= remainingCells; i++) {
+    days.push(new Date(year, month + 1, i));
+  }
+  
+  return days;
+}
+
 export default function KitchenAvailabilityManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -48,12 +88,16 @@ export default function KitchenAvailabilityManagement() {
     urlKitchenId ? parseInt(urlKitchenId) : null
   );
   const [kitchens, setKitchens] = useState<any[]>([]);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingAvailability, setEditingAvailability] = useState<DateAvailability | null>(null);
+  
+  // Calendar navigation
+  const today = new Date();
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
-    specificDate: "",
     startTime: "09:00",
     endTime: "17:00",
     isAvailable: true,
@@ -105,7 +149,7 @@ export default function KitchenAvailabilityManagement() {
 
   // Create date availability mutation
   const createAvailability = useMutation({
-    mutationFn: async (data: typeof formData) => {
+    mutationFn: async (data: any) => {
       if (!selectedKitchenId) throw new Error('No kitchen selected');
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/date-overrides`, {
@@ -122,11 +166,11 @@ export default function KitchenAvailabilityManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
-      setShowAddForm(false);
+      setShowEditModal(false);
       resetForm();
       toast({
         title: "Success",
-        description: "Date availability saved successfully",
+        description: "Availability saved successfully",
       });
     },
     onError: (error: Error) => {
@@ -140,7 +184,7 @@ export default function KitchenAvailabilityManagement() {
 
   // Update date availability mutation
   const updateAvailability = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<typeof formData> }) => {
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/date-overrides/${id}`, {
         method: 'PUT',
@@ -156,12 +200,11 @@ export default function KitchenAvailabilityManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
-      setEditingAvailability(null);
-      setShowAddForm(false);
+      setShowEditModal(false);
       resetForm();
       toast({
         title: "Success",
-        description: "Date availability updated successfully",
+        description: "Availability updated successfully",
       });
     },
     onError: (error: Error) => {
@@ -192,7 +235,7 @@ export default function KitchenAvailabilityManagement() {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
       toast({
         title: "Success",
-        description: "Date availability deleted successfully",
+        description: "Availability removed successfully",
       });
     },
     onError: (error: Error) => {
@@ -206,7 +249,6 @@ export default function KitchenAvailabilityManagement() {
 
   const resetForm = () => {
     setFormData({
-      specificDate: "",
       startTime: "09:00",
       endTime: "17:00",
       isAvailable: true,
@@ -214,11 +256,60 @@ export default function KitchenAvailabilityManagement() {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingAvailability) {
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    if (direction === 'prev') {
+      if (currentMonth === 0) {
+        setCurrentMonth(11);
+        setCurrentYear(currentYear - 1);
+      } else {
+        setCurrentMonth(currentMonth - 1);
+      }
+    } else {
+      if (currentMonth === 11) {
+        setCurrentMonth(0);
+        setCurrentYear(currentYear + 1);
+      } else {
+        setCurrentMonth(currentMonth + 1);
+      }
+    }
+  };
+
+  const getAvailabilityForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return dateAvailability.find((avail: DateAvailability) => {
+      const availDateStr = new Date(avail.specificDate).toISOString().split('T')[0];
+      return availDateStr === dateStr;
+    });
+  };
+
+  const handleDateClick = (date: Date) => {
+    setSelectedDate(date);
+    const existing = getAvailabilityForDate(date);
+    
+    if (existing) {
+      setFormData({
+        startTime: existing.startTime || "09:00",
+        endTime: existing.endTime || "17:00",
+        isAvailable: existing.isAvailable,
+        reason: existing.reason || "",
+      });
+    } else {
+      resetForm();
+    }
+    
+    setShowEditModal(true);
+  };
+
+  const handleSaveAvailability = () => {
+    if (!selectedDate || !selectedKitchenId) return;
+
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const existing = getAvailabilityForDate(selectedDate);
+
+    if (existing) {
+      // Update existing
       updateAvailability.mutate({
-        id: editingAvailability.id,
+        id: existing.id,
         data: {
           startTime: formData.isAvailable ? formData.startTime : undefined,
           endTime: formData.isAvailable ? formData.endTime : undefined,
@@ -227,25 +318,20 @@ export default function KitchenAvailabilityManagement() {
         },
       });
     } else {
-      createAvailability.mutate(formData);
+      // Create new
+      createAvailability.mutate({
+        specificDate: dateStr,
+        ...formData,
+      });
     }
   };
 
-  const handleEdit = (availability: DateAvailability) => {
-    setEditingAvailability(availability);
-    setFormData({
-      specificDate: new Date(availability.specificDate).toISOString().split('T')[0],
-      startTime: availability.startTime || "09:00",
-      endTime: availability.endTime || "17:00",
-      isAvailable: availability.isAvailable,
-      reason: availability.reason || "",
-    });
-    setShowAddForm(true);
-  };
-
-  const handleDelete = (id: number) => {
-    if (window.confirm("Are you sure you want to delete this date availability?")) {
-      deleteAvailability.mutate(id);
+  const handleDeleteAvailability = () => {
+    if (!selectedDate) return;
+    const existing = getAvailabilityForDate(selectedDate);
+    if (existing && window.confirm("Remove availability for this date?")) {
+      deleteAvailability.mutate(existing.id);
+      setShowEditModal(false);
     }
   };
 
@@ -268,14 +354,21 @@ export default function KitchenAvailabilityManagement() {
     return slots;
   };
 
+  const monthNames = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+  
+  const calendarDays = selectedKitchenId ? getCalendarDays(currentYear, currentMonth) : [];
+  const isCurrentMonth = (date: Date) => date.getMonth() === currentMonth;
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <ManagerHeader />
       <main className="flex-1 pt-24 pb-8">
-        <div className="container mx-auto px-4 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Set Kitchen Availability</h1>
-            <p className="text-gray-600 mt-2">Set specific dates when your kitchen is available for booking. Chefs will only see time slots you configure.</p>
+        <div className="container mx-auto px-4 py-6 max-w-7xl">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-gray-900">Kitchen Availability Calendar</h1>
+            <p className="text-gray-600 mt-1">Click on any date to set operating hours for your kitchen</p>
           </div>
 
           {isLoadingLocations ? (
@@ -283,287 +376,326 @@ export default function KitchenAvailabilityManagement() {
               <p className="text-gray-500">Loading locations...</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Location & Kitchen Selection */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Location</h2>
-                <div className="space-y-2">
-                  {locations.map((location: any) => (
-                    <button
-                      key={location.id}
-                      onClick={() => setSelectedLocationId(location.id)}
-                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                        selectedLocationId === location.id
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      <p className="font-medium">{location.name}</p>
-                      <p className="text-sm text-gray-600">{location.address}</p>
-                    </button>
-                  ))}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Sidebar: Location & Kitchen Selection */}
+              <div className="lg:col-span-1 space-y-4">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Location</h2>
+                  <select
+                    value={selectedLocationId || ""}
+                    onChange={(e) => {
+                      setSelectedLocationId(e.target.value ? parseInt(e.target.value) : null);
+                      setSelectedKitchenId(null);
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Choose location...</option>
+                    {locations.map((location: any) => (
+                      <option key={location.id} value={location.id}>
+                        {location.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {selectedLocationId && (
-                  <div className="mt-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Kitchen</h3>
-                    <div className="space-y-2">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Kitchen</h2>
+                    <select
+                      value={selectedKitchenId || ""}
+                      onChange={(e) => setSelectedKitchenId(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Choose kitchen...</option>
                       {kitchens.map((kitchen) => (
-                        <button
-                          key={kitchen.id}
-                          onClick={() => setSelectedKitchenId(kitchen.id)}
-                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                            selectedKitchenId === kitchen.id
-                              ? "border-green-500 bg-green-50"
-                              : "border-gray-200 hover:bg-gray-50"
-                          }`}
-                        >
-                          <p className="font-medium">{kitchen.name}</p>
-                          {kitchen.description && (
-                            <p className="text-sm text-gray-600">{kitchen.description}</p>
-                          )}
-                        </button>
+                        <option key={kitchen.id} value={kitchen.id}>
+                          {kitchen.name}
+                        </option>
                       ))}
-                    </div>
+                    </select>
                   </div>
                 )}
 
-                {selectedKitchenId && !showAddForm && (
-                  <button
-                    onClick={() => {
-                      resetForm();
-                      setEditingAvailability(null);
-                      setShowAddForm(true);
-                    }}
-                    className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Date
-                  </button>
+                {selectedKitchenId && (
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Legend</h3>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
+                        <span>Available</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
+                        <span>Closed</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-white border border-gray-200 rounded"></div>
+                        <span>Not set</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Date Availability Form & List */}
-              <div className="lg:col-span-2 space-y-6">
+              {/* Calendar View */}
+              <div className="lg:col-span-3 space-y-4">
                 {!selectedKitchenId ? (
-                  <div className="bg-white rounded-lg shadow p-6">
-                    <div className="text-center py-12">
-                      <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">Please select a location and kitchen</p>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12">
+                    <div className="text-center">
+                      <CalendarIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Kitchen</h3>
+                      <p className="text-gray-500">Choose a location and kitchen to view and manage its availability calendar</p>
                     </div>
                   </div>
                 ) : (
                   <>
-                    {/* Add/Edit Form */}
-                    {showAddForm && (
-                      <div className="bg-white rounded-lg shadow p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <h2 className="text-xl font-semibold text-gray-900">
-                            {editingAvailability ? 'Edit' : 'Add'} Date Availability
-                          </h2>
-                          <button
-                            onClick={() => {
-                              setShowAddForm(false);
-                              setEditingAvailability(null);
-                              resetForm();
-                            }}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            <X className="h-5 w-5" />
-                          </button>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Date
-                            </label>
-                            <input
-                              type="date"
-                              value={formData.specificDate}
-                              onChange={(e) => setFormData({ ...formData, specificDate: e.target.value })}
-                              disabled={!!editingAvailability}
-                              required
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 disabled:bg-gray-100"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="flex items-center gap-2 mb-2">
-                              <input
-                                type="checkbox"
-                                checked={formData.isAvailable}
-                                onChange={(e) => setFormData({ ...formData, isAvailable: e.target.checked })}
-                                className="rounded"
-                              />
-                              <span className="text-sm font-medium text-gray-700">
-                                Kitchen is available (uncheck for closed)
-                              </span>
-                            </label>
-                          </div>
-
-                          {formData.isAvailable && (
-                            <>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Start Time
-                                  </label>
-                                  <input
-                                    type="time"
-                                    value={formData.startTime}
-                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                    required={formData.isAvailable}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    End Time
-                                  </label>
-                                  <input
-                                    type="time"
-                                    value={formData.endTime}
-                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                    required={formData.isAvailable}
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Preview slots */}
-                              {formData.startTime && formData.endTime && (
-                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                  <p className="text-xs font-medium text-gray-600 mb-2">
-                                    Chefs will see these booking slots:
-                                  </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {getAvailableSlots(formData.startTime, formData.endTime).map((slot, idx) => (
-                                      <span
-                                        key={idx}
-                                        className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded"
-                                      >
-                                        {slot}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          )}
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Reason (Optional)
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.reason}
-                              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                              placeholder="e.g., Holiday, Maintenance, Special Event"
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                            />
-                          </div>
-
-                          <div className="flex gap-3">
-                            <button
-                              type="submit"
-                              disabled={createAvailability.isPending || updateAvailability.isPending}
-                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              <Save className="h-4 w-4" />
-                              {editingAvailability ? 'Update' : 'Save'} Availability
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowAddForm(false);
-                                setEditingAvailability(null);
-                                resetForm();
-                              }}
-                              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
+                    {/* Calendar Header */}
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => navigateMonth('prev')}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <ChevronLeft className="h-5 w-5 text-gray-600" />
+                        </button>
+                        
+                        <h2 className="text-xl font-bold text-gray-900">
+                          {monthNames[currentMonth]} {currentYear}
+                        </h2>
+                        
+                        <button
+                          onClick={() => navigateMonth('next')}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <ChevronRight className="h-5 w-5 text-gray-600" />
+                        </button>
                       </div>
-                    )}
+                    </div>
 
-                    {/* Date Availability List */}
-                    <div className="bg-white rounded-lg shadow p-6">
-                      <h2 className="text-xl font-semibold text-gray-900 mb-4">Scheduled Dates</h2>
-                      
+                    {/* Calendar Grid */}
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                       {isLoadingAvailability ? (
-                        <p className="text-gray-500">Loading availability...</p>
-                      ) : dateAvailability.length === 0 ? (
-                        <div className="text-center py-8">
-                          <CalendarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <p className="text-gray-500">No dates configured yet</p>
-                          <p className="text-sm text-gray-400 mt-1">Add dates to make your kitchen available for booking</p>
+                        <div className="text-center py-12">
+                          <p className="text-gray-500">Loading calendar...</p>
                         </div>
                       ) : (
-                        <div className="space-y-3">
-                          {dateAvailability
-                            .sort((a: DateAvailability, b: DateAvailability) => 
-                              new Date(a.specificDate).getTime() - new Date(b.specificDate).getTime()
-                            )
-                            .map((availability: DateAvailability) => (
-                              <div
-                                key={availability.id}
-                                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <CalendarIcon className="h-4 w-4 text-gray-600" />
-                                      <span className="font-semibold text-gray-900">
-                                        {formatDate(availability.specificDate)}
-                                      </span>
-                                      <span
-                                        className={`px-2 py-1 text-xs rounded-full ${
-                                          availability.isAvailable
-                                            ? "bg-green-100 text-green-800"
-                                            : "bg-red-100 text-red-800"
-                                        }`}
-                                      >
-                                        {availability.isAvailable ? "Available" : "Closed"}
-                                      </span>
-                                    </div>
-                                    {availability.isAvailable && availability.startTime && availability.endTime && (
-                                      <div className="flex items-center gap-2 text-sm text-gray-600 ml-6">
-                                        <Clock className="h-3 w-3" />
-                                        {availability.startTime} - {availability.endTime}
-                                      </div>
-                                    )}
-                                    {availability.reason && (
-                                      <p className="text-sm text-gray-600 ml-6 mt-1">
-                                        {availability.reason}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex gap-2 ml-4">
-                                    <button
-                                      onClick={() => handleEdit(availability)}
-                                      className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                      title="Edit"
-                                    >
-                                      <Settings className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(availability.id)}
-                                      className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                      title="Delete"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                </div>
+                        <div className="calendar-grid">
+                          {/* Day headers */}
+                          <div className="grid grid-cols-7 gap-2 mb-2">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                              <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
+                                {day}
                               </div>
                             ))}
+                          </div>
+
+                          {/* Calendar days */}
+                          <div className="grid grid-cols-7 gap-2">
+                            {calendarDays.map((date, index) => {
+                              const availability = getAvailabilityForDate(date);
+                              const isCurrent = isCurrentMonth(date);
+                              const isToday = date.toDateString() === today.toDateString();
+                              const isPast = date < today && !isToday;
+
+                              let bgColor = 'bg-white hover:bg-gray-50';
+                              let borderColor = 'border-gray-200';
+                              let textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
+
+                              if (availability) {
+                                if (availability.isAvailable) {
+                                  bgColor = 'bg-green-50 hover:bg-green-100 border-green-300';
+                                  borderColor = 'border-green-300';
+                                } else {
+                                  bgColor = 'bg-red-50 hover:bg-red-100 border-red-300';
+                                  borderColor = 'border-red-300';
+                                }
+                              }
+
+                              if (isToday) {
+                                borderColor = 'border-blue-500 border-2';
+                              }
+
+                              return (
+                                <button
+                                  key={index}
+                                  onClick={() => !isPast && isCurrent && handleDateClick(date)}
+                                  disabled={isPast || !isCurrent}
+                                  className={`
+                                    aspect-square p-2 rounded-lg border transition-all
+                                    ${bgColor} ${borderColor} ${textColor}
+                                    ${isPast || !isCurrent ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+                                    relative
+                                  `}
+                                >
+                                  <div className="text-sm font-medium">
+                                    {date.getDate()}
+                                  </div>
+                                  {availability && isCurrent && (
+                                    <div className="text-xs mt-1 truncate">
+                                      {availability.isAvailable && availability.startTime && availability.endTime ? (
+                                        <span className="text-green-700 font-medium">
+                                          {availability.startTime.slice(0, 5)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-red-700 font-medium">Closed</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
+
+                    {/* Edit Modal */}
+                    {showEditModal && selectedDate && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full">
+                          {/* Modal Header */}
+                          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                            <div>
+                              <h2 className="text-xl font-bold text-gray-900">
+                                {selectedDate.toLocaleDateString('en-US', { 
+                                  weekday: 'long', 
+                                  month: 'long', 
+                                  day: 'numeric', 
+                                  year: 'numeric' 
+                                })}
+                              </h2>
+                              <p className="text-sm text-gray-500 mt-1">Set availability for this date</p>
+                            </div>
+                            <button
+                              onClick={() => setShowEditModal(false)}
+                              className="text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                              <X className="h-6 w-6" />
+                            </button>
+                          </div>
+
+                          {/* Modal Body */}
+                          <div className="p-6 space-y-5">
+                            {/* Available Toggle */}
+                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                              <div>
+                                <p className="font-medium text-gray-900">Kitchen Status</p>
+                                <p className="text-sm text-gray-500">Is the kitchen open on this date?</p>
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.isAvailable}
+                                  onChange={(e) => setFormData({ ...formData, isAvailable: e.target.checked })}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                              </label>
+                            </div>
+
+                            {/* Operating Hours */}
+                            {formData.isAvailable ? (
+                              <>
+                                <div className="space-y-4">
+                                  <label className="block text-sm font-medium text-gray-900">
+                                    Operating Hours
+                                  </label>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <label className="block text-xs text-gray-600 mb-2">From</label>
+                                      <input
+                                        type="time"
+                                        value={formData.startTime}
+                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs text-gray-600 mb-2">To</label>
+                                      <input
+                                        type="time"
+                                        value={formData.endTime}
+                                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Time Slots Preview */}
+                                {formData.startTime && formData.endTime && (
+                                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-xs font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                                      <Clock className="h-3.5 w-3.5" />
+                                      Available Booking Slots
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {getAvailableSlots(formData.startTime, formData.endTime).map((slot, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="px-3 py-1.5 bg-white text-blue-700 text-sm font-medium rounded-md border border-blue-200"
+                                        >
+                                          {slot}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+                                <p className="text-sm font-medium text-red-800">
+                                  Kitchen will be closed on this date
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Reason */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-900 mb-2">
+                                Note (Optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={formData.reason}
+                                onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                                placeholder="e.g., Holiday, Special Event, Maintenance"
+                                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Modal Footer */}
+                          <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+                            <button
+                              onClick={handleDeleteAvailability}
+                              disabled={!getAvailabilityForDate(selectedDate)}
+                              className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Remove
+                            </button>
+                            
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => setShowEditModal(false)}
+                                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-white transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={handleSaveAvailability}
+                                disabled={createAvailability.isPending || updateAvailability.isPending}
+                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
