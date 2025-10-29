@@ -1446,48 +1446,34 @@ export default function ApplicantDashboard() {
                         )}
                         
                         {/* Action Buttons */}
-                        <div className="flex flex-col gap-3 pt-2">
-                          <div className="flex gap-3">
-                            {hasActiveApplication ? (
-                              <>
-                                <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
-                                  <FileText className="mr-2 h-4 w-4" />
-                                  Application Submitted
-                                </Button>
-                                {/* Cancel Button for non-approved applications */}
-                                {defaultApp.status !== 'approved' && (
-                                  <Button 
-                                    variant="outline" 
-                                    className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
-                                    onClick={() => handleCancelApplication(
-                                      isChefApplication(defaultApp) ? 'chef' : 'delivery',
-                                      defaultApp.id
-                                    )}
-                                    disabled={isSyncing}
-                                  >
-                                    <XCircle className="mr-2 h-4 w-4" />
-                                    {isSyncing ? 'Cancelling...' : 'Cancel'}
-                                  </Button>
-                                )}
-                              </>
-                            ) : (
-                              <Button asChild className="flex-1 rounded-xl">
-                                <Link href={userDisplayInfo.applicationFormUrl}>
-                                  <userDisplayInfo.icon className="mr-2 h-4 w-4" />
-                                  Apply Again
-                                </Link>
+                        <div className="flex gap-3 pt-2">
+                          {hasActiveApplication ? (
+                            <>
+                              <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
+                                <FileText className="mr-2 h-4 w-4" />
+                                Application Submitted
                               </Button>
-                            )}
-                          </div>
-                          
-                          {/* Kitchen Booking Button for Approved Chefs with Commercial Preference */}
-                          {isChefApplication(defaultApp) && 
-                           defaultApp.status === 'approved' && 
-                           defaultApp.kitchenPreference === 'commercial' && (
-                            <Button asChild className="w-full rounded-xl bg-blue-600 hover:bg-blue-700">
-                              <Link href="/book-kitchen">
-                                <Building className="mr-2 h-4 w-4" />
-                                Book Commercial Kitchen
+                              {/* Cancel Button for non-approved applications */}
+                              {defaultApp.status !== 'approved' && (
+                                <Button 
+                                  variant="outline" 
+                                  className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                                  onClick={() => handleCancelApplication(
+                                    isChefApplication(defaultApp) ? 'chef' : 'delivery',
+                                    defaultApp.id
+                                  )}
+                                  disabled={isSyncing}
+                                >
+                                  <XCircle className="mr-2 h-4 w-4" />
+                                  {isSyncing ? 'Cancelling...' : 'Cancel'}
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <Button asChild className="flex-1 rounded-xl">
+                              <Link href={userDisplayInfo.applicationFormUrl}>
+                                <userDisplayInfo.icon className="mr-2 h-4 w-4" />
+                                Apply Again
                               </Link>
                             </Button>
                           )}
@@ -2056,6 +2042,75 @@ export default function ApplicantDashboard() {
               </div>
             </motion.div>
           )}
+
+          {/* Kitchen Booking Section - Only for Approved Chefs with Commercial Preference */}
+          {(() => {
+            const approvedChefApp = userDisplayInfo.applications?.find(
+              (app): app is Application => 
+                isChefApplication(app) && 
+                app.status === 'approved' && 
+                app.kitchenPreference === 'commercial'
+            );
+
+            if (!approvedChefApp) return null;
+
+            return (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.9 }}
+                className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-3xl p-8 shadow-sm border border-blue-200/60 hover:shadow-lg hover:border-blue-300/60 transition-all duration-300 backdrop-blur-sm mb-8"
+              >
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  {/* Icon and Title */}
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                      <Building className="h-8 w-8 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-semibold text-gray-900">Commercial Kitchen Access</h3>
+                      <p className="text-gray-600 mt-1">Book professional kitchen facilities and view availability</p>
+                    </div>
+                  </div>
+
+                  {/* CTA Button */}
+                  <div className="w-full md:w-auto">
+                    <Button asChild className="w-full md:w-auto rounded-xl bg-blue-600 hover:bg-blue-700 px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all">
+                      <Link href="/book-kitchen">
+                        <Clock className="mr-2 h-5 w-5" />
+                        View Kitchen Timings & Book
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Info Cards */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white/60 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-blue-700 mb-2">
+                      <Clock className="h-5 w-5" />
+                      <span className="font-medium">Flexible Hours</span>
+                    </div>
+                    <p className="text-sm text-gray-600">Book time slots that work for your schedule</p>
+                  </div>
+                  <div className="bg-white/60 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-blue-700 mb-2">
+                      <Building className="h-5 w-5" />
+                      <span className="font-medium">Professional Grade</span>
+                    </div>
+                    <p className="text-sm text-gray-600">Access fully-equipped commercial kitchens</p>
+                  </div>
+                  <div className="bg-white/60 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-blue-700 mb-2">
+                      <CheckCircle className="h-5 w-5" />
+                      <span className="font-medium">Easy Booking</span>
+                    </div>
+                    <p className="text-sm text-gray-600">Simple online booking and management</p>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })()}
 
           {/* Sync Account Section - moved to bottom */}
         </div>
