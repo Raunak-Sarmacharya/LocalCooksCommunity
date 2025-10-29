@@ -18,6 +18,18 @@ interface DateAvailability {
   updatedAt: string;
 }
 
+interface Booking {
+  id: number;
+  kitchenId: number;
+  chefId: number;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function getAuthHeaders(): Promise<HeadersInit> {
   const token = localStorage.getItem('firebaseToken');
   if (token) {
@@ -130,7 +142,7 @@ export default function KitchenAvailabilityManagement() {
   }, [selectedLocationId, urlKitchenId]);
 
   // Fetch date availability for selected kitchen
-  const { data: dateAvailability = [], isLoading: isLoadingAvailability } = useQuery({
+  const { data: dateAvailability = [], isLoading: isLoadingAvailability, error: availabilityError } = useQuery({
     queryKey: ['dateAvailability', selectedKitchenId],
     queryFn: async () => {
       if (!selectedKitchenId) return [];
@@ -140,11 +152,35 @@ export default function KitchenAvailabilityManagement() {
         credentials: "include",
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch date availability');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || 'Failed to fetch date availability');
       }
       return response.json();
     },
     enabled: !!selectedKitchenId,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    retry: 2, // Retry failed requests twice
+  });
+
+  // Fetch bookings for selected kitchen
+  const { data: kitchenBookings = [], isLoading: isLoadingBookings, error: bookingsError } = useQuery({
+    queryKey: ['kitchenBookings', selectedKitchenId],
+    queryFn: async () => {
+      if (!selectedKitchenId) return [];
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/bookings`, {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || 'Failed to fetch bookings');
+      }
+      return response.json();
+    },
+    enabled: !!selectedKitchenId,
+    staleTime: 10000, // Consider data fresh for 10 seconds
+    retry: 2, // Retry failed requests twice
   });
 
   // Create date availability mutation
@@ -160,12 +196,13 @@ export default function KitchenAvailabilityManagement() {
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create date availability');
+        throw new Error(error.message || error.error || 'Failed to create date availability');
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
+      queryClient.invalidateQueries({ queryKey: ['kitchenBookings', selectedKitchenId] });
       setShowEditModal(false);
       resetForm();
       toast({
@@ -194,12 +231,13 @@ export default function KitchenAvailabilityManagement() {
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to update date availability');
+        throw new Error(error.message || error.error || 'Failed to update date availability');
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
+      queryClient.invalidateQueries({ queryKey: ['kitchenBookings', selectedKitchenId] });
       setShowEditModal(false);
       resetForm();
       toast({
@@ -227,12 +265,13 @@ export default function KitchenAvailabilityManagement() {
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete date availability');
+        throw new Error(error.message || error.error || 'Failed to delete date availability');
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
+      queryClient.invalidateQueries({ queryKey: ['kitchenBookings', selectedKitchenId] });
       toast({
         title: "Success",
         description: "Availability removed successfully",
@@ -282,6 +321,14 @@ export default function KitchenAvailabilityManagement() {
     });
   };
 
+  const getBookingsForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return kitchenBookings.filter((booking: Booking) => {
+      const bookingDateStr = new Date(booking.bookingDate).toISOString().split('T')[0];
+      return bookingDateStr === dateStr;
+    });
+  };
+
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
     const existing = getAvailabilityForDate(date);
@@ -300,8 +347,44 @@ export default function KitchenAvailabilityManagement() {
     setShowEditModal(true);
   };
 
+  const formatTimeRange = (start: string, end: string) => {
+    return `${start.slice(0, 5)} - ${end.slice(0, 5)}`;
+  };
+
   const handleSaveAvailability = () => {
     if (!selectedDate || !selectedKitchenId) return;
+
+    // Validate time range if kitchen is available
+    if (formData.isAvailable) {
+      if (!formData.startTime || !formData.endTime) {
+        toast({
+          title: "Validation Error",
+          description: "Please set both start and end times",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      if (formData.startTime >= formData.endTime) {
+        toast({
+          title: "Validation Error",
+          description: "End time must be after start time",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    // Check for bookings if trying to close
+    const bookingsOnDate = getBookingsForDate(selectedDate);
+    if (!formData.isAvailable && bookingsOnDate.length > 0) {
+      const confirmed = window.confirm(
+        `⚠️ WARNING: This date has ${bookingsOnDate.length} confirmed booking(s).\n\n` +
+        `Closing the kitchen will affect these bookings. The chefs will need to be notified.\n\n` +
+        `Are you sure you want to proceed?`
+      );
+      if (!confirmed) return;
+    }
 
     const dateStr = selectedDate.toISOString().split('T')[0];
     const existing = getAvailabilityForDate(selectedDate);
@@ -311,17 +394,20 @@ export default function KitchenAvailabilityManagement() {
       updateAvailability.mutate({
         id: existing.id,
         data: {
-          startTime: formData.isAvailable ? formData.startTime : undefined,
-          endTime: formData.isAvailable ? formData.endTime : undefined,
+          startTime: formData.isAvailable ? formData.startTime : null,
+          endTime: formData.isAvailable ? formData.endTime : null,
           isAvailable: formData.isAvailable,
-          reason: formData.reason || undefined,
+          reason: formData.reason || null,
         },
       });
     } else {
       // Create new
       createAvailability.mutate({
         specificDate: dateStr,
-        ...formData,
+        startTime: formData.isAvailable ? formData.startTime : null,
+        endTime: formData.isAvailable ? formData.endTime : null,
+        isAvailable: formData.isAvailable,
+        reason: formData.reason || null,
       });
     }
   };
@@ -432,6 +518,10 @@ export default function KitchenAvailabilityManagement() {
                         <div className="w-4 h-4 bg-white border border-gray-200 rounded"></div>
                         <span>Not set</span>
                       </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                        <span>Has bookings</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -474,9 +564,17 @@ export default function KitchenAvailabilityManagement() {
 
                     {/* Calendar Grid */}
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                      {isLoadingAvailability ? (
+                      {(availabilityError || bookingsError) && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-sm text-red-800">
+                            ⚠️ Error loading data: {(availabilityError as Error)?.message || (bookingsError as Error)?.message}
+                          </p>
+                        </div>
+                      )}
+                      {isLoadingAvailability || isLoadingBookings ? (
                         <div className="text-center py-12">
-                          <p className="text-gray-500">Loading calendar...</p>
+                          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                          <p className="text-gray-500 mt-2">Loading calendar...</p>
                         </div>
                       ) : (
                         <div className="calendar-grid">
@@ -493,6 +591,8 @@ export default function KitchenAvailabilityManagement() {
                           <div className="grid grid-cols-7 gap-2">
                             {calendarDays.map((date, index) => {
                               const availability = getAvailabilityForDate(date);
+                              const bookings = getBookingsForDate(date);
+                              const hasBookings = bookings.length > 0;
                               const isCurrent = isCurrentMonth(date);
                               const isToday = date.toDateString() === today.toDateString();
                               const isPast = date < today && !isToday;
@@ -530,16 +630,23 @@ export default function KitchenAvailabilityManagement() {
                                   <div className="text-sm font-medium">
                                     {date.getDate()}
                                   </div>
-                                  {availability && isCurrent && (
-                                    <div className="text-xs mt-1 truncate">
-                                      {availability.isAvailable && availability.startTime && availability.endTime ? (
-                                        <span className="text-green-700 font-medium">
-                                          {availability.startTime.slice(0, 5)}
-                                        </span>
-                                      ) : (
-                                        <span className="text-red-700 font-medium">Closed</span>
+                                  {isCurrent && (
+                                    <>
+                                      {availability && (
+                                        <div className="text-xs mt-1 truncate">
+                                          {availability.isAvailable && availability.startTime && availability.endTime ? (
+                                            <span className="text-green-700 font-medium">
+                                              {availability.startTime.slice(0, 5)}
+                                            </span>
+                                          ) : (
+                                            <span className="text-red-700 font-medium">Closed</span>
+                                          )}
+                                        </div>
                                       )}
-                                    </div>
+                                      {hasBookings && (
+                                        <div className="absolute top-1 right-1 w-2 h-2 bg-blue-600 rounded-full" title={`${bookings.length} booking(s)`}></div>
+                                      )}
+                                    </>
                                   )}
                                 </button>
                               );
@@ -551,12 +658,27 @@ export default function KitchenAvailabilityManagement() {
 
                     {/* Edit Modal */}
                     {showEditModal && selectedDate && (
-                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                      <div 
+                        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                        onClick={(e) => {
+                          if (e.target === e.currentTarget) {
+                            setShowEditModal(false);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setShowEditModal(false);
+                          }
+                        }}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="modal-title"
+                      >
                         <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full">
                           {/* Modal Header */}
                           <div className="flex items-center justify-between p-6 border-b border-gray-200">
                             <div>
-                              <h2 className="text-xl font-bold text-gray-900">
+                              <h2 id="modal-title" className="text-xl font-bold text-gray-900">
                                 {selectedDate.toLocaleDateString('en-US', { 
                                   weekday: 'long', 
                                   month: 'long', 
@@ -569,6 +691,7 @@ export default function KitchenAvailabilityManagement() {
                             <button
                               onClick={() => setShowEditModal(false)}
                               className="text-gray-400 hover:text-gray-600 transition-colors"
+                              aria-label="Close modal"
                             >
                               <X className="h-6 w-6" />
                             </button>
@@ -576,6 +699,38 @@ export default function KitchenAvailabilityManagement() {
 
                           {/* Modal Body */}
                           <div className="p-6 space-y-5">
+                            {/* Existing Bookings Warning */}
+                            {selectedDate && getBookingsForDate(selectedDate).length > 0 && (
+                              <div className="p-4 bg-blue-50 border border-blue-300 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                  <CalendarIcon className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <div className="flex-1">
+                                    <h4 className="font-semibold text-blue-900 mb-2">Existing Bookings</h4>
+                                    <p className="text-sm text-blue-800 mb-3">
+                                      This date has {getBookingsForDate(selectedDate).length} confirmed booking(s):
+                                    </p>
+                                    <div className="space-y-1.5">
+                                      {getBookingsForDate(selectedDate).map((booking: Booking) => (
+                                        <div key={booking.id} className="text-sm bg-white px-3 py-2 rounded border border-blue-200 flex items-center justify-between">
+                                          <span className="font-medium text-blue-900">
+                                            {formatTimeRange(booking.startTime, booking.endTime)}
+                                          </span>
+                                          <span className="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                                            Confirmed
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {!formData.isAvailable && (
+                                      <p className="text-sm font-medium text-orange-700 mt-3 bg-orange-50 px-3 py-2 rounded border border-orange-200">
+                                        ⚠️ Warning: Closing this date will affect existing bookings. Please contact the chefs before proceeding.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Available Toggle */}
                             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                               <div>
@@ -607,7 +762,9 @@ export default function KitchenAvailabilityManagement() {
                                         type="time"
                                         value={formData.startTime}
                                         onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                        required={formData.isAvailable}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        step="900"
                                       />
                                     </div>
                                     <div>
@@ -616,7 +773,10 @@ export default function KitchenAvailabilityManagement() {
                                         type="time"
                                         value={formData.endTime}
                                         onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                                        required={formData.isAvailable}
+                                        min={formData.startTime}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        step="900"
                                       />
                                     </div>
                                   </div>
@@ -660,8 +820,14 @@ export default function KitchenAvailabilityManagement() {
                                 value={formData.reason}
                                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                                 placeholder="e.g., Holiday, Special Event, Maintenance"
+                                maxLength={200}
                                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                               />
+                              {formData.reason && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {formData.reason.length}/200 characters
+                                </p>
+                              )}
                             </div>
                           </div>
 
@@ -686,10 +852,19 @@ export default function KitchenAvailabilityManagement() {
                               <button
                                 onClick={handleSaveAvailability}
                                 disabled={createAvailability.isPending || updateAvailability.isPending}
-                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                               >
-                                <CheckCircle2 className="h-4 w-4" />
-                                Save
+                                {(createAvailability.isPending || updateAvailability.isPending) ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    Saving...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Save
+                                  </>
+                                )}
                               </button>
                             </div>
                           </div>
