@@ -46,13 +46,17 @@ export default function AdminManageLocations() {
     if (!locationId) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/manager/kitchens/${locationId}`, {
+      const response = await fetch(`/api/admin/kitchens/${locationId}`, {
         credentials: "include",
       });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch kitchens: ${response.status}`);
+      }
       const data = await response.json();
       setKitchens(data);
     } catch (error) {
       console.error("Error loading kitchens:", error);
+      toast({ title: "Error", description: "Failed to load kitchens" });
     } finally {
       setLoading(false);
     }

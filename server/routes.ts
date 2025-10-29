@@ -3406,6 +3406,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get kitchens for a location (admin)
+  app.get("/api/admin/kitchens/:locationId", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - support both session and Firebase auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const locationId = parseInt(req.params.locationId);
+      if (isNaN(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      const kitchens = await firebaseStorage.getKitchensByLocation(locationId);
+      res.json(kitchens);
+    } catch (error: any) {
+      console.error("Error fetching kitchens:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+    }
+  });
+
   // Create kitchen (admin)
   app.post("/api/admin/kitchens", async (req: Request, res: Response) => {
     try {

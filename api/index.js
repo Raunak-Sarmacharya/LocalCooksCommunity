@@ -354,6 +354,25 @@ async function getAllKitchens() {
   }
 }
 
+// Get kitchens by location ID
+async function getKitchensByLocation(locationId) {
+  try {
+    if (!pool) {
+      return [];
+    }
+    const result = await pool.query(`
+      SELECT id, location_id as "locationId", name, description, is_active as "isActive", created_at, updated_at 
+      FROM kitchens 
+      WHERE location_id = $1
+      ORDER BY created_at DESC
+    `, [locationId]);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching kitchens by location from database:', error);
+    return [];
+  }
+}
+
 // Create a kitchen in the database
 async function createKitchen({ locationId, name, description, isActive }) {
   try {
@@ -10775,6 +10794,32 @@ app.post("/api/admin/locations", async (req, res) => {
       return res.status(400).json({ error: 'The selected manager does not exist or is invalid.' });
     }
     res.status(500).json({ error: error.message || "Failed to create location" });
+  }
+});
+
+// Get kitchens for a location (admin)
+app.get("/api/admin/kitchens/:locationId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const locationId = parseInt(req.params.locationId);
+    if (isNaN(locationId) || locationId <= 0) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    const kitchens = await getKitchensByLocation(locationId);
+    res.json(kitchens);
+  } catch (error) {
+    console.error("Error fetching kitchens:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
   }
 });
 
