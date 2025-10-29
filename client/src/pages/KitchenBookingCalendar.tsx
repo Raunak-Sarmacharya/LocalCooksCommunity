@@ -96,7 +96,7 @@ export default function KitchenBookingCalendar() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Book a Kitchen</h1>
-        <p className="text-gray-600 mt-2">Select a kitchen and time slot for your booking</p>
+        <p className="text-gray-600 mt-2">Select a kitchen and book from available time slots set by the kitchen manager</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -149,7 +149,10 @@ export default function KitchenBookingCalendar() {
                 {isLoadingSlots ? (
                   <p className="text-gray-500">Loading available slots...</p>
                 ) : availableSlots.length === 0 ? (
-                  <p className="text-gray-500">No available slots for this date</p>
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-gray-700 font-medium">No available slots for this date</p>
+                    <p className="text-sm text-gray-600 mt-1">The kitchen manager has not set availability for this day, or all slots are booked.</p>
+                  </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {availableSlots.map((slot) => (

@@ -819,6 +819,45 @@ export class FirebaseStorage {
     }
   }
 
+  // Validate that booking time is within manager-set availability
+  async validateBookingAvailability(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const dayOfWeek = bookingDate.getDay();
+      const availability = await this.getKitchenAvailability(kitchenId);
+      
+      const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
+      
+      // Check if day is available
+      if (!dayAvailability || !dayAvailability.isAvailable) {
+        return { valid: false, error: "Kitchen is not available on this day" };
+      }
+
+      // Check if booking times are within availability window
+      if (startTime < dayAvailability.startTime || endTime > dayAvailability.endTime) {
+        return { valid: false, error: "Booking time must be within manager-set available hours" };
+      }
+
+      // Check if start time is before end time
+      if (startTime >= endTime) {
+        return { valid: false, error: "End time must be after start time" };
+      }
+
+      // Check that start time aligns with available slots (hourly slots)
+      const startHour = parseInt(startTime.split(':')[0]);
+      const availabilityStartHour = parseInt(dayAvailability.startTime.split(':')[0]);
+      const availabilityEndHour = parseInt(dayAvailability.endTime.split(':')[0]);
+      
+      if (startHour < availabilityStartHour || startHour >= availabilityEndHour) {
+        return { valid: false, error: "Start time must be within manager-set available slot times" };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error('Error validating booking availability:', error);
+      return { valid: false, error: "Error validating booking availability" };
+    }
+  }
+
   async checkBookingConflict(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<boolean> {
     try {
       const bookings = await db
