@@ -1,9 +1,13 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building } from "lucide-react";
 import { useState } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
+import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
+import { useToast } from "@/hooks/use-toast";
 
 export default function KitchenBookingCalendar() {
   const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking } = useKitchenBookings();
+  const { toast } = useToast();
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -12,15 +16,23 @@ export default function KitchenBookingCalendar() {
   const [notes, setNotes] = useState<string>("");
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
     setIsLoadingSlots(true);
+    setError(null);
     try {
       const slots = await getAvailableSlots(kitchenId, date);
       setAvailableSlots(slots);
     } catch (error) {
       console.error("Error loading slots:", error);
+      setError("Failed to load available time slots. Please try again.");
       setAvailableSlots([]);
+      toast({
+        title: "Error",
+        description: "Failed to load available time slots. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingSlots(false);
     }
@@ -60,10 +72,23 @@ export default function KitchenBookingCalendar() {
       },
       {
         onSuccess: () => {
+          toast({
+            title: "Booking Created",
+            description: "Your kitchen booking request has been submitted successfully!",
+          });
           setShowBookingForm(false);
           setSelectedSlot(null);
           setEndTime("");
           setNotes("");
+          // Reload available slots to reflect the new booking
+          loadAvailableSlots(selectedKitchen.id, selectedDate);
+        },
+        onError: (error: any) => {
+          toast({
+            title: "Booking Failed",
+            description: error.message || "Failed to create booking. Please try again.",
+            variant: "destructive",
+          });
         },
       }
     );
@@ -71,7 +96,21 @@ export default function KitchenBookingCalendar() {
 
   const handleCancelBooking = async (bookingId: number) => {
     if (window.confirm("Are you sure you want to cancel this booking?")) {
-      cancelBooking.mutate(bookingId);
+      cancelBooking.mutate(bookingId, {
+        onSuccess: () => {
+          toast({
+            title: "Booking Cancelled",
+            description: "Your booking has been cancelled successfully.",
+          });
+        },
+        onError: (error: any) => {
+          toast({
+            title: "Cancellation Failed",
+            description: error.message || "Failed to cancel booking. Please try again.",
+            variant: "destructive",
+          });
+        },
+      });
     }
   };
 
@@ -93,13 +132,36 @@ export default function KitchenBookingCalendar() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Book a Kitchen</h1>
-        <p className="text-gray-600 mt-2">Select a kitchen and book from available time slots set by the kitchen manager</p>
-      </div>
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Book a Kitchen</h1>
+            <p className="text-gray-600 mt-2">Select a kitchen and book from available time slots set by the kitchen manager</p>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Error Display */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+              <p className="text-red-800">{error}</p>
+            </div>
+          )}
+
+          {/* No Kitchens Available */}
+          {!isLoadingKitchens && kitchens.length === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center">
+              <Building className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">No Kitchens Available</h2>
+              <p className="text-gray-600">
+                There are currently no commercial kitchens set up by managers. 
+                Please check back later or contact support.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Kitchen Selection & Calendar */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -295,7 +357,10 @@ export default function KitchenBookingCalendar() {
             </div>
           </div>
         )}
-      </div>
+          </div>
+        </div>
+      </main>
+      <Footer />
     </div>
   );
 }
