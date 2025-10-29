@@ -29,6 +29,23 @@ interface Kitchen {
   isActive: boolean;
 }
 
+// Helper function to get Firebase auth headers
+async function getAuthHeaders(): Promise<HeadersInit> {
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const token = await currentUser.getIdToken();
+      return {
+        'Authorization': `Bearer ${token}`,
+      };
+    }
+  } catch (error) {
+    console.error('Error getting Firebase token:', error);
+  }
+  return {};
+}
+
 export function useKitchenBookings() {
   const queryClient = useQueryClient();
 
@@ -36,8 +53,10 @@ export function useKitchenBookings() {
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/chef/bookings"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/chef/bookings", {
         credentials: "include",
+        headers,
       });
       if (!response.ok) throw new Error("Failed to fetch bookings");
       return response.json();
@@ -48,8 +67,10 @@ export function useKitchenBookings() {
   const kitchensQuery = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/chef/kitchens", {
         credentials: "include",
+        headers,
       });
       if (!response.ok) throw new Error("Failed to fetch kitchens");
       return response.json();
@@ -58,9 +79,10 @@ export function useKitchenBookings() {
 
   // Get available time slots for a kitchen on a specific date
   const getAvailableSlots = async (kitchenId: number, date: string): Promise<string[]> => {
+    const headers = await getAuthHeaders();
     const response = await fetch(
       `/api/chef/kitchens/${kitchenId}/availability?date=${date}`,
-      { credentials: "include" }
+      { credentials: "include", headers }
     );
     if (!response.ok) throw new Error("Failed to fetch available slots");
     return response.json();
@@ -69,9 +91,13 @@ export function useKitchenBookings() {
   // Create a booking
   const createBooking = useMutation({
     mutationFn: async (data: CreateBookingData) => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/chef/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...headers,
+        },
         credentials: "include",
         body: JSON.stringify(data),
       });
@@ -89,9 +115,11 @@ export function useKitchenBookings() {
   // Cancel a booking
   const cancelBooking = useMutation({
     mutationFn: async (bookingId: number) => {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/chef/bookings/${bookingId}/cancel`, {
         method: "PUT",
         credentials: "include",
+        headers,
       });
       if (!response.ok) {
         const error = await response.json();

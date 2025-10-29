@@ -13,6 +13,7 @@ import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
+import { verifyFirebaseToken } from "./firebase-admin";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -3237,14 +3238,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================================
 
   // Middleware to require chef authentication
+  // Supports BOTH Firebase auth (for approved chefs) AND session auth (for admin/managers)
   async function requireChef(req: Request, res: Response, next: () => void) {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ error: "Not authenticated" });
+    try {
+      // First, try Firebase authentication
+      const authHeader = req.headers.authorization;
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const decodedToken = await verifyFirebaseToken(token);
+        
+        if (decodedToken) {
+          // Load user from Firebase UID
+          const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
+          
+          if (neonUser && neonUser.isChef) {
+            // Set both Firebase and user info on request
+            req.firebaseUser = {
+              uid: decodedToken.uid,
+              email: decodedToken.email,
+              email_verified: decodedToken.email_verified,
+            };
+            req.user = neonUser as any;
+            console.log(`✅ Chef authenticated via Firebase: ${neonUser.username} (ID: ${neonUser.id})`);
+            return next();
+          } else if (neonUser && !neonUser.isChef) {
+            return res.status(403).json({ error: "Chef access required" });
+          }
+        }
+      }
+      
+      // Fall back to session authentication
+      if (req.isAuthenticated?.() && req.user?.isChef) {
+        console.log(`✅ Chef authenticated via session: ${req.user.username} (ID: ${req.user.id})`);
+        return next();
+      }
+      
+      // Neither authentication method worked
+      return res.status(401).json({ error: "Authentication required. Please sign in as a chef." });
+    } catch (error) {
+      console.error('Error in requireChef middleware:', error);
+      return res.status(401).json({ error: "Authentication failed" });
     }
-    if (!req.user!.isChef) {
-      return res.status(403).json({ error: "Chef access required" });
-    }
-    next();
   }
 
   // Get all kitchens

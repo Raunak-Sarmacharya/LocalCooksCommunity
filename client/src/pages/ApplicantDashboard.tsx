@@ -28,6 +28,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
     BookOpen,
+    Building,
     CheckCircle,
     ChefHat,
     Clock,
@@ -1445,34 +1446,48 @@ export default function ApplicantDashboard() {
                         )}
                         
                         {/* Action Buttons */}
-                        <div className="flex gap-3 pt-2">
-                          {hasActiveApplication ? (
-                            <>
-                              <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
-                                <FileText className="mr-2 h-4 w-4" />
-                                Application Submitted
-                              </Button>
-                              {/* Cancel Button for non-approved applications */}
-                              {defaultApp.status !== 'approved' && (
-                                <Button 
-                                  variant="outline" 
-                                  className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
-                                  onClick={() => handleCancelApplication(
-                                    isChefApplication(defaultApp) ? 'chef' : 'delivery',
-                                    defaultApp.id
-                                  )}
-                                  disabled={isSyncing}
-                                >
-                                  <XCircle className="mr-2 h-4 w-4" />
-                                  {isSyncing ? 'Cancelling...' : 'Cancel'}
+                        <div className="flex flex-col gap-3 pt-2">
+                          <div className="flex gap-3">
+                            {hasActiveApplication ? (
+                              <>
+                                <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  Application Submitted
                                 </Button>
-                              )}
-                            </>
-                          ) : (
-                            <Button asChild className="flex-1 rounded-xl">
-                              <Link href={userDisplayInfo.applicationFormUrl}>
-                                <userDisplayInfo.icon className="mr-2 h-4 w-4" />
-                                Apply Again
+                                {/* Cancel Button for non-approved applications */}
+                                {defaultApp.status !== 'approved' && (
+                                  <Button 
+                                    variant="outline" 
+                                    className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                                    onClick={() => handleCancelApplication(
+                                      isChefApplication(defaultApp) ? 'chef' : 'delivery',
+                                      defaultApp.id
+                                    )}
+                                    disabled={isSyncing}
+                                  >
+                                    <XCircle className="mr-2 h-4 w-4" />
+                                    {isSyncing ? 'Cancelling...' : 'Cancel'}
+                                  </Button>
+                                )}
+                              </>
+                            ) : (
+                              <Button asChild className="flex-1 rounded-xl">
+                                <Link href={userDisplayInfo.applicationFormUrl}>
+                                  <userDisplayInfo.icon className="mr-2 h-4 w-4" />
+                                  Apply Again
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+                          
+                          {/* Kitchen Booking Button for Approved Chefs with Commercial Preference */}
+                          {isChefApplication(defaultApp) && 
+                           defaultApp.status === 'approved' && 
+                           defaultApp.kitchenPreference === 'commercial' && (
+                            <Button asChild className="w-full rounded-xl bg-blue-600 hover:bg-blue-700">
+                              <Link href="/book-kitchen">
+                                <Building className="mr-2 h-4 w-4" />
+                                Book Commercial Kitchen
                               </Link>
                             </Button>
                           )}
