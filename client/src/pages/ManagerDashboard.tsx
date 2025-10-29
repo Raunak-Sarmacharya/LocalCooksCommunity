@@ -66,22 +66,13 @@ export default function ManagerDashboard() {
               <h1 className="text-3xl font-bold text-gray-900">Manager Dashboard</h1>
               <p className="text-gray-600 mt-2">Manage your locations, kitchens, and bookings</p>
             </div>
-            <div className="flex gap-2">
-              <Link
-                href="/manager/availability"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Settings className="h-5 w-5" />
-                Set Availability
-              </Link>
-              <Link
-                href="/manager/date-overrides"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
-              >
-                <Calendar className="h-5 w-5" />
-                Date Overrides
-              </Link>
-            </div>
+            <Link
+              href="/manager/availability"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Calendar className="h-5 w-5" />
+              Set Availability
+            </Link>
           </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
