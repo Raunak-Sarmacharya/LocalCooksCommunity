@@ -3072,55 +3072,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
   // ===================================
 
-  // Middleware to require manager authentication
-  async function requireManager(req: Request, res: Response, next: () => void) {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    if (req.user!.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
-    next();
-  }
-
   // Get all locations for manager
-  app.get("/api/manager/locations", requireManager, async (req: Request, res: Response) => {
+  app.get("/api/manager/locations", async (req: Request, res: Response) => {
     try {
-      const locations = await firebaseStorage.getLocationsByManager(req.user!.id);
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
       res.json(locations);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching locations:", error);
-      res.status(500).json({ error: "Failed to fetch locations" });
+      res.status(500).json({ error: error.message || "Failed to fetch locations" });
     }
   });
 
-  // Get kitchens for a location
-  app.get("/api/manager/kitchens/:locationId", requireManager, async (req: Request, res: Response) => {
+  // Get kitchens for a location (manager)
+  app.get("/api/manager/kitchens/:locationId", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
       const locationId = parseInt(req.params.locationId);
+      if (isNaN(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      // Verify the manager has access to this location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this location" });
+      }
+
       const kitchens = await firebaseStorage.getKitchensByLocation(locationId);
       res.json(kitchens);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching kitchens:", error);
-      res.status(500).json({ error: "Failed to fetch kitchens" });
+      res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
     }
   });
 
   // Set kitchen availability
-  app.post("/api/manager/availability", requireManager, async (req: Request, res: Response) => {
+  app.post("/api/manager/availability", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+      
       const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
       await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error setting availability:", error);
-      res.status(500).json({ error: "Failed to set availability" });
+      res.status(500).json({ error: error.message || "Failed to set availability" });
     }
   });
 
   // Get kitchen availability
-  app.get("/api/manager/availability/:kitchenId", requireManager, async (req: Request, res: Response) => {
+  app.get("/api/manager/availability/:kitchenId", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+      
       const kitchenId = parseInt(req.params.kitchenId);
       const availability = await firebaseStorage.getKitchenAvailability(kitchenId);
       res.json(availability);
@@ -3131,26 +3183,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all bookings for manager
-  app.get("/api/manager/bookings", requireManager, async (req: Request, res: Response) => {
+  app.get("/api/manager/bookings", async (req: Request, res: Response) => {
     try {
-      const bookings = await firebaseStorage.getBookingsByManager(req.user!.id);
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const bookings = await firebaseStorage.getBookingsByManager(user.id);
       res.json(bookings);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching bookings:", error);
-      res.status(500).json({ error: "Failed to fetch bookings" });
+      res.status(500).json({ error: error.message || "Failed to fetch bookings" });
     }
   });
 
   // Update booking status
-  app.put("/api/manager/bookings/:id/status", requireManager, async (req: Request, res: Response) => {
+  app.put("/api/manager/bookings/:id/status", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+      
       const id = parseInt(req.params.id);
       const { status } = req.body;
       await firebaseStorage.updateKitchenBookingStatus(id, status);
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating booking status:", error);
-      res.status(500).json({ error: "Failed to update booking status" });
+      res.status(500).json({ error: error.message || "Failed to update booking status" });
     }
   });
 
