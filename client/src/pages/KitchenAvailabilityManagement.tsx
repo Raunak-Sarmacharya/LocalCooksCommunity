@@ -38,6 +38,8 @@ export default function KitchenAvailabilityManagement() {
         .then(res => res.json())
         .then(data => setAvailability(data))
         .catch(() => {});
+    } else {
+      setAvailability([]);
     }
   }, [selectedKitchenId]);
 
@@ -48,8 +50,15 @@ export default function KitchenAvailabilityManagement() {
     setSaveStatus("");
     try {
       await setKitchenAvailability(selectedKitchenId, dayOfWeek, startTime, endTime, isAvailable);
-      setSaveStatus("Saved successfully!");
-      setTimeout(() => setSaveStatus(""), 3000);
+      setSaveStatus("Saved successfully! Chefs can now book this kitchen during these hours.");
+      setTimeout(() => setSaveStatus(""), 5000);
+      
+      // Refresh availability to show updated data
+      const response = await fetch(`/api/manager/availability/${selectedKitchenId}`, { credentials: "include" });
+      if (response.ok) {
+        const data = await response.json();
+        setAvailability(data);
+      }
     } catch (error) {
       setSaveStatus("Error saving availability");
     } finally {
@@ -67,8 +76,8 @@ export default function KitchenAvailabilityManagement() {
       <main className="flex-1 pt-24 pb-8">
         <div className="container mx-auto px-4 py-8">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Manage Kitchen Availability</h1>
-            <p className="text-gray-600 mt-2">Set up weekly schedules for each kitchen</p>
+            <h1 className="text-3xl font-bold text-gray-900">Manage Kitchen Booking Slots</h1>
+            <p className="text-gray-600 mt-2">Set availability schedules and time slots that chefs can book. You control when kitchens are available for booking.</p>
           </div>
 
       {isLoadingLocations ? (
@@ -131,9 +140,10 @@ export default function KitchenAvailabilityManagement() {
               </div>
             ) : (
               <>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  Weekly Schedule
-                </h2>
+                <div className="mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">Weekly Booking Schedule</h2>
+                  <p className="text-sm text-gray-600 mt-1">Configure when chefs can book this kitchen. Only available time slots will be shown to chefs.</p>
+                </div>
                 {saveStatus && (
                   <div
                     className={`mb-4 p-3 rounded ${
@@ -188,12 +198,35 @@ function DaySchedule({
   const [endTime, setEndTime] = useState(availability?.endTime || "17:00");
   const [isAvailable, setIsAvailable] = useState(availability?.isAvailable ?? true);
 
+  // Calculate preview slots that chefs will see
+  const getAvailableSlots = () => {
+    if (!isAvailable) return [];
+    const start = parseInt(startTime.split(':')[0]);
+    const end = parseInt(endTime.split(':')[0]);
+    const slots: string[] = [];
+    for (let hour = start; hour < end; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+    }
+    return slots;
+  };
+
+  const previewSlots = getAvailableSlots();
+
+  // Update state when availability prop changes
+  useEffect(() => {
+    if (availability) {
+      setStartTime(availability.startTime || "09:00");
+      setEndTime(availability.endTime || "17:00");
+      setIsAvailable(availability.isAvailable ?? true);
+    }
+  }, [availability]);
+
   const handleSave = () => {
     onSave(startTime, endTime, isAvailable);
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4">
+    <div className={`border rounded-lg p-4 ${isAvailable ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200 bg-gray-50'}`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
           <Clock className="h-5 w-5 text-gray-400 mr-2" />
@@ -206,42 +239,63 @@ function DaySchedule({
             onChange={(e) => setIsAvailable(e.target.checked)}
             className="mr-2"
           />
-          <span className="text-sm text-gray-700">Available</span>
+          <span className="text-sm font-medium text-gray-700">Available for Booking</span>
         </label>
       </div>
-      {isAvailable && (
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Start Time
-            </label>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-            />
+      {isAvailable ? (
+        <>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Time
+              </label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Time
+              </label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              End Time
-            </label>
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2"
-            />
-          </div>
+          {previewSlots.length > 0 && (
+            <div className="mb-4 p-3 bg-white rounded-lg border border-blue-200">
+              <p className="text-xs font-medium text-gray-600 mb-2">Chefs will see these booking slots:</p>
+              <div className="flex flex-wrap gap-2">
+                {previewSlots.map((slot, idx) => (
+                  <span
+                    key={idx}
+                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded"
+                  >
+                    {slot}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+          <p className="text-sm text-gray-600">Kitchen unavailable - chefs cannot book this day</p>
         </div>
       )}
       <button
         onClick={handleSave}
-        disabled={isSaving || !isAvailable}
+        disabled={isSaving}
         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
       >
         <Save className="h-4 w-4" />
-        {isSaving ? "Saving..." : "Save"}
+        {isSaving ? "Saving..." : "Save Schedule"}
       </button>
     </div>
   );
