@@ -3207,6 +3207,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get bookings for a specific kitchen (for availability management)
+  app.get("/api/manager/kitchens/:kitchenId/bookings", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+      
+      // Filter for confirmed bookings only
+      const confirmedBookings = bookings.filter(b => b.status === 'confirmed');
+      
+      res.json(confirmedBookings);
+    } catch (error: any) {
+      console.error("Error fetching kitchen bookings:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch kitchen bookings" });
+    }
+  });
+
   // Update booking status
   app.put("/api/manager/bookings/:id/status", async (req: Request, res: Response) => {
     try {
@@ -3234,8 +3263,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get date overrides for a kitchen
-  app.get("/api/manager/kitchens/:kitchenId/date-overrides", requireManager, async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:kitchenId/date-overrides", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
       const kitchenId = parseInt(req.params.kitchenId);
       const { startDate, endDate } = req.query;
       
@@ -3251,10 +3293,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a date override
-  app.post("/api/manager/kitchens/:kitchenId/date-overrides", requireManager, async (req: Request, res: Response) => {
+  app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
       const kitchenId = parseInt(req.params.kitchenId);
       const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
+      
+      // Validate input
+      if (!specificDate) {
+        return res.status(400).json({ error: "Date is required" });
+      }
+      
+      // Validate time range if kitchen is available
+      if (isAvailable) {
+        if (!startTime || !endTime) {
+          return res.status(400).json({ 
+            error: "Start time and end time are required when kitchen is available" 
+          });
+        }
+        if (startTime >= endTime) {
+          return res.status(400).json({ 
+            error: "End time must be after start time" 
+          });
+        }
+      }
+      
+      // If closing the kitchen (isAvailable = false), check for existing bookings
+      if (!isAvailable) {
+        const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+        const dateStr = new Date(specificDate).toISOString().split('T')[0];
+        const bookingsOnDate = bookings.filter(b => {
+          const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
+          return bookingDateStr === dateStr && b.status === 'confirmed';
+        });
+        
+        if (bookingsOnDate.length > 0) {
+          return res.status(400).json({ 
+            error: "Cannot close kitchen on this date",
+            message: `There are ${bookingsOnDate.length} confirmed booking(s) on this date. Please cancel or reschedule them first.`,
+            bookings: bookingsOnDate 
+          });
+        }
+      }
       
       const override = await firebaseStorage.createKitchenDateOverride({
         kitchenId,
@@ -3273,10 +3365,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update a date override
-  app.put("/api/manager/date-overrides/:id", requireManager, async (req: Request, res: Response) => {
+  app.put("/api/manager/date-overrides/:id", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
       const id = parseInt(req.params.id);
       const { startTime, endTime, isAvailable, reason } = req.body;
+      
+      // Validate time range if kitchen is available
+      if (isAvailable === true) {
+        if (!startTime || !endTime) {
+          return res.status(400).json({ 
+            error: "Start time and end time are required when kitchen is available" 
+          });
+        }
+        if (startTime >= endTime) {
+          return res.status(400).json({ 
+            error: "End time must be after start time" 
+          });
+        }
+      }
+      
+      // If changing to closed (isAvailable = false), check for existing bookings
+      if (isAvailable === false) {
+        // First get the override to find the kitchen and date
+        const allOverrides = await firebaseStorage.getKitchenDateOverrides(0); // Get all
+        const override = allOverrides.find((o: any) => o.id === id);
+        
+        if (override) {
+          const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
+          const dateStr = new Date(override.specificDate).toISOString().split('T')[0];
+          const bookingsOnDate = bookings.filter(b => {
+            const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
+            return bookingDateStr === dateStr && b.status === 'confirmed';
+          });
+          
+          if (bookingsOnDate.length > 0) {
+            return res.status(400).json({ 
+              error: "Cannot close kitchen on this date",
+              message: `There are ${bookingsOnDate.length} confirmed booking(s) on this date. Please cancel or reschedule them first.`,
+              bookings: bookingsOnDate 
+            });
+          }
+        }
+      }
       
       const updated = await firebaseStorage.updateKitchenDateOverride(id, {
         startTime,
@@ -3293,8 +3436,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a date override
-  app.delete("/api/manager/date-overrides/:id", requireManager, async (req: Request, res: Response) => {
+  app.delete("/api/manager/date-overrides/:id", async (req: Request, res: Response) => {
     try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
       const id = parseInt(req.params.id);
       await firebaseStorage.deleteKitchenDateOverride(id);
       res.json({ success: true });
@@ -3387,12 +3543,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const { date } = req.query;
-      const bookingDate = date ? new Date(date as string) : new Date();
+      
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+      
+      const bookingDate = new Date(date as string);
+      
+      // Validate date
+      if (isNaN(bookingDate.getTime())) {
+        return res.status(400).json({ error: "Invalid date format" });
+      }
+      
+      console.log(`🔍 Fetching available slots for kitchen ${kitchenId} on ${date}`);
+      
       const slots = await firebaseStorage.getAvailableTimeSlots(kitchenId, bookingDate);
+      
+      console.log(`✅ Returning ${slots.length} available slots`);
+      
       res.json(slots);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching available slots:", error);
-      res.status(500).json({ error: "Failed to fetch available slots" });
+      res.status(500).json({ 
+        error: "Failed to fetch available slots",
+        message: error.message 
+      });
     }
   });
 

@@ -593,7 +593,7 @@ export class FirebaseStorage {
           manager: manager ? {
             id: manager.id,
             username: manager.username,
-            fullName: manager.fullName,
+            fullName: (manager as any).fullName || manager.username,
           } : null,
         };
       });
@@ -985,10 +985,11 @@ export class FirebaseStorage {
         endHour = parseInt(dayAvailability.endTime.split(':')[0]);
       }
       
-      // Generate hourly slots
+      // Generate 30-minute interval slots (like standard booking platforms)
       const slots: string[] = [];
       for (let hour = startHour; hour < endHour; hour++) {
         slots.push(`${hour.toString().padStart(2, '0')}:00`);
+        slots.push(`${hour.toString().padStart(2, '0')}:30`);
       }
       
       // Filter out already booked slots
@@ -1000,14 +1001,28 @@ export class FirebaseStorage {
         return bookingDateStr === dateStr && b.status !== 'cancelled';
       });
       
+      // More granular time conflict checking
       const bookedSlots = new Set<string>();
       dayBookings.forEach(booking => {
-        const startH = parseInt(booking.startTime.split(':')[0]);
-        const endH = parseInt(booking.endTime.split(':')[0]);
-        for (let h = startH; h < endH; h++) {
-          bookedSlots.add(`${h.toString().padStart(2, '0')}:00`);
+        // Convert start and end times to minutes for accurate comparison
+        const [startHours, startMins] = booking.startTime.split(':').map(Number);
+        const [endHours, endMins] = booking.endTime.split(':').map(Number);
+        const startTotalMins = startHours * 60 + startMins;
+        const endTotalMins = endHours * 60 + endMins;
+        
+        // Mark all 30-min slots that conflict with this booking
+        for (const slot of slots) {
+          const [slotHours, slotMins] = slot.split(':').map(Number);
+          const slotTotalMins = slotHours * 60 + slotMins;
+          
+          // A slot is unavailable if it starts before the booking ends and the next 30min would overlap
+          if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+            bookedSlots.add(slot);
+          }
         }
       });
+      
+      console.log(`📅 Generated ${slots.length} total slots, ${bookedSlots.size} booked, returning ${slots.length - bookedSlots.size} available`);
       
       return slots.filter(slot => !bookedSlots.has(slot));
     } catch (error) {
