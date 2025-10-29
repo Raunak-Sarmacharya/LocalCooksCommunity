@@ -844,6 +844,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('Admin login successful for:', username);
 
+      // Store session data for admin (both Passport and direct session)
+      (req.session as any).userId = admin.id;
+      (req.session as any).user = { ...admin, password: undefined };
+
       // Use Passport.js login to set session
       req.login(admin, (err) => {
         if (err) {
@@ -851,11 +855,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(500).json({ error: 'Session creation failed' });
         }
 
-        // Remove sensitive info
-        const { password: _, ...adminWithoutPassword } = admin;
+        // Ensure session data is persisted
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Error saving session:', saveErr);
+            return res.status(500).json({ error: 'Session save failed' });
+          }
 
-        // Return user data
-        return res.status(200).json(adminWithoutPassword);
+          // Remove sensitive info
+          const { password: _, ...adminWithoutPassword } = admin;
+
+          // Return user data
+          return res.status(200).json(adminWithoutPassword);
+        });
       });
     } catch (error) {
       console.error('Admin login error:', error);
@@ -876,6 +888,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const user = await storage.getUserByUsername(username);
     res.json({ exists: !!user });
+  });
+
+  // Helper function to get authenticated user from session (supports both Passport and direct session)
+  async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string | null } | null> {
+    // Check Passport session first
+    if (req.isAuthenticated?.() && req.user) {
+      return req.user as any;
+    }
+
+    // Check direct session data (for admin login via req.session.userId)
+    if ((req.session as any)?.userId) {
+      const userId = (req.session as any).userId;
+      const user = await storage.getUser(userId);
+      if (user) {
+        return user;
+      }
+    }
+
+    // Check session user object
+    if ((req.session as any)?.user) {
+      return (req.session as any).user;
+    }
+
+    return null;
+  }
+
+  // Admin session check endpoint (for admin dashboard)
+  app.get("/api/user-session", async (req: Request, res: Response) => {
+    try {
+      const user = await getAuthenticatedUser(req);
+      
+      if (!user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { password: _, ...userWithoutPassword } = user as any;
+      return res.json({
+        ...userWithoutPassword,
+        authMethod: req.isAuthenticated?.() ? 'passport-session' : 'session'
+      });
+    } catch (error) {
+      console.error("Error checking user session:", error);
+      return res.status(500).json({ error: "Failed to check session" });
+    }
   });
 
   // ===============================
@@ -3235,14 +3291,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/managers", async (req: Request, res: Response) => {
     try {
       // Check authentication - support both session and Firebase auth
-      const isSessionAuth = req.isAuthenticated?.();
+      const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
       
-      if (!isSessionAuth && !isFirebaseAuth) {
+      if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -3301,14 +3357,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/locations", async (req: Request, res: Response) => {
     try {
       // Check authentication - support both session and Firebase auth
-      const isSessionAuth = req.isAuthenticated?.();
+      const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
       
-      if (!isSessionAuth && !isFirebaseAuth) {
+      if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -3339,14 +3395,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/kitchens", async (req: Request, res: Response) => {
     try {
       // Check authentication - support both session and Firebase auth
-      const isSessionAuth = req.isAuthenticated?.();
+      const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
       
-      if (!isSessionAuth && !isFirebaseAuth) {
+      if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const user = isFirebaseAuth ? req.neonUser! : req.user!;
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
