@@ -35,6 +35,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function AdminLogin() {
   const { user, loading } = useFirebaseAuth();
   const isAdmin = user?.role === 'admin';
+  const isManager = user?.role === 'manager';
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,11 +70,11 @@ export default function AdminLogin() {
       }
       
       const userData = await response.json();
-      console.log('Admin login successful, user data:', userData);
+      console.log(`${userData.role} login successful, user data:`, userData);
       
       // Ensure we have valid user data
-      if (!userData?.id || userData.role !== 'admin') {
-        throw new Error('Invalid admin user data returned');
+      if (!userData?.id || (userData.role !== 'admin' && userData.role !== 'manager')) {
+        throw new Error('Invalid user data returned - must be admin or manager');
       }
 
       // Store userId in localStorage for persistence
@@ -84,11 +85,24 @@ export default function AdminLogin() {
       queryClient.clear();
       console.log('Cleared all query cache');
       
-      console.log('Admin login successful, reloading page to establish session...');
+      console.log(`${userData.role} login successful, reloading page to establish session...`);
+      
+      // Redirect based on role and password change requirement
+      let redirectPath;
+      if (userData.role === 'manager') {
+        // Managers must change password on first login (has_seen_welcome === false)
+        if (userData.has_seen_welcome === false) {
+          redirectPath = '/manager/change-password';
+        } else {
+          redirectPath = '/manager/dashboard';
+        }
+      } else {
+        redirectPath = '/admin';
+      }
       
       // Use window.location.href to force a complete page reload 
       // This ensures the session cookie is properly established
-      window.location.href = '/admin';
+      window.location.href = redirectPath;
       
     } catch (error: any) {
       console.error('Admin login error:', error);
@@ -104,9 +118,15 @@ export default function AdminLogin() {
     return <Redirect to="/admin" />;
   }
   
-  // Redirect non-admin users
-  if (!loading && user && !isAdmin) {
-    console.log('Non-admin user detected, redirecting to dashboard');
+  // Redirect if already logged in as manager
+  if (!loading && isManager) {
+    console.log('Manager already logged in, redirecting to manager dashboard');
+    return <Redirect to="/manager/dashboard" />;
+  }
+  
+  // Redirect non-admin/manager users
+  if (!loading && user && !isAdmin && !isManager) {
+    console.log('Non-admin/manager user detected, redirecting to dashboard');
     return <Redirect to="/dashboard" />;
   }
 
@@ -117,9 +137,9 @@ export default function AdminLogin() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary">
             <ChefHat className="h-6 w-6 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold">Admin Login</CardTitle>
+          <CardTitle className="text-2xl font-bold">Admin / Manager Login</CardTitle>
           <CardDescription>
-            Enter your credentials to access the admin dashboard
+            Enter your credentials to access the admin or manager dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>

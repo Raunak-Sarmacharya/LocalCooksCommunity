@@ -88,11 +88,17 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   }
 
   if (!user) {
-    return <Redirect to="/login" />;
+    return <Redirect to="/admin/login" />;
   }
 
   if (!isManager) {
     return <Redirect to="/" />;
+  }
+
+  // Force password change if manager hasn't changed their password yet
+  // has_seen_welcome === false means they need to change password
+  if ((user as any).has_seen_welcome === false) {
+    return <Redirect to="/manager/change-password" />;
   }
 
   return <>{children}</>;

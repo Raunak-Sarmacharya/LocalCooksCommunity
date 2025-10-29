@@ -41,6 +41,7 @@ const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
 
 // Kitchen Booking System components
 const ManagerDashboard = lazy(() => import("@/pages/ManagerDashboard"));
+const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword"));
 const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
@@ -156,6 +157,7 @@ function Router() {
         </Route>
         
         {/* Manager Routes */}
+        <Route path="/manager/change-password" component={ManagerChangePassword} />
         <Route path="/manager/dashboard">
           <ManagerProtectedRoute>
             <ManagerDashboard />

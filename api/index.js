@@ -838,16 +838,16 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
 
-    // Verify admin role
-    if (admin.role !== 'admin') {
-      console.log('User is not an admin:', username);
-      return res.status(403).json({ error: 'Not authorized as admin' });
+    // Verify user is admin or manager (both use session-based auth)
+    if (admin.role !== 'admin' && admin.role !== 'manager') {
+      console.log('User is not an admin or manager:', username, 'role:', admin.role);
+      return res.status(403).json({ error: 'Not authorized - admin or manager access required' });
     }
 
-    // Check password - first try exact match for 'localcooks'
+    // Check password - first try exact match for 'localcooks' (legacy admin password)
     let passwordMatches = false;
     
-    console.log('Admin user found:', {
+    console.log('User found:', {
       id: admin.id,
       username: admin.username,
       role: admin.role,
@@ -855,14 +855,14 @@ app.post('/api/admin-login', async (req, res) => {
     });
     console.log('Provided password:', password);
 
-    if (password === 'localcooks') {
+    if (password === 'localcooks' && admin.role === 'admin') {
       passwordMatches = true;
       console.log('Admin password matched with hardcoded value');
     } else {
-      // Try to compare with database password
+      // Compare with database password hash
       try {
         passwordMatches = await comparePasswords(password, admin.password);
-        console.log('Admin password compared with database:', passwordMatches);
+        console.log('Password compared with database:', passwordMatches);
       } catch (error) {
         console.error('Error comparing passwords:', error);
       }
@@ -872,7 +872,7 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
 
-    console.log('Admin login successful for:', username);
+    console.log(`${admin.role} login successful for:`, username);
 
     // Remove sensitive info
     const { password: _, ...adminWithoutPassword } = admin;
@@ -1662,12 +1662,7 @@ app.get('/api/user-session', async (req, res) => {
   try {
     console.log('Fetching user with ID:', rawUserId);
 
-    // If we have the user cached in session, use that
-    if (req.session.user && req.session.user.id) {
-      console.log('Using cached user from session:', { id: req.session.user.id, username: req.session.user.username, role: req.session.user.role });
-      return res.status(200).json(req.session.user);
-    }
-
+    // Always fetch fresh data from database to ensure has_seen_welcome is up to date
     const user = await getUser(rawUserId);
     if (!user) {
       console.log('User not found in database, destroying session');
@@ -1675,7 +1670,7 @@ app.get('/api/user-session', async (req, res) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    console.log('User found in database:', { id: user.id, username: user.username, role: user.role });
+    console.log('User found in database:', { id: user.id, username: user.username, role: user.role, has_seen_welcome: user.has_seen_welcome });
 
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
@@ -10728,6 +10723,66 @@ app.post("/api/admin/managers", async (req, res) => {
   } catch (error) {
     console.error("Error creating manager:", error);
     res.status(500).json({ error: error.message || "Failed to create manager" });
+  }
+});
+
+// Manager change password endpoint
+app.post("/api/manager/change-password", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    // Validate required fields
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+
+    // Validate new password strength
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters long" });
+    }
+
+    // Verify current password
+    const passwordMatches = await comparePasswords(currentPassword, user.password);
+    if (!passwordMatches) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+
+    // Update password
+    const hashedNewPassword = await hashPassword(newPassword);
+    if (pool) {
+      await pool.query(
+        'UPDATE users SET password = $1 WHERE id = $2',
+        [hashedNewPassword, user.id]
+      );
+    } else {
+      // Fallback for in-memory storage
+      user.password = hashedNewPassword;
+    }
+
+    // Mark that manager has changed password (set has_seen_welcome to true)
+    if (pool) {
+      await pool.query(
+        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
+        [user.id]
+      );
+    } else {
+      user.has_seen_welcome = true;
+    }
+
+    res.json({ success: true, message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    res.status(500).json({ error: error.message || "Failed to change password" });
   }
 });
 
