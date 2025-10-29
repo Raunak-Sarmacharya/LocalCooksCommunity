@@ -3285,10 +3285,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      const kitchens = await firebaseStorage.getAllKitchens();
-      res.json(kitchens);
+      console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown');
+      const allKitchens = await firebaseStorage.getAllKitchens();
+      console.log(`✅ Found ${allKitchens.length} total kitchens`);
+      
+      // Filter to only return active kitchens
+      const activeKitchens = allKitchens.filter(k => k.isActive !== false);
+      console.log(`✅ Returning ${activeKitchens.length} active kitchens`);
+      
+      res.json(activeKitchens);
     } catch (error) {
-      console.error("Error fetching kitchens:", error);
+      console.error("❌ Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens" });
     }
   });
