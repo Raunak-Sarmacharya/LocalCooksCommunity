@@ -3372,9 +3372,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { name, address, managerId } = req.body;
       
       // Convert managerId to number or undefined
-      const managerIdNum = managerId && managerId !== '' 
-        ? parseInt(managerId.toString()) 
-        : undefined;
+      // Handle empty strings, null, undefined, and convert to number
+      let managerIdNum: number | undefined = undefined;
+      if (managerId !== undefined && managerId !== null && managerId !== '') {
+        managerIdNum = parseInt(managerId.toString());
+        if (isNaN(managerIdNum) || managerIdNum <= 0) {
+          return res.status(400).json({ error: "Invalid manager ID format" });
+        }
+        
+        // Validate that the manager exists and has manager role
+        // Use firebaseStorage to be consistent with location creation
+        const manager = await firebaseStorage.getUser(managerIdNum);
+        if (!manager) {
+          return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
+        }
+        if (manager.role !== 'manager') {
+          return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
+        }
+      }
       
       console.log('Creating location with:', { name, address, managerId: managerIdNum });
       
