@@ -1,7 +1,7 @@
 import { Clock, Save, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useManagerDashboard } from "../hooks/use-manager-dashboard区域";
+import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 
@@ -117,7 +117,7 @@ export default function KitchenAvailabilityManagement() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Location</h2>
             <div className="space-y-2">
-              {locations.map((location) => (
+              {locations.map((location: any) => (
                 <button
                   key={location.id}
                   onClick={() => setSelectedLocationId(location.id)}

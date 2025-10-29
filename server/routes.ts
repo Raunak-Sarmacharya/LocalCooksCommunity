@@ -3456,9 +3456,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(result.rows);
       } else {
         // Fallback for in-memory storage
-        const allUsers = await firebaseStorage.getAllUsers?.();
-        const managers = allUsers ? allUsers.filter((u: any) => u.role === 'manager') : [];
-        return res.json(managers.map((m: any) => ({ id: m.id, username: m.username, role: m.role })));
+        // For in-memory storage fallback, return empty array
+        // Managers should be fetched through database in production
+        return res.json([]);
       }
     } catch (error: any) {
       console.error("Error fetching managers:", error);
