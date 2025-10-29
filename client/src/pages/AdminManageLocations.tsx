@@ -10,6 +10,7 @@ export default function AdminManageLocations() {
   const [showManagerForm, setShowManagerForm] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
   const [kitchens, setKitchens] = useState<any[]>([]);
+  const [managers, setManagers] = useState<any[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +43,18 @@ export default function AdminManageLocations() {
       console.error("Error loading locations:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadManagers = async () => {
+    try {
+      const response = await fetch("/api/admin/managers", { credentials: "include" });
+      if (response.ok) {
+        const data = await response.json();
+        setManagers(data);
+      }
+    } catch (error) {
+      console.error("Error loading managers:", error);
     }
   };
 
@@ -141,6 +154,8 @@ export default function AdminManageLocations() {
         toast({ title: "Manager created successfully" });
         setShowManagerForm(false);
         setManagerForm({ username: "", password: "", email: "", name: "" });
+        // Reload managers list after creating a new manager
+        loadManagers();
       } else {
         const error = await response.json();
         toast({ title: "Error", description: error.error });
@@ -154,6 +169,7 @@ export default function AdminManageLocations() {
 
   useEffect(() => {
     loadLocations();
+    loadManagers();
   }, []);
 
   return (
@@ -303,16 +319,25 @@ export default function AdminManageLocations() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Manager ID (Optional)
+                  Manager (Optional)
                 </label>
-                <input
-                  type="number"
-                  value={locationForm.managerId}
+                <select
+                  value={locationForm.managerId || ""}
                   onChange={(e) =>
                     setLocationForm({ ...locationForm, managerId: e.target.value })
                   }
                   className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                />
+                >
+                  <option value="">No Manager</option>
+                  {managers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.username} (ID: {manager.id})
+                    </option>
+                  ))}
+                </select>
+                {managers.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">No managers available. Create a manager first.</p>
+                )}
               </div>
               <div className="flex gap-3">
                 <button

@@ -3339,6 +3339,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all managers (admin only)
+  app.get("/api/admin/managers", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - support both session and Firebase auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Fetch all users with manager role
+      const { pool } = await import('./db');
+      if (pool) {
+        const result = await pool.query(
+          'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
+          ['manager']
+        );
+        return res.json(result.rows);
+      } else {
+        // Fallback for in-memory storage
+        const allUsers = await firebaseStorage.getAllUsers?.();
+        const managers = allUsers ? allUsers.filter((u: any) => u.role === 'manager') : [];
+        return res.json(managers.map((m: any) => ({ id: m.id, username: m.username, role: m.role })));
+      }
+    } catch (error: any) {
+      console.error("Error fetching managers:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch managers" });
+    }
+  });
+
   // Manager change password endpoint
   app.post("/api/manager/change-password", async (req: Request, res: Response) => {
     try {
