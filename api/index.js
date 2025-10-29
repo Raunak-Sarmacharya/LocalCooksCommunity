@@ -10683,12 +10683,32 @@ app.post("/api/admin/managers", async (req, res) => {
 
     const { username, password, email, name } = req.body;
     
-    // Manager creation logic would go here
-    // For now, return success
-    res.status(201).json({ success: true, message: "Manager created successfully" });
+    // Validate required fields
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
+    }
+    
+    // Check if user already exists
+    const existingUser = await getUserByUsername(username);
+    if (existingUser) {
+      return res.status(400).json({ error: "Username already exists" });
+    }
+
+    // Create manager user with hashed password
+    const hashedPassword = await hashPassword(password);
+    const manager = await createUser({
+      username,
+      password: hashedPassword,
+      role: 'manager',
+      firebase_uid: null,
+      is_verified: false,
+      has_seen_welcome: false
+    });
+    
+    res.status(201).json({ success: true, managerId: manager.id });
   } catch (error) {
     console.error("Error creating manager:", error);
-    res.status(500).json({ error: "Failed to create manager" });
+    res.status(500).json({ error: error.message || "Failed to create manager" });
   }
 });
 
@@ -10705,7 +10725,7 @@ app.get("/api/admin/locations", async (req, res) => {
       return res.status(403).json({ error: "Admin access required" });
     }
 
-    // Return empty array for now - would need database logic
+    const locations = await getAllLocations();
     res.json(locations);
   } catch (error) {
     console.error("Error fetching locations:", error);
@@ -10728,12 +10748,33 @@ app.post("/api/admin/locations", async (req, res) => {
 
     const { name, address, managerId } = req.body;
     
-    // Return success for now - would need database logic
-    const location = await createLocation({ name, address, managerId });
+    // Validate managerId if provided
+    let managerIdNum = null;
+    if (managerId !== undefined && managerId !== null && managerId !== '') {
+      managerIdNum = parseInt(managerId.toString());
+      if (isNaN(managerIdNum) || managerIdNum <= 0) {
+        return res.status(400).json({ error: "Invalid manager ID format" });
+      }
+      
+      // Validate that the manager exists and has manager role
+      const manager = await getUser(managerIdNum);
+      if (!manager) {
+        return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
+      }
+      if (manager.role !== 'manager') {
+        return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
+      }
+    }
+    
+    const location = await createLocation({ name, address, managerId: managerIdNum !== null ? managerIdNum : undefined });
     res.status(201).json(location);
   } catch (error) {
     console.error("Error creating location:", error);
-    res.status(500).json({ error: "Failed to create location" });
+    // Provide better error messages
+    if (error.code === '23503') { // Foreign key constraint violation
+      return res.status(400).json({ error: 'The selected manager does not exist or is invalid.' });
+    }
+    res.status(500).json({ error: error.message || "Failed to create location" });
   }
 });
 
@@ -10752,11 +10793,33 @@ app.post("/api/admin/kitchens", async (req, res) => {
 
     const { locationId, name, description } = req.body;
     
-    const kitchen = await createKitchen({ locationId, name, description, isActive: true });
+    // Validate required fields
+    if (!locationId || !name) {
+      return res.status(400).json({ error: "Location ID and name are required" });
+    }
+    
+    // Validate locationId is a valid number
+    const locationIdNum = parseInt(locationId.toString());
+    if (isNaN(locationIdNum) || locationIdNum <= 0) {
+      return res.status(400).json({ error: "Invalid location ID format" });
+    }
+    
+    // Validate that the location exists
+    const locations = await getAllLocations();
+    const location = locations.find(loc => loc.id === locationIdNum);
+    if (!location) {
+      return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
+    }
+    
+    const kitchen = await createKitchen({ locationId: locationIdNum, name, description, isActive: true });
     res.status(201).json(kitchen);
   } catch (error) {
     console.error("Error creating kitchen:", error);
-    res.status(500).json({ error: "Failed to create kitchen" });
+    // Provide better error messages
+    if (error.code === '23503') { // Foreign key constraint violation
+      return res.status(400).json({ error: 'The selected location does not exist or is invalid.' });
+    }
+    res.status(500).json({ error: error.message || "Failed to create kitchen" });
   }
 });
 
