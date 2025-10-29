@@ -10755,6 +10755,131 @@ app.get("/api/admin/managers", async (req, res) => {
   }
 });
 
+// ===================================
+// KITCHEN BOOKING SYSTEM - MANAGER ROUTES
+// ===================================
+
+// Get all locations for manager
+app.get("/api/manager/locations", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    // Get locations for this manager
+    if (!pool) {
+      return res.json([]);
+    }
+    const result = await pool.query(`
+      SELECT id, name, address, manager_id as "managerId", created_at, updated_at 
+      FROM locations 
+      WHERE manager_id = $1
+      ORDER BY created_at DESC
+    `, [user.id]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching locations:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch locations" });
+  }
+});
+
+// Get kitchens for a location (manager)
+app.get("/api/manager/kitchens/:locationId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const locationId = parseInt(req.params.locationId);
+    if (isNaN(locationId) || locationId <= 0) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    // Verify the manager has access to this location
+    if (!pool) {
+      return res.json([]);
+    }
+    const locationResult = await pool.query(`
+      SELECT id FROM locations WHERE manager_id = $1 AND id = $2
+    `, [user.id, locationId]);
+    
+    if (locationResult.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied to this location" });
+    }
+
+    const kitchens = await getKitchensByLocation(locationId);
+    res.json(kitchens);
+  } catch (error) {
+    console.error("Error fetching kitchens:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+  }
+});
+
+// Get all bookings for manager
+app.get("/api/manager/bookings", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    // Get all locations for this manager
+    if (!pool) {
+      return res.json([]);
+    }
+    const locationsResult = await pool.query(`
+      SELECT id FROM locations WHERE manager_id = $1
+    `, [user.id]);
+    
+    const locationIds = locationsResult.rows.map(row => row.id);
+    if (locationIds.length === 0) {
+      return res.json([]);
+    }
+
+    // Get all kitchens for these locations
+    const kitchensResult = await pool.query(`
+      SELECT id FROM kitchens WHERE location_id = ANY($1)
+    `, [locationIds]);
+    
+    const kitchenIds = kitchensResult.rows.map(row => row.id);
+    if (kitchenIds.length === 0) {
+      return res.json([]);
+    }
+
+    // Get all bookings for these kitchens
+    const bookingsResult = await pool.query(`
+      SELECT id, chef_id as "chefId", kitchen_id as "kitchenId", booking_date as "bookingDate", 
+             start_time as "startTime", end_time as "endTime", status, special_notes as "specialNotes",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM kitchen_bookings 
+      WHERE kitchen_id = ANY($1)
+      ORDER BY booking_date DESC, start_time DESC
+    `, [kitchenIds]);
+    
+    res.json(bookingsResult.rows);
+  } catch (error) {
+    console.error("Error fetching bookings:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch bookings" });
+  }
+});
+
 // Manager change password endpoint
 app.post("/api/manager/change-password", async (req, res) => {
   try {
