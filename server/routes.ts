@@ -3285,18 +3285,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown');
-      const allKitchens = await firebaseStorage.getAllKitchens();
-      console.log(`✅ Found ${allKitchens.length} total kitchens`);
+      console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown', 'ID:', req.user?.id);
+      console.log('📍 Firebase user:', req.firebaseUser?.uid || 'N/A');
       
-      // Filter to only return active kitchens
-      const activeKitchens = allKitchens.filter(k => k.isActive !== false);
-      console.log(`✅ Returning ${activeKitchens.length} active kitchens`);
+      const allKitchens = await firebaseStorage.getAllKitchens();
+      console.log(`✅ Found ${allKitchens.length} total kitchens in database`);
+      
+      if (allKitchens.length > 0) {
+        console.log('📦 Sample kitchen data:', JSON.stringify(allKitchens[0], null, 2));
+        console.log('📦 isActive field type check:', allKitchens.map(k => ({
+          id: k.id,
+          name: k.name,
+          isActive: k.isActive,
+          isActiveType: typeof k.isActive,
+          isActiveValue: k.isActive,
+          locationId: k.locationId
+        })));
+      }
+      
+      // Filter to only return active kitchens - handle both camelCase and snake_case
+      const activeKitchens = allKitchens.filter(k => {
+        const isActive = k.isActive !== undefined ? k.isActive : (k as any).is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      console.log(`✅ Returning ${activeKitchens.length} active kitchens (filtered from ${allKitchens.length} total)`);
+      console.log('📦 Active kitchens:', activeKitchens.map(k => ({ id: k.id, name: k.name, isActive: k.isActive || (k as any).is_active })));
       
       res.json(activeKitchens);
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Error fetching kitchens:", error);
-      res.status(500).json({ error: "Failed to fetch kitchens" });
+      console.error("❌ Error stack:", error.stack);
+      res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
     }
   });
 
