@@ -3423,11 +3423,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { locationId, name, description } = req.body;
-      const kitchen = await firebaseStorage.createKitchen({ locationId, name, description, isActive: true });
+      
+      // Validate required fields
+      if (!locationId || !name) {
+        return res.status(400).json({ error: "Location ID and name are required" });
+      }
+      
+      // Validate locationId is a valid number
+      const locationIdNum = parseInt(locationId.toString());
+      if (isNaN(locationIdNum) || locationIdNum <= 0) {
+        return res.status(400).json({ error: "Invalid location ID format" });
+      }
+      
+      // Validate that the location exists
+      const location = await firebaseStorage.getLocationById(locationIdNum);
+      if (!location) {
+        return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
+      }
+      
+      const kitchen = await firebaseStorage.createKitchen({ locationId: locationIdNum, name, description, isActive: true });
       res.status(201).json(kitchen);
     } catch (error: any) {
       console.error("Error creating kitchen:", error);
       console.error("Error details:", error.message, error.stack);
+      // Provide better error messages
+      if (error.code === '23503') { // Foreign key constraint violation
+        return res.status(400).json({ error: 'The selected location does not exist or is invalid.' });
+      }
       res.status(500).json({ error: error.message || "Failed to create kitchen" });
     }
   });
