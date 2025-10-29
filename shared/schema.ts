@@ -344,6 +344,19 @@ export const kitchenAvailability = pgTable("kitchen_availability", {
   isAvailable: boolean("is_available").default(true).notNull(),
 });
 
+// Define kitchen date-specific overrides table for holidays, closures, etc.
+export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
+  id: serial("id").primaryKey(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
+  specificDate: timestamp("specific_date").notNull(), // Specific date for override
+  startTime: text("start_time"), // HH:MM format, null if closed all day
+  endTime: text("end_time"), // HH:MM format, null if closed all day
+  isAvailable: boolean("is_available").default(false).notNull(), // false = closed, true = custom hours
+  reason: text("reason"), // Optional reason (e.g., "Holiday", "Maintenance")
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
@@ -405,6 +418,27 @@ export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailab
   id: true,
 });
 
+export const insertKitchenDateOverrideSchema = createInsertSchema(kitchenDateOverrides, {
+  kitchenId: z.number(),
+  specificDate: z.string().or(z.date()),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
+  isAvailable: z.boolean().optional(),
+  reason: z.string().optional(),
+}).omit({ 
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateKitchenDateOverrideSchema = z.object({
+  id: z.number(),
+  startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
+  endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
+  isAvailable: z.boolean().optional(),
+  reason: z.string().optional(),
+});
+
 export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
   chefId: z.number(),
   kitchenId: z.number(),
@@ -436,6 +470,10 @@ export type UpdateKitchen = z.infer<typeof updateKitchenSchema>;
 
 export type KitchenAvailability = typeof kitchenAvailability.$inferSelect;
 export type InsertKitchenAvailability = z.infer<typeof insertKitchenAvailabilitySchema>;
+
+export type KitchenDateOverride = typeof kitchenDateOverrides.$inferSelect;
+export type InsertKitchenDateOverride = z.infer<typeof insertKitchenDateOverrideSchema>;
+export type UpdateKitchenDateOverride = z.infer<typeof updateKitchenDateOverrideSchema>;
 
 export type KitchenBooking = typeof kitchenBookings.$inferSelect;
 export type InsertKitchenBooking = z.infer<typeof insertKitchenBookingSchema>;

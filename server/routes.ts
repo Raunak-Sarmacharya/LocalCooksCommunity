@@ -3233,6 +3233,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get date overrides for a kitchen
+  app.get("/api/manager/kitchens/:kitchenId/date-overrides", requireManager, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { startDate, endDate } = req.query;
+      
+      const start = startDate ? new Date(startDate as string) : undefined;
+      const end = endDate ? new Date(endDate as string) : undefined;
+      
+      const overrides = await firebaseStorage.getKitchenDateOverrides(kitchenId, start, end);
+      res.json(overrides);
+    } catch (error: any) {
+      console.error("Error fetching date overrides:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch date overrides" });
+    }
+  });
+
+  // Create a date override
+  app.post("/api/manager/kitchens/:kitchenId/date-overrides", requireManager, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
+      
+      const override = await firebaseStorage.createKitchenDateOverride({
+        kitchenId,
+        specificDate: new Date(specificDate),
+        startTime,
+        endTime,
+        isAvailable,
+        reason,
+      });
+      
+      res.json(override);
+    } catch (error: any) {
+      console.error("Error creating date override:", error);
+      res.status(500).json({ error: error.message || "Failed to create date override" });
+    }
+  });
+
+  // Update a date override
+  app.put("/api/manager/date-overrides/:id", requireManager, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { startTime, endTime, isAvailable, reason } = req.body;
+      
+      const updated = await firebaseStorage.updateKitchenDateOverride(id, {
+        startTime,
+        endTime,
+        isAvailable,
+        reason,
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating date override:", error);
+      res.status(500).json({ error: error.message || "Failed to update date override" });
+    }
+  });
+
+  // Delete a date override
+  app.delete("/api/manager/date-overrides/:id", requireManager, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      await firebaseStorage.deleteKitchenDateOverride(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting date override:", error);
+      res.status(500).json({ error: error.message || "Failed to delete date override" });
+    }
+  });
+
   // ===================================
   // KITCHEN BOOKING SYSTEM - CHEF ROUTES
   // ===================================
@@ -3282,25 +3353,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Get all kitchens
+  // Get all kitchens with location and manager info
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
       console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown', 'ID:', req.user?.id);
       console.log('📍 Firebase user:', req.firebaseUser?.uid || 'N/A');
       
-      const allKitchens = await firebaseStorage.getAllKitchens();
+      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
       console.log(`✅ Found ${allKitchens.length} total kitchens in database`);
       
       if (allKitchens.length > 0) {
         console.log('📦 Sample kitchen data:', JSON.stringify(allKitchens[0], null, 2));
-        console.log('📦 isActive field type check:', allKitchens.map(k => ({
-          id: k.id,
-          name: k.name,
-          isActive: k.isActive,
-          isActiveType: typeof k.isActive,
-          isActiveValue: k.isActive,
-          locationId: k.locationId
-        })));
       }
       
       // Filter to only return active kitchens - handle both camelCase and snake_case
@@ -3310,7 +3373,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       console.log(`✅ Returning ${activeKitchens.length} active kitchens (filtered from ${allKitchens.length} total)`);
-      console.log('📦 Active kitchens:', activeKitchens.map(k => ({ id: k.id, name: k.name, isActive: k.isActive || (k as any).is_active })));
       
       res.json(activeKitchens);
     } catch (error: any) {
