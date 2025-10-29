@@ -3277,10 +3277,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
       
-      // Check for conflicts
-      const hasConflict = await firebaseStorage.checkBookingConflict(kitchenId, new Date(bookingDate), startTime, endTime);
+      // First validate that the booking is within manager-set availability
+      const bookingDateObj = new Date(bookingDate);
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        kitchenId, 
+        bookingDateObj, 
+        startTime, 
+        endTime
+      );
+      
+      if (!availabilityCheck.valid) {
+        return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
+      }
+      
+      // Check for conflicts with existing bookings
+      const hasConflict = await firebaseStorage.checkBookingConflict(kitchenId, bookingDateObj, startTime, endTime);
       if (hasConflict) {
-        return res.status(409).json({ error: "Time slot is not available" });
+        return res.status(409).json({ error: "Time slot is already booked" });
       }
 
       const booking = await firebaseStorage.createKitchenBooking({
