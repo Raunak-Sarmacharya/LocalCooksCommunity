@@ -949,6 +949,31 @@ export class FirebaseStorage {
     }
   }
 
+  async getBookingById(id: number): Promise<any> {
+    try {
+      const [booking] = await db
+        .select()
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.id, id));
+      return booking;
+    } catch (error) {
+      console.error('Error getting booking by ID:', error);
+      throw error;
+    }
+  }
+
+  async deleteKitchenBooking(id: number): Promise<void> {
+    try {
+      await db
+        .delete(kitchenBookings)
+        .where(eq(kitchenBookings.id, id));
+      console.log(`✅ Deleted booking ${id}`);
+    } catch (error) {
+      console.error('Error deleting kitchen booking:', error);
+      throw error;
+    }
+  }
+
   async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
     try {
       // First check if there's a date-specific override
