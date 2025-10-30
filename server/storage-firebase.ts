@@ -699,6 +699,19 @@ export class FirebaseStorage {
 
   // ===== KITCHEN DATE OVERRIDES MANAGEMENT =====
 
+  async getKitchenDateOverrideById(id: number): Promise<any | undefined> {
+    try {
+      const [override] = await db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(eq(kitchenDateOverrides.id, id));
+      return override || undefined;
+    } catch (error) {
+      console.error('Error getting kitchen date override by ID:', error);
+      throw error;
+    }
+  }
+
   async createKitchenDateOverride(overrideData: { 
     kitchenId: number; 
     specificDate: Date; 

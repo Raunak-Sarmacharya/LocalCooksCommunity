@@ -3400,10 +3400,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // If changing to closed (isAvailable = false), check for existing bookings
       if (isAvailable === false) {
-        // First get the override to find the kitchen and date
-        const allOverrides = await firebaseStorage.getKitchenDateOverrides(0); // Get all
-        const override = allOverrides.find((o: any) => o.id === id);
-        
+        // Load the specific override to find its kitchen and date
+        const override = await firebaseStorage.getKitchenDateOverrideById(id);
         if (override) {
           const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
           const dateStr = new Date(override.specificDate).toISOString().split('T')[0];
@@ -3411,7 +3409,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
             return bookingDateStr === dateStr && b.status === 'confirmed';
           });
-          
           if (bookingsOnDate.length > 0) {
             return res.status(400).json({ 
               error: "Cannot close kitchen on this date",
