@@ -3835,7 +3835,6 @@ app.get("/api/admin/sessions/stats", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
-
 // Manual session cleanup (admin only)
 app.post("/api/admin/sessions/cleanup", async (req, res) => {
   try {
@@ -11353,7 +11352,7 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
         SELECT start_time, end_time, is_available
         FROM kitchen_date_overrides
         WHERE kitchen_id = $1
-          AND DATE(specific_date) = DATE($2::timestamp)
+          AND DATE(specific_date) = $2::date
         ORDER BY updated_at DESC
         LIMIT 1
       `, [kitchenId, bookingDate.toISOString()]);
@@ -11408,7 +11407,7 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
       SELECT start_time, end_time 
       FROM kitchen_bookings
       WHERE kitchen_id = $1 
-        AND DATE(booking_date) = DATE($2::timestamp)
+        AND DATE(booking_date) = $2::date
         AND status = 'confirmed'
     `, [kitchenId, bookingDate.toISOString()]);
 
@@ -11467,7 +11466,7 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
       const over = await pool.query(`
         SELECT max_slots_per_chef
         FROM kitchen_date_overrides
-        WHERE kitchen_id = $1 AND DATE(specific_date) = DATE($2::timestamp)
+        WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
         ORDER BY updated_at DESC
         LIMIT 1
       `, [kitchenId, bookingDate.toISOString()]);
@@ -11516,7 +11515,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       const over = await pool.query(`
         SELECT max_slots_per_chef
         FROM kitchen_date_overrides
-        WHERE kitchen_id = $1 AND DATE(specific_date) = DATE($2::timestamp)
+        WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
         ORDER BY updated_at DESC
         LIMIT 1
       `, [kitchenId, bookingDate]);
@@ -11527,7 +11526,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
         const avail = await pool.query(`
           SELECT max_slots_per_chef
           FROM kitchen_availability
-          WHERE kitchen_id = $1 AND day_of_week = EXTRACT(DOW FROM $2::timestamp)
+          WHERE kitchen_id = $1 AND day_of_week = EXTRACT(DOW FROM $2::date)
         `, [kitchenId, bookingDate]);
         if (avail.rows.length > 0) {
           const v = Number(avail.rows[0].max_slots_per_chef);
@@ -11544,7 +11543,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       FROM kitchen_bookings
       WHERE chef_id = $1
         AND kitchen_id = $2
-        AND DATE(booking_date) = DATE($3::timestamp)
+        AND DATE(booking_date) = $3::date
         AND status IN ('pending','confirmed')
     `, [req.user.id, kitchenId, bookingDate]);
 
@@ -11563,7 +11562,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     // Check for conflicts (exclusive per slot)
     const conflictCheck = await pool.query(`
       SELECT id FROM kitchen_bookings
-      WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
+      WHERE kitchen_id = $1 AND DATE(booking_date) = $2::date
       AND start_time < $4 AND end_time > $3
       AND status != 'cancelled'
     `, [kitchenId, bookingDate, startTime, endTime]);
@@ -11741,7 +11740,7 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
     // Check if override already exists
     const existingCheck = await pool.query(`
       SELECT id FROM kitchen_date_overrides
-      WHERE kitchen_id = $1 AND DATE(specific_date) = DATE($2::date)
+      WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
       AND start_time = $3 AND end_time = $4
     `, [kitchenId, formattedDate, startTime, endTime]);
     

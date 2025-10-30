@@ -70,10 +70,18 @@ export default function KitchenBookingCalendar() {
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
 
+  // Util to get local YYYY-MM-DD
+  const toLocalDateString = (d: Date) => {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   // Load available slots when date changes
   useEffect(() => {
     if (selectedKitchen && selectedDate) {
-      loadAvailableSlots(selectedKitchen.id, selectedDate.toISOString().split('T')[0]);
+      loadAvailableSlots(selectedKitchen.id, toLocalDateString(selectedDate));
     }
   }, [selectedKitchen, selectedDate]);
 
@@ -239,7 +247,7 @@ export default function KitchenBookingCalendar() {
           setNotes("");
           // Reload available slots
           if (selectedDate) {
-            loadAvailableSlots(selectedKitchen.id, selectedDate.toISOString().split('T')[0]);
+            loadAvailableSlots(selectedKitchen.id, toLocalDateString(selectedDate));
           }
         },
         onError: (error: any) => {
