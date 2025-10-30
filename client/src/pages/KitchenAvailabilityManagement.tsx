@@ -114,6 +114,7 @@ export default function KitchenAvailabilityManagement() {
     endTime: "17:00",
     isAvailable: true,
     reason: "",
+    maxConcurrentBookings: 1,
   });
 
   // Block hours state
@@ -325,6 +326,7 @@ export default function KitchenAvailabilityManagement() {
       endTime: "17:00",
       isAvailable: true,
       reason: "",
+      maxConcurrentBookings: 1,
     });
   };
 
@@ -416,6 +418,7 @@ export default function KitchenAvailabilityManagement() {
         endTime: "17:00",
         isAvailable: getField(fullDayOverride, 'isAvailable', 'is_available'),
         reason: getField(fullDayOverride, 'reason', 'reason') || "",
+        maxConcurrentBookings: getField(fullDayOverride, 'maxConcurrentBookings', 'max_concurrent_bookings') || 1,
       });
     } else if (existingOverrides.length > 0) {
       // Use first override if exists
@@ -425,6 +428,7 @@ export default function KitchenAvailabilityManagement() {
         endTime: getField(override, 'endTime', 'end_time') || "17:00",
         isAvailable: getField(override, 'isAvailable', 'is_available'),
         reason: getField(override, 'reason', 'reason') || "",
+        maxConcurrentBookings: getField(override, 'maxConcurrentBookings', 'max_concurrent_bookings') || 1,
       });
     } else {
       resetForm();
@@ -485,6 +489,7 @@ export default function KitchenAvailabilityManagement() {
           endTime: formData.isAvailable ? formData.endTime : null,
           isAvailable: formData.isAvailable,
           reason: formData.reason || null,
+          maxConcurrentBookings: formData.maxConcurrentBookings,
         },
       });
     } else {
@@ -495,6 +500,7 @@ export default function KitchenAvailabilityManagement() {
         endTime: formData.isAvailable ? formData.endTime : null,
         isAvailable: formData.isAvailable,
         reason: formData.reason || null,
+        maxConcurrentBookings: formData.maxConcurrentBookings,
       });
     }
   };
@@ -892,6 +898,24 @@ export default function KitchenAvailabilityManagement() {
                                       />
                                     </div>
                                   </div>
+                                </div>
+
+                                {/* MAX CONCURRENT BOOKINGS */}
+                                <div className="space-y-2">
+                                  <label className="block text-sm font-medium text-gray-900">
+                                    Maximum Concurrent Bookings per Time Slot
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="50"
+                                    value={formData.maxConcurrentBookings}
+                                    onChange={(e) => setFormData({ ...formData, maxConcurrentBookings: parseInt(e.target.value) || 1 })}
+                                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                  <p className="text-xs text-gray-500">
+                                    How many chefs can book the same 30-minute time slot simultaneously? (Default: 1)
+                                  </p>
                                 </div>
 
                                 {/* BLOCK SPECIFIC HOURS - NEW FEATURE! */}
