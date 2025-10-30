@@ -578,22 +578,26 @@ export class FirebaseStorage {
       
       // Combine the data
       const kitchensWithDetails = allKitchens.map(kitchen => {
-        const location = allLocations.find(loc => loc.id === kitchen.locationId);
-        const manager = location && location.managerId 
-          ? allUsers.find(user => user.id === location.managerId)
-          : null;
+        // Handle both camelCase and snake_case just in case
+        const kitchenLocationId = (kitchen as any).locationId ?? (kitchen as any).location_id;
+        const location = allLocations.find(loc => {
+          const locId = (loc as any).id;
+          return locId === kitchenLocationId;
+        });
+        const managerId = location ? ((location as any).managerId ?? (location as any).manager_id) : undefined;
+        const manager = managerId ? allUsers.find(user => (user as any).id === managerId) : null;
         
         return {
           ...kitchen,
           location: location ? {
-            id: location.id,
-            name: location.name,
-            address: location.address,
+            id: (location as any).id,
+            name: (location as any).name,
+            address: (location as any).address,
           } : null,
           manager: manager ? {
-            id: manager.id,
-            username: manager.username,
-            fullName: (manager as any).fullName || manager.username,
+            id: (manager as any).id,
+            username: (manager as any).username,
+            fullName: (manager as any).fullName || (manager as any).username,
           } : null,
         };
       });
