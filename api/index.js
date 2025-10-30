@@ -11793,7 +11793,7 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
     }
 
     const kitchenId = parseInt(req.params.kitchenId);
-    const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
+    const { specificDate, startTime, endTime, isAvailable, reason, maxSlotsPerChef } = req.body;
 
     // Validate
     if (!specificDate) {
@@ -11804,7 +11804,7 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
     const dateObj = new Date(specificDate);
     const formattedDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
     
-    console.log('📝 Creating date override:', { kitchenId, formattedDate, startTime, endTime, isAvailable, reason });
+    console.log('📝 Creating date override:', { kitchenId, formattedDate, startTime, endTime, isAvailable, reason, maxSlotsPerChef });
     
     // Check if override already exists
     const existingCheck = await pool.query(`
@@ -11817,18 +11817,18 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
       console.log('⚠️ Override already exists, updating instead');
       const updateResult = await pool.query(`
         UPDATE kitchen_date_overrides
-        SET is_available = $1, reason = $2, updated_at = NOW()
-        WHERE id = $3
+        SET is_available = $1, reason = $2, max_slots_per_chef = $3, updated_at = NOW()
+        WHERE id = $4
         RETURNING *
-      `, [isAvailable, reason, existingCheck.rows[0].id]);
+      `, [isAvailable, reason, maxSlotsPerChef || 2, existingCheck.rows[0].id]);
       return res.json(updateResult.rows[0]);
     }
     
     const result = await pool.query(`
-      INSERT INTO kitchen_date_overrides (kitchen_id, specific_date, start_time, end_time, is_available, reason)
-      VALUES ($1, $2::date, $3, $4, $5, $6)
+      INSERT INTO kitchen_date_overrides (kitchen_id, specific_date, start_time, end_time, is_available, reason, max_slots_per_chef)
+      VALUES ($1, $2::date, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [kitchenId, formattedDate, startTime, endTime, isAvailable, reason]);
+    `, [kitchenId, formattedDate, startTime, endTime, isAvailable, reason, maxSlotsPerChef || 2]);
 
     console.log('✅ Date override created:', result.rows[0]);
     res.json(result.rows[0]);
@@ -11863,16 +11863,16 @@ app.put("/api/manager/date-overrides/:id", async (req, res) => {
     }
 
     const id = parseInt(req.params.id);
-    const { startTime, endTime, isAvailable, reason } = req.body;
+    const { startTime, endTime, isAvailable, reason, maxSlotsPerChef } = req.body;
 
-    console.log('📝 Updating date override:', { id, startTime, endTime, isAvailable, reason });
+    console.log('📝 Updating date override:', { id, startTime, endTime, isAvailable, reason, maxSlotsPerChef });
 
     const result = await pool.query(`
       UPDATE kitchen_date_overrides
-      SET start_time = $1, end_time = $2, is_available = $3, reason = $4, updated_at = NOW()
-      WHERE id = $5
+      SET start_time = $1, end_time = $2, is_available = $3, reason = $4, max_slots_per_chef = $5, updated_at = NOW()
+      WHERE id = $6
       RETURNING *
-    `, [startTime, endTime, isAvailable, reason, id]);
+    `, [startTime, endTime, isAvailable, reason, maxSlotsPerChef || 2, id]);
 
     if (result.rows.length === 0) {
       console.log('⚠️ Date override not found:', id);
