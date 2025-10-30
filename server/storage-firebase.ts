@@ -881,11 +881,28 @@ export class FirebaseStorage {
 
   async getBookingsByChef(chefId: number): Promise<any[]> {
     try {
+      // Join with kitchens and locations to get cancellation policy
       return await db
-        .select()
+        .select({
+          booking: kitchenBookings,
+          kitchen: kitchens,
+          location: locations,
+        })
         .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
         .where(eq(kitchenBookings.chefId, chefId))
-        .orderBy(asc(kitchenBookings.bookingDate));
+        .orderBy(asc(kitchenBookings.bookingDate))
+        .then(results => results.map(r => ({
+          ...r.booking,
+          kitchen: r.kitchen,
+          location: {
+            id: r.location.id,
+            name: r.location.name,
+            cancellationPolicyHours: r.location.cancellationPolicyHours,
+            cancellationPolicyMessage: r.location.cancellationPolicyMessage,
+          },
+        })));
     } catch (error) {
       console.error('Error getting bookings by chef:', error);
       throw error;

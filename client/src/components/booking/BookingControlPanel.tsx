@@ -15,6 +15,12 @@ interface Booking {
   updatedAt: string;
   kitchenName?: string;
   locationName?: string;
+  location?: {
+    id: number;
+    name: string;
+    cancellationPolicyHours?: number;
+    cancellationPolicyMessage?: string;
+  };
 }
 
 interface BookingControlPanelProps {
@@ -171,24 +177,52 @@ export default function BookingControlPanel({
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    try {
+      // Handle ISO timestamp format from database (e.g., "2025-10-31T02:30:00.000Z")
+      // Extract just the date part (YYYY-MM-DD)
+      const dateOnly = dateStr.split('T')[0];
+      const date = new Date(dateOnly);
+      
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date string:', dateStr);
+        return 'Invalid Date';
+      }
+      
+      return date.toLocaleDateString("en-US", {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch (error) {
+      console.error('Error formatting date:', dateStr, error);
+      return 'Invalid Date';
+    }
   };
 
   const formatDateTime = (dateStr: string, timeStr: string) => {
-    const date = new Date(`${dateStr}T${timeStr}`);
-    return date.toLocaleString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    try {
+      // Handle ISO timestamp format from database
+      // Extract just the date part and combine with time
+      const dateOnly = dateStr.split('T')[0];
+      const date = new Date(`${dateOnly}T${timeStr}`);
+      
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date/time combination:', dateStr, timeStr);
+        return 'Invalid Date';
+      }
+      
+      return date.toLocaleString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      console.error('Error formatting date/time:', dateStr, timeStr, error);
+      return 'Invalid Date';
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -236,7 +270,7 @@ export default function BookingControlPanel({
     };
   };
 
-  const handleCancel = (bookingId: number, bookingDate: string, startTime: string) => {
+  const handleCancel = (bookingId: number, bookingDate: string, startTime: string, booking: Booking) => {
     try {
       const dateStr = bookingDate.split('T')[0]; // Extract date part if ISO
       const bookingDateTime = new Date(`${dateStr}T${startTime}`);
@@ -250,12 +284,18 @@ export default function BookingControlPanel({
         return;
       }
       
+      // Get cancellation policy from location (default to 24 hours)
+      const cancellationHours = booking.location?.cancellationPolicyHours ?? 24;
+      const policyMessage = booking.location?.cancellationPolicyMessage 
+        ?.replace('{hours}', cancellationHours.toString()) 
+        ?? `Bookings cannot be cancelled within ${cancellationHours} hours of the scheduled time.`;
+      
       const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-      if (hoursUntilBooking < 24) {
+      if (hoursUntilBooking < cancellationHours) {
         toast({
           title: "Cancellation Policy",
-          description: "Bookings cannot be cancelled within 24 hours of the booking time.",
+          description: policyMessage,
           variant: "destructive",
         });
         return;
@@ -381,10 +421,12 @@ export default function BookingControlPanel({
               if (!isNaN(bookingDateTime.getTime())) {
                 isUpcoming = bookingDateTime >= now;
                 const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                // Use cancellation policy from location (default to 24 hours)
+                const cancellationHours = booking.location?.cancellationPolicyHours ?? 24;
                 canCancel =
                   booking.status !== "cancelled" &&
                   isUpcoming &&
-                  hoursUntilBooking >= 24;
+                  hoursUntilBooking >= cancellationHours;
               }
             } catch (error) {
               console.error('Error processing booking date:', booking, error);
@@ -454,7 +496,7 @@ export default function BookingControlPanel({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleCancel(booking.id, booking.bookingDate, booking.startTime);
+                            handleCancel(booking.id, booking.bookingDate, booking.startTime, booking);
                           }}
                           className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           aria-label="Cancel booking"
@@ -525,8 +567,9 @@ export default function BookingControlPanel({
                     {!canCancel && booking.status !== "cancelled" && isUpcoming && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                         <p className="text-xs text-yellow-800">
-                          <strong>Note:</strong> Bookings cannot be cancelled within 24 hours of the
-                          scheduled time.
+                          <strong>Note:</strong> {booking.location?.cancellationPolicyMessage 
+                            ?.replace('{hours}', (booking.location.cancellationPolicyHours ?? 24).toString())
+                            ?? `Bookings cannot be cancelled within ${booking.location?.cancellationPolicyHours ?? 24} hours of the scheduled time.`}
                         </p>
                       </div>
                     )}

@@ -51,15 +51,32 @@ export default function KitchenBookingCalendar() {
     if (!bookings || !Array.isArray(bookings)) return [];
     if (bookings.length === 0) return [];
     
-    // If kitchens not loaded yet, return bookings without enrichment
+    // If kitchens not loaded yet, return bookings with location data if available
     if (!kitchens || !Array.isArray(kitchens)) {
-      return bookings.map((b) => ({ ...b }));
+      return bookings.map((b) => ({
+        ...b,
+        // Preserve location data if it came from backend join
+        location: b.location ? {
+          id: b.location.id,
+          name: b.location.name,
+          cancellationPolicyHours: b.location.cancellationPolicyHours,
+          cancellationPolicyMessage: b.location.cancellationPolicyMessage,
+        } : undefined,
+      }));
     }
     
-    // Enrich with kitchen information
+    // Enrich with kitchen information while preserving location data
     return bookings.map((booking) => {
       if (!booking || typeof booking.kitchenId !== 'number') {
-        return { ...booking };
+        return {
+          ...booking,
+          location: booking.location ? {
+            id: booking.location.id,
+            name: booking.location.name,
+            cancellationPolicyHours: booking.location.cancellationPolicyHours,
+            cancellationPolicyMessage: booking.location.cancellationPolicyMessage,
+          } : undefined,
+        };
       }
       
       const kitchen = kitchens.find((k) => k && k.id === booking.kitchenId);
@@ -67,6 +84,18 @@ export default function KitchenBookingCalendar() {
         ...booking,
         kitchenName: kitchen?.name,
         locationName: kitchen?.locationName || kitchen?.location?.name,
+        // Preserve location data from backend if available, otherwise use from kitchen
+        location: booking.location ? {
+          id: booking.location.id,
+          name: booking.location.name,
+          cancellationPolicyHours: booking.location.cancellationPolicyHours,
+          cancellationPolicyMessage: booking.location.cancellationPolicyMessage,
+        } : (kitchen?.location ? {
+          id: kitchen.location.id,
+          name: kitchen.location.name,
+          cancellationPolicyHours: kitchen.location.cancellationPolicyHours,
+          cancellationPolicyMessage: kitchen.location.cancellationPolicyMessage,
+        } : undefined),
       };
     });
   }, [bookings, kitchens]);
