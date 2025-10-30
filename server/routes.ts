@@ -3512,15 +3512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens with location and manager info
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown', 'ID:', req.user?.id);
-      console.log('📍 Firebase user:', req.firebaseUser?.uid || 'N/A');
-      
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      console.log(`✅ Found ${allKitchens.length} total kitchens in database`);
-      
-      if (allKitchens.length > 0) {
-        console.log('📦 Sample kitchen data:', JSON.stringify(allKitchens[0], null, 2));
-      }
       
       // Filter to only return active kitchens - handle both camelCase and snake_case
       const activeKitchens = allKitchens.filter(k => {
@@ -3528,12 +3520,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return isActive !== false && isActive !== null;
       });
       
-      console.log(`✅ Returning ${activeKitchens.length} active kitchens (filtered from ${allKitchens.length} total)`);
-      
       res.json(activeKitchens);
     } catch (error: any) {
-      console.error("❌ Error fetching kitchens:", error);
-      console.error("❌ Error stack:", error.stack);
+      console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
     }
   });
@@ -3741,12 +3730,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       // Fetch all users with manager role
       const { pool, db } = await import('./db');
+      
       if (pool) {
         const result = await pool.query(
           'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
@@ -3754,6 +3745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         return res.json(result.rows);
       }
+      
       // Fallback to Drizzle if pool is not available
       try {
         const { users } = await import('@shared/schema');
@@ -3764,7 +3756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(eq(users.role as any, 'manager'));
         return res.json(rows);
       } catch (e) {
-        console.error('❌ Fallback Drizzle query for managers failed:', e);
+        console.error('Error fetching managers with Drizzle:', e);
         return res.json([]);
       }
     } catch (error: any) {
