@@ -114,7 +114,7 @@ export default function KitchenAvailabilityManagement() {
     endTime: "17:00",
     isAvailable: true,
     reason: "",
-    maxConcurrentBookings: 1,
+    maxSlotsPerChef: 2,
   });
 
   // Block hours state
@@ -326,7 +326,7 @@ export default function KitchenAvailabilityManagement() {
       endTime: "17:00",
       isAvailable: true,
       reason: "",
-      maxConcurrentBookings: 1,
+      maxSlotsPerChef: 2,
     });
   };
 
@@ -418,7 +418,7 @@ export default function KitchenAvailabilityManagement() {
         endTime: "17:00",
         isAvailable: getField(fullDayOverride, 'isAvailable', 'is_available'),
         reason: getField(fullDayOverride, 'reason', 'reason') || "",
-        maxConcurrentBookings: getField(fullDayOverride, 'maxConcurrentBookings', 'max_concurrent_bookings') || 1,
+        maxSlotsPerChef: getField(fullDayOverride, 'maxSlotsPerChef', 'max_slots_per_chef') || 2,
       });
     } else if (existingOverrides.length > 0) {
       // Use first override if exists
@@ -428,7 +428,7 @@ export default function KitchenAvailabilityManagement() {
         endTime: getField(override, 'endTime', 'end_time') || "17:00",
         isAvailable: getField(override, 'isAvailable', 'is_available'),
         reason: getField(override, 'reason', 'reason') || "",
-        maxConcurrentBookings: getField(override, 'maxConcurrentBookings', 'max_concurrent_bookings') || 1,
+        maxSlotsPerChef: getField(override, 'maxSlotsPerChef', 'max_slots_per_chef') || 2,
       });
     } else {
       resetForm();
@@ -489,7 +489,7 @@ export default function KitchenAvailabilityManagement() {
           endTime: formData.isAvailable ? formData.endTime : null,
           isAvailable: formData.isAvailable,
           reason: formData.reason || null,
-          maxConcurrentBookings: formData.maxConcurrentBookings,
+          maxSlotsPerChef: formData.maxSlotsPerChef,
         },
       });
     } else {
@@ -500,7 +500,7 @@ export default function KitchenAvailabilityManagement() {
         endTime: formData.isAvailable ? formData.endTime : null,
         isAvailable: formData.isAvailable,
         reason: formData.reason || null,
-        maxConcurrentBookings: formData.maxConcurrentBookings,
+        maxSlotsPerChef: formData.maxSlotsPerChef,
       });
     }
   };
@@ -900,21 +900,22 @@ export default function KitchenAvailabilityManagement() {
                                   </div>
                                 </div>
 
-                                {/* MAX CONCURRENT BOOKINGS */}
-                                <div className="space-y-2">
-                                  <label className="block text-sm font-medium text-gray-900">
-                                    Maximum Concurrent Bookings per Time Slot
+                                {/* MAX SLOTS PER CHEF PER DAY */}
+                                <div className="space-y-2 bg-green-50 border-2 border-green-200 rounded-lg p-4">
+                                  <label className="block text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-green-600" />
+                                    Maximum Hours per Chef per Day
                                   </label>
                                   <input
                                     type="number"
                                     min="1"
-                                    max="50"
-                                    value={formData.maxConcurrentBookings}
-                                    onChange={(e) => setFormData({ ...formData, maxConcurrentBookings: parseInt(e.target.value) || 1 })}
-                                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    max="24"
+                                    value={formData.maxSlotsPerChef}
+                                    onChange={(e) => setFormData({ ...formData, maxSlotsPerChef: parseInt(e.target.value) || 2 })}
+                                    className="w-full border border-green-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                   />
-                                  <p className="text-xs text-gray-500">
-                                    How many chefs can book the same 30-minute time slot simultaneously? (Default: 1)
+                                  <p className="text-xs text-gray-600">
+                                    How many 1-hour slots can a single chef book on this day? (Default: 2)
                                   </p>
                                 </div>
 
