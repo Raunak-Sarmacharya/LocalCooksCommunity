@@ -589,6 +589,10 @@ export class FirebaseStorage {
         
         return {
           ...kitchen,
+          // Helpful flattened fields for clients that don't handle nested objects reliably
+          locationId: kitchenLocationId,
+          locationName: location ? (location as any).name : undefined,
+          locationAddress: location ? (location as any).address : undefined,
           location: location ? {
             id: (location as any).id,
             name: (location as any).name,

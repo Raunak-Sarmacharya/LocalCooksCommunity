@@ -272,7 +272,10 @@ export default function KitchenBookingCalendar() {
                     <div className="space-y-6">
                       {Object.entries(
                         kitchens.reduce((acc: any, kitchen: any) => {
-                          const locationName = kitchen.location?.name || 'Unknown Location';
+                          const locationName =
+                            kitchen.location?.name ||
+                            kitchen.locationName ||
+                            (kitchen.locationId ? `Location #${kitchen.locationId}` : 'Unknown Location');
                           if (!acc[locationName]) {
                             acc[locationName] = {
                               location: kitchen.location,
@@ -291,8 +294,8 @@ export default function KitchenBookingCalendar() {
                               <MapPin className="h-5 w-5 text-blue-600" />
                               {locationName}
                             </h3>
-                            {data.location?.address && (
-                              <p className="text-sm text-gray-600 ml-7 mt-1">{data.location.address}</p>
+                            {(data.location?.address || data.locationAddress) && (
+                              <p className="text-sm text-gray-600 ml-7 mt-1">{data.location?.address || data.locationAddress}</p>
                             )}
                             {data.manager && (
                               <p className="text-sm text-gray-500 ml-7 mt-1">
