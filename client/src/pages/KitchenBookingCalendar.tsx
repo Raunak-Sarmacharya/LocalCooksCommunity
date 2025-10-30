@@ -53,7 +53,12 @@ export default function KitchenBookingCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
   // Step 3: Time Slot Selection (Multi-select, max 2 slots)
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [allSlots, setAllSlots] = useState<Array<{
+    time: string;
+    available: number;
+    capacity: number;
+    isFullyBooked: boolean;
+  }>>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   
@@ -74,22 +79,40 @@ export default function KitchenBookingCalendar() {
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
     setIsLoadingSlots(true);
     try {
-      const slots = await getAvailableSlots(kitchenId, date);
-      console.log('📅 Available slots for', date, ':', slots);
-      setAvailableSlots(slots);
+      const token = localStorage.getItem('firebaseToken');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${date}`, {
+        credentials: "include",
+        headers,
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch slots");
+      }
+      
+      const slots = await response.json();
+      console.log('📅 All slots for', date, ':', slots);
+      setAllSlots(slots);
+      
       if (slots.length === 0) {
         toast({
-          title: "No slots available",
-          description: "This date has no available booking slots.",
+          title: "Kitchen closed",
+          description: "This date has no operating hours set.",
           variant: "destructive",
         });
       }
     } catch (error) {
       console.error("Error loading slots:", error);
-      setAvailableSlots([]);
+      setAllSlots([]);
       toast({
         title: "Error",
-        description: "Failed to load available time slots. Please try again.",
+        description: "Failed to load time slots. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -101,7 +124,7 @@ export default function KitchenBookingCalendar() {
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
     setSelectedSlots([]);
-    setAvailableSlots([]);
+    setAllSlots([]);
     setShowBookingModal(false);
   };
 
@@ -114,14 +137,24 @@ export default function KitchenBookingCalendar() {
     setShowBookingModal(false);
   };
 
-  const handleSlotClick = (slot: string) => {
+  const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
+    // Don't allow selecting fully booked slots
+    if (slot.isFullyBooked) {
+      toast({
+        title: "Slot Fully Booked",
+        description: "This time slot is already at maximum capacity.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setSelectedSlots(prev => {
-      if (prev.includes(slot)) {
+      if (prev.includes(slot.time)) {
         // Deselect if already selected
-        return prev.filter(s => s !== slot);
+        return prev.filter(s => s !== slot.time);
       } else if (prev.length < 2) {
         // Select if less than 2 selected
-        return [...prev, slot].sort();
+        return [...prev, slot.time].sort();
       } else {
         // Max 2 slots reached
         toast({
@@ -539,35 +572,85 @@ export default function KitchenBookingCalendar() {
                         {isLoadingSlots ? (
                           <div className="text-center py-12">
                             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                            <p className="text-gray-600 mt-3">Loading available slots...</p>
+                            <p className="text-gray-600 mt-3">Loading time slots...</p>
                           </div>
-                        ) : availableSlots.length === 0 ? (
+                        ) : allSlots.length === 0 ? (
                           <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
                             <Info className="h-8 w-8 text-yellow-600 mx-auto mb-3" />
-                            <p className="text-gray-800 font-medium mb-2">No Available Slots</p>
+                            <p className="text-gray-800 font-medium mb-2">Kitchen Closed</p>
                             <p className="text-sm text-gray-600">
-                              The kitchen manager has not set availability for this day, or all slots are fully booked.
+                              The kitchen manager has not set operating hours for this day.
                             </p>
                           </div>
                         ) : (
                           <>
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                              {availableSlots.map((slot) => {
-                                const isSelected = selectedSlots.includes(slot);
+                              {allSlots.map((slot) => {
+                                const isSelected = selectedSlots.includes(slot.time);
+                                const isFullyBooked = slot.isFullyBooked;
+                                const availability = slot.available;
+                                const capacity = slot.capacity;
+                                
+                                // Determine styling based on availability
+                                let statusColor = 'border-gray-200 hover:border-blue-400 hover:bg-blue-50';
+                                let statusBg = 'bg-white';
+                                let statusText = 'text-gray-700';
+                                let cursorStyle = 'cursor-pointer';
+                                
+                                if (isSelected) {
+                                  statusColor = 'border-blue-600';
+                                  statusBg = 'bg-blue-600';
+                                  statusText = 'text-white';
+                                } else if (isFullyBooked) {
+                                  statusColor = 'border-red-200';
+                                  statusBg = 'bg-red-50';
+                                  statusText = 'text-red-500';
+                                  cursorStyle = 'cursor-not-allowed';
+                                } else if (availability === 1 && capacity > 1) {
+                                  statusColor = 'border-orange-300';
+                                  statusBg = 'bg-orange-50';
+                                  statusText = 'text-orange-700';
+                                } else if (availability < capacity) {
+                                  statusColor = 'border-yellow-300';
+                                  statusBg = 'bg-yellow-50';
+                                  statusText = 'text-yellow-700';
+                                }
+                                
                                 return (
                                   <button
-                                    key={slot}
+                                    key={slot.time}
                                     onClick={() => handleSlotClick(slot)}
+                                    disabled={isFullyBooked}
                                     className={`
                                       relative p-4 border-2 rounded-xl transition-all font-medium text-center
-                                      ${isSelected
-                                        ? 'border-blue-600 bg-blue-600 text-white shadow-lg scale-105'
-                                        : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700 hover:scale-102'
-                                      }
+                                      ${statusBg} ${statusColor} ${statusText} ${cursorStyle}
+                                      ${isSelected ? 'shadow-lg scale-105' : !isFullyBooked && 'hover:scale-102'}
                                     `}
                                   >
-                                    <Clock className="inline h-4 w-4 mr-1" />
-                                    <span className="text-lg">{formatTime(slot)}</span>
+                                    <div className="flex flex-col items-center gap-1">
+                                      <div className="flex items-center gap-1">
+                                        <Clock className="h-4 w-4" />
+                                        <span className="text-lg font-semibold">{formatTime(slot.time)}</span>
+                                      </div>
+                                      
+                                      {/* Capacity indicator */}
+                                      {capacity > 1 && (
+                                        <div className={`text-xs font-medium ${
+                                          isSelected ? 'text-white' : 
+                                          isFullyBooked ? 'text-red-600' : 
+                                          availability === 1 ? 'text-orange-600' :
+                                          availability < capacity ? 'text-yellow-600' :
+                                          'text-green-600'
+                                        }`}>
+                                          {isFullyBooked ? 'Fully Booked' : `${availability}/${capacity} spots`}
+                                        </div>
+                                      )}
+                                      
+                                      {capacity === 1 && isFullyBooked && (
+                                        <div className="text-xs font-medium text-red-600">Booked</div>
+                                      )}
+                                    </div>
+                                    
                                     {isSelected && (
                                       <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                                         <Check className="h-4 w-4 text-white" />
@@ -578,8 +661,31 @@ export default function KitchenBookingCalendar() {
                               })}
                             </div>
                             
+                            {/* Legend */}
+                            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                              <p className="text-xs font-semibold text-gray-700 mb-3">Availability Legend:</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 bg-white border-2 border-gray-200 rounded"></div>
+                                  <span className="text-gray-600">Available</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 bg-yellow-50 border-2 border-yellow-300 rounded"></div>
+                                  <span className="text-gray-600">Limited</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 bg-orange-50 border-2 border-orange-300 rounded"></div>
+                                  <span className="text-gray-600">1 Spot Left</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 bg-red-50 border-2 border-red-200 rounded"></div>
+                                  <span className="text-gray-600">Fully Booked</span>
+                                </div>
+                              </div>
+                            </div>
+                            
                             {selectedSlots.length > 0 && (
-                              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <p className="text-sm font-medium text-green-900">

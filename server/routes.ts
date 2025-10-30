@@ -3538,7 +3538,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get available time slots for a kitchen on a specific date
+  // Get ALL time slots with booking info (capacity aware)
+  app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { date } = req.query;
+      
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+      
+      const bookingDate = new Date(date as string);
+      
+      // Validate date
+      if (isNaN(bookingDate.getTime())) {
+        return res.status(400).json({ error: "Invalid date format" });
+      }
+      
+      const slotsInfo = await firebaseStorage.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
+      
+      res.json(slotsInfo);
+    } catch (error: any) {
+      console.error("Error fetching time slots:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch time slots",
+        message: error.message 
+      });
+    }
+  });
+
+  // Get available time slots for a kitchen on a specific date (legacy endpoint, returns only available slots)
   app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req: Request, res: Response) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
