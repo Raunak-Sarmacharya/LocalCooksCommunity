@@ -11326,6 +11326,13 @@ app.get("/api/chef/locations", requireChef, async (req, res) => {
 // Get ALL time slots with booking info (capacity aware)
 app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('Vary', 'Authorization');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
     const kitchenId = parseInt(req.params.kitchenId);
     const { date } = req.query;
     
@@ -11473,6 +11480,13 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
 // Per-kitchen policy: max slots per chef per day
 app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('Vary', 'Authorization');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
     const kitchenId = parseInt(req.params.kitchenId);
     const { date } = req.query;
     const bookingDate = date ? new Date(String(date)) : new Date();

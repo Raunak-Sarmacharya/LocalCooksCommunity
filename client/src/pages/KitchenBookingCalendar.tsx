@@ -114,6 +114,7 @@ export default function KitchenBookingCalendar() {
         const policyRes = await fetch(`/api/chef/kitchens/${kitchenId}/policy?date=${date}`, {
           credentials: "include",
           headers,
+          cache: 'no-store',
         });
         if (policyRes.ok) {
           const policy = await policyRes.json();
@@ -133,6 +134,7 @@ export default function KitchenBookingCalendar() {
       const response = await fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${date}`, {
         credentials: "include",
         headers,
+        cache: 'no-store',
       });
       
       if (!response.ok) {
