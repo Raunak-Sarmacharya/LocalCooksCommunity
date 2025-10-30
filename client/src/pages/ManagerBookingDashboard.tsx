@@ -393,7 +393,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
             tileContent={tileContent}
             tileClassName={tileClassName}
             className="w-full border-0"
-            calendarType="US"
+            locale="en-US"
           />
         </div>
         <style>{`
