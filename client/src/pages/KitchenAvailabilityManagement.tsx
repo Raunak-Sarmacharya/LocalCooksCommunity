@@ -129,6 +129,13 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     reason: "",
   });
 
+  // Auto-select location if only one exists
+  useEffect(() => {
+    if (!isLoadingLocations && locations.length === 1 && !selectedLocationId) {
+      setSelectedLocationId(locations[0].id);
+    }
+  }, [locations, isLoadingLocations, selectedLocationId]);
+
   // Load kitchens when location is selected
   useEffect(() => {
     if (selectedLocationId) {
@@ -139,7 +146,7 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
         .then(res => res.json())
         .then(data => {
           setKitchens(data);
-          // Auto-select kitchen from URL if provided
+          // Auto-select kitchen if only one exists or from URL if provided
           if (urlKitchenId && data.length > 0) {
             const kitchenId = parseInt(urlKitchenId);
             if (!isNaN(kitchenId)) {
@@ -148,6 +155,9 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                 setSelectedKitchenId(kitchenId);
               }
             }
+          } else if (data.length === 1 && !selectedKitchenId) {
+            // Auto-select if only one kitchen
+            setSelectedKitchenId(data[0].id);
           }
         })
         .catch(() => {});
@@ -155,7 +165,7 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
       setKitchens([]);
       setSelectedKitchenId(null);
     }
-  }, [selectedLocationId, urlKitchenId]);
+  }, [selectedLocationId, urlKitchenId, selectedKitchenId]);
 
   // Fetch weekly availability schedule for selected kitchen
   const { data: weeklyAvailability = [] } = useQuery({
@@ -638,38 +648,50 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
               <div className="lg:col-span-1 space-y-4">
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                   <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Location</h2>
-                  <select
-                    value={selectedLocationId || ""}
-                    onChange={(e) => {
-                      setSelectedLocationId(e.target.value ? parseInt(e.target.value) : null);
-                      setSelectedKitchenId(null);
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Choose location...</option>
-                    {locations.map((location: any) => (
-                      <option key={location.id} value={location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                  {locations.length === 1 ? (
+                    <div className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
+                      {locations[0].name}
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedLocationId || ""}
+                      onChange={(e) => {
+                        setSelectedLocationId(e.target.value ? parseInt(e.target.value) : null);
+                        setSelectedKitchenId(null);
+                      }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Choose location...</option>
+                      {locations.map((location: any) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {selectedLocationId && (
                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                     <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Kitchen</h2>
-                    <select
-                      value={selectedKitchenId || ""}
-                      onChange={(e) => setSelectedKitchenId(e.target.value ? parseInt(e.target.value) : null)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Choose kitchen...</option>
-                      {kitchens.map((kitchen) => (
-                        <option key={kitchen.id} value={kitchen.id}>
-                          {kitchen.name}
-                        </option>
-                      ))}
-                    </select>
+                    {kitchens.length === 1 ? (
+                      <div className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
+                        {kitchens[0].name}
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedKitchenId || ""}
+                        onChange={(e) => setSelectedKitchenId(e.target.value ? parseInt(e.target.value) : null)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">Choose kitchen...</option>
+                        {kitchens.map((kitchen) => (
+                          <option key={kitchen.id} value={kitchen.id}>
+                            {kitchen.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
 
@@ -819,10 +841,14 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                                             <span className="text-red-700 font-bold text-[10px] uppercase leading-tight tracking-wide">Closed</span>
                                           </div>
                                         ) : availabilityStatus.isOpen ? (
-                                          <div className="flex items-center justify-center gap-1 px-1">
+                                          <div className="flex items-center justify-center gap-1 px-1 w-full">
                                             <span className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0"></span>
-                                            <span className="text-green-700 font-semibold text-[10px] leading-tight truncate max-w-full" title={availabilityStatus.hours || ''}>
-                                              {availabilityStatus.hours || 'Open'}
+                                            <span 
+                                              className="text-green-700 font-semibold text-[10px] leading-tight truncate block max-w-full overflow-hidden text-ellipsis whitespace-nowrap" 
+                                              title={availabilityStatus.hours || ''}
+                                              style={{ maxWidth: 'calc(100% - 8px)' }}
+                                            >
+                                              {availabilityStatus.hours ? availabilityStatus.hours.replace(/\s/g, ' ') : 'Open'}
                                             </span>
                                           </div>
                                         ) : null}

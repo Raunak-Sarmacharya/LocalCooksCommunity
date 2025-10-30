@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
@@ -6,6 +6,8 @@ import {
   ChevronLeft, ChevronRight, Sliders, Info
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import CalendarComponent from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
@@ -43,6 +45,13 @@ export default function ManagerBookingDashboard() {
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('overview');
+
+  // Auto-select location if only one exists
+  useEffect(() => {
+    if (!isLoadingLocations && locations.length === 1 && !selectedLocation) {
+      setSelectedLocation(locations[0]);
+    }
+  }, [locations, isLoadingLocations, selectedLocation]);
 
   // Fetch location details with cancellation policy
   const { data: locationDetails } = useQuery<Location>({
@@ -128,6 +137,10 @@ export default function ManagerBookingDashboard() {
                   <div className="text-sm text-gray-500">Loading...</div>
                 ) : locations.length === 0 ? (
                   <div className="text-sm text-gray-500">No locations available</div>
+                ) : locations.length === 1 ? (
+                  <div className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
+                    {locations[0].name}
+                  </div>
                 ) : (
                   <select
                     value={selectedLocation?.id || ""}
@@ -244,10 +257,74 @@ export default function ManagerBookingDashboard() {
 // Overview View Component
 function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Location | null; onNavigate: (view: ViewType) => void }) {
   const { bookings, isLoadingBookings } = useManagerDashboard();
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
   const pendingBookings = bookings.filter((b: any) => b.status === "pending");
   const confirmedBookings = bookings.filter((b: any) => b.status === "confirmed");
   const cancelledBookings = bookings.filter((b: any) => b.status === "cancelled");
+
+  // Group bookings by date
+  const bookingsByDate = useMemo(() => {
+    const grouped: { [key: string]: any[] } = {};
+    bookings.forEach((booking: any) => {
+      const dateStr = new Date(booking.bookingDate).toISOString().split('T')[0];
+      if (!grouped[dateStr]) {
+        grouped[dateStr] = [];
+      }
+      grouped[dateStr].push(booking);
+    });
+    return grouped;
+  }, [bookings]);
+
+  // Get bookings for a specific date
+  const getBookingsForDate = (date: Date): any[] => {
+    const dateStr = date.toISOString().split('T')[0];
+    return bookingsByDate[dateStr] || [];
+  };
+
+  // Format date to YYYY-MM-DD for comparison
+  const formatDateKey = (date: Date): string => {
+    return date.toISOString().split('T')[0];
+  };
+
+  // Custom tile content with booking indicators
+  const tileContent = ({ date, view }: { date: Date; view: string }) => {
+    if (view !== 'month') return null;
+    const dateBookings = getBookingsForDate(date);
+    if (dateBookings.length === 0) return null;
+    
+    const pending = dateBookings.filter((b: any) => b.status === 'pending').length;
+    const confirmed = dateBookings.filter((b: any) => b.status === 'confirmed').length;
+    const cancelled = dateBookings.filter((b: any) => b.status === 'cancelled').length;
+
+    return (
+      <div className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-1 px-1">
+        {pending > 0 && (
+          <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full" title={`${pending} pending`}></div>
+        )}
+        {confirmed > 0 && (
+          <div className="w-1.5 h-1.5 bg-green-500 rounded-full" title={`${confirmed} confirmed`}></div>
+        )}
+        {cancelled > 0 && (
+          <div className="w-1.5 h-1.5 bg-gray-400 rounded-full" title={`${cancelled} cancelled`}></div>
+        )}
+      </div>
+    );
+  };
+
+  // Custom tile className for dates with bookings
+  const tileClassName = ({ date, view }: { date: Date; view: string }) => {
+    if (view !== 'month') return '';
+    const dateBookings = getBookingsForDate(date);
+    if (dateBookings.length === 0) return '';
+    
+    const hasPending = dateBookings.some((b: any) => b.status === 'pending');
+    const hasConfirmed = dateBookings.some((b: any) => b.status === 'confirmed');
+    
+    if (hasPending) return 'has-pending-booking';
+    if (hasConfirmed) return 'has-confirmed-booking';
+    return 'has-booking';
+  };
 
   return (
     <div className="space-y-6">
@@ -289,6 +366,140 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
           </div>
         </div>
       </div>
+
+      {/* Modern Calendar */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">Booking Calendar</h2>
+          <div className="flex items-center gap-4 text-xs text-gray-600">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span>Pending</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span>Confirmed</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+              <span>Cancelled</span>
+            </div>
+          </div>
+        </div>
+        <div className="react-calendar-wrapper">
+          <CalendarComponent
+            onChange={setSelectedDate}
+            value={selectedDate}
+            tileContent={tileContent}
+            tileClassName={tileClassName}
+            className="w-full border-0"
+            calendarType="US"
+          />
+        </div>
+        <style>{`
+          .react-calendar-wrapper .react-calendar {
+            width: 100%;
+            border: none;
+            font-family: inherit;
+          }
+          .react-calendar-wrapper .react-calendar__tile {
+            position: relative;
+            height: 60px;
+            padding: 8px;
+            font-size: 14px;
+          }
+          .react-calendar-wrapper .react-calendar__tile--now {
+            background: #eff6ff;
+            color: #1e40af;
+          }
+          .react-calendar-wrapper .react-calendar__tile--active {
+            background: #3b82f6;
+            color: white;
+          }
+          .react-calendar-wrapper .react-calendar__tile.has-pending-booking {
+            border: 2px solid #f59e0b;
+          }
+          .react-calendar-wrapper .react-calendar__tile.has-confirmed-booking {
+            border: 2px solid #10b981;
+          }
+          .react-calendar-wrapper .react-calendar__tile.has-booking {
+            border: 1px solid #cbd5e1;
+          }
+          .react-calendar-wrapper .react-calendar__navigation {
+            margin-bottom: 1rem;
+          }
+          .react-calendar-wrapper .react-calendar__navigation button {
+            font-size: 16px;
+            font-weight: 600;
+          }
+        `}</style>
+      </div>
+
+      {/* Selected Date Details */}
+      {selectedDate && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Bookings for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </h3>
+            <button
+              onClick={() => setSelectedDate(null)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          {getBookingsForDate(selectedDate).length === 0 ? (
+            <p className="text-gray-500">No bookings on this date</p>
+          ) : (
+            <div className="space-y-3">
+              {getBookingsForDate(selectedDate).map((booking: any) => (
+                <div
+                  key={booking.id}
+                  className={`p-4 rounded-lg border ${
+                    booking.status === 'pending'
+                      ? 'bg-yellow-50 border-yellow-200'
+                      : booking.status === 'confirmed'
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          booking.status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : booking.status === 'confirmed'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {booking.status.toUpperCase()}
+                        </span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {booking.startTime?.slice(0, 5)} - {booking.endTime?.slice(0, 5)}
+                        </span>
+                      </div>
+                      {booking.kitchenName && (
+                        <p className="text-sm text-gray-600">Kitchen: {booking.kitchenName}</p>
+                      )}
+                      {booking.specialNotes && (
+                        <p className="text-sm text-gray-500 mt-1">{booking.specialNotes}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => onNavigate('bookings')}
+                      className="ml-4 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
