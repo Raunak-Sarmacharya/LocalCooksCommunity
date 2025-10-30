@@ -282,6 +282,27 @@ export default function AdminManageLocations() {
               Add Manager
             </button>
           </div>
+          {loading ? (
+            <p className="text-gray-500">Loading...</p>
+          ) : managers.length === 0 ? (
+            <p className="text-gray-500">No managers available</p>
+          ) : (
+            <div className="space-y-2">
+              {managers.map((manager) => (
+                <div key={manager.id} className="p-3 border border-gray-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium">{manager.username}</h3>
+                      <p className="text-xs text-gray-500">ID: {manager.id}</p>
+                    </div>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
+                      {manager.role}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
