@@ -52,7 +52,7 @@ export default function KitchenBookingCalendar() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
-  // Step 3: Time Slot Selection (Multi-select, max 2 slots)
+  // Step 3: Time Slot Selection (Multi-select, dynamic max per policy)
   const [allSlots, setAllSlots] = useState<Array<{
     time: string;
     available: number;
@@ -61,6 +61,7 @@ export default function KitchenBookingCalendar() {
   }>>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number>(2);
   
   // Step 4: Booking Details
   const [notes, setNotes] = useState<string>("");
@@ -100,6 +101,27 @@ export default function KitchenBookingCalendar() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
       
+      // Fetch policy (max slots per chef)
+      try {
+        const policyRes = await fetch(`/api/chef/kitchens/${kitchenId}/policy?date=${date}`, {
+          credentials: "include",
+          headers,
+        });
+        if (policyRes.ok) {
+          const policy = await policyRes.json();
+          if (policy && typeof policy.maxSlotsPerChef === 'number' && policy.maxSlotsPerChef > 0) {
+            setMaxSlotsPerChef(policy.maxSlotsPerChef);
+          } else {
+            setMaxSlotsPerChef(2);
+          }
+        } else {
+          setMaxSlotsPerChef(2);
+        }
+      } catch {
+        setMaxSlotsPerChef(2);
+      }
+
+      // Fetch slots
       const response = await fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${date}`, {
         credentials: "include",
         headers,
@@ -166,14 +188,13 @@ export default function KitchenBookingCalendar() {
       if (prev.includes(slot.time)) {
         // Deselect if already selected
         return prev.filter(s => s !== slot.time);
-      } else if (prev.length < 2) {
-        // Select if less than 2 selected
+      } else if (prev.length < maxSlotsPerChef) {
+        // Select if below policy limit
         return [...prev, slot.time].sort();
       } else {
-        // Max 2 slots reached
         toast({
-          title: "Maximum slots reached",
-          description: "You can only select up to 2 time slots per booking.",
+          title: "Limit reached",
+          description: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.`,
           variant: "destructive",
         });
         return prev;
@@ -184,48 +205,17 @@ export default function KitchenBookingCalendar() {
   const handleBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
-    // Calculate start and end time from selected slots
+    // Calculate start and end time from selected 1-hour slots
     const sortedSlots = [...selectedSlots].sort();
     const startTime = sortedSlots[0];
-    
-    // Calculate end time based on number of slots
-    let endTime: string;
-    if (sortedSlots.length === 1) {
-      // Single slot = 30 minutes
-      const [hours, mins] = startTime.split(':').map(Number);
-      const totalMins = hours * 60 + mins + 30;
-      const endHours = Math.floor(totalMins / 60);
-      const endMins = totalMins % 60;
-      endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
-    } else {
-      // Two slots - check if consecutive or not
-      const [h1, m1] = sortedSlots[0].split(':').map(Number);
-      const [h2, m2] = sortedSlots[1].split(':').map(Number);
-      const slot1Mins = h1 * 60 + m1;
-      const slot2Mins = h2 * 60 + m2;
-      
-      if (slot2Mins === slot1Mins + 30) {
-        // Consecutive slots = 1 hour block
-        endTime = sortedSlots[1].split(':').map((v, i) => {
-          if (i === 1) return (parseInt(v) + 30 >= 60) ? '00' : (parseInt(v) + 30).toString().padStart(2, '0');
-          return (parseInt(v) + (parseInt(sortedSlots[1].split(':')[1]) + 30 >= 60 ? 1 : 0)).toString().padStart(2, '0');
-        }).join(':');
-        const [hours, mins] = sortedSlots[1].split(':').map(Number);
-        const totalMins = hours * 60 + mins + 30;
-        const endHours = Math.floor(totalMins / 60);
-        const endMins = totalMins % 60;
-        endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
-      } else {
-        // Non-consecutive slots - we need to create separate bookings
-        // For now, show error and ask to select consecutive slots
-        toast({
-          title: "Select Consecutive Slots",
-          description: "Please select consecutive time slots (e.g., 9:00 and 9:30) for your booking.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
+
+    // Each slot represents 1 hour now
+    const [startHours, startMins] = startTime.split(':').map(Number);
+    const totalDurationMins = sortedSlots.length * 60;
+    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+    const endHours = Math.floor(endTotalMins / 60);
+    const endMins = endTotalMins % 60;
+    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 
     const bookingDate = new Date(selectedDate);
     bookingDate.setHours(0, 0, 0, 0);
@@ -242,7 +232,7 @@ export default function KitchenBookingCalendar() {
         onSuccess: () => {
           toast({
             title: "Booking Created!",
-            description: `Your ${selectedSlots.length === 1 ? '30-minute' : '1-hour'} kitchen booking has been submitted successfully.`,
+            description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking has been submitted successfully.`,
           });
           setShowBookingModal(false);
           setSelectedSlots([]);
@@ -579,7 +569,7 @@ export default function KitchenBookingCalendar() {
                             <span className="font-semibold">{formatDate(selectedDate)}</span>
                           </p>
                           <p className="text-xs text-gray-600">
-                            💡 Select up to 2 consecutive time slots (30 min each) for your booking
+                            💡 Select up to {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} for your booking
                           </p>
                         </div>
 
@@ -703,10 +693,10 @@ export default function KitchenBookingCalendar() {
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <p className="text-sm font-medium text-green-900">
-                                      {selectedSlots.length} slot{selectedSlots.length > 1 ? 's' : ''} selected
+                                      {selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''} selected
                                     </p>
                                     <p className="text-xs text-green-700 mt-1">
-                                      Duration: {selectedSlots.length === 1 ? '30 minutes' : '1 hour'}
+                                      Duration: {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
                                     </p>
                                   </div>
                                   <button

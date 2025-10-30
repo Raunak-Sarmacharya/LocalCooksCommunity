@@ -787,7 +787,6 @@ if (pool) {
 } else {
   console.log('No database connection available, API will use in-memory storage');
 }
-
 // Utility to ensure admin user exists
 async function ensureAdminUser() {
   try {
@@ -957,7 +956,6 @@ app.get('/api/debug/user-sync/:uid', async (req, res) => {
     res.status(500).json({ error: 'Debug check failed', message: error.message });
   }
 });
-
 // API Routes
 app.post('/api/register', async (req, res) => {
   try {
@@ -1386,7 +1384,6 @@ app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to get user data' });
   }
 });
-
 // 🔥 Set has_seen_welcome = true for current Firebase user
 app.post('/api/user/seen-welcome', verifyFirebaseAuth, async (req, res) => {
   try {
@@ -1568,7 +1565,6 @@ app.post('/api/user/reset-welcome', verifyFirebaseAuth, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 // 🧪 COMPREHENSIVE DEBUG: Welcome screen status endpoint
 app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
   try {
@@ -1799,7 +1795,6 @@ app.get('/api/debug-auth/:userId', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 // Applications API endpoints
 app.post('/api/applications', upload.fields([
   { name: 'foodSafetyLicense', maxCount: 1 },
@@ -2783,7 +2778,6 @@ app.get('/api/init-db', async (req, res) => {
     });
   }
 });
-
 // ===============================
 // FILE SERVING ROUTES
 // ===============================
@@ -3041,7 +3035,6 @@ app.patch("/api/applications/:id/documents", async (req, res) => {
     return res.status(500).json({ message: "Internal server error", error: error.message });
   }
 });
-
 // Update application document verification status (admin only)
 app.patch("/api/applications/:id/document-verification", async (req, res) => {
   try {
@@ -3234,7 +3227,6 @@ app.patch("/api/applications/:id/document-verification", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
-
 // Debug endpoint to check application document URLs
 app.get("/api/debug/applications/:id/documents", async (req, res) => {
   try {
@@ -3704,7 +3696,6 @@ app.get('/api/debug-admin', async (req, res) => {
     });
   }
 });
-
 // Get document verification data for a user
 app.get("/api/document-verification", async (req, res) => {
   try {
@@ -3811,11 +3802,9 @@ async function getSessionStats() {
     return { error: error.message };
   }
 }
-
 // ===============================
 // SESSION MANAGEMENT ENDPOINTS
 // ===============================
-
 // Get session statistics (admin only)
 app.get("/api/admin/sessions/stats", async (req, res) => {
   try {
@@ -4170,7 +4159,6 @@ async function updateVideoProgress(progressData) {
     });
   }
 }
-
 async function createMicrolearningCompletion(completionData) {
   if (pool) {
     try {
@@ -5101,7 +5089,6 @@ app.post('/api/firebase-sync-user', async (req, res) => {
     }
   }
 });
-
 // Enhanced Firebase User Registration Endpoint
 app.post('/api/firebase-register-user', async (req, res) => {
   try {
@@ -5588,7 +5575,6 @@ async function verifyFirebaseAuth(req, res, next) {
     });
   }
 }
-
 // Enhanced Firebase Auth with User Loading Middleware
 async function requireFirebaseAuthWithUser(req, res, next) {
   try {
@@ -5928,11 +5914,9 @@ app.get('/api/firebase/dashboard', requireFirebaseAuthWithUser, async (req, res)
     res.status(500).json({ error: 'Failed to get dashboard data' });
   }
 });
-
 // ===============================
 // FIREBASE DELIVERY PARTNER ENDPOINTS
 // ===============================
-
 // Submit Delivery Partner Application (with Firebase Auth)
 app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -6071,7 +6055,6 @@ app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithU
     });
   }
 });
-
 // Get User's Delivery Partner Applications (with Firebase Auth)
 app.get('/api/firebase/delivery-partner-applications/my', requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -6521,7 +6504,6 @@ app.patch('/api/delivery-partner-applications/:id/cancel', async (req, res) => {
     res.status(500).json({ error: 'Failed to cancel delivery partner application' });
   }
 });
-
 // Update delivery partner application status endpoint (admin only)
 app.patch("/api/delivery-partner-applications/:id/status", async (req, res) => {
   try {
@@ -6679,7 +6661,6 @@ app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithU
     res.status(500).json({ message: 'Failed to get progress' });
   }
 });
-
 // Update microlearning progress (Firebase)
 app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -6734,7 +6715,6 @@ app.post('/api/firebase/microlearning/progress', requireFirebaseAuthWithUser, as
     res.status(500).json({ error: 'Failed to update progress' });
   }
 });
-
 // Complete microlearning (Firebase)
 app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -7436,7 +7416,6 @@ app.get('/api/hybrid/user/profile', requireHybridAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to get user profile' });
   }
 });
-
 // Hybrid Applications Endpoint
 app.get('/api/hybrid/applications', requireHybridAuth, async (req, res) => {
   try {
@@ -7460,7 +7439,6 @@ app.get('/api/hybrid/applications', requireHybridAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to get applications' });
   }
 });
-
 // Hybrid Admin Dashboard Endpoint
 app.get('/api/hybrid/admin/dashboard', requireHybridAdmin, async (req, res) => {
   try {
@@ -7492,7 +7470,6 @@ app.get('/api/hybrid/admin/dashboard', requireHybridAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to get admin dashboard data' });
   }
 });
-
 // Comprehensive Authentication Status Endpoint
 app.get('/api/auth-status', async (req, res) => {
   try {
@@ -7758,7 +7735,6 @@ app.get('/api/session-test', (req, res) => {
     cookiePresent: !!req.headers.cookie
   });
 });
-
 // New Hybrid Login Endpoint - tries Firebase first, then NeonDB
 app.post('/api/hybrid-login', async (req, res) => {
   try {
@@ -8253,7 +8229,6 @@ app.get('/api/verify-auth-methods', async (req, res) => {
     });
   }
 });
-
 // Password reset request endpoint - DEPRECATED: Use Firebase-based password reset instead
 app.post("/api/auth/forgot-password", async (req, res) => {
   try {
@@ -8281,7 +8256,6 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     });
   }
 });
-
 // Password reset confirmation endpoint
 app.post("/api/auth/reset-password", async (req, res) => {
   try {
@@ -8749,7 +8723,6 @@ From: Local Cooks Community
     });
   }
 });
-
 // Test welcome email using working status change function
 app.post("/api/test-welcome-as-status", async (req, res) => {
   try {
@@ -8992,7 +8965,6 @@ app.post("/api/test-delayed-email", async (req, res) => {
     });
   }
 });
-
 // COMPREHENSIVE DIAGNOSTIC: Test all theories about email delivery failure
 app.post("/api/comprehensive-email-diagnostic", async (req, res) => {
   try {
@@ -9558,7 +9530,6 @@ app.post("/api/debug-google-registration", async (req, res) => {
     });
   }
 });
-
 // Admin endpoint to send promo code emails
 // Admin endpoint to send test emails
 app.post('/api/admin/test-email', async (req, res) => {
@@ -9711,7 +9682,6 @@ app.post('/api/admin/test-email', async (req, res) => {
     });
   }
 });
-
 // Admin endpoint to send flexible company emails (promotional or general)
 app.post('/api/admin/send-company-email', async (req, res) => {
   // Check if user is authenticated via session
@@ -9902,7 +9872,6 @@ app.post('/api/admin/send-company-email', async (req, res) => {
     });
   }
 });
-
 // Legacy promo email endpoint for backward compatibility
 app.post('/api/admin/send-promo-email', async (req, res) => {
   // Check if user is authenticated via session
@@ -10350,7 +10319,6 @@ app.get('/api/vehicles/makes', async (req, res) => {
     });
   }
 });
-
 // Get makes for a specific vehicle type
 app.get('/api/vehicles/makes/type/:vehicleType', async (req, res) => {
   try {
@@ -10460,7 +10428,6 @@ app.get('/api/vehicles/models/by-name/:makeName', async (req, res) => {
     });
   }
 });
-
 // Get models for a specific make (without year dependency) - LEGACY ENDPOINT
 app.get('/api/vehicles/models/:makeId', async (req, res) => {
   try {
@@ -10808,7 +10775,6 @@ app.get("/api/manager/kitchens/:locationId", async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
   }
 });
-
 // Get all bookings for manager
 app.get("/api/manager/bookings", async (req, res) => {
   try {
@@ -11239,11 +11205,9 @@ app.post("/api/admin/kitchens", async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to create kitchen" });
   }
 });
-
 // ===================================
 // KITCHEN BOOKING SYSTEM - CHEF ROUTES
 // ===================================
-
 // Middleware to require chef authentication
 // Supports BOTH Firebase auth (for approved chefs) AND session auth (for admin/managers)
 async function requireChef(req, res, next) {
@@ -11311,7 +11275,6 @@ async function requireChef(req, res, next) {
     return res.status(401).json({ error: "Authentication failed" });
   }
 }
-
 // Get all kitchens
 app.get("/api/chef/kitchens", requireChef, async (req, res) => {
   try {
@@ -11380,42 +11343,79 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
       return res.status(500).json({ error: "Database not available" });
     }
 
-    // Determine availability window for the given day
-    const dayOfWeek = bookingDate.getDay();
-    const availabilityResult = await pool.query(`
-      SELECT start_time, end_time, is_available, 
-             COALESCE(max_concurrent_bookings, 1) as capacity
-      FROM kitchen_availability 
-      WHERE kitchen_id = $1 AND day_of_week = $2
-    `, [kitchenId, dayOfWeek]);
+    let startHour;
+    let endHour;
 
-    if (availabilityResult.rows.length === 0 || availabilityResult.rows[0].is_available === false) {
-      return res.json([]);
+    // 1) Check date-specific override from managers
+    let overrideResult;
+    try {
+      overrideResult = await pool.query(`
+        SELECT start_time, end_time, is_available
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1
+          AND DATE(specific_date) = DATE($2::timestamp)
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [kitchenId, bookingDate.toISOString()]);
+    } catch (_e) {
+      overrideResult = { rows: [] };
     }
 
-    const availability = availabilityResult.rows[0];
-    const [startHour] = availability.start_time.split(':').map(Number);
-    const [endHour] = availability.end_time.split(':').map(Number);
-    const capacity = Number(availability.capacity) || 1;
+    if (overrideResult.rows.length > 0) {
+      const o = overrideResult.rows[0];
+      if (o.is_available === false) {
+        // Closed for the day per override
+        return res.json([]);
+      }
+      if (o.start_time && o.end_time) {
+        [startHour] = o.start_time.split(":").map(Number);
+        [endHour] = o.end_time.split(":").map(Number);
+      } else {
+        return res.json([]);
+      }
+    } else {
+      // 2) Fall back to weekly availability
+      const dayOfWeek = bookingDate.getDay();
+      let availabilityResult;
+      try {
+        availabilityResult = await pool.query(`
+          SELECT start_time, end_time, is_available
+          FROM kitchen_availability 
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, dayOfWeek]);
+      } catch (_e) {
+        availabilityResult = { rows: [] };
+      }
 
-    // Generate 30-minute interval slots
+      if (availabilityResult.rows.length === 0 || availabilityResult.rows[0].is_available === false) {
+        return res.json([]);
+      }
+
+      const availability = availabilityResult.rows[0];
+      [startHour] = availability.start_time.split(":").map(Number);
+      [endHour] = availability.end_time.split(":").map(Number);
+    }
+
+    // 3) Generate 1-hour slots for visible window
     const allSlots = [];
     for (let hour = startHour; hour < endHour; hour++) {
       const h = hour.toString().padStart(2, '0');
       allSlots.push(`${h}:00`);
-      allSlots.push(`${h}:30`);
     }
 
-    // Fetch bookings on that date for this kitchen
+    // 4) Fetch only confirmed bookings to block (exclusivity per slot)
     const bookingsResult = await pool.query(`
       SELECT start_time, end_time 
       FROM kitchen_bookings
       WHERE kitchen_id = $1 
         AND DATE(booking_date) = DATE($2::timestamp)
-        AND status != 'cancelled'
+        AND status = 'confirmed'
     `, [kitchenId, bookingDate.toISOString()]);
 
-    // Count overlaps per 30-min slot
+    // Capacity per slot is ALWAYS 1 (only one chef per slot)
+    const capacity = 1;
+
+    // Count overlaps per 1-hour slot
     const slotBookingCounts = new Map();
     allSlots.forEach(s => slotBookingCounts.set(s, 0));
 
@@ -11426,9 +11426,10 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
       const endTotal = endH * 60 + endM;
 
       for (const slot of allSlots) {
-        const [slotH, slotM] = slot.split(':').map(Number);
-        const slotTotal = slotH * 60 + slotM;
-        if (slotTotal >= startTotal && slotTotal < endTotal) {
+        const [slotH] = slot.split(':').map(Number);
+        const slotStart = slotH * 60; // hour-aligned
+        const slotEnd = slotStart + 60;
+        if (slotStart < endTotal && slotEnd > startTotal) {
           slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
         }
       }
@@ -11451,120 +11452,51 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
   }
 });
 
-// Get available time slots for a kitchen on a specific date
-app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+// Per-kitchen policy: max slots per chef per day
+app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
   try {
     const kitchenId = parseInt(req.params.kitchenId);
     const { date } = req.query;
-    const bookingDate = date ? new Date(date) : new Date();
-    
-    if (!pool) {
-      return res.status(500).json({ error: "Database not available" });
-    }
-    
-    // Get availability for the day of week
-    const dayOfWeek = bookingDate.getDay();
-    const availabilityResult = await pool.query(`
-      SELECT * FROM kitchen_availability 
-      WHERE kitchen_id = $1 AND day_of_week = $2 AND is_available = true
-    `, [kitchenId, dayOfWeek]);
-    
-    if (availabilityResult.rows.length === 0) {
-      return res.json([]);
-    }
-    
-    const availability = availabilityResult.rows[0];
-    const [startHour, startMin] = availability.start_time.split(':').map(Number);
-    const [endHour, endMin] = availability.end_time.split(':').map(Number);
-    
-    // Generate available time slots
-    const slots = [];
-    for (let hour = startHour; hour < endHour; hour++) {
-      slots.push(`${hour.toString().padStart(2, '0')}:00`);
-    }
-    
-    // Get existing bookings for this date to filter them out
-    const bookingsResult = await pool.query(`
-      SELECT start_time, end_time FROM kitchen_bookings
-      WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
-      AND status != 'cancelled'
-    `, [kitchenId, bookingDate.toISOString()]);
-    
-    // Filter out booked slots
-    const bookedSlots = new Set();
-    bookingsResult.rows.forEach(booking => {
-      const [startH] = booking.start_time.split(':').map(Number);
-      const [endH] = booking.end_time.split(':').map(Number);
-      for (let h = startH; h < endH; h++) {
-        bookedSlots.add(`${h.toString().padStart(2, '0')}:00`);
+    const bookingDate = date ? new Date(String(date)) : new Date();
+
+    if (!pool) return res.json({ maxSlotsPerChef: 2 });
+
+    // Try override first
+    let maxSlotsPerChef = 2;
+    try {
+      const over = await pool.query(`
+        SELECT max_slots_per_chef
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1 AND DATE(specific_date) = DATE($2::timestamp)
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [kitchenId, bookingDate.toISOString()]);
+      if (over.rows.length > 0) {
+        const val = Number(over.rows[0].max_slots_per_chef);
+        if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+      } else {
+        const avail = await pool.query(`
+          SELECT max_slots_per_chef
+          FROM kitchen_availability
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, bookingDate.getDay()]);
+        if (avail.rows.length > 0) {
+          const v = Number(avail.rows[0].max_slots_per_chef);
+          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+        }
       }
-    });
-    
-    const availableSlots = slots.filter(slot => !bookedSlots.has(slot));
-    res.json(availableSlots);
+    } catch (_e) {
+      // Columns might not exist yet; fallback
+      maxSlotsPerChef = 2;
+    }
+
+    res.json({ maxSlotsPerChef });
   } catch (error) {
-    console.error("Error fetching available slots:", error);
-    res.status(500).json({ error: "Failed to fetch available slots" });
-  }
-});
-// Get available time slots for a kitchen on a specific date
-app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
-  try {
-    const kitchenId = parseInt(req.params.kitchenId);
-    const { date } = req.query;
-    const bookingDate = date ? new Date(date) : new Date();
-    
-    if (!pool) {
-      return res.status(500).json({ error: "Database not available" });
-    }
-    
-    // Get availability for the day of week
-    const dayOfWeek = bookingDate.getDay();
-    const availabilityResult = await pool.query(`
-      SELECT * FROM kitchen_availability 
-      WHERE kitchen_id = $1 AND day_of_week = $2 AND is_available = true
-    `, [kitchenId, dayOfWeek]);
-    
-    if (availabilityResult.rows.length === 0) {
-      return res.json([]);
-    }
-    
-    const availability = availabilityResult.rows[0];
-    const [startHour, startMin] = availability.start_time.split(':').map(Number);
-    const [endHour, endMin] = availability.end_time.split(':').map(Number);
-    
-    // Generate available time slots
-    const slots = [];
-    for (let hour = startHour; hour < endHour; hour++) {
-      slots.push(`${hour.toString().padStart(2, '0')}:00`);
-    }
-    
-    // Get existing bookings for this date to filter them out
-    const bookingsResult = await pool.query(`
-      SELECT start_time, end_time FROM kitchen_bookings
-      WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
-      AND status != 'cancelled'
-    `, [kitchenId, bookingDate.toISOString()]);
-    
-    // Filter out booked slots
-    const bookedSlots = new Set();
-    bookingsResult.rows.forEach(booking => {
-      const [startH] = booking.start_time.split(':').map(Number);
-      const [endH] = booking.end_time.split(':').map(Number);
-      for (let h = startH; h < endH; h++) {
-        bookedSlots.add(`${h.toString().padStart(2, '0')}:00`);
-      }
-    });
-    
-    const availableSlots = slots.filter(slot => !bookedSlots.has(slot));
-    res.json(availableSlots);
-  } catch (error) {
-    console.error("Error fetching available slots:", error);
-    res.status(500).json({ error: "Failed to fetch available slots" });
+    res.status(500).json({ error: "Failed to fetch policy" });
   }
 });
 
-// Create a booking
+// Create a booking (enforce per-chef daily slot limit)
 app.post("/api/chef/bookings", requireChef, async (req, res) => {
   try {
     const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
@@ -11572,8 +11504,63 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
     }
-    
-    // Check for conflicts
+
+    // Determine slots requested (1-hour slots)
+    const [sH, sM] = String(startTime).split(':').map(Number);
+    const [eH, eM] = String(endTime).split(':').map(Number);
+    const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
+
+    // Find maxSlotsPerChef for this kitchen/date
+    let maxSlotsPerChef = 2;
+    try {
+      const over = await pool.query(`
+        SELECT max_slots_per_chef
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1 AND DATE(specific_date) = DATE($2::timestamp)
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [kitchenId, bookingDate]);
+      if (over.rows.length > 0) {
+        const val = Number(over.rows[0].max_slots_per_chef);
+        if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+      } else {
+        const avail = await pool.query(`
+          SELECT max_slots_per_chef
+          FROM kitchen_availability
+          WHERE kitchen_id = $1 AND day_of_week = EXTRACT(DOW FROM $2::timestamp)
+        `, [kitchenId, bookingDate]);
+        if (avail.rows.length > 0) {
+          const v = Number(avail.rows[0].max_slots_per_chef);
+          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+        }
+      }
+    } catch (_e) {
+      maxSlotsPerChef = 2;
+    }
+
+    // Count already booked slots for this chef on this date (confirmed + pending)
+    const existing = await pool.query(`
+      SELECT start_time, end_time
+      FROM kitchen_bookings
+      WHERE chef_id = $1
+        AND kitchen_id = $2
+        AND DATE(booking_date) = DATE($3::timestamp)
+        AND status IN ('pending','confirmed')
+    `, [req.user.id, kitchenId, bookingDate]);
+
+    let existingSlots = 0;
+    for (const b of existing.rows) {
+      const [bsH, bsM] = b.start_time.split(':').map(Number);
+      const [beH, beM] = b.end_time.split(':').map(Number);
+      const span = Math.max(1, Math.ceil(((beH * 60 + beM) - (bsH * 60 + bsM)) / 60));
+      existingSlots += span;
+    }
+
+    if (existingSlots + requestedSlots > maxSlotsPerChef) {
+      return res.status(400).json({ error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` });
+    }
+
+    // Check for conflicts (exclusive per slot)
     const conflictCheck = await pool.query(`
       SELECT id FROM kitchen_bookings
       WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
@@ -11585,7 +11572,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       return res.status(409).json({ error: "Time slot is not available" });
     }
     
-    // Create booking
+    // Create booking (pending)
     const result = await pool.query(`
       INSERT INTO kitchen_bookings (chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status)
       VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending')
@@ -11783,7 +11770,6 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
     res.status(500).json({ error: error.message || "Failed to create date override" });
   }
 });
-
 // Update date override
 app.put("/api/manager/date-overrides/:id", async (req, res) => {
   try {
