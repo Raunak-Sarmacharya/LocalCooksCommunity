@@ -88,7 +88,20 @@ export function useKitchenBookings() {
       console.log('✅ Received kitchens data:', data);
       console.log('✅ Number of kitchens:', Array.isArray(data) ? data.length : 'Not an array');
       
-      return data;
+      // Normalize: ensure location object exists using flattened fields if needed
+      const normalized = (Array.isArray(data) ? data : []).map((k: any) => {
+        const location = k.location || ((k.locationName || k.locationAddress) ? {
+          id: k.locationId ?? k.location_id,
+          name: k.locationName ?? k.location_name,
+          address: k.locationAddress ?? k.location_address,
+        } : undefined);
+        return {
+          ...k,
+          location,
+        };
+      });
+      
+      return normalized;
     },
   });
 

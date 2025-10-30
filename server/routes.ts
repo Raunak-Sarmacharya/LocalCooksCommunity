@@ -3746,17 +3746,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch all users with manager role
-      const { pool } = await import('./db');
+      const { pool, db } = await import('./db');
       if (pool) {
         const result = await pool.query(
           'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
           ['manager']
         );
         return res.json(result.rows);
-      } else {
-        // Fallback for in-memory storage
-        // For in-memory storage fallback, return empty array
-        // Managers should be fetched through database in production
+      }
+      // Fallback to Drizzle if pool is not available
+      try {
+        const { users } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        const rows = await db
+          .select({ id: users.id, username: users.username, role: users.role })
+          .from(users)
+          .where(eq(users.role as any, 'manager'));
+        return res.json(rows);
+      } catch (e) {
+        console.error('❌ Fallback Drizzle query for managers failed:', e);
         return res.json([]);
       }
     } catch (error: any) {
