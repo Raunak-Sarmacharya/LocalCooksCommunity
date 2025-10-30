@@ -180,19 +180,37 @@ export default function KitchenAvailabilityManagement() {
     queryFn: async () => {
       if (!selectedKitchenId) return [];
       const headers = await getAuthHeaders();
+      console.log(`🔍 Fetching bookings for kitchen ${selectedKitchenId}`);
+      
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/bookings`, {
         headers,
         credentials: "include",
       });
+      
+      console.log(`📡 Bookings API response status: ${response.status}`);
+      
       if (!response.ok) {
+        // If 404, it might mean no bookings exist - that's OK
+        if (response.status === 404) {
+          console.log('No bookings endpoint or no bookings found - returning empty array');
+          return [];
+        }
         const errorData = await response.json().catch(() => ({}));
+        console.error('❌ Bookings API error:', errorData);
         throw new Error(errorData.message || errorData.error || 'Failed to fetch bookings');
       }
-      return response.json();
+      
+      const data = await response.json();
+      console.log(`✅ Loaded ${Array.isArray(data) ? data.length : 0} bookings`);
+      return data;
     },
     enabled: !!selectedKitchenId,
     staleTime: 10000, // Consider data fresh for 10 seconds
     retry: 2, // Retry failed requests twice
+    // Don't throw error on empty results
+    onError: (error) => {
+      console.error('Error loading bookings:', error);
+    },
   });
 
   // Create date availability mutation
