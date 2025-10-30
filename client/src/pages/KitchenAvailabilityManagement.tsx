@@ -83,7 +83,11 @@ function getCalendarDays(year: number, month: number) {
   return days;
 }
 
-export default function KitchenAvailabilityManagement() {
+interface KitchenAvailabilityManagementProps {
+  embedded?: boolean;
+}
+
+export default function KitchenAvailabilityManagement({ embedded = false }: KitchenAvailabilityManagementProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
@@ -544,11 +548,9 @@ export default function KitchenAvailabilityManagement() {
   const calendarDays = selectedKitchenId ? getCalendarDays(currentYear, currentMonth) : [];
   const isCurrentMonth = (date: Date) => date.getMonth() === currentMonth;
 
-  return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <ManagerHeader />
-      <main className="flex-1 pt-24 pb-8">
-        <div className="container mx-auto px-4 py-6 max-w-7xl">
+  const content = (
+    <main className={embedded ? "flex-1 py-6" : "flex-1 pt-24 pb-8"}>
+      <div className={embedded ? "px-4 py-6" : "container mx-auto px-4 py-6 max-w-7xl"}>
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900">Kitchen Availability Calendar</h1>
@@ -1142,6 +1144,16 @@ export default function KitchenAvailabilityManagement() {
           )}
         </div>
       </main>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <ManagerHeader />
+      {content}
       <Footer />
     </div>
   );
