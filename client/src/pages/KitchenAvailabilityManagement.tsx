@@ -127,7 +127,10 @@ export default function KitchenAvailabilityManagement() {
   // Load kitchens when location is selected
   useEffect(() => {
     if (selectedLocationId) {
-      fetch(`/api/manager/kitchens/${selectedLocationId}`, { credentials: "include" })
+      (async () => {
+        const headers = await getAuthHeaders();
+        return fetch(`/api/manager/kitchens/${selectedLocationId}`, { credentials: "include", headers });
+      })()
         .then(res => res.json())
         .then(data => {
           setKitchens(data);

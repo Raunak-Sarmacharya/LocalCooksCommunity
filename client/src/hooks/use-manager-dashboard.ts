@@ -42,12 +42,25 @@ interface Booking {
 }
 
 export function useManagerDashboard() {
+  const getAuthHeaders = async (): Promise<HeadersInit> => {
+    const token = localStorage.getItem('firebaseToken');
+    if (token) {
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+    }
+    return { 'Content-Type': 'application/json' };
+  };
+
   // Get manager's locations
   const locationsQuery = useQuery<Location[]>({
     queryKey: ["/api/manager/locations"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/manager/locations", {
         credentials: "include",
+        headers,
       });
       if (!response.ok) throw new Error("Failed to fetch locations");
       return response.json();
@@ -56,8 +69,10 @@ export function useManagerDashboard() {
 
   // Get kitchens for a location
   const getKitchensForLocation = async (locationId: number) => {
+    const headers = await getAuthHeaders();
     const response = await fetch(`/api/manager/kitchens/${locationId}`, {
       credentials: "include",
+      headers,
     });
     if (!response.ok) throw new Error("Failed to fetch kitchens");
     return response.json();
@@ -83,8 +98,10 @@ export function useManagerDashboard() {
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/manager/bookings"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/manager/bookings", {
         credentials: "include",
+        headers,
       });
       if (!response.ok) throw new Error("Failed to fetch bookings");
       return response.json();
@@ -93,8 +110,10 @@ export function useManagerDashboard() {
 
   // Get kitchen availability
   const getKitchenAvailability = async (kitchenId: number) => {
+    const headers = await getAuthHeaders();
     const response = await fetch(`/api/manager/availability/${kitchenId}`, {
       credentials: "include",
+      headers,
     });
     if (!response.ok) throw new Error("Failed to fetch availability");
     return response.json();
@@ -108,9 +127,10 @@ export function useManagerDashboard() {
     endTime: string,
     isAvailable: boolean
   ) => {
+    const headers = await getAuthHeaders();
     const response = await fetch("/api/manager/availability", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       credentials: "include",
       body: JSON.stringify({
         kitchenId,
