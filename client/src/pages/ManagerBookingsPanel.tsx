@@ -38,7 +38,7 @@ export default function ManagerBookingsPanel() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Fetch all bookings for this manager
+  // Fetch all bookings for this manager with real-time polling
   const { data: bookings = [], isLoading } = useQuery({
     queryKey: ['managerBookings'],
     queryFn: async () => {
@@ -52,7 +52,36 @@ export default function ManagerBookingsPanel() {
       }
       return response.json();
     },
-    staleTime: 10000,
+    // Real-time polling - check frequently for new bookings or changes
+    refetchInterval: (data) => {
+      if (!data || !Array.isArray(data)) return 10000; // 10 seconds if no data
+
+      // Check if there are pending bookings (need manager attention)
+      const hasPendingBookings = data.some((b: Booking) => b.status === "pending");
+
+      // Check if there are upcoming bookings (chefs might cancel)
+      const hasUpcomingBookings = data.some((b: Booking) => {
+        const bookingDate = new Date(b.bookingDate);
+        return bookingDate >= new Date();
+      });
+
+      if (hasPendingBookings) {
+        // Very frequent updates when bookings need review
+        return 5000; // 5 seconds
+      } else if (hasUpcomingBookings) {
+        // Moderate frequency for upcoming bookings
+        return 15000; // 15 seconds
+      } else {
+        // Less frequent when no active bookings
+        return 30000; // 30 seconds
+      }
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    staleTime: 0,
+    gcTime: 10000,
   });
 
   // Update booking status mutation
