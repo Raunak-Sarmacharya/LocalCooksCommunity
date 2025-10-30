@@ -576,11 +576,6 @@ export class FirebaseStorage {
       // Get all users (managers)
       const allUsers = await db.select().from(users);
       
-      console.log('🏢 Found', allLocations.length, 'locations in DB');
-      if (allLocations.length > 0) {
-        console.log('Sample location:', allLocations[0]);
-      }
-      
       // Combine the data
       const kitchensWithDetails = allKitchens.map(kitchen => {
         // Handle both camelCase and snake_case just in case
@@ -589,8 +584,6 @@ export class FirebaseStorage {
           const locId = (loc as any).id;
           return locId === kitchenLocationId;
         });
-        
-        console.log(`🔍 Kitchen ${kitchen.id} (${kitchen.name}) -> locationId: ${kitchenLocationId}, found location:`, location ? 'YES' : 'NO');
         
         const managerId = location ? ((location as any).managerId ?? (location as any).manager_id) : undefined;
         const manager = managerId ? allUsers.find(user => (user as any).id === managerId) : null;
@@ -620,7 +613,7 @@ export class FirebaseStorage {
       
       return kitchensWithDetails;
     } catch (error) {
-      console.error('❌ Error getting kitchens with location and manager:', error);
+      console.error('Error getting kitchens with location and manager:', error);
       throw error;
     }
   }
@@ -782,17 +775,25 @@ export class FirebaseStorage {
       const targetDate = new Date(date);
       targetDate.setHours(0, 0, 0, 0);
       
+      console.log(`🔍 Looking for date override - kitchen: ${kitchenId}, target date: ${targetDate.toISOString()}`);
+      
       const allOverrides = await db
         .select()
         .from(kitchenDateOverrides)
         .where(eq(kitchenDateOverrides.kitchenId, kitchenId));
       
+      console.log(`   Found ${allOverrides.length} total overrides for kitchen ${kitchenId}`);
+      
       // Find override for the specific date
       const override = allOverrides.find(o => {
         const overrideDate = new Date(o.specificDate);
         overrideDate.setHours(0, 0, 0, 0);
-        return overrideDate.getTime() === targetDate.getTime();
+        const matches = overrideDate.getTime() === targetDate.getTime();
+        console.log(`   Comparing ${overrideDate.toISOString()} === ${targetDate.toISOString()}: ${matches}`);
+        return matches;
       });
+      
+      console.log(`   Result:`, override ? `FOUND override ID ${override.id}` : 'NO MATCH');
       
       return override;
     } catch (error) {
@@ -1009,8 +1010,20 @@ export class FirebaseStorage {
 
   async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
     try {
+      console.log(`🕐 Getting slots for kitchen ${kitchenId}, date: ${date.toISOString()}`);
+      
       // First check if there's a date-specific override
       const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
+      
+      console.log(`📅 Date override found:`, dateOverride ? 'YES' : 'NO');
+      if (dateOverride) {
+        console.log(`   Override details:`, {
+          isAvailable: dateOverride.isAvailable,
+          startTime: dateOverride.startTime,
+          endTime: dateOverride.endTime,
+          reason: dateOverride.reason
+        });
+      }
       
       let startHour: number;
       let endHour: number;
@@ -1018,14 +1031,17 @@ export class FirebaseStorage {
       if (dateOverride) {
         // If there's an override and it's closed, return empty slots
         if (!dateOverride.isAvailable) {
+          console.log(`❌ Kitchen closed on this date (override)`);
           return [];
         }
         // If override is available with custom hours, use those
         if (dateOverride.startTime && dateOverride.endTime) {
           startHour = parseInt(dateOverride.startTime.split(':')[0]);
           endHour = parseInt(dateOverride.endTime.split(':')[0]);
+          console.log(`✅ Using override hours: ${startHour}:00 - ${endHour}:00`);
         } else {
           // Override says available but no times specified - shouldn't happen, return empty
+          console.log(`⚠️ Override says available but no times specified`);
           return [];
         }
       } else {
@@ -1033,14 +1049,18 @@ export class FirebaseStorage {
         const dayOfWeek = date.getDay();
         const availability = await this.getKitchenAvailability(kitchenId);
         
+        console.log(`📆 No override, checking weekly schedule for day ${dayOfWeek}`);
+        
         const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
         
         if (!dayAvailability || !dayAvailability.isAvailable) {
+          console.log(`❌ Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
           return [];
         }
 
         startHour = parseInt(dayAvailability.startTime.split(':')[0]);
         endHour = parseInt(dayAvailability.endTime.split(':')[0]);
+        console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00`);
       }
       
       // Generate 30-minute interval slots (like standard booking platforms)
