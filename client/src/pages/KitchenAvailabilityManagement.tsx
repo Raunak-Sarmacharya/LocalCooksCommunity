@@ -335,12 +335,21 @@ export default function KitchenAvailabilityManagement() {
     }
   };
 
-  const getAvailabilityForDate = (date: Date | null): DateAvailability | undefined => {
-    if (!date) return undefined;
+  const getAvailabilityForDate = (date: Date | null): DateAvailability[] => {
+    if (!date) return [];
     const dateStr = date.toISOString().split('T')[0];
-    return (dateAvailability as DateAvailability[]).find((avail: DateAvailability) => {
-      const availDateStr = new Date(avail.specificDate).toISOString().split('T')[0];
-      return availDateStr === dateStr;
+    return (dateAvailability as DateAvailability[]).filter((avail: DateAvailability) => {
+      try {
+        // Handle both ISO strings and date objects
+        const availDate = typeof avail.specificDate === 'string' 
+          ? new Date(avail.specificDate) 
+          : avail.specificDate;
+        const availDateStr = availDate.toISOString().split('T')[0];
+        return availDateStr === dateStr;
+      } catch (e) {
+        console.error('Error parsing date:', avail.specificDate, e);
+        return false;
+      }
     });
   };
 
@@ -356,14 +365,25 @@ export default function KitchenAvailabilityManagement() {
   const handleDateClick = (date: Date | null) => {
     if (!date) return;
     setSelectedDate(date);
-    const existing = getAvailabilityForDate(date);
+    const existingOverrides = getAvailabilityForDate(date);
     
-    if (existing) {
+    // If there's a full-day override (no time specified), use it
+    const fullDayOverride = existingOverrides.find(o => !o.startTime && !o.endTime);
+    
+    if (fullDayOverride) {
       setFormData({
-        startTime: existing.startTime || "09:00",
-        endTime: existing.endTime || "17:00",
-        isAvailable: existing.isAvailable,
-        reason: existing.reason || "",
+        startTime: "09:00",
+        endTime: "17:00",
+        isAvailable: fullDayOverride.isAvailable,
+        reason: fullDayOverride.reason || "",
+      });
+    } else if (existingOverrides.length > 0) {
+      // Use first override if exists
+      setFormData({
+        startTime: existingOverrides[0].startTime || "09:00",
+        endTime: existingOverrides[0].endTime || "17:00",
+        isAvailable: existingOverrides[0].isAvailable,
+        reason: existingOverrides[0].reason || "",
       });
     } else {
       resetForm();
@@ -412,9 +432,10 @@ export default function KitchenAvailabilityManagement() {
     }
 
     const dateStr = selectedDate.toISOString().split('T')[0];
-    const existing = getAvailabilityForDate(selectedDate);
+    const existingOverrides = getAvailabilityForDate(selectedDate);
+    const existing = existingOverrides.length > 0 ? existingOverrides[0] : null;
 
-    if (existing) {
+    if (existing && existing.id) {
       // Update existing
       updateAvailability.mutate({
         id: existing.id,
@@ -439,9 +460,14 @@ export default function KitchenAvailabilityManagement() {
 
   const handleDeleteAvailability = () => {
     if (!selectedDate) return;
-    const existing = getAvailabilityForDate(selectedDate);
-    if (existing?.id && window.confirm("Remove availability for this date?")) {
-      deleteAvailability.mutate(existing.id);
+    const existingOverrides = getAvailabilityForDate(selectedDate);
+    if (existingOverrides.length > 0 && window.confirm(`Remove ${existingOverrides.length} override(s) for this date?`)) {
+      // Delete all overrides for this date
+      existingOverrides.forEach(override => {
+        if (override.id) {
+          deleteAvailability.mutate(override.id);
+        }
+      });
       setShowEditModal(false);
     }
   };
@@ -616,7 +642,7 @@ export default function KitchenAvailabilityManagement() {
                           <div className="grid grid-cols-7 gap-2">
                             {calendarDays.map((date, index) => {
                               if (!date) return null;
-                              const availability = getAvailabilityForDate(date);
+                              const availabilityOverrides = getAvailabilityForDate(date);
                               const bookings = getBookingsForDate(date);
                               const hasBookings = bookings.length > 0;
                               const isCurrent = isCurrentMonth(date);
@@ -627,14 +653,16 @@ export default function KitchenAvailabilityManagement() {
                               let borderColor = 'border-gray-200';
                               let textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
 
-                              if (availability) {
-                                if (availability.isAvailable) {
-                                  bgColor = 'bg-green-50 hover:bg-green-100 border-green-300';
-                                  borderColor = 'border-green-300';
-                                } else {
-                                  bgColor = 'bg-red-50 hover:bg-red-100 border-red-300';
-                                  borderColor = 'border-red-300';
-                                }
+                              // Check if any override makes it unavailable
+                              const hasClosedOverride = availabilityOverrides.some(a => !a.isAvailable);
+                              const hasCustomHours = availabilityOverrides.some(a => a.isAvailable && a.startTime && a.endTime);
+
+                              if (hasClosedOverride) {
+                                bgColor = 'bg-red-50 hover:bg-red-100 border-red-300';
+                                borderColor = 'border-red-300';
+                              } else if (hasCustomHours || availabilityOverrides.length > 0) {
+                                bgColor = 'bg-green-50 hover:bg-green-100 border-green-300';
+                                borderColor = 'border-green-300';
                               }
 
                               if (isToday) {
@@ -658,11 +686,15 @@ export default function KitchenAvailabilityManagement() {
                                   </div>
                                   {isCurrent && (
                                     <>
-                                      {availability && (
+                                      {availabilityOverrides.length > 0 && (
                                         <div className="text-xs mt-1 truncate">
-                                          {availability.isAvailable && availability.startTime && availability.endTime ? (
+                                          {availabilityOverrides.length > 1 ? (
+                                            <span className="text-orange-700 font-medium">
+                                              {availabilityOverrides.length} blocks
+                                            </span>
+                                          ) : availabilityOverrides[0].isAvailable && availabilityOverrides[0].startTime && availabilityOverrides[0].endTime ? (
                                             <span className="text-green-700 font-medium">
-                                              {availability.startTime.slice(0, 5)}
+                                              {availabilityOverrides[0].startTime.slice(0, 5)}
                                             </span>
                                           ) : (
                                             <span className="text-red-700 font-medium">Closed</span>

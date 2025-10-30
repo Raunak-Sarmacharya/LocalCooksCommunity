@@ -11606,12 +11606,15 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
       return res.status(400).json({ error: "Date is required" });
     }
 
-    // Insert into database
+    // Insert into database - ensure date is properly formatted
+    const dateObj = new Date(specificDate);
+    const formattedDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
+    
     const result = await pool.query(`
       INSERT INTO kitchen_date_overrides (kitchen_id, specific_date, start_time, end_time, is_available, reason)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2::date, $3, $4, $5, $6)
       RETURNING *
-    `, [kitchenId, specificDate, startTime, endTime, isAvailable, reason]);
+    `, [kitchenId, formattedDate, startTime, endTime, isAvailable, reason]);
 
     res.json(result.rows[0]);
   } catch (error) {
