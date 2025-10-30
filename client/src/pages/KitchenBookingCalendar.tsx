@@ -52,13 +52,12 @@ export default function KitchenBookingCalendar() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
-  // Step 3: Time Slot Selection
+  // Step 3: Time Slot Selection (Multi-select, max 2 slots)
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   
   // Step 4: Booking Details
-  const [endTime, setEndTime] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [showBookingModal, setShowBookingModal] = useState(false);
 
@@ -101,7 +100,7 @@ export default function KitchenBookingCalendar() {
   const handleKitchenSelect = (kitchen: any) => {
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
-    setSelectedSlot(null);
+    setSelectedSlots([]);
     setAvailableSlots([]);
     setShowBookingModal(false);
   };
@@ -111,28 +110,74 @@ export default function KitchenBookingCalendar() {
     if (date.getMonth() !== currentMonth) return; // Only current month
     
     setSelectedDate(date);
-    setSelectedSlot(null);
+    setSelectedSlots([]);
     setShowBookingModal(false);
   };
 
   const handleSlotClick = (slot: string) => {
-    setSelectedSlot(slot);
-    setEndTime("");
-    setNotes("");
-    setShowBookingModal(true);
+    setSelectedSlots(prev => {
+      if (prev.includes(slot)) {
+        // Deselect if already selected
+        return prev.filter(s => s !== slot);
+      } else if (prev.length < 2) {
+        // Select if less than 2 selected
+        return [...prev, slot].sort();
+      } else {
+        // Max 2 slots reached
+        toast({
+          title: "Maximum slots reached",
+          description: "You can only select up to 2 time slots per booking.",
+          variant: "destructive",
+        });
+        return prev;
+      }
+    });
   };
 
   const handleBookingSubmit = async () => {
-    if (!selectedKitchen || !selectedDate || !selectedSlot || !endTime) return;
+    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
-    // Validate end time is after start time
-    if (endTime <= selectedSlot) {
-      toast({
-        title: "Invalid Time Range",
-        description: "End time must be after start time.",
-        variant: "destructive",
-      });
-      return;
+    // Calculate start and end time from selected slots
+    const sortedSlots = [...selectedSlots].sort();
+    const startTime = sortedSlots[0];
+    
+    // Calculate end time based on number of slots
+    let endTime: string;
+    if (sortedSlots.length === 1) {
+      // Single slot = 30 minutes
+      const [hours, mins] = startTime.split(':').map(Number);
+      const totalMins = hours * 60 + mins + 30;
+      const endHours = Math.floor(totalMins / 60);
+      const endMins = totalMins % 60;
+      endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+    } else {
+      // Two slots - check if consecutive or not
+      const [h1, m1] = sortedSlots[0].split(':').map(Number);
+      const [h2, m2] = sortedSlots[1].split(':').map(Number);
+      const slot1Mins = h1 * 60 + m1;
+      const slot2Mins = h2 * 60 + m2;
+      
+      if (slot2Mins === slot1Mins + 30) {
+        // Consecutive slots = 1 hour block
+        endTime = sortedSlots[1].split(':').map((v, i) => {
+          if (i === 1) return (parseInt(v) + 30 >= 60) ? '00' : (parseInt(v) + 30).toString().padStart(2, '0');
+          return (parseInt(v) + (parseInt(sortedSlots[1].split(':')[1]) + 30 >= 60 ? 1 : 0)).toString().padStart(2, '0');
+        }).join(':');
+        const [hours, mins] = sortedSlots[1].split(':').map(Number);
+        const totalMins = hours * 60 + mins + 30;
+        const endHours = Math.floor(totalMins / 60);
+        const endMins = totalMins % 60;
+        endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+      } else {
+        // Non-consecutive slots - we need to create separate bookings
+        // For now, show error and ask to select consecutive slots
+        toast({
+          title: "Select Consecutive Slots",
+          description: "Please select consecutive time slots (e.g., 9:00 and 9:30) for your booking.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const bookingDate = new Date(selectedDate);
@@ -142,7 +187,7 @@ export default function KitchenBookingCalendar() {
       {
         kitchenId: selectedKitchen.id,
         bookingDate: bookingDate.toISOString(),
-        startTime: selectedSlot,
+        startTime,
         endTime,
         specialNotes: notes,
       },
@@ -150,11 +195,10 @@ export default function KitchenBookingCalendar() {
         onSuccess: () => {
           toast({
             title: "Booking Created!",
-            description: "Your kitchen booking request has been submitted successfully.",
+            description: `Your ${selectedSlots.length === 1 ? '30-minute' : '1-hour'} kitchen booking has been submitted successfully.`,
           });
           setShowBookingModal(false);
-          setSelectedSlot(null);
-          setEndTime("");
+          setSelectedSlots([]);
           setNotes("");
           // Reload available slots
           if (selectedDate) {
@@ -189,7 +233,7 @@ export default function KitchenBookingCalendar() {
       }
     }
     setSelectedDate(null);
-    setSelectedSlot(null);
+    setSelectedSlots([]);
   };
 
   const formatTime = (timeString: string) => {
@@ -466,15 +510,29 @@ export default function KitchenBookingCalendar() {
                     {/* Step 3: Time Slot Selection */}
                     {selectedDate && (
                       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center gap-2 mb-6">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-semibold">3</div>
-                          <h2 className="text-xl font-bold text-gray-900">Select Time</h2>
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-semibold">3</div>
+                            <h2 className="text-xl font-bold text-gray-900">Select Time Slots</h2>
+                          </div>
+                          {selectedSlots.length > 0 && (
+                            <button
+                              onClick={() => setShowBookingModal(true)}
+                              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center gap-2"
+                            >
+                              Continue
+                              <Check className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
 
-                        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600">
-                            <CalendarIcon className="inline h-4 w-4 mr-1" />
-                            {formatDate(selectedDate)}
+                        <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                          <p className="text-sm text-gray-700 mb-2">
+                            <CalendarIcon className="inline h-4 w-4 mr-1 text-blue-600" />
+                            <span className="font-semibold">{formatDate(selectedDate)}</span>
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            💡 Select up to 2 consecutive time slots (30 min each) for your booking
                           </p>
                         </div>
 
@@ -492,24 +550,55 @@ export default function KitchenBookingCalendar() {
                             </p>
                           </div>
                         ) : (
-                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                            {availableSlots.map((slot) => (
-                              <button
-                                key={slot}
-                                onClick={() => handleSlotClick(slot)}
-                                className={`
-                                  p-3 border-2 rounded-lg transition-all font-medium
-                                  ${selectedSlot === slot
-                                    ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                    : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700'
-                                  }
-                                `}
-                              >
-                                <Clock className="inline h-4 w-4 mr-1" />
-                                {formatTime(slot)}
-                              </button>
-                            ))}
-                          </div>
+                          <>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                              {availableSlots.map((slot) => {
+                                const isSelected = selectedSlots.includes(slot);
+                                return (
+                                  <button
+                                    key={slot}
+                                    onClick={() => handleSlotClick(slot)}
+                                    className={`
+                                      relative p-4 border-2 rounded-xl transition-all font-medium text-center
+                                      ${isSelected
+                                        ? 'border-blue-600 bg-blue-600 text-white shadow-lg scale-105'
+                                        : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700 hover:scale-102'
+                                      }
+                                    `}
+                                  >
+                                    <Clock className="inline h-4 w-4 mr-1" />
+                                    <span className="text-lg">{formatTime(slot)}</span>
+                                    {isSelected && (
+                                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                        <Check className="h-4 w-4 text-white" />
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            
+                            {selectedSlots.length > 0 && (
+                              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium text-green-900">
+                                      {selectedSlots.length} slot{selectedSlots.length > 1 ? 's' : ''} selected
+                                    </p>
+                                    <p className="text-xs text-green-700 mt-1">
+                                      Duration: {selectedSlots.length === 1 ? '30 minutes' : '1 hour'}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => setSelectedSlots([])}
+                                    className="text-sm text-green-700 hover:text-green-900 font-medium underline"
+                                  >
+                                    Clear Selection
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
@@ -583,7 +672,7 @@ export default function KitchenBookingCalendar() {
         </div>
 
         {/* Booking Modal */}
-        {showBookingModal && selectedKitchen && selectedDate && selectedSlot && (
+        {showBookingModal && selectedKitchen && selectedDate && selectedSlots.length > 0 && (
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
             onClick={(e) => {
@@ -594,7 +683,7 @@ export default function KitchenBookingCalendar() {
           >
             <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Complete Booking</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Confirm Your Booking</h2>
                 <button
                   onClick={() => setShowBookingModal(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -606,39 +695,47 @@ export default function KitchenBookingCalendar() {
 
               <div className="space-y-4">
                 {/* Kitchen */}
-                <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                   <p className="text-xs text-gray-600 mb-1">Kitchen</p>
-                  <p className="font-medium text-gray-900">{selectedKitchen.name}</p>
+                  <p className="font-semibold text-gray-900 text-lg">{selectedKitchen.name}</p>
+                  {(selectedKitchen.location?.name || selectedKitchen.locationName) && (
+                    <p className="text-xs text-gray-600 mt-1">
+                      📍 {selectedKitchen.location?.name || selectedKitchen.locationName}
+                    </p>
+                  )}
                 </div>
 
-                {/* Date & Start Time */}
+                {/* Date & Time */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs text-gray-600 mb-1">Date</p>
                     <p className="font-medium text-gray-900">
-                      {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </p>
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-600 mb-1">Start Time</p>
-                    <p className="font-medium text-gray-900">{formatTime(selectedSlot)}</p>
+                    <p className="text-xs text-gray-600 mb-1">Duration</p>
+                    <p className="font-medium text-gray-900">
+                      {selectedSlots.length === 1 ? '30 min' : '1 hour'}
+                    </p>
                   </div>
                 </div>
 
-                {/* End Time */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    End Time <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    min={selectedSlot}
-                    required
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    step="900"
-                  />
+                {/* Time Range */}
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-xs text-gray-600 mb-2">Selected Time Slots</p>
+                  <div className="flex items-center justify-center gap-2">
+                    {selectedSlots.map((slot, idx) => (
+                      <div key={slot} className="flex items-center gap-2">
+                        <span className="px-3 py-1.5 bg-white border border-green-300 rounded-lg font-semibold text-green-800">
+                          {formatTime(slot)}
+                        </span>
+                        {idx < selectedSlots.length - 1 && (
+                          <span className="text-green-600">→</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Special Notes */}
@@ -665,11 +762,11 @@ export default function KitchenBookingCalendar() {
                     onClick={() => setShowBookingModal(false)}
                     className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
                   >
-                    Cancel
+                    Back
                   </button>
                   <button
                     onClick={handleBookingSubmit}
-                    disabled={!endTime || createBooking.isPending}
+                    disabled={createBooking.isPending}
                     className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
                   >
                     {createBooking.isPending ? (
