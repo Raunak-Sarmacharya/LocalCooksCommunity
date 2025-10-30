@@ -1008,6 +1008,112 @@ export class FirebaseStorage {
     }
   }
 
+  // New method: Get ALL time slots with booking info (for chef view)
+  async getAllTimeSlotsWithBookingInfo(kitchenId: number, date: Date): Promise<Array<{
+    time: string;
+    available: number;
+    capacity: number;
+    isFullyBooked: boolean;
+  }>> {
+    try {
+      console.log(`🕐 Getting all slots with booking info for kitchen ${kitchenId}, date: ${date.toISOString()}`);
+      
+      // First check if there's a date-specific override
+      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
+      
+      let startHour: number;
+      let endHour: number;
+      let capacity: number;
+      
+      if (dateOverride) {
+        // If there's an override and it's closed, return empty array
+        if (!dateOverride.isAvailable) {
+          console.log(`❌ Kitchen closed on this date (override)`);
+          return [];
+        }
+        // If override is available with custom hours, use those
+        if (dateOverride.startTime && dateOverride.endTime) {
+          startHour = parseInt(dateOverride.startTime.split(':')[0]);
+          endHour = parseInt(dateOverride.endTime.split(':')[0]);
+          capacity = (dateOverride as any).maxConcurrentBookings ?? (dateOverride as any).max_concurrent_bookings ?? 1;
+          console.log(`✅ Using override hours: ${startHour}:00 - ${endHour}:00, capacity: ${capacity}`);
+        } else {
+          console.log(`⚠️ Override says available but no times specified`);
+          return [];
+        }
+      } else {
+        // No override, use regular weekly schedule
+        const dayOfWeek = date.getDay();
+        const availability = await this.getKitchenAvailability(kitchenId);
+        
+        const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
+        
+        if (!dayAvailability || !dayAvailability.isAvailable) {
+          console.log(`❌ Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
+          return [];
+        }
+
+        startHour = parseInt(dayAvailability.startTime.split(':')[0]);
+        endHour = parseInt(dayAvailability.endTime.split(':')[0]);
+        capacity = (dayAvailability as any).maxConcurrentBookings ?? (dayAvailability as any).max_concurrent_bookings ?? 1;
+        console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00, capacity: ${capacity}`);
+      }
+      
+      // Generate 30-minute interval slots
+      const allSlots: string[] = [];
+      for (let hour = startHour; hour < endHour; hour++) {
+        allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+        allSlots.push(`${hour.toString().padStart(2, '0')}:30`);
+      }
+      
+      // Count bookings per slot
+      const bookings = await this.getBookingsByKitchen(kitchenId);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayBookings = bookings.filter(b => {
+        const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
+        return bookingDateStr === dateStr && b.status !== 'cancelled';
+      });
+      
+      // Count how many bookings overlap each slot
+      const slotBookingCounts = new Map<string, number>();
+      allSlots.forEach(slot => slotBookingCounts.set(slot, 0));
+      
+      dayBookings.forEach(booking => {
+        const [startHours, startMins] = booking.startTime.split(':').map(Number);
+        const [endHours, endMins] = booking.endTime.split(':').map(Number);
+        const startTotalMins = startHours * 60 + startMins;
+        const endTotalMins = endHours * 60 + endMins;
+        
+        allSlots.forEach(slot => {
+          const [slotHours, slotMins] = slot.split(':').map(Number);
+          const slotTotalMins = slotHours * 60 + slotMins;
+          
+          if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+            slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+          }
+        });
+      });
+      
+      // Build result with availability info
+      const result = allSlots.map(slot => {
+        const bookedCount = slotBookingCounts.get(slot) || 0;
+        return {
+          time: slot,
+          available: Math.max(0, capacity - bookedCount),
+          capacity,
+          isFullyBooked: bookedCount >= capacity
+        };
+      });
+      
+      console.log(`📅 Generated ${result.length} total slots`);
+      return result;
+    } catch (error) {
+      console.error('Error getting all time slots with booking info:', error);
+      throw error;
+    }
+  }
+
   async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
     try {
       console.log(`🕐 Getting slots for kitchen ${kitchenId}, date: ${date.toISOString()}`);
