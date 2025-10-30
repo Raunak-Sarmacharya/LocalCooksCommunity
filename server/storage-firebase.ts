@@ -576,6 +576,11 @@ export class FirebaseStorage {
       // Get all users (managers)
       const allUsers = await db.select().from(users);
       
+      console.log('🏢 Found', allLocations.length, 'locations in DB');
+      if (allLocations.length > 0) {
+        console.log('Sample location:', allLocations[0]);
+      }
+      
       // Combine the data
       const kitchensWithDetails = allKitchens.map(kitchen => {
         // Handle both camelCase and snake_case just in case
@@ -584,19 +589,26 @@ export class FirebaseStorage {
           const locId = (loc as any).id;
           return locId === kitchenLocationId;
         });
+        
+        console.log(`🔍 Kitchen ${kitchen.id} (${kitchen.name}) -> locationId: ${kitchenLocationId}, found location:`, location ? 'YES' : 'NO');
+        
         const managerId = location ? ((location as any).managerId ?? (location as any).manager_id) : undefined;
         const manager = managerId ? allUsers.find(user => (user as any).id === managerId) : null;
+        
+        // Extract location fields with both camelCase and snake_case support
+        const locName = location ? ((location as any).name ?? (location as any).location_name) : undefined;
+        const locAddress = location ? ((location as any).address ?? (location as any).location_address) : undefined;
         
         return {
           ...kitchen,
           // Helpful flattened fields for clients that don't handle nested objects reliably
           locationId: kitchenLocationId,
-          locationName: location ? (location as any).name : undefined,
-          locationAddress: location ? (location as any).address : undefined,
+          locationName: locName,
+          locationAddress: locAddress,
           location: location ? {
             id: (location as any).id,
-            name: (location as any).name,
-            address: (location as any).address,
+            name: locName,
+            address: locAddress,
           } : null,
           manager: manager ? {
             id: (manager as any).id,
