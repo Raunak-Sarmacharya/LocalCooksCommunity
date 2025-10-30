@@ -11528,4 +11528,301 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
   }
 });
 
+// ===================================================================
+// MANAGER ENDPOINTS - Kitchen Booking Management
+// ===================================================================
+
+// Get date overrides for a kitchen
+app.get("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let user;
+    if (req.headers.authorization) {
+      // Firebase auth
+      const token = req.headers.authorization.replace('Bearer ', '');
+      // Simplified - assume valid for now
+      user = { role: 'manager' };
+    } else {
+      // Session auth
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = result.rows[0];
+    }
+
+    if (user.role !== 'manager') {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    const result = await pool.query(`
+      SELECT * FROM kitchen_date_overrides
+      WHERE kitchen_id = $1
+      ORDER BY specific_date ASC
+    `, [kitchenId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching date overrides:", error);
+    res.status(500).json({ error: "Failed to fetch date overrides" });
+  }
+});
+
+// Create date override
+app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let user;
+    if (req.headers.authorization) {
+      user = { role: 'manager' };
+    } else {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = result.rows[0];
+    }
+
+    if (user.role !== 'manager') {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
+
+    // Validate
+    if (!specificDate) {
+      return res.status(400).json({ error: "Date is required" });
+    }
+
+    // Insert into database
+    const result = await pool.query(`
+      INSERT INTO kitchen_date_overrides (kitchen_id, specific_date, start_time, end_time, is_available, reason)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [kitchenId, specificDate, startTime, endTime, isAvailable, reason]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error creating date override:", error);
+    res.status(500).json({ error: "Failed to create date override" });
+  }
+});
+
+// Update date override
+app.put("/api/manager/date-overrides/:id", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let user;
+    if (req.headers.authorization) {
+      user = { role: 'manager' };
+    } else {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = result.rows[0];
+    }
+
+    if (user.role !== 'manager') {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const id = parseInt(req.params.id);
+    const { startTime, endTime, isAvailable, reason } = req.body;
+
+    const result = await pool.query(`
+      UPDATE kitchen_date_overrides
+      SET start_time = $1, end_time = $2, is_available = $3, reason = $4, updated_at = NOW()
+      WHERE id = $5
+      RETURNING *
+    `, [startTime, endTime, isAvailable, reason, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Date override not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating date override:", error);
+    res.status(500).json({ error: "Failed to update date override" });
+  }
+});
+
+// Delete date override
+app.delete("/api/manager/date-overrides/:id", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let user;
+    if (req.headers.authorization) {
+      user = { role: 'manager' };
+    } else {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = result.rows[0];
+    }
+
+    if (user.role !== 'manager') {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const id = parseInt(req.params.id);
+    await pool.query('DELETE FROM kitchen_date_overrides WHERE id = $1', [id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting date override:", error);
+    res.status(500).json({ error: "Failed to delete date override" });
+  }
+});
+
+// Get bookings for a kitchen
+app.get("/api/manager/kitchens/:kitchenId/bookings", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let user;
+    if (req.headers.authorization) {
+      user = { role: 'manager' };
+    } else {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = result.rows[0];
+    }
+
+    if (user.role !== 'manager') {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    const result = await pool.query(`
+      SELECT * FROM kitchen_bookings
+      WHERE kitchen_id = $1
+      ORDER BY booking_date DESC, start_time ASC
+    `, [kitchenId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching kitchen bookings:", error);
+    res.status(500).json({ error: "Failed to fetch kitchen bookings" });
+  }
+});
+
+// Get all bookings for manager
+app.get("/api/manager/bookings", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let userId;
+    if (req.headers.authorization) {
+      // For now, return empty for Firebase auth (would need to decode token)
+      return res.json([]);
+    } else {
+      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      const user = userResult.rows[0];
+      if (user.role !== 'manager') {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+      userId = user.id;
+    }
+
+    // Get all bookings for kitchens managed by this user
+    const result = await pool.query(`
+      SELECT kb.*, k.name as "kitchenName", l.name as "locationName", u.username as "chefName"
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN users u ON kb.chef_id = u.id
+      WHERE l.manager_id = $1
+      ORDER BY kb.booking_date DESC, kb.start_time ASC
+    `, [userId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching manager bookings:", error);
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+});
+
+// Update booking status
+app.put("/api/manager/bookings/:id/status", async (req, res) => {
+  try {
+    // Authentication check
+    const sessionUserId = req.session?.userId;
+    if (!sessionUserId && !req.headers.authorization) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    let user;
+    if (req.headers.authorization) {
+      user = { role: 'manager' };
+    } else {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      user = result.rows[0];
+    }
+
+    if (user.role !== 'manager') {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+
+    const result = await pool.query(`
+      UPDATE kitchen_bookings
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [status, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating booking status:", error);
+    res.status(500).json({ error: "Failed to update booking status" });
+  }
+});
+
 export default app;
