@@ -328,6 +328,14 @@ export default function KitchenAvailabilityManagement() {
     });
   };
 
+  // Format a Date to local YYYY-MM-DD (avoids UTC date shifting)
+  const toLocalYMD = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const navigateMonth = (direction: 'prev' | 'next') => {
     if (direction === 'prev') {
       if (currentMonth === 0) {
@@ -348,15 +356,21 @@ export default function KitchenAvailabilityManagement() {
 
   const getAvailabilityForDate = (date: Date | null): DateAvailability[] => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalYMD(date);
     return (dateAvailability as DateAvailability[]).filter((avail: DateAvailability) => {
       try {
-        // Handle both ISO strings and date objects
-        const availDate = typeof avail.specificDate === 'string' 
-          ? new Date(avail.specificDate) 
-          : avail.specificDate;
-        const availDateStr = availDate.toISOString().split('T')[0];
-        return availDateStr === dateStr;
+        // Handle both plain YYYY-MM-DD strings and date objects/ISOs
+        if (typeof avail.specificDate === 'string') {
+          // If backend returned plain date (YYYY-MM-DD), compare directly
+          if (/^\d{4}-\d{2}-\d{2}$/.test(avail.specificDate)) {
+            return avail.specificDate === dateStr;
+          }
+          // Otherwise parse and compare as local YMD
+          const parsed = new Date(avail.specificDate);
+          return toLocalYMD(parsed) === dateStr;
+        } else {
+          return toLocalYMD(avail.specificDate as unknown as Date) === dateStr;
+        }
       } catch (e) {
         console.error('Error parsing date:', avail.specificDate, e);
         return false;
@@ -366,9 +380,9 @@ export default function KitchenAvailabilityManagement() {
 
   const getBookingsForDate = (date: Date | null): Booking[] => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalYMD(date);
     return (kitchenBookings as Booking[]).filter((booking: Booking) => {
-      const bookingDateStr = new Date(booking.bookingDate).toISOString().split('T')[0];
+      const bookingDateStr = toLocalYMD(new Date(booking.bookingDate));
       return bookingDateStr === dateStr;
     });
   };
@@ -442,7 +456,7 @@ export default function KitchenAvailabilityManagement() {
       if (!confirmed) return;
     }
 
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = toLocalYMD(selectedDate);
     const existingOverrides = getAvailabilityForDate(selectedDate);
     const existing = existingOverrides.length > 0 ? existingOverrides[0] : null;
 
@@ -949,7 +963,7 @@ export default function KitchenAvailabilityManagement() {
                                             return;
                                           }
                                           createAvailability.mutate({
-                                            specificDate: selectedDate!.toISOString().split('T')[0],
+                                            specificDate: toLocalYMD(selectedDate!),
                                             startTime: blockHoursForm.startTime,
                                             endTime: blockHoursForm.endTime,
                                             isAvailable: false, // Blocked time = not available
