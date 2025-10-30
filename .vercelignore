@@ -1,0 +1,19 @@
+# Exclude build artifacts and non-essential API functions to stay under
+# Vercel Hobby plan serverless function limits.
+
+# Build artifacts generated for API (not needed at deploy time)
+api/server/**
+api/shared/**
+
+# Legacy/duplicate API routes (main API is served via api/index.js)
+api/check-users.js
+api/get-users.js
+api/template.js
+api/user-exists.js
+
+# Note: We intentionally KEEP these files:
+# - api/index.js (main API entry routed via vercel.json)
+# - api/unsubscribe.js (explicit standalone function)
+# - api/certificateGenerator.js (important certificate endpoint)
+
+
