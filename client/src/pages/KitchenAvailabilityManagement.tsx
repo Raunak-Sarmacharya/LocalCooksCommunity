@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, Save, Settings, Trash2, Plus, X, ChevronLeft, ChevronRight, Copy, CheckCircle2 } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Save, Settings, Trash2, Plus, X, ChevronLeft, ChevronRight, Copy, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
@@ -156,6 +156,29 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
       setSelectedKitchenId(null);
     }
   }, [selectedLocationId, urlKitchenId]);
+
+  // Fetch weekly availability schedule for selected kitchen
+  const { data: weeklyAvailability = [] } = useQuery({
+    queryKey: ['weeklyAvailability', selectedKitchenId],
+    queryFn: async () => {
+      if (!selectedKitchenId) return [];
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/availability/${selectedKitchenId}`, {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || 'Failed to fetch weekly availability');
+      }
+      return response.json();
+    },
+    enabled: !!selectedKitchenId,
+    staleTime: 60000,
+  });
 
   // Fetch date availability for selected kitchen
   const { data: dateAvailability = [], isLoading: isLoadingAvailability, error: availabilityError } = useQuery({
@@ -401,6 +424,67 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     });
   };
 
+  // Helper to get availability status for a date (open/closed + hours)
+  const getDateAvailabilityStatus = (date: Date | null): { isOpen: boolean; hours: string | null; isExplicitlyClosed: boolean } => {
+    if (!date) return { isOpen: false, hours: null, isExplicitlyClosed: false };
+    
+    const dateOverrides = getAvailabilityForDate(date);
+    const dayOfWeek = date.getDay();
+    
+    // Check for date-specific overrides first (highest priority)
+    if (dateOverrides.length > 0) {
+      // Check if explicitly closed
+      const closedOverride = dateOverrides.find((a: any) => !(a.isAvailable ?? a.is_available));
+      if (closedOverride) {
+        return { isOpen: false, hours: null, isExplicitlyClosed: true };
+      }
+      
+      // Check for open override with hours
+      const openOverride = dateOverrides.find((a: any) => 
+        (a.isAvailable ?? a.is_available) && 
+        (a.startTime ?? a.start_time) && 
+        (a.endTime ?? a.end_time)
+      );
+      if (openOverride) {
+        const start = (openOverride.startTime ?? openOverride.start_time)?.slice(0, 5) || '';
+        const end = (openOverride.endTime ?? openOverride.end_time)?.slice(0, 5) || '';
+        return { 
+          isOpen: true, 
+          hours: `${formatTimeDisplay(start)} - ${formatTimeDisplay(end)}`, 
+          isExplicitlyClosed: false 
+        };
+      }
+    }
+    
+    // Fall back to weekly schedule
+    const daySchedule = (weeklyAvailability as any[]).find((a: any) => 
+      (a.dayOfWeek ?? a.day_of_week) === dayOfWeek
+    );
+    
+    if (daySchedule && (daySchedule.isAvailable ?? daySchedule.is_available)) {
+      const start = (daySchedule.startTime ?? daySchedule.start_time)?.slice(0, 5) || '';
+      const end = (daySchedule.endTime ?? daySchedule.end_time)?.slice(0, 5) || '';
+      return { 
+        isOpen: true, 
+        hours: `${formatTimeDisplay(start)} - ${formatTimeDisplay(end)}`, 
+        isExplicitlyClosed: false 
+      };
+    }
+    
+    // No schedule or explicitly closed in weekly schedule
+    return { isOpen: false, hours: null, isExplicitlyClosed: false };
+  };
+
+  // Helper to format time for display (e.g., "09:00" -> "9 AM")
+  const formatTimeDisplay = (timeStr: string): string => {
+    if (!timeStr) return '';
+    const [hours, minutes] = timeStr.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
   const handleDateClick = (date: Date | null) => {
     if (!date) return;
     setSelectedDate(date);
@@ -509,19 +593,6 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     }
   };
 
-  const handleDeleteAvailability = () => {
-    if (!selectedDate) return;
-    const existingOverrides = getAvailabilityForDate(selectedDate);
-    if (existingOverrides.length > 0 && window.confirm(`Remove ${existingOverrides.length} override(s) for this date?`)) {
-      // Delete all overrides for this date
-      existingOverrides.forEach(override => {
-        if (override.id) {
-          deleteAvailability.mutate(override.id);
-        }
-      });
-      setShowEditModal(false);
-    }
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -607,16 +678,16 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                     <h3 className="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">Legend</h3>
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
-                        <span>Available</span>
+                        <div className="w-4 h-4 bg-green-50 border-2 border-green-300 rounded"></div>
+                        <span>Open (shows hours)</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
+                        <div className="w-4 h-4 bg-red-50 border-2 border-red-300 rounded"></div>
                         <span>Closed</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-white border border-gray-200 rounded"></div>
-                        <span>Not set</span>
+                        <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded"></div>
+                        <span>Past/Other month</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
@@ -698,26 +769,26 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                               const isToday = date.toDateString() === today.toDateString();
                               const isPast = date < today && !isToday;
 
+                              // Get availability status for this date
+                              const availabilityStatus = getDateAvailabilityStatus(date);
+                              
                               let bgColor = 'bg-white hover:bg-gray-50';
                               let borderColor = 'border-gray-200';
                               let textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
 
-                              // Check if any override makes it unavailable (handle snake_case)
-                              const hasClosedOverride = availabilityOverrides.some((a: any) => 
-                                !(a.isAvailable ?? a.is_available)
-                              );
-                              const hasCustomHours = availabilityOverrides.some((a: any) => 
-                                (a.isAvailable ?? a.is_available) && 
-                                (a.startTime ?? a.start_time) && 
-                                (a.endTime ?? a.end_time)
-                              );
-
-                              if (hasClosedOverride) {
-                                bgColor = 'bg-red-50 hover:bg-red-100 border-red-300';
-                                borderColor = 'border-red-300';
-                              } else if (hasCustomHours || availabilityOverrides.length > 0) {
-                                bgColor = 'bg-green-50 hover:bg-green-100 border-green-300';
+                              // Visual indicators based on availability
+                              if (availabilityStatus.isExplicitlyClosed || (!availabilityStatus.isOpen && isCurrent)) {
+                                // Explicitly closed or no schedule set (default closed)
+                                bgColor = 'bg-red-50 hover:bg-red-100';
+                                borderColor = 'border-red-300 border-2';
+                              } else if (availabilityStatus.isOpen) {
+                                // Open with hours
+                                bgColor = 'bg-green-50 hover:bg-green-100';
                                 borderColor = 'border-green-300';
+                              } else {
+                                // Past date or no data
+                                bgColor = 'bg-gray-50 hover:bg-gray-100';
+                                borderColor = 'border-gray-300';
                               }
 
                               if (isToday) {
@@ -741,28 +812,21 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                                   </div>
                                   {isCurrent && (
                                     <>
-                                      {availabilityOverrides.length > 0 && (
-                                        <div className="text-xs mt-1 truncate">
-                                          {availabilityOverrides.length > 1 ? (
-                                            <span className="text-orange-700 font-medium">
-                                              {availabilityOverrides.length} blocks
+                                      {/* Status indicator */}
+                                      <div className="text-xs mt-1 space-y-0.5 min-h-[20px] flex items-center justify-center">
+                                        {availabilityStatus.isExplicitlyClosed || (!availabilityStatus.isOpen && availabilityOverrides.length === 0) ? (
+                                          <div className="flex items-center justify-center gap-1">
+                                            <span className="text-red-700 font-bold text-[10px] uppercase leading-tight tracking-wide">Closed</span>
+                                          </div>
+                                        ) : availabilityStatus.isOpen ? (
+                                          <div className="flex items-center justify-center gap-1 px-1">
+                                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0"></span>
+                                            <span className="text-green-700 font-semibold text-[10px] leading-tight truncate max-w-full" title={availabilityStatus.hours || ''}>
+                                              {availabilityStatus.hours || 'Open'}
                                             </span>
-                                          ) : (() => {
-                                              const override: any = availabilityOverrides[0];
-                                              const isAvail = override.isAvailable ?? override.is_available;
-                                              const startTime = override.startTime ?? override.start_time;
-                                              const endTime = override.endTime ?? override.end_time;
-                                              return isAvail && startTime && endTime ? (
-                                                <span className="text-green-700 font-medium">
-                                                  {startTime.slice(0, 5)}
-                                                </span>
-                                              ) : (
-                                                <span className="text-red-700 font-medium">Closed</span>
-                                              );
-                                            })()
-                                          }
-                                        </div>
-                                      )}
+                                          </div>
+                                        ) : null}
+                                      </div>
                                       {hasBookings && (
                                         <div className="absolute top-1 right-1 w-2 h-2 bg-blue-600 rounded-full" title={`${bookings.length} booking(s)`}></div>
                                       )}
@@ -1100,12 +1164,13 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                           {/* Modal Footer */}
                           <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
                             <button
-                              onClick={handleDeleteAvailability}
-                              disabled={!getAvailabilityForDate(selectedDate)}
-                              className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              onClick={handleCloseKitchen}
+                              disabled={createAvailability.isPending || updateAvailability.isPending}
+                              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Close kitchen for this date - prevents all bookings"
                             >
-                              <Trash2 className="h-4 w-4" />
-                              Remove
+                              <X className="h-4 w-4" />
+                              Close Kitchen
                             </button>
                             
                             <div className="flex gap-3">
