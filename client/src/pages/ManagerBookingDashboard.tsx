@@ -202,11 +202,11 @@ export default function ManagerBookingDashboard() {
               )}
               
               {activeView === 'bookings' && (
-                <ManagerBookingsPanel />
+                <ManagerBookingsPanel embedded={true} />
               )}
               
               {activeView === 'availability' && selectedLocation && (
-                <KitchenAvailabilityManagement />
+                <KitchenAvailabilityManagement embedded={true} />
               )}
               
               {activeView === 'settings' && selectedLocation && (

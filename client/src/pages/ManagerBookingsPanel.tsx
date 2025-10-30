@@ -33,7 +33,11 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-export default function ManagerBookingsPanel() {
+interface ManagerBookingsPanelProps {
+  embedded?: boolean;
+}
+
+export default function ManagerBookingsPanel({ embedded = false }: ManagerBookingsPanelProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -169,10 +173,8 @@ export default function ManagerBookingsPanel() {
     );
   };
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <ManagerHeader />
-      <main className="flex-1 pt-24 pb-8">
+  const content = (
+    <main className={embedded ? "flex-1 py-6" : "flex-1 pt-24 pb-8"}>
         <div className="container mx-auto px-4 py-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Booking Requests</h1>
@@ -285,6 +287,16 @@ export default function ManagerBookingsPanel() {
           )}
         </div>
       </main>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <ManagerHeader />
+      {content}
       <Footer />
     </div>
   );
