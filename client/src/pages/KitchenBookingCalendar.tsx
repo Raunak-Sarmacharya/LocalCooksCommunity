@@ -1,9 +1,10 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useToast } from "@/hooks/use-toast";
+import BookingControlPanel from "@/components/booking/BookingControlPanel";
 
 // Helper functions for calendar
 function getDaysInMonth(year: number, month: number) {
@@ -726,66 +727,46 @@ export default function KitchenBookingCalendar() {
                 )}
               </div>
 
-              {/* Right Column - My Bookings */}
+              {/* Right Column - Booking Control Panel */}
               <div className="lg:col-span-1">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-4">
-                  <h2 className="text-xl font-bold text-gray-900 mb-4">My Bookings</h2>
-                  {isLoadingBookings ? (
-                    <p className="text-gray-500 text-center py-8">Loading bookings...</p>
-                  ) : bookings.length === 0 ? (
-                    <div className="text-center py-8">
-                      <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No bookings yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                      {bookings.slice(0, 5).map((booking) => (
-                        <div
-                          key={booking.id}
-                          className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                booking.status === "confirmed"
-                                  ? "bg-green-100 text-green-800"
-                                  : booking.status === "pending"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-gray-100 text-gray-800"
-                              }`}
-                            >
-                              {booking.status.toUpperCase()}
-                            </span>
-                            {booking.status !== "cancelled" && (
-                              <button
-                                onClick={() => {
-                                  if (window.confirm("Are you sure you want to cancel this booking?")) {
-                                    cancelBooking.mutate(booking.id);
-                                  }
-                                }}
-                                className="text-red-600 hover:text-red-800"
-                                aria-label="Cancel booking"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-900 font-medium mb-1">
-                            {new Date(booking.bookingDate).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            <Clock className="inline h-3 w-3 mr-1" />
-                            {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <BookingControlPanel
+                  bookings={useMemo(() => {
+                    // Enrich bookings with kitchen information
+                    return bookings.map((booking) => {
+                      const kitchen = kitchens.find((k) => k.id === booking.kitchenId);
+                      return {
+                        ...booking,
+                        kitchenName: kitchen?.name,
+                        locationName: kitchen?.locationName || kitchen?.location?.name,
+                      };
+                    });
+                  }, [bookings, kitchens])}
+                  isLoading={isLoadingBookings}
+                  onCancelBooking={(bookingId) => {
+                    if (window.confirm("Are you sure you want to cancel this booking?")) {
+                      cancelBooking.mutate(bookingId, {
+                        onSuccess: () => {
+                          toast({
+                            title: "Booking Cancelled",
+                            description: "Your booking has been cancelled successfully.",
+                          });
+                        },
+                        onError: (error: any) => {
+                          toast({
+                            title: "Cancellation Failed",
+                            description: error.message || "Failed to cancel booking. Please try again.",
+                            variant: "destructive",
+                          });
+                        },
+                      });
+                    }
+                  }}
+                  kitchens={kitchens.map((k) => ({
+                    id: k.id,
+                    name: k.name,
+                    locationName: k.locationName || k.location?.name,
+                  }))}
+                />
               </div>
             </div>
           )}
