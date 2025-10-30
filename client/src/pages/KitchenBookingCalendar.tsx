@@ -275,7 +275,7 @@ export default function KitchenBookingCalendar() {
                           const locationName =
                             kitchen.location?.name ||
                             kitchen.locationName ||
-                            (kitchen.locationId ? `Location #${kitchen.locationId}` : 'Unknown Location');
+                            'Unknown Location';
                           if (!acc[locationName]) {
                             acc[locationName] = {
                               location: kitchen.location,
@@ -337,8 +337,8 @@ export default function KitchenBookingCalendar() {
                             <Building className="h-5 w-5 text-blue-600" />
                             <h3 className="font-semibold text-blue-900">{selectedKitchen.name}</h3>
                           </div>
-                          {selectedKitchen.location?.name && (
-                            <p className="text-sm text-blue-700">📍 {selectedKitchen.location.name}</p>
+                          {(selectedKitchen.location?.name || selectedKitchen.locationName) && (
+                            <p className="text-sm text-blue-700">📍 {selectedKitchen.location?.name || selectedKitchen.locationName}</p>
                           )}
                         </div>
                         <button
