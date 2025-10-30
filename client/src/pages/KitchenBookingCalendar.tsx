@@ -673,7 +673,7 @@ export default function KitchenBookingCalendar() {
                             <span className="font-semibold">{formatDate(selectedDate)}</span>
                           </p>
                           <p className="text-xs text-gray-600">
-                            💡 Select up to {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} for your booking
+                                   💡 Daily booking limit: {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} per chef
                           </p>
                         </div>
 

@@ -3090,10 +3090,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { locationId } = req.params;
-      const { cancellationPolicyHours, cancellationPolicyMessage } = req.body;
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit } = req.body;
 
       if (cancellationPolicyHours !== undefined && (typeof cancellationPolicyHours !== 'number' || cancellationPolicyHours < 0)) {
         return res.status(400).json({ error: "Cancellation policy hours must be a non-negative number" });
+      }
+
+      if (defaultDailyBookingLimit !== undefined && (typeof defaultDailyBookingLimit !== 'number' || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
+        return res.status(400).json({ error: "Daily booking limit must be between 1 and 24 hours" });
       }
 
       // Import db dynamically
@@ -3111,13 +3115,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Location not found or access denied" });
       }
 
-      // Update cancellation policy
+      // Update location settings
       const updates: any = { updatedAt: new Date() };
       if (cancellationPolicyHours !== undefined) {
         updates.cancellationPolicyHours = cancellationPolicyHours;
       }
       if (cancellationPolicyMessage !== undefined) {
         updates.cancellationPolicyMessage = cancellationPolicyMessage;
+      }
+      if (defaultDailyBookingLimit !== undefined) {
+        updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
       }
 
       const [updated] = await db

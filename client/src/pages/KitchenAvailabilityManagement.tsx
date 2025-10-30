@@ -900,11 +900,11 @@ export default function KitchenAvailabilityManagement() {
                                   </div>
                                 </div>
 
-                                {/* MAX SLOTS PER CHEF PER DAY */}
+                                {/* Daily Booking Limit */}
                                 <div className="space-y-2 bg-green-50 border-2 border-green-200 rounded-lg p-4">
                                   <label className="block text-sm font-medium text-gray-900 flex items-center gap-2">
                                     <Clock className="h-4 w-4 text-green-600" />
-                                    Maximum Hours per Chef per Day
+                                    Daily Booking Limit
                                   </label>
                                   <input
                                     type="number"
@@ -915,7 +915,7 @@ export default function KitchenAvailabilityManagement() {
                                     className="w-full border border-green-300 rounded-lg px-4 py-2.5 text-lg font-medium focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                   />
                                   <p className="text-xs text-gray-600">
-                                    How many 1-hour slots can a single chef book on this day? (Default: 2)
+                                    Maximum hours a chef can book per day on this date (Default: 2 hours)
                                   </p>
                                 </div>
 

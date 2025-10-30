@@ -84,24 +84,17 @@ export default function ManagerHeader() {
           {user && (
             <>
               <Link 
+                href="/manager/booking-dashboard"
+                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+              >
+                Booking Dashboard
+              </Link>
+              
+              <Link 
                 href="/manager/dashboard"
                 className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
               >
-                Dashboard
-              </Link>
-              
-              <Link 
-                href="/manager/bookings"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
-              >
-                Booking Requests
-              </Link>
-              
-              <Link 
-                href="/manager/availability"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
-              >
-                Manage Availability
+                Overview
               </Link>
               
               <Button

@@ -11529,9 +11529,10 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
 
     if (!pool) return res.json({ maxSlotsPerChef: 2 });
 
-    // Try override first
+    // Priority order: 1) Date override, 2) Weekly schedule, 3) Location default, 4) Hardcoded 2
     let maxSlotsPerChef = 2;
     try {
+      // 1. Try date-specific override first
       const over = await pool.query(`
         SELECT max_slots_per_chef
         FROM kitchen_date_overrides
@@ -11543,6 +11544,7 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
         const val = Number(over.rows[0].max_slots_per_chef);
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
+        // 2. Try weekly schedule for this day of week
         const avail = await pool.query(`
           SELECT max_slots_per_chef
           FROM kitchen_availability
@@ -11551,6 +11553,18 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
         if (avail.rows.length > 0) {
           const v = Number(avail.rows[0].max_slots_per_chef);
           if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+        } else {
+          // 3. Fall back to location default
+          const loc = await pool.query(`
+            SELECT l.default_daily_booking_limit
+            FROM locations l
+            INNER JOIN kitchens k ON k.location_id = l.id
+            WHERE k.id = $1
+          `, [kitchenId]);
+          if (loc.rows.length > 0) {
+            const locVal = Number(loc.rows[0].default_daily_booking_limit);
+            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+          }
         }
       }
     } catch (_e) {
@@ -11592,6 +11606,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
         const val = Number(over.rows[0].max_slots_per_chef);
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
+        // 2. Try weekly schedule for this day of week
         const avail = await pool.query(`
           SELECT max_slots_per_chef
           FROM kitchen_availability
@@ -11600,6 +11615,18 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
         if (avail.rows.length > 0) {
           const v = Number(avail.rows[0].max_slots_per_chef);
           if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+        } else {
+          // 3. Fall back to location default
+          const loc = await pool.query(`
+            SELECT l.default_daily_booking_limit
+            FROM locations l
+            INNER JOIN kitchens k ON k.location_id = l.id
+            WHERE k.id = $1
+          `, [kitchenId]);
+          if (loc.rows.length > 0) {
+            const locVal = Number(loc.rows[0].default_daily_booking_limit);
+            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+          }
         }
       }
     } catch (_e) {
