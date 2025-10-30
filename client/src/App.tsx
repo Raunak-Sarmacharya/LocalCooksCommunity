@@ -44,6 +44,7 @@ const ManagerDashboard = lazy(() => import("@/pages/ManagerDashboard"));
 const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword"));
 const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
+const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboard"));
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 
@@ -172,6 +173,11 @@ function Router() {
         <Route path="/manager/bookings">
           <ManagerProtectedRoute>
             <ManagerBookingsPanel />
+          </ManagerProtectedRoute>
+        </Route>
+        <Route path="/manager/booking-dashboard">
+          <ManagerProtectedRoute>
+            <ManagerBookingDashboard />
           </ManagerProtectedRoute>
         </Route>
         
