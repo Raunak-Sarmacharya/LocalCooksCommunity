@@ -95,6 +95,17 @@ export function useKitchenBookings() {
           name: k.locationName ?? k.location_name,
           address: k.locationAddress ?? k.location_address,
         } : undefined);
+        
+        console.log('Kitchen normalization:', {
+          kitchenId: k.id,
+          kitchenName: k.name,
+          raw_locationId: k.locationId,
+          raw_location_id: k.location_id,
+          raw_locationName: k.locationName,
+          raw_location: k.location,
+          final_location: location
+        });
+        
         return {
           ...k,
           location,
