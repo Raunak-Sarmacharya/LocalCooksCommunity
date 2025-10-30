@@ -570,13 +570,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    try {
+      if (!process.env.DATABASE_URL) {
+        console.error('DATABASE_URL not configured');
+        throw new Error('Database not configured');
+      }
+      const [user] = await db.select().from(users).where(eq(users.id, id));
+      return user || undefined;
+    } catch (error) {
+      console.error('Error in getUser:', error);
+      throw error;
+    }
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+    try {
+      if (!process.env.DATABASE_URL) {
+        console.error('DATABASE_URL not configured');
+        throw new Error('Database not configured');
+      }
+      const [user] = await db.select().from(users).where(eq(users.username, username));
+      return user || undefined;
+    } catch (error) {
+      console.error('Error in getUserByUsername:', error);
+      throw error;
+    }
   }
 
   async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
