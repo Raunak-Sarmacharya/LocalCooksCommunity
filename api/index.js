@@ -11370,7 +11370,26 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
         [startHour] = o.start_time.split(":").map(Number);
         [endHour] = o.end_time.split(":").map(Number);
       } else {
-        return res.json([]);
+        // Available override without explicit times -> fall back to weekly schedule
+        const dayOfWeek = bookingDate.getDay();
+        let availabilityResult;
+        try {
+          availabilityResult = await pool.query(`
+            SELECT start_time, end_time, is_available
+            FROM kitchen_availability 
+            WHERE kitchen_id = $1 AND day_of_week = $2
+          `, [kitchenId, dayOfWeek]);
+        } catch (_e) {
+          availabilityResult = { rows: [] };
+        }
+
+        if (availabilityResult.rows.length === 0 || availabilityResult.rows[0].is_available === false) {
+          return res.json([]);
+        }
+
+        const availability = availabilityResult.rows[0];
+        [startHour] = availability.start_time.split(":").map(Number);
+        [endHour] = availability.end_time.split(":").map(Number);
       }
     } else {
       // 2) Fall back to weekly availability
