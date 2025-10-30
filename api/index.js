@@ -480,7 +480,6 @@ async function createUser(userData) {
   users.set(id, user);
   return user;
 }
-
 // Initialize database tables if they don't exist
 async function initializeDatabase() {
   if (!pool) return;
@@ -1075,7 +1074,6 @@ app.post('/api/logout', (req, res) => {
     res.status(200).json({ message: 'Logged out successfully' });
   });
 });
-
 // ===================================
 // 🔥 FIREBASE ROUTES (PRIORITY - MUST COME FIRST)
 // ===================================
@@ -1727,7 +1725,6 @@ app.get('/api/health', async (req, res) => {
     }
   });
 });
-
 // Test endpoint to debug session persistence
 app.get('/api/session-test', (req, res) => {
   const sessionCounter = req.session.counter || 0;
@@ -2290,7 +2287,6 @@ app.get('/api/applications', async (req, res) => {
     });
   }
 });
-
 // User endpoint to get their own applications
 app.get('/api/applications/my-applications', async (req, res) => {
   console.log('GET /api/applications/my-applications - Session data:', {
@@ -2816,7 +2812,6 @@ app.get("/api/files/documents/:filename", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
-
 // ===============================
 // APPLICATION DOCUMENT ROUTES
 // ===============================
@@ -3463,7 +3458,6 @@ app.post("/api/upload",
     }
   }
 );
-
 // Generic file upload endpoint (for use with new upload components) - Alternative endpoint
 app.post("/api/upload-file", 
   upload.single('file'), 
@@ -4091,7 +4085,6 @@ async function getMicrolearningCompletion(userId) {
     return microlearningCompletions.get(`completion-${userId}`);
   }
 }
-
 async function updateVideoProgress(progressData) {
   if (pool) {
     try {
@@ -4617,7 +4610,6 @@ app.get('/api/microlearning/certificate-status/:userId', async (req, res) => {
     res.status(500).json({ message: 'Failed to check certificate status' });
   }
 });
-
 // Generate and download certificate
 app.get("/api/microlearning/certificate/:userId", async (req, res) => {
   try {
@@ -5179,7 +5171,6 @@ app.post('/api/firebase-register-user', async (req, res) => {
     }
   }
 });
-
 // Extract sync logic into a reusable function
 async function syncFirebaseUser(uid, email, emailVerified, displayName, role, password) {
   try {
@@ -5784,7 +5775,6 @@ app.post('/api/firebase/user/update-roles', requireFirebaseAuthWithUser, async (
     });
   }
 });
-
 // Enhanced Submit Application
 app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -6381,7 +6371,6 @@ app.patch("/api/delivery-partner-applications/:id/document-verification", async 
     return res.status(500).json({ message: "Internal server error" });
   }
 });
-
 // Cancel delivery partner application endpoint (users can cancel their own applications)
 app.patch('/api/delivery-partner-applications/:id/cancel', async (req, res) => {
   console.log('🚫 CANCEL DELIVERY PARTNER APPLICATION - Request received:', {
@@ -6967,7 +6956,6 @@ app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWi
     res.status(500).json({ message: 'Failed to get certificate' });
   }
 });
-
 // Firebase-authenticated file upload endpoint
 app.post("/api/firebase/upload-file", 
   requireFirebaseAuthWithUser,
@@ -7611,7 +7599,6 @@ app.get('/api/auth-status', async (req, res) => {
     res.status(500).json({ error: 'Failed to get authentication status' });
   }
 });
-
 // Debug endpoint for troubleshooting login issues
 app.post('/api/debug-login', async (req, res) => {
   try {
@@ -8159,7 +8146,6 @@ app.get('/api/debug-hybrid-login', async (req, res) => {
     });
   }
 });
-
 // Quick verification endpoint to test all auth methods still work
 app.get('/api/verify-auth-methods', async (req, res) => {
   try {
@@ -8191,7 +8177,7 @@ app.get('/api/verify-auth-methods', async (req, res) => {
     // Test 2: Check if regular login endpoint is accessible
     results.existingEndpoints.regularLogin = {
       endpoint: '/api/login',
-      status: 'available',
+      status: 'available', 
       method: 'POST',
       description: 'Original email/username login - unchanged'
     };
@@ -8809,7 +8795,6 @@ app.post("/api/test-welcome-as-status", async (req, res) => {
     });
   }
 });
-
 // COMPARISON TEST: Send both working status email and registration email simultaneously
 app.post("/api/test-email-comparison", async (req, res) => {
   try {
@@ -9451,7 +9436,6 @@ app.get("/test-subject", (req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.send(html);
 });
-
 // DIAGNOSTIC: Test Google OAuth registration flow step by step
 app.post("/api/debug-google-registration", async (req, res) => {
   try {
@@ -10103,7 +10087,6 @@ app.post('/api/admin/send-promo-email', async (req, res) => {
     });
   }
 });
-
 // Test endpoint for promo code emails (admin only)
 app.post('/api/test-promo-email', async (req, res) => {
   // Check if user is authenticated via session
@@ -10754,7 +10737,6 @@ app.get("/api/admin/managers", async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to fetch managers" });
   }
 });
-
 // ===================================
 // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
 // ===================================
@@ -11368,6 +11350,163 @@ app.get("/api/chef/kitchens", requireChef, async (req, res) => {
   }
 });
 
+// Get all locations (chef)
+app.get("/api/chef/locations", requireChef, async (req, res) => {
+  try {
+    const locations = await getAllLocations();
+    res.json(locations);
+  } catch (error) {
+    console.error("Error fetching locations:", error);
+    res.status(500).json({ error: "Failed to fetch locations" });
+  }
+});
+
+// Get ALL time slots with booking info (capacity aware)
+app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ error: "Date parameter is required" });
+    }
+    
+    const bookingDate = new Date(date);
+    if (isNaN(bookingDate.getTime())) {
+      return res.status(400).json({ error: "Invalid date format" });
+    }
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Determine availability window for the given day
+    const dayOfWeek = bookingDate.getDay();
+    const availabilityResult = await pool.query(`
+      SELECT start_time, end_time, is_available, 
+             COALESCE(max_concurrent_bookings, 1) as capacity
+      FROM kitchen_availability 
+      WHERE kitchen_id = $1 AND day_of_week = $2
+    `, [kitchenId, dayOfWeek]);
+
+    if (availabilityResult.rows.length === 0 || availabilityResult.rows[0].is_available === false) {
+      return res.json([]);
+    }
+
+    const availability = availabilityResult.rows[0];
+    const [startHour] = availability.start_time.split(':').map(Number);
+    const [endHour] = availability.end_time.split(':').map(Number);
+    const capacity = Number(availability.capacity) || 1;
+
+    // Generate 30-minute interval slots
+    const allSlots = [];
+    for (let hour = startHour; hour < endHour; hour++) {
+      const h = hour.toString().padStart(2, '0');
+      allSlots.push(`${h}:00`);
+      allSlots.push(`${h}:30`);
+    }
+
+    // Fetch bookings on that date for this kitchen
+    const bookingsResult = await pool.query(`
+      SELECT start_time, end_time 
+      FROM kitchen_bookings
+      WHERE kitchen_id = $1 
+        AND DATE(booking_date) = DATE($2::timestamp)
+        AND status != 'cancelled'
+    `, [kitchenId, bookingDate.toISOString()]);
+
+    // Count overlaps per 30-min slot
+    const slotBookingCounts = new Map();
+    allSlots.forEach(s => slotBookingCounts.set(s, 0));
+
+    for (const booking of bookingsResult.rows) {
+      const [startH, startM] = booking.start_time.split(':').map(Number);
+      const [endH, endM] = booking.end_time.split(':').map(Number);
+      const startTotal = startH * 60 + startM;
+      const endTotal = endH * 60 + endM;
+
+      for (const slot of allSlots) {
+        const [slotH, slotM] = slot.split(':').map(Number);
+        const slotTotal = slotH * 60 + slotM;
+        if (slotTotal >= startTotal && slotTotal < endTotal) {
+          slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+        }
+      }
+    }
+
+    const result = allSlots.map(time => {
+      const booked = slotBookingCounts.get(time) || 0;
+      return {
+        time,
+        available: Math.max(0, capacity - booked),
+        capacity,
+        isFullyBooked: booked >= capacity,
+      };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching time slots:", error);
+    res.status(500).json({ error: "Failed to fetch time slots", message: error.message });
+  }
+});
+
+// Get available time slots for a kitchen on a specific date
+app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { date } = req.query;
+    const bookingDate = date ? new Date(date) : new Date();
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Get availability for the day of week
+    const dayOfWeek = bookingDate.getDay();
+    const availabilityResult = await pool.query(`
+      SELECT * FROM kitchen_availability 
+      WHERE kitchen_id = $1 AND day_of_week = $2 AND is_available = true
+    `, [kitchenId, dayOfWeek]);
+    
+    if (availabilityResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const availability = availabilityResult.rows[0];
+    const [startHour, startMin] = availability.start_time.split(':').map(Number);
+    const [endHour, endMin] = availability.end_time.split(':').map(Number);
+    
+    // Generate available time slots
+    const slots = [];
+    for (let hour = startHour; hour < endHour; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+    }
+    
+    // Get existing bookings for this date to filter them out
+    const bookingsResult = await pool.query(`
+      SELECT start_time, end_time FROM kitchen_bookings
+      WHERE kitchen_id = $1 AND DATE(booking_date) = DATE($2::timestamp)
+      AND status != 'cancelled'
+    `, [kitchenId, bookingDate.toISOString()]);
+    
+    // Filter out booked slots
+    const bookedSlots = new Set();
+    bookingsResult.rows.forEach(booking => {
+      const [startH] = booking.start_time.split(':').map(Number);
+      const [endH] = booking.end_time.split(':').map(Number);
+      for (let h = startH; h < endH; h++) {
+        bookedSlots.add(`${h.toString().padStart(2, '0')}:00`);
+      }
+    });
+    
+    const availableSlots = slots.filter(slot => !bookedSlots.has(slot));
+    res.json(availableSlots);
+  } catch (error) {
+    console.error("Error fetching available slots:", error);
+    res.status(500).json({ error: "Failed to fetch available slots" });
+  }
+});
 // Get available time slots for a kitchen on a specific date
 app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
   try {
