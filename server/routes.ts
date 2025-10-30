@@ -3224,12 +3224,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const kitchenId = parseInt(req.params.kitchenId);
+      console.log(`📋 Fetching bookings for kitchen ${kitchenId}`);
+      
       const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+      console.log(`✅ Found ${bookings.length} bookings for kitchen ${kitchenId}`);
       
-      // Filter for confirmed bookings only
-      const confirmedBookings = bookings.filter(b => b.status === 'confirmed');
-      
-      res.json(confirmedBookings);
+      // Return ALL bookings (not just confirmed) so manager can see pending ones too
+      res.json(bookings);
     } catch (error: any) {
       console.error("Error fetching kitchen bookings:", error);
       res.status(500).json({ error: error.message || "Failed to fetch kitchen bookings" });
