@@ -39,7 +39,8 @@ export default function BookingControlPanel({
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
 
   // Separate bookings into past, upcoming, and all
-  // Memoize the current time to prevent recalculation issues
+  // Memoize the categorization to prevent recalculation issues
+  // Calculate 'now' inside useMemo for accuracy, but only when bookings change
   const { upcomingBookings, pastBookings, allBookings } = useMemo(() => {
     const now = new Date();
     const upcoming: Booking[] = [];
@@ -53,26 +54,69 @@ export default function BookingControlPanel({
       };
     }
 
+    console.log('📅 BookingControlPanel: Processing bookings', {
+      total: bookings.length,
+      bookings: bookings.map(b => ({
+        id: b.id,
+        date: b.bookingDate,
+        time: b.startTime,
+        status: b.status
+      }))
+    });
+
     bookings.forEach((booking) => {
-      const bookingDateTime = new Date(`${booking.bookingDate}T${booking.startTime}`);
-      if (bookingDateTime >= now) {
-        upcoming.push(booking);
-      } else {
-        past.push(booking);
+      if (!booking || !booking.bookingDate || !booking.startTime) return;
+      
+      try {
+        // Handle both ISO date strings and date-only strings
+        const dateStr = booking.bookingDate.split('T')[0]; // Extract date part if ISO
+        const bookingDateTime = new Date(`${dateStr}T${booking.startTime}`);
+        
+        // Validate the date
+        if (isNaN(bookingDateTime.getTime())) {
+          console.warn('Invalid booking date:', booking.bookingDate, booking.startTime);
+          return;
+        }
+        
+        if (bookingDateTime >= now) {
+          upcoming.push(booking);
+        } else {
+          past.push(booking);
+        }
+      } catch (error) {
+        console.error('Error processing booking:', booking, error);
       }
     });
 
     // Sort upcoming by date (ascending) and past by date (descending)
     upcoming.sort((a, b) => {
-      const dateA = new Date(`${a.bookingDate}T${a.startTime}`).getTime();
-      const dateB = new Date(`${b.bookingDate}T${b.startTime}`).getTime();
-      return dateA - dateB;
+      try {
+        const dateStrA = a.bookingDate?.split('T')[0] || a.bookingDate;
+        const dateStrB = b.bookingDate?.split('T')[0] || b.bookingDate;
+        const dateA = new Date(`${dateStrA}T${a.startTime}`).getTime();
+        const dateB = new Date(`${dateStrB}T${b.startTime}`).getTime();
+        return dateA - dateB;
+      } catch {
+        return 0;
+      }
     });
 
     past.sort((a, b) => {
-      const dateA = new Date(`${a.bookingDate}T${a.startTime}`).getTime();
-      const dateB = new Date(`${b.bookingDate}T${b.startTime}`).getTime();
-      return dateB - dateA;
+      try {
+        const dateStrA = a.bookingDate?.split('T')[0] || a.bookingDate;
+        const dateStrB = b.bookingDate?.split('T')[0] || b.bookingDate;
+        const dateA = new Date(`${dateStrA}T${a.startTime}`).getTime();
+        const dateB = new Date(`${dateStrB}T${b.startTime}`).getTime();
+        return dateB - dateA;
+      } catch {
+        return 0;
+      }
+    });
+
+    console.log('📅 BookingControlPanel: Categorized bookings', {
+      upcoming: upcoming.length,
+      past: past.length,
+      all: bookings.length
     });
 
     return {
@@ -81,6 +125,9 @@ export default function BookingControlPanel({
       allBookings: bookings,
     };
   }, [bookings]);
+
+  // Memoize current time for use in render - recalculate periodically but stable within render
+  const now = useMemo(() => new Date(), []);
 
   // Apply filters
   const filteredBookings = useMemo(() => {
@@ -190,38 +237,57 @@ export default function BookingControlPanel({
   };
 
   const handleCancel = (bookingId: number, bookingDate: string, startTime: string) => {
-    const bookingDateTime = new Date(`${bookingDate}T${startTime}`);
-    const now = new Date();
-    const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    try {
+      const dateStr = bookingDate.split('T')[0]; // Extract date part if ISO
+      const bookingDateTime = new Date(`${dateStr}T${startTime}`);
+      
+      if (isNaN(bookingDateTime.getTime())) {
+        toast({
+          title: "Error",
+          description: "Invalid booking date format.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (hoursUntilBooking < 24) {
+      if (hoursUntilBooking < 24) {
+        toast({
+          title: "Cancellation Policy",
+          description: "Bookings cannot be cancelled within 24 hours of the booking time.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (window.confirm("Are you sure you want to cancel this booking? This action cannot be undone.")) {
+        onCancelBooking(bookingId);
+      }
+    } catch (error) {
+      console.error('Error in handleCancel:', error);
       toast({
-        title: "Cancellation Policy",
-        description: "Bookings cannot be cancelled within 24 hours of the booking time.",
+        title: "Error",
+        description: "Failed to process cancellation. Please try again.",
         variant: "destructive",
       });
-      return;
-    }
-
-    if (window.confirm("Are you sure you want to cancel this booking? This action cannot be undone.")) {
-      onCancelBooking(bookingId);
     }
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-4">
+    <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-4 h-fit max-h-[calc(100vh-2rem)] flex flex-col">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900">My Bookings</h2>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-500" />
-            <span className="text-sm text-gray-600">{filteredBookings.length}</span>
+          <h2 className="text-2xl font-bold text-gray-900">My Bookings</h2>
+          <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full">
+            <Filter className="h-4 w-4 text-blue-600" />
+            <span className="text-sm font-semibold text-blue-700">{filteredBookings.length}</span>
           </div>
         </div>
 
         {/* View Type Tabs */}
-        <div className="flex gap-2 mb-4 border-b border-gray-200">
+        <div className="flex gap-1 mb-4 bg-gray-50 p-1 rounded-lg">
           {[
             { key: "upcoming" as ViewType, label: "Upcoming", count: upcomingBookings.length },
             { key: "past" as ViewType, label: "Past", count: pastBookings.length },
@@ -230,16 +296,18 @@ export default function BookingControlPanel({
             <button
               key={tab.key}
               onClick={() => setViewType(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex-1 px-4 py-2.5 text-sm font-semibold rounded-md transition-all ${
                 viewType === tab.key
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900"
+                  ? "bg-white text-blue-600 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
               }`}
             >
-              {tab.label}
+              <span className="block">{tab.label}</span>
               {tab.count > 0 && (
-                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600">
-                  {tab.count}
+                <span className={`text-xs font-medium ${
+                  viewType === tab.key ? "text-blue-500" : "text-gray-500"
+                }`}>
+                  ({tab.count})
                 </span>
               )}
             </button>
@@ -248,19 +316,29 @@ export default function BookingControlPanel({
 
         {/* Status Filter */}
         <div className="flex gap-2 flex-wrap">
-          {(["all", "pending", "confirmed", "cancelled"] as FilterType[]).map((filter) => (
-            <button
-              key={filter}
-              onClick={() => setStatusFilter(filter)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                statusFilter === filter
-                  ? "bg-blue-100 text-blue-700 border border-blue-300"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
-              }`}
-            >
-              {filter.charAt(0).toUpperCase() + filter.slice(1)}
-            </button>
-          ))}
+          {(["all", "pending", "confirmed", "cancelled"] as FilterType[]).map((filter) => {
+            const isActive = statusFilter === filter;
+            const filterConfig = {
+              all: { bg: "bg-gray-100", activeBg: "bg-gray-200", text: "text-gray-700", border: "border-gray-300" },
+              pending: { bg: "bg-yellow-100", activeBg: "bg-yellow-200", text: "text-yellow-700", border: "border-yellow-300" },
+              confirmed: { bg: "bg-green-100", activeBg: "bg-green-200", text: "text-green-700", border: "border-green-300" },
+              cancelled: { bg: "bg-red-100", activeBg: "bg-red-200", text: "text-red-700", border: "border-red-300" },
+            }[filter];
+            
+            return (
+              <button
+                key={filter}
+                onClick={() => setStatusFilter(filter)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all border ${
+                  isActive
+                    ? `${filterConfig.activeBg} ${filterConfig.text} ${filterConfig.border} shadow-sm`
+                    : `${filterConfig.bg} ${filterConfig.text} hover:${filterConfig.activeBg} ${filterConfig.border}`
+                }`}
+              >
+                {filter.charAt(0).toUpperCase() + filter.slice(1)}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -285,21 +363,38 @@ export default function BookingControlPanel({
           </p>
         </div>
       ) : (
-        <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+        <div className="space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
           {filteredBookings.map((booking) => {
+            if (!booking || !booking.id) return null;
+            
             const isExpanded = expandedBookings.has(booking.id);
             const kitchenInfo = getKitchenInfo(booking);
-            const bookingDateTime = new Date(`${booking.bookingDate}T${booking.startTime}`);
-            const isUpcoming = bookingDateTime >= now;
-            const canCancel =
-              booking.status !== "cancelled" &&
-              isUpcoming &&
-              (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60) >= 24;
+            
+            let bookingDateTime: Date;
+            let isUpcoming = false;
+            let canCancel = false;
+            
+            try {
+              const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate;
+              bookingDateTime = new Date(`${dateStr}T${booking.startTime}`);
+              
+              if (!isNaN(bookingDateTime.getTime())) {
+                isUpcoming = bookingDateTime >= now;
+                const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+                canCancel =
+                  booking.status !== "cancelled" &&
+                  isUpcoming &&
+                  hoursUntilBooking >= 24;
+              }
+            } catch (error) {
+              console.error('Error processing booking date:', booking, error);
+              bookingDateTime = new Date();
+            }
 
             return (
               <div
                 key={booking.id}
-                className="border border-gray-200 rounded-lg hover:border-gray-300 hover:shadow-sm transition-all"
+                className="border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all bg-white"
               >
                 {/* Booking Header */}
                 <div
@@ -311,18 +406,22 @@ export default function BookingControlPanel({
                       <div className="flex items-center gap-2 mb-2">
                         {getStatusBadge(booking.status)}
                         {isUpcoming && (
-                          <span className="text-xs text-blue-600 font-medium">
+                          <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">
                             {(() => {
-                              const hoursUntil = Math.floor(
-                                (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-                              );
-                              const daysUntil = Math.floor(hoursUntil / 24);
-                              if (daysUntil > 0) {
-                                return `${daysUntil} day${daysUntil > 1 ? "s" : ""} away`;
-                              } else if (hoursUntil > 0) {
-                                return `${hoursUntil} hour${hoursUntil > 1 ? "s" : ""} away`;
-                              } else {
-                                return "Starting soon";
+                              try {
+                                const hoursUntil = Math.floor(
+                                  (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
+                                );
+                                const daysUntil = Math.floor(hoursUntil / 24);
+                                if (daysUntil > 0) {
+                                  return `${daysUntil} day${daysUntil > 1 ? "s" : ""} away`;
+                                } else if (hoursUntil > 0) {
+                                  return `${hoursUntil} hour${hoursUntil > 1 ? "s" : ""} away`;
+                                } else {
+                                  return "Starting soon";
+                                }
+                              } catch {
+                                return "Upcoming";
                               }
                             })()}
                           </span>
