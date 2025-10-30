@@ -3074,6 +3074,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================================
 
   // Get all locations for manager
+  // Update location cancellation policy (manager only)
+  app.put("/api/manager/locations/:locationId/cancellation-policy", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const { locationId } = req.params;
+      const { cancellationPolicyHours, cancellationPolicyMessage } = req.body;
+
+      if (cancellationPolicyHours !== undefined && (typeof cancellationPolicyHours !== 'number' || cancellationPolicyHours < 0)) {
+        return res.status(400).json({ error: "Cancellation policy hours must be a non-negative number" });
+      }
+
+      // Import db dynamically
+      const { db } = await import('./db');
+      const { locations } = await import('@shared/schema');
+      const { eq, and } = await import('drizzle-orm');
+
+      // Verify manager owns this location
+      const [location] = await db
+        .select()
+        .from(locations)
+        .where(and(eq(locations.id, parseInt(locationId)), eq(locations.managerId, user.id)));
+
+      if (!location) {
+        return res.status(404).json({ error: "Location not found or access denied" });
+      }
+
+      // Update cancellation policy
+      const updates: any = { updatedAt: new Date() };
+      if (cancellationPolicyHours !== undefined) {
+        updates.cancellationPolicyHours = cancellationPolicyHours;
+      }
+      if (cancellationPolicyMessage !== undefined) {
+        updates.cancellationPolicyMessage = cancellationPolicyMessage;
+      }
+
+      const [updated] = await db
+        .update(locations)
+        .set(updates)
+        .where(eq(locations.id, parseInt(locationId)))
+        .returning();
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating cancellation policy:", error);
+      res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
+    }
+  });
+
   app.get("/api/manager/locations", async (req: Request, res: Response) => {
     try {
       // Check authentication - managers use session-based auth

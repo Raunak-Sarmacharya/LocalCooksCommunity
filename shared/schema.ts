@@ -319,6 +319,8 @@ export const locations = pgTable("locations", {
   name: text("name").notNull(),
   address: text("address").notNull(),
   managerId: integer("manager_id").references(() => users.id),
+  cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
+  cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
