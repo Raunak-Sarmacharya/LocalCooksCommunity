@@ -116,6 +116,14 @@ export default function KitchenAvailabilityManagement() {
     reason: "",
   });
 
+  // Block hours state
+  const [showBlockHoursSection, setShowBlockHoursSection] = useState(false);
+  const [blockHoursForm, setBlockHoursForm] = useState({
+    startTime: "11:00",
+    endTime: "13:00",
+    reason: "",
+  });
+
   // Load kitchens when location is selected
   useEffect(() => {
     if (selectedLocationId) {
@@ -838,6 +846,122 @@ export default function KitchenAvailabilityManagement() {
                                       />
                                     </div>
                                   </div>
+                                </div>
+
+                                {/* BLOCK SPECIFIC HOURS - NEW FEATURE! */}
+                                <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                      <Clock className="h-5 w-5 text-orange-600" />
+                                      <h4 className="font-semibold text-gray-900">Block Specific Hours</h4>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowBlockHoursSection(!showBlockHoursSection)}
+                                      className="text-sm text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1"
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                      {showBlockHoursSection ? 'Hide' : 'Add Block'}
+                                    </button>
+                                  </div>
+                                  
+                                  <p className="text-sm text-gray-600 mb-3">
+                                    Block specific time ranges (e.g., lunch break, cleaning) while keeping the rest of the day available
+                                  </p>
+
+                                  {/* Existing Blocks */}
+                                  {selectedDate && getAvailabilityForDate(selectedDate)
+                                    .filter(override => override.startTime && override.endTime && !override.isAvailable)
+                                    .map((override) => (
+                                      <div key={override.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-orange-300 mb-2">
+                                        <div className="flex items-center gap-3">
+                                          <Clock className="h-4 w-4 text-orange-600" />
+                                          <div>
+                                            <p className="font-medium text-gray-900">
+                                              {override.startTime?.slice(0, 5)} - {override.endTime?.slice(0, 5)}
+                                            </p>
+                                            {override.reason && (
+                                              <p className="text-xs text-gray-600">{override.reason}</p>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={() => override.id && deleteAvailability.mutate(override.id)}
+                                          className="text-red-600 hover:text-red-700 p-1"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    ))
+                                  }
+
+                                  {/* Add Block Form */}
+                                  {showBlockHoursSection && (
+                                    <div className="mt-3 p-4 bg-white rounded-lg border-2 border-orange-300 space-y-3">
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Start Time
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={blockHoursForm.startTime}
+                                            onChange={(e) => setBlockHoursForm({ ...blockHoursForm, startTime: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            End Time
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={blockHoursForm.endTime}
+                                            onChange={(e) => setBlockHoursForm({ ...blockHoursForm, endTime: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                          Reason (Optional)
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={blockHoursForm.reason}
+                                          onChange={(e) => setBlockHoursForm({ ...blockHoursForm, reason: e.target.value })}
+                                          placeholder="e.g., Lunch break, Cleaning"
+                                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (blockHoursForm.startTime >= blockHoursForm.endTime) {
+                                            toast({
+                                              title: "Invalid Time Range",
+                                              description: "End time must be after start time",
+                                              variant: "destructive",
+                                            });
+                                            return;
+                                          }
+                                          createAvailability.mutate({
+                                            specificDate: selectedDate!.toISOString().split('T')[0],
+                                            startTime: blockHoursForm.startTime,
+                                            endTime: blockHoursForm.endTime,
+                                            isAvailable: false, // Blocked time = not available
+                                            reason: blockHoursForm.reason || null,
+                                          });
+                                          setBlockHoursForm({ startTime: "11:00", endTime: "13:00", reason: "" });
+                                          setShowBlockHoursSection(false);
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
+                                      >
+                                        <Plus className="h-4 w-4" />
+                                        Add Blocked Hours
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Time Slots Preview */}
