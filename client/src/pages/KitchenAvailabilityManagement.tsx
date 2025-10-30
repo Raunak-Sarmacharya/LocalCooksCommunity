@@ -168,10 +168,6 @@ export default function KitchenAvailabilityManagement() {
     enabled: !!selectedKitchenId,
     staleTime: 30000, // Consider data fresh for 30 seconds
     retry: 2, // Retry failed requests twice
-    // Don't treat empty results as an error
-    onError: (error) => {
-      console.error('Error loading date overrides:', error);
-    },
   });
 
   // Fetch bookings for selected kitchen
@@ -207,10 +203,6 @@ export default function KitchenAvailabilityManagement() {
     enabled: !!selectedKitchenId,
     staleTime: 10000, // Consider data fresh for 10 seconds
     retry: 2, // Retry failed requests twice
-    // Don't throw error on empty results
-    onError: (error) => {
-      console.error('Error loading bookings:', error);
-    },
   });
 
   // Create date availability mutation
@@ -343,23 +335,26 @@ export default function KitchenAvailabilityManagement() {
     }
   };
 
-  const getAvailabilityForDate = (date: Date) => {
+  const getAvailabilityForDate = (date: Date | null): DateAvailability | undefined => {
+    if (!date) return undefined;
     const dateStr = date.toISOString().split('T')[0];
-    return dateAvailability.find((avail: DateAvailability) => {
+    return (dateAvailability as DateAvailability[]).find((avail: DateAvailability) => {
       const availDateStr = new Date(avail.specificDate).toISOString().split('T')[0];
       return availDateStr === dateStr;
     });
   };
 
-  const getBookingsForDate = (date: Date) => {
+  const getBookingsForDate = (date: Date | null): Booking[] => {
+    if (!date) return [];
     const dateStr = date.toISOString().split('T')[0];
-    return kitchenBookings.filter((booking: Booking) => {
+    return (kitchenBookings as Booking[]).filter((booking: Booking) => {
       const bookingDateStr = new Date(booking.bookingDate).toISOString().split('T')[0];
       return bookingDateStr === dateStr;
     });
   };
 
-  const handleDateClick = (date: Date) => {
+  const handleDateClick = (date: Date | null) => {
+    if (!date) return;
     setSelectedDate(date);
     const existing = getAvailabilityForDate(date);
     
@@ -445,7 +440,7 @@ export default function KitchenAvailabilityManagement() {
   const handleDeleteAvailability = () => {
     if (!selectedDate) return;
     const existing = getAvailabilityForDate(selectedDate);
-    if (existing && window.confirm("Remove availability for this date?")) {
+    if (existing?.id && window.confirm("Remove availability for this date?")) {
       deleteAvailability.mutate(existing.id);
       setShowEditModal(false);
     }
@@ -620,6 +615,7 @@ export default function KitchenAvailabilityManagement() {
                           {/* Calendar days */}
                           <div className="grid grid-cols-7 gap-2">
                             {calendarDays.map((date, index) => {
+                              if (!date) return null;
                               const availability = getAvailabilityForDate(date);
                               const bookings = getBookingsForDate(date);
                               const hasBookings = bookings.length > 0;

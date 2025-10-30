@@ -391,6 +391,7 @@ export default function KitchenBookingCalendar() {
                         {/* Calendar days */}
                         <div className="grid grid-cols-7 gap-2">
                           {calendarDays.map((date, index) => {
+                            if (!date) return null;
                             const isCurrent = isCurrentMonth(date);
                             const isTodayDate = isToday(date);
                             const isPastDate = isPast(date);
