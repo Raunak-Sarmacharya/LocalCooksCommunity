@@ -3400,10 +3400,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // If changing to closed (isAvailable = false), check for existing bookings
       if (isAvailable === false) {
-        // First get the override to find the kitchen and date
-        const allOverrides = await firebaseStorage.getKitchenDateOverrides(0); // Get all
-        const override = allOverrides.find((o: any) => o.id === id);
-        
+        // Load the specific override to find its kitchen and date
+        const override = await firebaseStorage.getKitchenDateOverrideById(id);
         if (override) {
           const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
           const dateStr = new Date(override.specificDate).toISOString().split('T')[0];
@@ -3411,7 +3409,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
             return bookingDateStr === dateStr && b.status === 'confirmed';
           });
-          
           if (bookingsOnDate.length > 0) {
             return res.status(400).json({ 
               error: "Cannot close kitchen on this date",
@@ -3515,15 +3512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens with location and manager info
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      console.log('📍 Chef requesting all kitchens, user:', req.user?.username || 'Unknown', 'ID:', req.user?.id);
-      console.log('📍 Firebase user:', req.firebaseUser?.uid || 'N/A');
-      
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      console.log(`✅ Found ${allKitchens.length} total kitchens in database`);
-      
-      if (allKitchens.length > 0) {
-        console.log('📦 Sample kitchen data:', JSON.stringify(allKitchens[0], null, 2));
-      }
       
       // Filter to only return active kitchens - handle both camelCase and snake_case
       const activeKitchens = allKitchens.filter(k => {
@@ -3531,17 +3520,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return isActive !== false && isActive !== null;
       });
       
-      console.log(`✅ Returning ${activeKitchens.length} active kitchens (filtered from ${allKitchens.length} total)`);
-      
       res.json(activeKitchens);
     } catch (error: any) {
-      console.error("❌ Error fetching kitchens:", error);
-      console.error("❌ Error stack:", error.stack);
+      console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
     }
   });
 
-  // Get available time slots for a kitchen on a specific date
+  // Get all locations (for chefs to see kitchen locations)
+  app.get("/api/chef/locations", requireChef, async (req: Request, res: Response) => {
+    try {
+      const locations = await firebaseStorage.getAllLocations();
+      res.json(locations);
+    } catch (error: any) {
+      console.error("Error fetching locations:", error);
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
+  // Get ALL time slots with booking info (capacity aware)
+  app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const { date } = req.query;
+      
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+      
+      const bookingDate = new Date(date as string);
+      
+      // Validate date
+      if (isNaN(bookingDate.getTime())) {
+        return res.status(400).json({ error: "Invalid date format" });
+      }
+      
+      const slotsInfo = await firebaseStorage.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
+      
+      res.json(slotsInfo);
+    } catch (error: any) {
+      console.error("Error fetching time slots:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch time slots",
+        message: error.message 
+      });
+    }
+  });
+
+  // Get available time slots for a kitchen on a specific date (legacy endpoint, returns only available slots)
   app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req: Request, res: Response) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
@@ -3744,22 +3770,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       // Fetch all users with manager role
-      const { pool } = await import('./db');
+      const { pool, db } = await import('./db');
+      
       if (pool) {
         const result = await pool.query(
           'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
           ['manager']
         );
         return res.json(result.rows);
-      } else {
-        // Fallback for in-memory storage
-        // For in-memory storage fallback, return empty array
-        // Managers should be fetched through database in production
+      }
+      
+      // Fallback to Drizzle if pool is not available
+      try {
+        const { users } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        const rows = await db
+          .select({ id: users.id, username: users.username, role: users.role })
+          .from(users)
+          .where(eq(users.role as any, 'manager'));
+        return res.json(rows);
+      } catch (e) {
+        console.error('Error fetching managers with Drizzle:', e);
         return res.json([]);
       }
     } catch (error: any) {

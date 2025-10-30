@@ -30,6 +30,7 @@ console.log('Copying server files for the API function...');
 // Process server files
 const serverFiles = [
   'storage.ts',
+  'storage-firebase.ts',
   'auth.ts',
   'routes.ts',
   'db.ts',
