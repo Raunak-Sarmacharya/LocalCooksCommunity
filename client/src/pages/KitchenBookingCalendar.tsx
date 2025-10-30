@@ -79,13 +79,26 @@ export default function KitchenBookingCalendar() {
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
     setIsLoadingSlots(true);
     try {
-      const token = localStorage.getItem('firebaseToken');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      // Prefer live Firebase ID token
+      let authHeader: string | undefined;
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth?.currentUser;
+        if (currentUser) {
+          const token = await currentUser.getIdToken();
+          authHeader = `Bearer ${token}`;
+        }
+      } catch (e) {
+        // ignore, will fallback to localStorage token
       }
+
+      if (!authHeader) {
+        const token = localStorage.getItem('firebaseToken');
+        if (token) authHeader = `Bearer ${token}`;
+      }
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authHeader) headers['Authorization'] = authHeader;
       
       const response = await fetch(`/api/chef/kitchens/${kitchenId}/slots?date=${date}`, {
         credentials: "include",
@@ -93,7 +106,8 @@ export default function KitchenBookingCalendar() {
       });
       
       if (!response.ok) {
-        throw new Error("Failed to fetch slots");
+        const text = await response.text().catch(() => '');
+        throw new Error(text || "Failed to fetch slots");
       }
       
       const slots = await response.json();
@@ -112,7 +126,7 @@ export default function KitchenBookingCalendar() {
       setAllSlots([]);
       toast({
         title: "Error",
-        description: "Failed to load time slots. Please try again.",
+        description: (error as Error)?.message || "Failed to load time slots. Please try again.",
         variant: "destructive",
       });
     } finally {
