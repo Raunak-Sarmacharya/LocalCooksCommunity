@@ -11610,16 +11610,38 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
     const dateObj = new Date(specificDate);
     const formattedDate = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD format
     
+    console.log('📝 Creating date override:', { kitchenId, formattedDate, startTime, endTime, isAvailable, reason });
+    
+    // Check if override already exists
+    const existingCheck = await pool.query(`
+      SELECT id FROM kitchen_date_overrides
+      WHERE kitchen_id = $1 AND DATE(specific_date) = DATE($2::date)
+      AND start_time = $3 AND end_time = $4
+    `, [kitchenId, formattedDate, startTime, endTime]);
+    
+    if (existingCheck.rows.length > 0) {
+      console.log('⚠️ Override already exists, updating instead');
+      const updateResult = await pool.query(`
+        UPDATE kitchen_date_overrides
+        SET is_available = $1, reason = $2, updated_at = NOW()
+        WHERE id = $3
+        RETURNING *
+      `, [isAvailable, reason, existingCheck.rows[0].id]);
+      return res.json(updateResult.rows[0]);
+    }
+    
     const result = await pool.query(`
       INSERT INTO kitchen_date_overrides (kitchen_id, specific_date, start_time, end_time, is_available, reason)
       VALUES ($1, $2::date, $3, $4, $5, $6)
       RETURNING *
     `, [kitchenId, formattedDate, startTime, endTime, isAvailable, reason]);
 
+    console.log('✅ Date override created:', result.rows[0]);
     res.json(result.rows[0]);
   } catch (error) {
-    console.error("Error creating date override:", error);
-    res.status(500).json({ error: "Failed to create date override" });
+    console.error("❌ Error creating date override:", error);
+    console.error("Error details:", error.message, error.stack);
+    res.status(500).json({ error: error.message || "Failed to create date override" });
   }
 });
 
@@ -11650,6 +11672,8 @@ app.put("/api/manager/date-overrides/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const { startTime, endTime, isAvailable, reason } = req.body;
 
+    console.log('📝 Updating date override:', { id, startTime, endTime, isAvailable, reason });
+
     const result = await pool.query(`
       UPDATE kitchen_date_overrides
       SET start_time = $1, end_time = $2, is_available = $3, reason = $4, updated_at = NOW()
@@ -11658,13 +11682,16 @@ app.put("/api/manager/date-overrides/:id", async (req, res) => {
     `, [startTime, endTime, isAvailable, reason, id]);
 
     if (result.rows.length === 0) {
+      console.log('⚠️ Date override not found:', id);
       return res.status(404).json({ error: "Date override not found" });
     }
 
+    console.log('✅ Date override updated:', result.rows[0]);
     res.json(result.rows[0]);
   } catch (error) {
-    console.error("Error updating date override:", error);
-    res.status(500).json({ error: "Failed to update date override" });
+    console.error("❌ Error updating date override:", error);
+    console.error("Error details:", error.message, error.stack);
+    res.status(500).json({ error: error.message || "Failed to update date override" });
   }
 });
 
