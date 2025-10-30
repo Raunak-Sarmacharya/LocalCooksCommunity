@@ -11352,54 +11352,94 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
     let startHour;
     let endHour;
 
-    // 1) Check date-specific override from managers
-    let overrideResult;
+    // 1) Fetch ALL overrides for this date (both available and blocked)
+    let overridesResult;
     try {
-      overrideResult = await pool.query(`
+      overridesResult = await pool.query(`
         SELECT start_time, end_time, is_available
         FROM kitchen_date_overrides
         WHERE kitchen_id = $1
           AND DATE(specific_date) = $2::date
-        ORDER BY updated_at DESC
-        LIMIT 1
+        ORDER BY created_at ASC
       `, [kitchenId, bookingDate.toISOString()]);
     } catch (_e) {
-      overrideResult = { rows: [] };
+      overridesResult = { rows: [] };
     }
 
-    if (overrideResult.rows.length > 0) {
-      const o = overrideResult.rows[0];
-      if (o.is_available === false) {
-        // Closed for the day per override
+    if (overridesResult.rows.length > 0) {
+      // Find the base available override
+      const baseOverride = overridesResult.rows.find(o => o.is_available === true);
+      if (!baseOverride || !baseOverride.start_time || !baseOverride.end_time) {
+        // No valid base availability
         return res.json([]);
       }
-      if (o.start_time && o.end_time) {
-        [startHour] = o.start_time.split(":").map(Number);
-        [endHour] = o.end_time.split(":").map(Number);
-      } else {
-        // Available override without explicit times -> fall back to weekly schedule
-        const dayOfWeek = bookingDate.getDay();
-        let availabilityResult;
-        try {
-          availabilityResult = await pool.query(`
-            SELECT start_time, end_time, is_available
-            FROM kitchen_availability 
-            WHERE kitchen_id = $1 AND day_of_week = $2
-          `, [kitchenId, dayOfWeek]);
-        } catch (_e) {
-          availabilityResult = { rows: [] };
-        }
 
-        if (availabilityResult.rows.length === 0 || availabilityResult.rows[0].is_available === false) {
-          return res.json([]);
-        }
+      [startHour] = baseOverride.start_time.split(":").map(Number);
+      [endHour] = baseOverride.end_time.split(":").map(Number);
 
-        const availability = availabilityResult.rows[0];
-        [startHour] = availability.start_time.split(":").map(Number);
-        [endHour] = availability.end_time.split(":").map(Number);
+      // Collect blocked ranges
+      const blockedRanges = overridesResult.rows
+        .filter(o => o.is_available === false && o.start_time && o.end_time)
+        .map(o => {
+          const [sh] = o.start_time.split(":").map(Number);
+          const [eh] = o.end_time.split(":").map(Number);
+          return { startHour: sh, endHour: eh };
+        });
+
+      // Generate all 1-hour slots in the base range, excluding blocked ranges
+      const allSlots = [];
+      for (let hour = startHour; hour < endHour; hour++) {
+        // Check if this hour overlaps any blocked range
+        const isBlocked = blockedRanges.some(range => {
+          return hour >= range.startHour && hour < range.endHour;
+        });
+        if (!isBlocked) {
+          allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+        }
       }
+
+      // Fetch only confirmed bookings to block capacity
+      const bookingsResult = await pool.query(`
+        SELECT start_time, end_time 
+        FROM kitchen_bookings
+        WHERE kitchen_id = $1 
+          AND DATE(booking_date) = $2::date
+          AND status = 'confirmed'
+      `, [kitchenId, bookingDate.toISOString()]);
+
+      const capacity = 1;
+      const slotBookingCounts = new Map();
+      allSlots.forEach(s => slotBookingCounts.set(s, 0));
+
+      for (const booking of bookingsResult.rows) {
+        const [startH, startM] = booking.start_time.split(':').map(Number);
+        const [endH, endM] = booking.end_time.split(':').map(Number);
+        const startTotal = startH * 60 + startM;
+        const endTotal = endH * 60 + endM;
+
+        for (const slot of allSlots) {
+          const [slotH] = slot.split(':').map(Number);
+          const slotStart = slotH * 60;
+          const slotEnd = slotStart + 60;
+          if (slotStart < endTotal && slotEnd > startTotal) {
+            slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+          }
+        }
+      }
+
+      const result = allSlots.map(time => {
+        const booked = slotBookingCounts.get(time) || 0;
+        return {
+          time,
+          available: Math.max(0, capacity - booked),
+          capacity,
+          isFullyBooked: booked >= capacity,
+        };
+      });
+
+      return res.json(result);
     } else {
-      // 2) Fall back to weekly availability
+      // 2) No overrides, fall back to weekly availability
       const dayOfWeek = bookingDate.getDay();
       let availabilityResult;
       try {
@@ -11419,58 +11459,54 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
       const availability = availabilityResult.rows[0];
       [startHour] = availability.start_time.split(":").map(Number);
       [endHour] = availability.end_time.split(":").map(Number);
-    }
 
-    // 3) Generate 1-hour slots for visible window
-    const allSlots = [];
-    for (let hour = startHour; hour < endHour; hour++) {
-      const h = hour.toString().padStart(2, '0');
-      allSlots.push(`${h}:00`);
-    }
+      // Generate 1-hour slots
+      const allSlots = [];
+      for (let hour = startHour; hour < endHour; hour++) {
+        allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+      }
 
-    // 4) Fetch only confirmed bookings to block (exclusivity per slot)
-    const bookingsResult = await pool.query(`
-      SELECT start_time, end_time 
-      FROM kitchen_bookings
-      WHERE kitchen_id = $1 
-        AND DATE(booking_date) = $2::date
-        AND status = 'confirmed'
-    `, [kitchenId, bookingDate.toISOString()]);
+      // Fetch confirmed bookings
+      const bookingsResult = await pool.query(`
+        SELECT start_time, end_time 
+        FROM kitchen_bookings
+        WHERE kitchen_id = $1 
+          AND DATE(booking_date) = $2::date
+          AND status = 'confirmed'
+      `, [kitchenId, bookingDate.toISOString()]);
 
-    // Capacity per slot is ALWAYS 1 (only one chef per slot)
-    const capacity = 1;
+      const capacity = 1;
+      const slotBookingCounts = new Map();
+      allSlots.forEach(s => slotBookingCounts.set(s, 0));
 
-    // Count overlaps per 1-hour slot
-    const slotBookingCounts = new Map();
-    allSlots.forEach(s => slotBookingCounts.set(s, 0));
+      for (const booking of bookingsResult.rows) {
+        const [startH, startM] = booking.start_time.split(':').map(Number);
+        const [endH, endM] = booking.end_time.split(':').map(Number);
+        const startTotal = startH * 60 + startM;
+        const endTotal = endH * 60 + endM;
 
-    for (const booking of bookingsResult.rows) {
-      const [startH, startM] = booking.start_time.split(':').map(Number);
-      const [endH, endM] = booking.end_time.split(':').map(Number);
-      const startTotal = startH * 60 + startM;
-      const endTotal = endH * 60 + endM;
-
-      for (const slot of allSlots) {
-        const [slotH] = slot.split(':').map(Number);
-        const slotStart = slotH * 60; // hour-aligned
-        const slotEnd = slotStart + 60;
-        if (slotStart < endTotal && slotEnd > startTotal) {
-          slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+        for (const slot of allSlots) {
+          const [slotH] = slot.split(':').map(Number);
+          const slotStart = slotH * 60;
+          const slotEnd = slotStart + 60;
+          if (slotStart < endTotal && slotEnd > startTotal) {
+            slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+          }
         }
       }
+
+      const result = allSlots.map(time => {
+        const booked = slotBookingCounts.get(time) || 0;
+        return {
+          time,
+          available: Math.max(0, capacity - booked),
+          capacity,
+          isFullyBooked: booked >= capacity,
+        };
+      });
+
+      return res.json(result);
     }
-
-    const result = allSlots.map(time => {
-      const booked = slotBookingCounts.get(time) || 0;
-      return {
-        time,
-        available: Math.max(0, capacity - booked),
-        capacity,
-        isFullyBooked: booked >= capacity,
-      };
-    });
-
-    res.json(result);
   } catch (error) {
     console.error("Error fetching time slots:", error);
     res.status(500).json({ error: "Failed to fetch time slots", message: error.message });
