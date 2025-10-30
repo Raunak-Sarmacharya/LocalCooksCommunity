@@ -1,5 +1,5 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -43,6 +43,70 @@ function getCalendarDays(year: number, month: number) {
 export default function KitchenBookingCalendar() {
   const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking, kitchensQuery } = useKitchenBookings();
   const { toast } = useToast();
+  
+  // Memoize enriched bookings to prevent infinite re-renders
+  // Only recalculate when bookings or kitchens data actually changes
+  const enrichedBookings = useMemo(() => {
+    // Early return for invalid data - always return an array to maintain reference stability
+    if (!bookings || !Array.isArray(bookings)) return [];
+    if (bookings.length === 0) return [];
+    
+    // If kitchens not loaded yet, return bookings without enrichment
+    if (!kitchens || !Array.isArray(kitchens)) {
+      return bookings.map((b) => ({ ...b }));
+    }
+    
+    // Enrich with kitchen information
+    return bookings.map((booking) => {
+      if (!booking || typeof booking.kitchenId !== 'number') {
+        return { ...booking };
+      }
+      
+      const kitchen = kitchens.find((k) => k && k.id === booking.kitchenId);
+      return {
+        ...booking,
+        kitchenName: kitchen?.name,
+        locationName: kitchen?.locationName || kitchen?.location?.name,
+      };
+    });
+  }, [bookings, kitchens]);
+  
+  // Memoize kitchens array for BookingControlPanel
+  // Return stable empty array if not loaded
+  const kitchensForPanel = useMemo(() => {
+    if (!kitchens || !Array.isArray(kitchens)) return [];
+    if (kitchens.length === 0) return [];
+    
+    return kitchens.map((k) => {
+      if (!k) return null;
+      return {
+        id: k.id,
+        name: k.name,
+        locationName: k.locationName || k.location?.name,
+      };
+    }).filter((k): k is { id: number; name: string; locationName?: string } => k !== null);
+  }, [kitchens]);
+  
+  // Memoize cancel handler to prevent re-renders
+  const handleCancelBooking = useCallback((bookingId: number) => {
+    if (window.confirm("Are you sure you want to cancel this booking?")) {
+      cancelBooking.mutate(bookingId, {
+        onSuccess: () => {
+          toast({
+            title: "Booking Cancelled",
+            description: "Your booking has been cancelled successfully.",
+          });
+        },
+        onError: (error: any) => {
+          toast({
+            title: "Cancellation Failed",
+            description: error.message || "Failed to cancel booking. Please try again.",
+            variant: "destructive",
+          });
+        },
+      });
+    }
+  }, [cancelBooking, toast]);
   
   // Step 1: Kitchen Selection
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
@@ -730,42 +794,10 @@ export default function KitchenBookingCalendar() {
               {/* Right Column - Booking Control Panel */}
               <div className="lg:col-span-1">
                 <BookingControlPanel
-                  bookings={useMemo(() => {
-                    // Enrich bookings with kitchen information
-                    return bookings.map((booking) => {
-                      const kitchen = kitchens.find((k) => k.id === booking.kitchenId);
-                      return {
-                        ...booking,
-                        kitchenName: kitchen?.name,
-                        locationName: kitchen?.locationName || kitchen?.location?.name,
-                      };
-                    });
-                  }, [bookings, kitchens])}
+                  bookings={enrichedBookings}
                   isLoading={isLoadingBookings}
-                  onCancelBooking={(bookingId) => {
-                    if (window.confirm("Are you sure you want to cancel this booking?")) {
-                      cancelBooking.mutate(bookingId, {
-                        onSuccess: () => {
-                          toast({
-                            title: "Booking Cancelled",
-                            description: "Your booking has been cancelled successfully.",
-                          });
-                        },
-                        onError: (error: any) => {
-                          toast({
-                            title: "Cancellation Failed",
-                            description: error.message || "Failed to cancel booking. Please try again.",
-                            variant: "destructive",
-                          });
-                        },
-                      });
-                    }
-                  }}
-                  kitchens={kitchens.map((k) => ({
-                    id: k.id,
-                    name: k.name,
-                    locationName: k.locationName || k.location?.name,
-                  }))}
+                  onCancelBooking={handleCancelBooking}
+                  kitchens={kitchensForPanel}
                 />
               </div>
             </div>

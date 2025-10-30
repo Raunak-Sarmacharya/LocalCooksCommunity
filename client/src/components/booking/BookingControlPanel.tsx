@@ -39,10 +39,19 @@ export default function BookingControlPanel({
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
 
   // Separate bookings into past, upcoming, and all
-  const now = new Date();
+  // Memoize the current time to prevent recalculation issues
   const { upcomingBookings, pastBookings, allBookings } = useMemo(() => {
+    const now = new Date();
     const upcoming: Booking[] = [];
     const past: Booking[] = [];
+
+    if (!Array.isArray(bookings) || bookings.length === 0) {
+      return {
+        upcomingBookings: [],
+        pastBookings: [],
+        allBookings: [],
+      };
+    }
 
     bookings.forEach((booking) => {
       const bookingDateTime = new Date(`${booking.bookingDate}T${booking.startTime}`);

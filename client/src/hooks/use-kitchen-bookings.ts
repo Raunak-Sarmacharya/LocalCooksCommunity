@@ -237,9 +237,9 @@ export function useKitchenBookings() {
   });
 
   return {
-    bookings: bookingsQuery.data || [],
+    bookings: bookingsQuery.data ?? [],
     isLoadingBookings: bookingsQuery.isLoading,
-    kitchens: kitchensQuery.data || [],
+    kitchens: kitchensQuery.data ?? [],
     isLoadingKitchens: kitchensQuery.isLoading,
     kitchensQuery, // Expose the full query object for error handling
     getAvailableSlots,
