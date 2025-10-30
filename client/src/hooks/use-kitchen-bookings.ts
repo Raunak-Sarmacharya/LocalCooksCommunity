@@ -68,14 +68,11 @@ export function useKitchenBookings() {
     queryKey: ["/api/chef/kitchens"],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      console.log('🔍 Fetching kitchens from /api/chef/kitchens with headers:', headers);
       
       const response = await fetch("/api/chef/kitchens", {
         credentials: "include",
         headers,
       });
-      
-      console.log('📡 Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -84,10 +81,42 @@ export function useKitchenBookings() {
         throw new Error(`Failed to fetch kitchens: ${response.status} ${response.statusText}`);
       }
       
-      const data = await response.json();
+      const kitchens = await response.json();
+      
+      // If backend doesn't provide location names, fetch them separately
+      const needsLocationFetch = Array.isArray(kitchens) && kitchens.length > 0 && 
+        !kitchens[0].locationName && !kitchens[0].location;
+      
+      if (needsLocationFetch) {
+        // Fetch all locations from chef endpoint
+        const locationsResponse = await fetch("/api/chef/locations", {
+          credentials: "include",
+          headers,
+        });
+        
+        const locations = locationsResponse.ok ? await locationsResponse.json() : [];
+        
+        // Enrich kitchens with location data
+        return (Array.isArray(kitchens) ? kitchens : []).map((k: any) => {
+          const locationId = k.locationId ?? k.location_id;
+          const location = locations.find((loc: any) => loc.id === locationId);
+          
+          return {
+            ...k,
+            locationId,
+            locationName: location?.name,
+            locationAddress: location?.address,
+            location: location ? {
+              id: location.id,
+              name: location.name,
+              address: location.address,
+            } : undefined,
+          };
+        });
+      }
       
       // Normalize: ensure location object exists using flattened fields if needed
-      const normalized = (Array.isArray(data) ? data : []).map((k: any) => {
+      const normalized = (Array.isArray(kitchens) ? kitchens : []).map((k: any) => {
         const location = k.location || ((k.locationName || k.locationAddress) ? {
           id: k.locationId ?? k.location_id,
           name: k.locationName ?? k.location_name,

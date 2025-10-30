@@ -357,25 +357,33 @@ export default function KitchenAvailabilityManagement() {
   const getAvailabilityForDate = (date: Date | null): DateAvailability[] => {
     if (!date) return [];
     const dateStr = toLocalYMD(date);
-    return (dateAvailability as DateAvailability[]).filter((avail: DateAvailability) => {
+    
+    const matches = (dateAvailability as any[]).filter((avail: any) => {
       try {
+        // Handle both camelCase and snake_case field names
+        const specificDate = avail.specificDate ?? avail.specific_date;
+        
+        if (!specificDate) return false;
+        
         // Handle both plain YYYY-MM-DD strings and date objects/ISOs
-        if (typeof avail.specificDate === 'string') {
+        if (typeof specificDate === 'string') {
           // If backend returned plain date (YYYY-MM-DD), compare directly
-          if (/^\d{4}-\d{2}-\d{2}$/.test(avail.specificDate)) {
-            return avail.specificDate === dateStr;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(specificDate)) {
+            return specificDate === dateStr;
           }
           // Otherwise parse and compare as local YMD
-          const parsed = new Date(avail.specificDate);
+          const parsed = new Date(specificDate);
           return toLocalYMD(parsed) === dateStr;
         } else {
-          return toLocalYMD(avail.specificDate as unknown as Date) === dateStr;
+          return toLocalYMD(specificDate as Date) === dateStr;
         }
       } catch (e) {
-        console.error('Error parsing date:', avail.specificDate, e);
+        console.error('Error parsing date:', avail, e);
         return false;
       }
     });
+    
+    return matches;
   };
 
   const getBookingsForDate = (date: Date | null): Booking[] => {
@@ -392,23 +400,31 @@ export default function KitchenAvailabilityManagement() {
     setSelectedDate(date);
     const existingOverrides = getAvailabilityForDate(date);
     
+    // Helper to get field value (camelCase or snake_case)
+    const getField = (obj: any, camelCase: string, snakeCase: string) => {
+      return obj[camelCase] ?? obj[snakeCase];
+    };
+    
     // If there's a full-day override (no time specified), use it
-    const fullDayOverride = existingOverrides.find(o => !o.startTime && !o.endTime);
+    const fullDayOverride = existingOverrides.find((o: any) => 
+      !getField(o, 'startTime', 'start_time') && !getField(o, 'endTime', 'end_time')
+    );
     
     if (fullDayOverride) {
       setFormData({
         startTime: "09:00",
         endTime: "17:00",
-        isAvailable: fullDayOverride.isAvailable,
-        reason: fullDayOverride.reason || "",
+        isAvailable: getField(fullDayOverride, 'isAvailable', 'is_available'),
+        reason: getField(fullDayOverride, 'reason', 'reason') || "",
       });
     } else if (existingOverrides.length > 0) {
       // Use first override if exists
+      const override: any = existingOverrides[0];
       setFormData({
-        startTime: existingOverrides[0].startTime || "09:00",
-        endTime: existingOverrides[0].endTime || "17:00",
-        isAvailable: existingOverrides[0].isAvailable,
-        reason: existingOverrides[0].reason || "",
+        startTime: getField(override, 'startTime', 'start_time') || "09:00",
+        endTime: getField(override, 'endTime', 'end_time') || "17:00",
+        isAvailable: getField(override, 'isAvailable', 'is_available'),
+        reason: getField(override, 'reason', 'reason') || "",
       });
     } else {
       resetForm();
@@ -678,9 +694,15 @@ export default function KitchenAvailabilityManagement() {
                               let borderColor = 'border-gray-200';
                               let textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
 
-                              // Check if any override makes it unavailable
-                              const hasClosedOverride = availabilityOverrides.some(a => !a.isAvailable);
-                              const hasCustomHours = availabilityOverrides.some(a => a.isAvailable && a.startTime && a.endTime);
+                              // Check if any override makes it unavailable (handle snake_case)
+                              const hasClosedOverride = availabilityOverrides.some((a: any) => 
+                                !(a.isAvailable ?? a.is_available)
+                              );
+                              const hasCustomHours = availabilityOverrides.some((a: any) => 
+                                (a.isAvailable ?? a.is_available) && 
+                                (a.startTime ?? a.start_time) && 
+                                (a.endTime ?? a.end_time)
+                              );
 
                               if (hasClosedOverride) {
                                 bgColor = 'bg-red-50 hover:bg-red-100 border-red-300';
@@ -717,13 +739,20 @@ export default function KitchenAvailabilityManagement() {
                                             <span className="text-orange-700 font-medium">
                                               {availabilityOverrides.length} blocks
                                             </span>
-                                          ) : availabilityOverrides[0].isAvailable && availabilityOverrides[0].startTime && availabilityOverrides[0].endTime ? (
-                                            <span className="text-green-700 font-medium">
-                                              {availabilityOverrides[0].startTime.slice(0, 5)}
-                                            </span>
-                                          ) : (
-                                            <span className="text-red-700 font-medium">Closed</span>
-                                          )}
+                                          ) : (() => {
+                                              const override: any = availabilityOverrides[0];
+                                              const isAvail = override.isAvailable ?? override.is_available;
+                                              const startTime = override.startTime ?? override.start_time;
+                                              const endTime = override.endTime ?? override.end_time;
+                                              return isAvail && startTime && endTime ? (
+                                                <span className="text-green-700 font-medium">
+                                                  {startTime.slice(0, 5)}
+                                                </span>
+                                              ) : (
+                                                <span className="text-red-700 font-medium">Closed</span>
+                                              );
+                                            })()
+                                          }
                                         </div>
                                       )}
                                       {hasBookings && (
@@ -888,28 +917,39 @@ export default function KitchenAvailabilityManagement() {
 
                                   {/* Existing Blocks */}
                                   {selectedDate && getAvailabilityForDate(selectedDate)
-                                    .filter(override => override.startTime && override.endTime && !override.isAvailable)
-                                    .map((override) => (
-                                      <div key={override.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-orange-300 mb-2">
-                                        <div className="flex items-center gap-3">
-                                          <Clock className="h-4 w-4 text-orange-600" />
-                                          <div>
-                                            <p className="font-medium text-gray-900">
-                                              {override.startTime?.slice(0, 5)} - {override.endTime?.slice(0, 5)}
-                                            </p>
-                                            {override.reason && (
-                                              <p className="text-xs text-gray-600">{override.reason}</p>
-                                            )}
+                                    .filter((override: any) => {
+                                      const startTime = override.startTime ?? override.start_time;
+                                      const endTime = override.endTime ?? override.end_time;
+                                      const isAvailable = override.isAvailable ?? override.is_available;
+                                      return startTime && endTime && !isAvailable;
+                                    })
+                                    .map((override: any) => {
+                                      const id = override.id;
+                                      const startTime = override.startTime ?? override.start_time;
+                                      const endTime = override.endTime ?? override.end_time;
+                                      const reason = override.reason;
+                                      return (
+                                        <div key={id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-orange-300 mb-2">
+                                          <div className="flex items-center gap-3">
+                                            <Clock className="h-4 w-4 text-orange-600" />
+                                            <div>
+                                              <p className="font-medium text-gray-900">
+                                                {startTime?.slice(0, 5)} - {endTime?.slice(0, 5)}
+                                              </p>
+                                              {reason && (
+                                                <p className="text-xs text-gray-600">{reason}</p>
+                                              )}
+                                            </div>
                                           </div>
+                                          <button
+                                            onClick={() => id && deleteAvailability.mutate(id)}
+                                            className="text-red-600 hover:text-red-700 p-1"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
                                         </div>
-                                        <button
-                                          onClick={() => override.id && deleteAvailability.mutate(override.id)}
-                                          className="text-red-600 hover:text-red-700 p-1"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                    ))
+                                      );
+                                    })
                                   }
 
                                   {/* Add Block Form */}

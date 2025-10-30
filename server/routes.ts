@@ -3527,6 +3527,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all locations (for chefs to see kitchen locations)
+  app.get("/api/chef/locations", requireChef, async (req: Request, res: Response) => {
+    try {
+      const locations = await firebaseStorage.getAllLocations();
+      res.json(locations);
+    } catch (error: any) {
+      console.error("Error fetching locations:", error);
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
   // Get available time slots for a kitchen on a specific date
   app.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req: Request, res: Response) => {
     try {
