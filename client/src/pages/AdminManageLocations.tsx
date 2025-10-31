@@ -909,12 +909,13 @@ export default function AdminManageLocations() {
                       required
                     />
                   </div>
-                  {editingManager && editingManager.locations && editingManager.locations.length > 0 && (
+                  {editingManager && (
                     <div className="space-y-3 pt-2 border-t">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Notification Emails by Location
                       </label>
-                      {editingManager.locations.map((loc: any) => {
+                      {editingManager.locations && editingManager.locations.length > 0 ? (
+                        editingManager.locations.map((loc: any) => {
                         const locId = loc.locationId || loc.location_id;
                         const emailIndex = managerForm.locationNotificationEmails.findIndex(
                           (e: any) => e.locationId === locId
@@ -956,7 +957,12 @@ export default function AdminManageLocations() {
                             )}
                           </div>
                         );
-                      })}
+                      })
+                      ) : (
+                        <div className="text-sm text-gray-500 italic py-2">
+                          No locations assigned to this manager yet. Assign a location to this manager first to set notification emails.
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="flex gap-3">
