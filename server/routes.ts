@@ -4038,23 +4038,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (pool) {
         // Get managers with their locations and notification emails
-        // CRITICAL: This query MUST return locations as a JSON array, even if empty
+        // CRITICAL: Use COALESCE with json_agg to ensure we always get an array (even if empty)
         const result = await pool.query(
           `SELECT 
             u.id, 
             u.username, 
             u.role,
-            CASE 
-              WHEN COUNT(l.id) > 0 THEN
-                json_agg(
-                  json_build_object(
-                    'locationId', l.id,
-                    'locationName', l.name,
-                    'notificationEmail', COALESCE(l.notification_email, NULL)
-                  )
-                ) FILTER (WHERE l.id IS NOT NULL)
-              ELSE '[]'::json
-            END as locations
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'locationId', l.id,
+                  'locationName', l.name,
+                  'notificationEmail', l.notification_email
+                )
+              ) FILTER (WHERE l.id IS NOT NULL),
+              '[]'::json
+            ) as locations
           FROM users u
           LEFT JOIN locations l ON l.manager_id = u.id
           WHERE u.role = $1
@@ -4135,30 +4134,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .map((loc: any) => loc.notificationEmail || loc.notification_email)
             .filter((email: string) => email && email.trim() !== '');
           
-          // CRITICAL: Map locations array to ensure proper structure
-          const mappedLocations = locations.map((loc: any) => ({
-            locationId: loc.locationId || loc.location_id || loc.id,
-            locationName: loc.locationName || loc.location_name || loc.name,
-            notificationEmail: loc.notificationEmail || loc.notification_email || null
-          }));
-          
-          console.log(`🔍 Manager ${row.id} mappedLocations:`, JSON.stringify(mappedLocations, null, 2));
+          // STEP 4: Map to consistent structure (camelCase)
+          const mappedLocations = locations.map((loc: any) => {
+            // Handle both camelCase and snake_case from database
+            const locationId = loc.locationId || loc.location_id || loc.id;
+            const locationName = loc.locationName || loc.location_name || loc.name;
+            const notificationEmail = loc.notificationEmail || loc.notification_email || null;
+            
+            return {
+              locationId: locationId,
+              locationName: locationName,
+              notificationEmail: notificationEmail
+            };
+          });
           
           const managerData = {
             id: row.id,
             username: row.username,
             role: row.role,
-            locations: mappedLocations, // Use the mapped locations array
+            locations: mappedLocations, // Always an array, possibly empty
           };
           
-          console.log(`📦 Manager ${row.id} final data BEFORE return:`, {
+          console.log(`📦 Manager ${row.id} FINAL structure:`, {
             id: managerData.id,
             username: managerData.username,
-            role: managerData.role,
-            locationCount: managerData.locations.length,
-            locations: managerData.locations,
-            locationsType: typeof managerData.locations,
-            locationsIsArray: Array.isArray(managerData.locations)
+            locationsCount: managerData.locations.length,
+            locationsIsArray: Array.isArray(managerData.locations),
+            firstLocation: managerData.locations[0] || 'none'
           });
           
           return managerData;
@@ -4177,7 +4179,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('📤 RETURNING DIRECTLY - managersWithEmails has locations:', managersWithEmails[0]?.locations);
         console.log('📤 RETURNING DIRECTLY - Full first manager:', JSON.stringify(managersWithEmails[0], null, 2));
         
-        return res.json(managersWithEmails);
+        // FINAL VERIFICATION: Ensure every manager has a locations array before sending
+        const verifiedManagers = managersWithEmails.map((manager: any) => {
+          // Double-check locations is an array
+          if (!manager.locations || !Array.isArray(manager.locations)) {
+            console.warn(`⚠️ Manager ${manager.id} missing locations array, adding empty array`);
+            return {
+              ...manager,
+              locations: []
+            };
+          }
+          return manager;
+        });
+        
+        console.log('📤 FINAL VERIFIED - First manager structure:', {
+          id: verifiedManagers[0]?.id,
+          username: verifiedManagers[0]?.username,
+          locationsCount: verifiedManagers[0]?.locations?.length,
+          locations: verifiedManagers[0]?.locations,
+          fullJSON: JSON.stringify(verifiedManagers[0], null, 2)
+        });
+        
+        return res.json(verifiedManagers);
       }
       
       // Fallback to Drizzle if pool is not available

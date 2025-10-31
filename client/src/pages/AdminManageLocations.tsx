@@ -53,35 +53,113 @@ export default function AdminManageLocations() {
     }
   };
 
-  const loadManagers = async () => {
-    try {
-      const response = await fetch("/api/admin/managers", { credentials: "include" });
-      if (response.ok) {
-        const data = await response.json();
-        console.log('👥 Loaded managers data:', JSON.stringify(data, null, 2));
-        console.log('👥 First manager locations:', data[0]?.locations);
-        console.log('👥 First manager has locations?', !!data[0]?.locations);
-        console.log('👥 First manager locations type:', typeof data[0]?.locations);
-        console.log('👥 First manager locations is array?', Array.isArray(data[0]?.locations));
-        console.log('👥 First manager locations count:', data[0]?.locations?.length);
-        
-        // CRITICAL: Ensure every manager has a locations array, even if empty
-        const managersWithLocations = data.map((manager: any) => ({
-          ...manager,
-          locations: Array.isArray(manager.locations) ? manager.locations : []
-        }));
-        
-        console.log('👥 After ensuring locations array - First manager:', JSON.stringify(managersWithLocations[0], null, 2));
-        setManagers(managersWithLocations);
-      } else {
-        console.error("Failed to load managers:", response.status, response.statusText);
-        const errorText = await response.text();
-        console.error("Error response:", errorText);
-      }
-    } catch (error) {
-      console.error("Error loading managers:", error);
-    }
-  };
+        const loadManagers = async () => {
+          try {
+            const response = await fetch("/api/admin/managers", { credentials: "include" });
+            if (response.ok) {
+              // Check response content type
+              const contentType = response.headers.get('content-type');
+              console.log('👥 Response content-type:', contentType);
+              
+              let data;
+              if (contentType?.includes('application/json')) {
+                data = await response.json();
+              } else {
+                // Try to parse as text first, then JSON
+                const text = await response.text();
+                console.warn('👥 Response was not JSON, got text:', text.substring(0, 200));
+                try {
+                  data = JSON.parse(text);
+                } catch (e) {
+                  console.error('👥 Failed to parse response as JSON:', e);
+                  return;
+                }
+              }
+              
+              console.log('👥 Raw response data:', data);
+              console.log('👥 Response is array?', Array.isArray(data));
+              console.log('👥 Response length:', data?.length);
+              
+              if (!Array.isArray(data)) {
+                console.error('👥 Response is not an array! Got:', typeof data);
+                return;
+              }
+              
+              if (data.length > 0) {
+                console.log('👥 First manager from API:', JSON.stringify(data[0], null, 2));
+                console.log('👥 First manager has locations property?', 'locations' in data[0]);
+                console.log('👥 First manager.locations value:', data[0].locations);
+                console.log('👥 First manager.locations type:', typeof data[0].locations);
+                console.log('👥 First manager.locations is array?', Array.isArray(data[0].locations));
+                if (data[0].locations) {
+                  console.log('👥 First manager.locations length:', data[0].locations.length);
+                  console.log('👥 First manager.locations content:', JSON.stringify(data[0].locations, null, 2));
+                }
+              }
+              
+              // CRITICAL: Ensure every manager has a locations array, even if empty
+              const managersWithLocations = data.map((manager: any, index: number) => {
+                // Extensive validation and logging
+                console.log(`👥 Processing manager ${index}:`, {
+                  id: manager.id,
+                  username: manager.username,
+                  hasLocationsKey: 'locations' in manager,
+                  locationsValue: manager.locations,
+                  locationsType: typeof manager.locations,
+                  locationsIsArray: Array.isArray(manager.locations)
+                });
+                
+                // Normalize locations
+                let normalizedLocations = [];
+                if (manager.locations) {
+                  if (Array.isArray(manager.locations)) {
+                    normalizedLocations = manager.locations;
+                  } else if (typeof manager.locations === 'string') {
+                    try {
+                      normalizedLocations = JSON.parse(manager.locations);
+                      if (!Array.isArray(normalizedLocations)) {
+                        normalizedLocations = [];
+                      }
+                    } catch (e) {
+                      console.warn(`👥 Manager ${manager.id}: Failed to parse locations string:`, e);
+                      normalizedLocations = [];
+                    }
+                  } else {
+                    console.warn(`👥 Manager ${manager.id}: locations is not array or string, got:`, typeof manager.locations);
+                    normalizedLocations = [];
+                  }
+                }
+                
+                const normalized = {
+                  ...manager,
+                  locations: normalizedLocations
+                };
+                
+                console.log(`👥 Manager ${index} normalized:`, {
+                  id: normalized.id,
+                  username: normalized.username,
+                  locationsCount: normalized.locations.length,
+                  locations: normalized.locations
+                });
+                
+                return normalized;
+              });
+              
+              console.log('👥 FINAL: All managers processed, setting state with:', managersWithLocations.length, 'managers');
+              if (managersWithLocations.length > 0) {
+                console.log('👥 FINAL: First manager final structure:', JSON.stringify(managersWithLocations[0], null, 2));
+              }
+              
+              setManagers(managersWithLocations);
+            } else {
+              console.error("Failed to load managers:", response.status, response.statusText);
+              const errorText = await response.text();
+              console.error("Error response:", errorText);
+            }
+          } catch (error) {
+            console.error("Error loading managers:", error);
+          }
+        };
 
   const loadKitchens = async (locationId: number) => {
     if (!locationId) return;
