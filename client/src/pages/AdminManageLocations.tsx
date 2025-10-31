@@ -58,10 +58,13 @@ export default function AdminManageLocations() {
       const response = await fetch("/api/admin/managers", { credentials: "include" });
       if (response.ok) {
         const data = await response.json();
-        console.log('👥 Loaded managers data:', data);
+        console.log('👥 Loaded managers data:', JSON.stringify(data, null, 2));
+        console.log('👥 First manager locations:', data[0]?.locations);
         setManagers(data);
       } else {
         console.error("Failed to load managers:", response.status, response.statusText);
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
       }
     } catch (error) {
       console.error("Error loading managers:", error);
