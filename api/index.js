@@ -10725,7 +10725,11 @@ app.get("/api/manager/locations", async (req, res) => {
       return res.json([]);
     }
     const result = await pool.query(`
-      SELECT id, name, address, manager_id as "managerId", created_at, updated_at 
+      SELECT id, name, address, manager_id as "managerId", 
+             cancellation_policy_hours as "cancellationPolicyHours",
+             cancellation_policy_message as "cancellationPolicyMessage",
+             default_daily_booking_limit as "defaultDailyBookingLimit",
+             created_at, updated_at 
       FROM locations 
       WHERE manager_id = $1
       ORDER BY created_at DESC
@@ -10734,6 +10738,135 @@ app.get("/api/manager/locations", async (req, res) => {
   } catch (error) {
     console.error("Error fetching locations:", error);
     res.status(500).json({ error: error.message || "Failed to fetch locations" });
+  }
+});
+
+// Update location cancellation policy (manager only)
+app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, res) => {
+  console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
+    locationId: req.params.locationId,
+    body: req.body
+  });
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { locationId } = req.params;
+    const locationIdNum = parseInt(locationId);
+    
+    if (isNaN(locationIdNum) || locationIdNum <= 0) {
+      console.error('[PUT] Invalid locationId:', locationId);
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+    
+    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit } = req.body;
+    
+    console.log('[PUT] Request body:', {
+      cancellationPolicyHours,
+      cancellationPolicyMessage,
+      defaultDailyBookingLimit,
+      locationId: locationIdNum
+    });
+
+    if (cancellationPolicyHours !== undefined && (typeof cancellationPolicyHours !== 'number' || cancellationPolicyHours < 0)) {
+      return res.status(400).json({ error: "Cancellation policy hours must be a non-negative number" });
+    }
+
+    if (defaultDailyBookingLimit !== undefined && (typeof defaultDailyBookingLimit !== 'number' || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
+      return res.status(400).json({ error: "Daily booking limit must be between 1 and 24 hours" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify manager owns this location
+    const locationResult = await pool.query(`
+      SELECT id, name, manager_id
+      FROM locations
+      WHERE id = $1 AND manager_id = $2
+    `, [locationIdNum, user.id]);
+    
+    const location = locationResult.rows[0];
+
+    if (!location) {
+      console.error('[PUT] Location not found or access denied:', {
+        locationId: locationIdNum,
+        managerId: user.id,
+        userRole: user.role
+      });
+      return res.status(404).json({ error: "Location not found or access denied" });
+    }
+    
+    console.log('[PUT] Location verified:', {
+      locationId: location.id,
+      locationName: location.name,
+      managerId: location.manager_id
+    });
+
+    // Update location settings
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (cancellationPolicyHours !== undefined) {
+      updates.push(`cancellation_policy_hours = $${paramCount++}`);
+      values.push(cancellationPolicyHours);
+    }
+    if (cancellationPolicyMessage !== undefined) {
+      updates.push(`cancellation_policy_message = $${paramCount++}`);
+      values.push(cancellationPolicyMessage);
+    }
+    if (defaultDailyBookingLimit !== undefined) {
+      updates.push(`default_daily_booking_limit = $${paramCount++}`);
+      values.push(defaultDailyBookingLimit);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No updates provided" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(locationIdNum);
+
+    const updateQuery = `
+      UPDATE locations
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING id, name, address, manager_id as "managerId",
+                cancellation_policy_hours as "cancellationPolicyHours",
+                cancellation_policy_message as "cancellationPolicyMessage",
+                default_daily_booking_limit as "defaultDailyBookingLimit",
+                created_at, updated_at
+    `;
+
+    const updatedResult = await pool.query(updateQuery, values);
+
+    if (!updatedResult.rows || updatedResult.rows.length === 0) {
+      console.error('[PUT] Cancellation policy update failed: No location returned from DB', {
+        locationId: locationIdNum,
+        updates
+      });
+      return res.status(500).json({ error: "Failed to update location settings - no rows updated" });
+    }
+
+    const updated = updatedResult.rows[0];
+    console.log('[PUT] Cancellation policy updated successfully:', {
+      locationId: updated.id,
+      cancellationPolicyHours: updated.cancellationPolicyHours,
+      defaultDailyBookingLimit: updated.defaultDailyBookingLimit
+    });
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error("Error updating cancellation policy:", error);
+    res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
   }
 });
 
