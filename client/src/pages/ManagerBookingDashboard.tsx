@@ -44,7 +44,7 @@ export default function ManagerBookingDashboard() {
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [activeView, setActiveView] = useState<ViewType>('overview');
+  const [activeView, setActiveView] = useState<ViewType>('bookings');
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -238,6 +238,7 @@ export default function ManagerBookingDashboard() {
                   </div>
                 </div>
               )}
+
             </aside>
 
             {/* Main Content Area */}
