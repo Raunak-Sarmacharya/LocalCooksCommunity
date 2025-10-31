@@ -603,6 +603,45 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     }
   };
 
+  const handleCloseKitchen = () => {
+    if (!selectedDate || !selectedKitchenId) return;
+    
+    const existingOverrides = getAvailabilityForDate(selectedDate);
+    const existingBookings = getBookingsForDate(selectedDate);
+    
+    // Warn if there are bookings
+    if (existingBookings.length > 0) {
+      const confirmed = window.confirm(
+        `⚠️ Warning: This date has ${existingBookings.length} booking(s). Closing the kitchen will prevent new bookings but existing bookings will remain. Are you sure you want to close the kitchen on this date?`
+      );
+      if (!confirmed) return;
+    }
+    
+    // Create or update override to close the kitchen
+    const dateStr = toLocalYMD(selectedDate);
+    const overrideData = {
+      specificDate: dateStr,
+      isAvailable: false,
+      startTime: null,
+      endTime: null,
+      reason: formData.reason || "Kitchen closed",
+      maxSlotsPerChef: 0,
+    };
+    
+    if (existingOverrides.length > 0) {
+      // Update existing override to closed
+      const existingId = existingOverrides[0].id;
+      if (existingId) {
+        updateAvailability.mutate({
+          id: existingId,
+          data: overrideData,
+        });
+      }
+    } else {
+      // Create new override to close
+      createAvailability.mutate(overrideData);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
