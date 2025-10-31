@@ -22,6 +22,7 @@ interface Location {
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
+  notificationEmail?: string;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -79,25 +80,46 @@ export default function ManagerBookingDashboard() {
         throw new Error(errorMessage);
       }
       const locations = await response.json();
-      return locations.find((l: Location) => l.id === selectedLocation.id) || selectedLocation;
+      const location = locations.find((l: any) => l.id === selectedLocation.id);
+      if (location) {
+        // Map snake_case to camelCase if needed
+        // notification_email column from DB should be mapped to notificationEmail
+        const mappedLocation = {
+          ...location,
+          notificationEmail: location.notificationEmail || location.notification_email || undefined,
+          cancellationPolicyHours: location.cancellationPolicyHours || location.cancellation_policy_hours,
+          cancellationPolicyMessage: location.cancellationPolicyMessage || location.cancellation_policy_message,
+          defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit,
+        } as Location;
+        
+        console.log('Fetched location details:', {
+          id: mappedLocation.id,
+          notificationEmail: mappedLocation.notificationEmail,
+          rawData: location
+        });
+        
+        return mappedLocation;
+      }
+      return selectedLocation;
     },
     enabled: !!selectedLocation?.id,
   });
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
       defaultDailyBookingLimit?: number;
+      notificationEmail?: string;
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/locations/${locationId}/cancellation-policy`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit }),
+        body: JSON.stringify({ cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail }),
       });
       
       if (!response.ok) {
@@ -126,8 +148,31 @@ export default function ManagerBookingDashboard() {
         return text ? JSON.parse(text) : {};
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Update the location details cache with the returned data
+      if (selectedLocation?.id && data) {
+        queryClient.setQueryData(['locationDetails', selectedLocation.id], (oldData: Location | null) => {
+          if (oldData) {
+            return { ...oldData, ...data };
+          }
+          return data;
+        });
+      }
+      
+      // Update selected location state
+      if (data) {
+        setSelectedLocation((prev) => {
+          if (prev && prev.id === data.id) {
+            return { ...prev, ...data };
+          }
+          return prev;
+        });
+      }
+      
+      // Invalidate queries to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+      
       toast({
         title: "Success",
         description: "Location settings updated successfully",
@@ -580,7 +625,25 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
   );
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
-  const [notificationEmail, setNotificationEmail] = useState((location as any).notificationEmail || '');
+  const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
+
+  // Update state when location prop changes (e.g., after saving or switching tabs)
+  useEffect(() => {
+    setCancellationHours(location.cancellationPolicyHours || 24);
+    setCancellationMessage(
+      location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+    );
+    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+    // Show the actual notificationEmail from the database, not the username
+    // notificationEmail should be what's saved in notification_email column
+    const savedEmail = location.notificationEmail || '';
+    console.log('SettingsView: Loading notificationEmail from location:', {
+      locationId: location.id,
+      notificationEmail: savedEmail,
+      fullLocation: location
+    });
+    setNotificationEmail(savedEmail);
+  }, [location]);
 
   const handleSave = () => {
     if (!location.id) return;
@@ -642,7 +705,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 </button>
                 <button
                   onClick={() => {
-                    setNotificationEmail((location as any).notificationEmail || '');
+                    setNotificationEmail(location.notificationEmail || '');
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
