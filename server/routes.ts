@@ -4063,6 +4063,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Transform the result to include notification emails in a flat structure
         console.log(`📊 Raw database result - ${result.rows.length} manager(s) found`);
+        if (result.rows.length > 0) {
+          console.log(`📊 First row keys:`, Object.keys(result.rows[0]));
+          console.log(`📊 First row locations property:`, result.rows[0].locations);
+          console.log(`📊 First row locations type:`, typeof result.rows[0].locations);
+        }
         
         const managersWithEmails = result.rows.map((row: any) => {
           // Parse JSON if it's a string, otherwise use as-is
@@ -4070,6 +4075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let locations = row.locations;
           
           console.log(`🔍 Manager ${row.id} (${row.username}): raw locations =`, typeof locations, locations);
+          console.log(`🔍 Manager ${row.id}: row object keys:`, Object.keys(row));
           
           // Handle different return types from PostgreSQL
           // COALESCE in SQL should ensure we get []::json, but handle all cases
@@ -4139,9 +4145,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         console.log('📤 GET /api/admin/managers returning', managersWithEmails.length, 'managers');
-        console.log('📤 Sample manager data structure:', JSON.stringify(managersWithEmails[0], null, 2));
+        if (managersWithEmails.length > 0) {
+          console.log('📤 BEFORE finalResponse - Sample manager:', JSON.stringify(managersWithEmails[0], null, 2));
+          console.log('📤 BEFORE finalResponse - Has locations?', !!managersWithEmails[0].locations);
+          console.log('📤 BEFORE finalResponse - Locations count:', managersWithEmails[0].locations?.length || 0);
+          console.log('📤 BEFORE finalResponse - Locations value:', managersWithEmails[0].locations);
+        }
         
-        return res.json(managersWithEmails);
+        // IMPORTANT: Ensure locations property is always present with proper structure
+        const finalResponse = managersWithEmails.map(manager => {
+          const locationsArray = Array.isArray(manager.locations) 
+            ? manager.locations 
+            : (manager.locations ? [manager.locations] : []);
+          
+          return {
+            id: manager.id,
+            username: manager.username,
+            role: manager.role,
+            locations: locationsArray.map((loc: any) => ({
+              locationId: loc.locationId || loc.location_id || loc.id,
+              locationName: loc.locationName || loc.location_name || loc.name,
+              notificationEmail: loc.notificationEmail || loc.notification_email || null
+            }))
+          };
+        });
+        
+        console.log('📤 AFTER finalResponse - First manager FULL:', JSON.stringify(finalResponse[0], null, 2));
+        console.log('📤 AFTER finalResponse - First manager locations:', finalResponse[0]?.locations);
+        console.log('📤 AFTER finalResponse - First manager notificationEmail:', finalResponse[0]?.locations?.[0]?.notificationEmail);
+        
+        return res.json(finalResponse);
       }
       
       // Fallback to Drizzle if pool is not available
@@ -4193,7 +4226,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         
         console.log('📤 Drizzle fallback returning', managersWithLocations.length, 'managers');
-        return res.json(managersWithLocations);
+        // IMPORTANT: Ensure locations property is always present with proper structure
+        const finalResponse = managersWithLocations.map(manager => {
+          const locationsArray = Array.isArray(manager.locations) 
+            ? manager.locations 
+            : (manager.locations ? [manager.locations] : []);
+          
+          return {
+            id: manager.id,
+            username: manager.username,
+            role: manager.role,
+            locations: locationsArray.map((loc: any) => ({
+              locationId: loc.locationId || loc.location_id || loc.id,
+              locationName: loc.locationName || loc.location_name || loc.name,
+              notificationEmail: loc.notificationEmail || loc.notification_email || null
+            }))
+          };
+        });
+        
+        console.log('📤 Drizzle final response - First manager FULL:', JSON.stringify(finalResponse[0], null, 2));
+        console.log('📤 Drizzle final response - First manager notificationEmail:', finalResponse[0]?.locations?.[0]?.notificationEmail);
+        return res.json(finalResponse);
       } catch (e) {
         console.error('❌ Error fetching managers with Drizzle:', e);
         return res.json([]);
