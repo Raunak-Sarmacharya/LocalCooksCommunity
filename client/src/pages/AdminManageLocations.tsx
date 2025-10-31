@@ -393,12 +393,27 @@ export default function AdminManageLocations() {
   };
 
   const handleEditManager = (manager: any) => {
-    console.log('📝 Editing manager:', manager);
-    setEditingManager(manager);
+    console.log('📝 Editing manager (BEFORE fix):', JSON.stringify(manager, null, 2));
+    console.log('📝 Manager has locations?', !!manager.locations);
+    console.log('📝 Manager locations type:', typeof manager.locations);
+    console.log('📝 Manager locations is array?', Array.isArray(manager.locations));
+    console.log('📝 Manager locations value:', manager.locations);
+    
+    // CRITICAL FIX: Ensure manager has locations array, even if empty
+    const managerWithLocations = {
+      ...manager,
+      locations: Array.isArray(manager.locations) ? manager.locations : []
+    };
+    
+    console.log('📝 Manager with locations (AFTER fix):', JSON.stringify(managerWithLocations, null, 2));
+    console.log('📝 Manager with locations has locations?', !!managerWithLocations.locations);
+    console.log('📝 Manager with locations locations count:', managerWithLocations.locations.length);
+    
+    setEditingManager(managerWithLocations);
     
     // Pre-populate location notification emails from manager's locations
     // Handle both camelCase and snake_case from API response
-    const locationEmails = (manager.locations || []).map((loc: any) => {
+    const locationEmails = (managerWithLocations.locations || []).map((loc: any) => {
       const email = loc.notificationEmail || loc.notification_email || "";
       console.log(`📍 Location ${loc.locationId || loc.location_id}: notificationEmail = ${email}`);
       return {
@@ -408,6 +423,7 @@ export default function AdminManageLocations() {
     });
     
     console.log('📧 Pre-populated location emails:', locationEmails);
+    console.log('📧 Location emails count:', locationEmails.length);
     
     setManagerForm({
       username: manager.username || "",
@@ -929,55 +945,67 @@ export default function AdminManageLocations() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Notification Emails by Location
                       </label>
-                      {editingManager.locations && editingManager.locations.length > 0 ? (
-                        editingManager.locations.map((loc: any) => {
-                        const locId = loc.locationId || loc.location_id;
-                        const emailIndex = managerForm.locationNotificationEmails.findIndex(
-                          (e: any) => e.locationId === locId
-                        );
-                        // Get email from form state first, then fallback to location data
-                        let currentEmail = "";
-                        if (emailIndex >= 0) {
-                          currentEmail = managerForm.locationNotificationEmails[emailIndex].notificationEmail || "";
-                        } else {
-                          // Try both camelCase and snake_case from location
-                          currentEmail = loc.notificationEmail || loc.notification_email || "";
+                      {(() => {
+                        // CRITICAL: Check if locations exist and is an array
+                        const locations = editingManager.locations;
+                        const hasLocations = locations && Array.isArray(locations) && locations.length > 0;
+                        
+                        console.log('🔍 Modal render - editingManager:', editingManager);
+                        console.log('🔍 Modal render - locations:', locations);
+                        console.log('🔍 Modal render - hasLocations:', hasLocations);
+                        
+                        if (!hasLocations) {
+                          return (
+                            <div className="text-sm text-gray-500 italic py-2">
+                              No locations assigned to this manager yet. Assign a location to this manager first to set notification emails.
+                            </div>
+                          );
                         }
                         
-                        return (
-                          <div key={locId} className="space-y-1">
-                            <label className="text-xs font-medium text-gray-600">
-                              {loc.locationName || loc.location_name || `Location ${locId}`}
-                            </label>
-                            <input
-                              type="email"
-                              value={currentEmail}
-                              onChange={(e) => {
-                                const newEmails = [...managerForm.locationNotificationEmails];
-                                if (emailIndex >= 0) {
-                                  newEmails[emailIndex].notificationEmail = e.target.value;
-                                } else {
-                                  newEmails.push({
-                                    locationId: locId,
-                                    notificationEmail: e.target.value,
-                                  });
-                                }
-                                setManagerForm({ ...managerForm, locationNotificationEmails: newEmails });
-                              }}
-                              placeholder="notification@example.com"
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                            {currentEmail && (
-                              <p className="text-xs text-gray-500 mt-1">Current: {currentEmail}</p>
-                            )}
-                          </div>
-                        );
-                      })
-                      ) : (
-                        <div className="text-sm text-gray-500 italic py-2">
-                          No locations assigned to this manager yet. Assign a location to this manager first to set notification emails.
-                        </div>
-                      )}
+                        return locations.map((loc: any) => {
+                          const locId = loc.locationId || loc.location_id;
+                          const emailIndex = managerForm.locationNotificationEmails.findIndex(
+                            (e: any) => e.locationId === locId
+                          );
+                          // Get email from form state first, then fallback to location data
+                          let currentEmail = "";
+                          if (emailIndex >= 0) {
+                            currentEmail = managerForm.locationNotificationEmails[emailIndex].notificationEmail || "";
+                          } else {
+                            // Try both camelCase and snake_case from location
+                            currentEmail = loc.notificationEmail || loc.notification_email || "";
+                          }
+                          
+                          return (
+                            <div key={locId} className="space-y-1">
+                              <label className="text-xs font-medium text-gray-600">
+                                {loc.locationName || loc.location_name || `Location ${locId}`}
+                              </label>
+                              <input
+                                type="email"
+                                value={currentEmail}
+                                onChange={(e) => {
+                                  const newEmails = [...managerForm.locationNotificationEmails];
+                                  if (emailIndex >= 0) {
+                                    newEmails[emailIndex].notificationEmail = e.target.value;
+                                  } else {
+                                    newEmails.push({
+                                      locationId: locId,
+                                      notificationEmail: e.target.value,
+                                    });
+                                  }
+                                  setManagerForm({ ...managerForm, locationNotificationEmails: newEmails });
+                                }}
+                                placeholder="notification@example.com"
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              />
+                              {currentEmail && (
+                                <p className="text-xs text-gray-500 mt-1">Current: {currentEmail}</p>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   )}
                   <div className="flex gap-3">
