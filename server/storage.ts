@@ -21,6 +21,7 @@ export interface IStorage {
     role?: "admin" | "chef" | "delivery_partner" | "manager";
     isChef?: boolean;
     isDeliveryPartner?: boolean;
+    isManager?: boolean;
     googleId?: string;
     facebookId?: string;
     firebaseUid?: string;
@@ -30,6 +31,7 @@ export interface IStorage {
     role: "admin" | "chef" | "delivery_partner" | "manager";
     isChef?: boolean;
     isDeliveryPartner?: boolean;
+    isManager?: boolean;
     oauth_provider: string;
     oauth_id: string;
     profile_data?: string;
@@ -180,6 +182,7 @@ export class MemStorage implements IStorage {
       has_seen_welcome: (insertUser as any).has_seen_welcome !== undefined ? (insertUser as any).has_seen_welcome : false,
       isChef: insertUser.isChef || false,
       isDeliveryPartner: insertUser.isDeliveryPartner || false,
+      isManager: insertUser.isManager || false,
       applicationType: (insertUser as any).applicationType || null,
     };
 
@@ -653,7 +656,7 @@ export class DatabaseStorage implements IStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
           [
             insertUser.username,
             insertUser.password,
@@ -664,7 +667,8 @@ export class DatabaseStorage implements IStorage {
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
             insertUser.isChef || false,
-            insertUser.isDeliveryPartner || false
+            insertUser.isDeliveryPartner || false,
+            insertUser.isManager || false
           ]
         );
         return result.rows[0];
@@ -687,6 +691,7 @@ export class DatabaseStorage implements IStorage {
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
         isChef: insertUser.isChef || false,
         isDeliveryPartner: insertUser.isDeliveryPartner || false,
+        isManager: insertUser.isManager || false,
       })
       .returning();
 

@@ -3103,12 +3103,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid location ID" });
       }
       
-      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit } = req.body;
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail } = req.body;
       
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
+        notificationEmail,
         locationId: locationIdNum
       });
 
@@ -3158,6 +3159,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (defaultDailyBookingLimit !== undefined) {
         updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
+      }
+      if (notificationEmail !== undefined) {
+        // Validate email format if provided and not empty
+        if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
+          return res.status(400).json({ error: "Invalid email format" });
+        }
+        updates.notificationEmail = notificationEmail || null;
       }
 
       const updatedResults = await db
@@ -3771,8 +3779,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await sendEmail(chefEmail);
 
             // Send notification to manager
+            // Use notification email if set, otherwise fallback to manager's username (email)
+            const notificationEmailAddress = (location as any).notificationEmail || manager.username;
             const managerEmail = generateBookingNotificationEmail({
-              managerEmail: manager.username,
+              managerEmail: notificationEmailAddress,
               chefName: (chef as any).displayName || chef.username,
               kitchenName: kitchen.name,
               bookingDate: bookingDate,
@@ -3860,6 +3870,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "manager",
         isChef: false,
         isDeliveryPartner: false,
+        isManager: true,
         has_seen_welcome: false  // Manager must change password on first login
       });
 
