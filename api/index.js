@@ -10730,11 +10730,22 @@ app.get("/api/manager/locations", async (req, res) => {
              cancellation_policy_hours as "cancellationPolicyHours",
              cancellation_policy_message as "cancellationPolicyMessage",
              default_daily_booking_limit as "defaultDailyBookingLimit",
+             notification_email as "notificationEmail",
              created_at, updated_at 
       FROM locations 
       WHERE manager_id = $1
       ORDER BY created_at DESC
     `, [user.id]);
+    
+    // Log to verify notificationEmail is included in response
+    console.log('[GET] /api/manager/locations - Returning locations:', 
+      result.rows.map(loc => ({
+        id: loc.id,
+        name: loc.name,
+        notificationEmail: loc.notificationEmail || 'not set'
+      }))
+    );
+    
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching locations:", error);
@@ -10767,12 +10778,13 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       return res.status(400).json({ error: "Invalid location ID" });
     }
     
-    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit } = req.body;
+    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail } = req.body;
     
     console.log('[PUT] Request body:', {
       cancellationPolicyHours,
       cancellationPolicyMessage,
       defaultDailyBookingLimit,
+      notificationEmail,
       locationId: locationIdNum
     });
 
@@ -10829,6 +10841,19 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       updates.push(`default_daily_booking_limit = $${paramCount++}`);
       values.push(defaultDailyBookingLimit);
     }
+    if (notificationEmail !== undefined) {
+      // Validate email format if provided and not empty
+      if (notificationEmail && notificationEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+      updates.push(`notification_email = $${paramCount++}`);
+      // Set to null if empty string, otherwise use the value
+      values.push(notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null);
+      console.log('[PUT] Setting notificationEmail:', { 
+        raw: notificationEmail, 
+        processed: notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null
+      });
+    }
     
     if (updates.length === 0) {
       return res.status(400).json({ error: "No updates provided" });
@@ -10845,6 +10870,7 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
                 cancellation_policy_hours as "cancellationPolicyHours",
                 cancellation_policy_message as "cancellationPolicyMessage",
                 default_daily_booking_limit as "defaultDailyBookingLimit",
+                notification_email as "notificationEmail",
                 created_at, updated_at
     `;
 
@@ -10859,11 +10885,14 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
     }
 
     const updated = updatedResult.rows[0];
-    console.log('[PUT] Cancellation policy updated successfully:', {
+    console.log('[PUT] Location settings updated successfully:', {
       locationId: updated.id,
       cancellationPolicyHours: updated.cancellationPolicyHours,
-      defaultDailyBookingLimit: updated.defaultDailyBookingLimit
+      defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
+      notificationEmail: updated.notificationEmail || 'not set'
     });
+    
+    console.log('[PUT] Sending response with notificationEmail:', updated.notificationEmail);
     res.status(200).json(updated);
   } catch (error) {
     console.error("Error updating cancellation policy:", error);
