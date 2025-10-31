@@ -58,9 +58,30 @@ export function useKitchenBookings() {
         credentials: "include",
         headers,
       });
-      if (!response.ok) throw new Error("Failed to fetch bookings");
+      if (!response.ok) {
+        let errorMessage = "Failed to fetch bookings";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
       
-      const rawData = await response.json();
+      const contentType = response.headers.get('content-type');
+      let rawData;
+      if (contentType && contentType.includes('application/json')) {
+        rawData = await response.json();
+      } else {
+        const text = await response.text();
+        rawData = text ? JSON.parse(text) : [];
+      }
       
       // Normalize snake_case to camelCase (matching pattern used elsewhere in app)
       // This ensures compatibility regardless of what Drizzle returns
@@ -188,8 +209,25 @@ export function useKitchenBookings() {
       `/api/chef/kitchens/${kitchenId}/availability?date=${date}`,
       { credentials: "include", headers }
     );
-    if (!response.ok) throw new Error("Failed to fetch available slots");
-    return response.json();
+    if (!response.ok) {
+      let errorMessage = "Failed to fetch available slots";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        try {
+          const text = await response.text();
+          errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+        } catch (textError) {
+          errorMessage = `Server returned ${response.status} ${response.statusText}`;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+    const contentType = response.headers.get('content-type');
+    return contentType && contentType.includes('application/json')
+      ? await response.json()
+      : [];
   };
 
   // Create a booking
@@ -206,10 +244,26 @@ export function useKitchenBookings() {
         body: JSON.stringify(data),
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to create booking");
+        let errorMessage = "Failed to create booking";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/bookings"] });
@@ -226,10 +280,26 @@ export function useKitchenBookings() {
         headers,
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to cancel booking");
+        let errorMessage = "Failed to cancel booking";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/bookings"] });
