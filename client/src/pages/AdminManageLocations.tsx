@@ -38,6 +38,7 @@ export default function AdminManageLocations() {
     password: "",
     email: "",
     name: "",
+    locationNotificationEmails: [] as Array<{ locationId: number; notificationEmail: string }>,
   });
 
   const loadLocations = async () => {
@@ -307,7 +308,7 @@ export default function AdminManageLocations() {
       if (response.ok) {
         toast({ title: "Success", description: "Manager created successfully" });
         setShowManagerForm(false);
-        setManagerForm({ username: "", password: "", email: "", name: "" });
+        setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
         loadManagers();
       } else {
         const error = await response.json();
@@ -332,13 +333,14 @@ export default function AdminManageLocations() {
         credentials: "include",
         body: JSON.stringify({
           username: managerForm.username,
+          locationNotificationEmails: managerForm.locationNotificationEmails,
         }),
       });
       if (response.ok) {
         toast({ title: "Success", description: "Manager updated successfully" });
         setShowManagerForm(false);
         setEditingManager(null);
-        setManagerForm({ username: "", password: "", email: "", name: "" });
+        setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
         loadManagers();
       } else {
         const error = await response.json();
@@ -378,11 +380,18 @@ export default function AdminManageLocations() {
 
   const handleEditManager = (manager: any) => {
     setEditingManager(manager);
+    // Pre-populate location notification emails from manager's locations
+    const locationEmails = (manager.locations || []).map((loc: any) => ({
+      locationId: loc.locationId,
+      notificationEmail: loc.notificationEmail || "",
+    }));
+    
     setManagerForm({
       username: manager.username || "",
       password: "", // Don't pre-fill password
       email: manager.email || manager.username || "",
       name: manager.name || "",
+      locationNotificationEmails: locationEmails,
     });
     setShowManagerForm(true);
   };
@@ -558,7 +567,7 @@ export default function AdminManageLocations() {
                 <button
                   onClick={() => {
                     setEditingManager(null);
-                    setManagerForm({ username: "", password: "", email: "", name: "" });
+                    setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                     setShowManagerForm(true);
                   }}
                   className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
@@ -573,20 +582,38 @@ export default function AdminManageLocations() {
                 <p className="text-gray-500">No managers available</p>
               ) : (
                 <div className="space-y-2">
-                  {managers.map((manager) => {
-                    const managedLocations = locations.filter(l => (l.managerId || l.manager_id) === manager.id);
+                  {managers.map((manager: any) => {
+                    const managerLocations = manager.locations || [];
+                    
                     return (
                       <div key={manager.id} className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <h3 className="font-medium text-gray-900">{manager.username}</h3>
                             <p className="text-xs text-gray-500 mt-1">ID: {manager.id}</p>
-                            {managedLocations.length > 0 && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Manages {managedLocations.length} location{managedLocations.length !== 1 ? 's' : ''}
+                            {managerLocations.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                <p className="text-xs text-gray-500">
+                                  Manages {managerLocations.length} location{managerLocations.length !== 1 ? 's' : ''}:
+                                </p>
+                                {managerLocations.map((loc: any) => (
+                                  <div key={loc.locationId} className="text-xs pl-2 border-l-2 border-purple-200">
+                                    <span className="font-medium">{loc.locationName || 'Unnamed Location'}</span>
+                                    {loc.notificationEmail ? (
+                                      <p className="text-purple-600 mt-0.5">📧 {loc.notificationEmail}</p>
+                                    ) : (
+                                      <p className="text-gray-400 mt-0.5 italic">No notification email set</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {manager.primaryNotificationEmail && (
+                              <p className="text-xs text-purple-600 mt-2 font-medium">
+                                Primary: {manager.primaryNotificationEmail}
                               </p>
                             )}
-                            <span className="inline-block mt-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
+                            <span className="inline-block mt-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
                               {manager.role || 'manager'}
                             </span>
                           </div>
@@ -826,7 +853,7 @@ export default function AdminManageLocations() {
                     onClick={() => {
                       setShowManagerForm(false);
                       setEditingManager(null);
-                      setManagerForm({ username: "", password: "", email: "", name: "" });
+                      setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                     }}
                     className="text-gray-400 hover:text-gray-600"
                   >
@@ -886,6 +913,47 @@ export default function AdminManageLocations() {
                       required
                     />
                   </div>
+                  {editingManager && editingManager.locations && editingManager.locations.length > 0 && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Notification Emails by Location
+                      </label>
+                      {editingManager.locations.map((loc: any) => {
+                        const emailIndex = managerForm.locationNotificationEmails.findIndex(
+                          (e: any) => e.locationId === loc.locationId
+                        );
+                        const currentEmail = emailIndex >= 0 
+                          ? managerForm.locationNotificationEmails[emailIndex].notificationEmail
+                          : loc.notificationEmail || "";
+                        
+                        return (
+                          <div key={loc.locationId} className="space-y-1">
+                            <label className="text-xs font-medium text-gray-600">
+                              {loc.locationName || `Location ${loc.locationId}`}
+                            </label>
+                            <input
+                              type="email"
+                              value={currentEmail}
+                              onChange={(e) => {
+                                const newEmails = [...managerForm.locationNotificationEmails];
+                                if (emailIndex >= 0) {
+                                  newEmails[emailIndex].notificationEmail = e.target.value;
+                                } else {
+                                  newEmails.push({
+                                    locationId: loc.locationId,
+                                    notificationEmail: e.target.value,
+                                  });
+                                }
+                                setManagerForm({ ...managerForm, locationNotificationEmails: newEmails });
+                              }}
+                              placeholder="notification@example.com"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="flex gap-3">
                     <button
                       type="submit"
@@ -899,7 +967,7 @@ export default function AdminManageLocations() {
                       onClick={() => {
                         setShowManagerForm(false);
                         setEditingManager(null);
-                        setManagerForm({ username: "", password: "", email: "", name: "" });
+                        setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                       }}
                       className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
                     >
