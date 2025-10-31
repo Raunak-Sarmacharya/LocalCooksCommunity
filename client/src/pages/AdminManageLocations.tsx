@@ -217,6 +217,12 @@ export default function AdminManageLocations() {
     
     setLoading(true);
     try {
+      console.log('📍 Updating location:', editingLocation.id, {
+        name: locationForm.name,
+        address: locationForm.address,
+        managerId: locationForm.managerId || null,
+      });
+      
       const response = await fetch(`/api/admin/locations/${editingLocation.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -227,18 +233,25 @@ export default function AdminManageLocations() {
           managerId: locationForm.managerId || null,
         }),
       });
+      
       if (response.ok) {
+        const updatedLocation = await response.json();
+        console.log('✅ Location updated successfully:', updatedLocation);
         toast({ title: "Success", description: "Location updated successfully" });
         setShowLocationForm(false);
         setEditingLocation(null);
         setLocationForm({ name: "", address: "", managerId: "" });
-        loadLocations();
+        
+        // Reload both locations and managers to reflect any manager assignment changes
+        await Promise.all([loadLocations(), loadManagers()]);
       } else {
-        const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to update location" });
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error('❌ Failed to update location:', errorData);
+        toast({ title: "Error", description: errorData.error || "Failed to update location" });
       }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update location" });
+    } catch (error: any) {
+      console.error('❌ Error updating location:', error);
+      toast({ title: "Error", description: error.message || "Failed to update location" });
     } finally {
       setLoading(false);
     }
@@ -419,6 +432,11 @@ export default function AdminManageLocations() {
     
     setLoading(true);
     try {
+      console.log('👤 Updating manager:', editingManager.id, {
+        username: managerForm.username,
+        locationNotificationEmails: managerForm.locationNotificationEmails,
+      });
+      
       const response = await fetch(`/api/admin/managers/${editingManager.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -428,18 +446,25 @@ export default function AdminManageLocations() {
           locationNotificationEmails: managerForm.locationNotificationEmails,
         }),
       });
+      
       if (response.ok) {
+        const updatedManager = await response.json();
+        console.log('✅ Manager updated successfully:', updatedManager);
         toast({ title: "Success", description: "Manager updated successfully" });
         setShowManagerForm(false);
         setEditingManager(null);
         setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
-        loadManagers();
+        
+        // Reload both managers and locations to reflect notification email updates
+        await Promise.all([loadManagers(), loadLocations()]);
       } else {
-        const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to update manager" });
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error('❌ Failed to update manager:', errorData);
+        toast({ title: "Error", description: errorData.error || "Failed to update manager" });
       }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update manager" });
+    } catch (error: any) {
+      console.error('❌ Error updating manager:', error);
+      toast({ title: "Error", description: error.message || "Failed to update manager" });
     } finally {
       setLoading(false);
     }
@@ -477,55 +502,69 @@ export default function AdminManageLocations() {
     console.log('📝 Manager locations is array?', Array.isArray(manager.locations));
     console.log('📝 Manager locations value:', manager.locations);
     
-    // CRITICAL FIX: If locations are missing, fetch them directly
-    let managerLocations = manager.locations;
+    // CRITICAL FIX: Always ensure we have the latest locations data
+    let managerLocations: any[] = [];
     
-    if (!managerLocations || !Array.isArray(managerLocations) || managerLocations.length === 0) {
-      console.log('⚠️ Locations missing or empty in API response, fetching directly from database...');
+    // First, try to use locations from manager object if available and not empty
+    if (manager.locations && Array.isArray(manager.locations) && manager.locations.length > 0) {
+      managerLocations = manager.locations.map((loc: any) => ({
+        locationId: loc.locationId || loc.location_id || loc.id,
+        locationName: loc.locationName || loc.location_name || loc.name,
+        notificationEmail: loc.notificationEmail || loc.notification_email || null
+      }));
+      console.log('✅ Using locations from manager object:', managerLocations);
+    }
+    
+    // If still empty, try to fetch from loaded locations state
+    if (managerLocations.length === 0) {
+      console.log('⚠️ No locations in manager object, checking local state...');
+      const allLocs = locations.filter(loc => {
+        const locManagerId = loc.managerId || loc.manager_id;
+        return locManagerId === manager.id || locManagerId === manager.id?.toString();
+      });
+      console.log(`🔍 Found ${allLocs.length} location(s) for manager ${manager.id} from loaded locations`);
       
+      if (allLocs.length > 0) {
+        managerLocations = allLocs.map(loc => ({
+          locationId: loc.id,
+          locationName: loc.name,
+          notificationEmail: loc.notificationEmail || loc.notification_email || null
+        }));
+        console.log('✅ Populated locations from local state:', managerLocations);
+      }
+    }
+    
+    // If still empty, try fetching fresh from API
+    if (managerLocations.length === 0) {
+      console.log('⚠️ No locations in local state, fetching fresh from API...');
       try {
-        // Fetch locations for this manager from all locations
-        const allLocs = locations.filter(loc => loc.managerId === manager.id);
-        console.log(`🔍 Found ${allLocs.length} location(s) for manager ${manager.id} from loaded locations`);
-        
-        if (allLocs.length > 0) {
-          managerLocations = allLocs.map(loc => ({
-            locationId: loc.id,
-            locationName: loc.name,
-            notificationEmail: loc.notificationEmail || loc.notification_email || null
-          }));
-          console.log('✅ Populated locations from local state:', managerLocations);
-        } else {
-          // If still empty, try fetching from API
-          console.log('⚠️ No locations in local state, attempting direct API fetch...');
-          const locationsResponse = await fetch('/api/admin/locations', { credentials: 'include' });
-          if (locationsResponse.ok) {
-            const allLocations = await locationsResponse.json();
-            const managerLocs = allLocations.filter((loc: any) => 
-              loc.managerId === manager.id || loc.manager_id === manager.id
-            );
-            console.log(`🔍 API fetch found ${managerLocs.length} location(s) for manager ${manager.id}`);
-            
-            if (managerLocs.length > 0) {
-              managerLocations = managerLocs.map((loc: any) => ({
-                locationId: loc.id,
-                locationName: loc.name,
-                notificationEmail: loc.notificationEmail || loc.notification_email || null
-              }));
-              console.log('✅ Populated locations from API fetch:', managerLocations);
-            }
+        const locationsResponse = await fetch('/api/admin/locations', { credentials: 'include' });
+        if (locationsResponse.ok) {
+          const allLocations = await locationsResponse.json();
+          const managerLocs = allLocations.filter((loc: any) => {
+            const locManagerId = loc.managerId || loc.manager_id;
+            return locManagerId === manager.id || locManagerId === manager.id?.toString();
+          });
+          console.log(`🔍 API fetch found ${managerLocs.length} location(s) for manager ${manager.id}`);
+          
+          if (managerLocs.length > 0) {
+            managerLocations = managerLocs.map((loc: any) => ({
+              locationId: loc.id,
+              locationName: loc.name,
+              notificationEmail: loc.notificationEmail || loc.notification_email || null
+            }));
+            console.log('✅ Populated locations from API fetch:', managerLocations);
           }
         }
       } catch (error) {
         console.error('❌ Error fetching locations for manager:', error);
-        managerLocations = [];
       }
     }
     
     // Ensure manager has locations array, even if empty
     const managerWithLocations = {
       ...manager,
-      locations: Array.isArray(managerLocations) ? managerLocations : []
+      locations: managerLocations
     };
     
     console.log('📝 Manager with locations (AFTER fix):', JSON.stringify(managerWithLocations, null, 2));
@@ -535,12 +574,14 @@ export default function AdminManageLocations() {
     setEditingManager(managerWithLocations);
     
     // Pre-populate location notification emails from manager's locations
-    // Handle both camelCase and snake_case from API response
-    const locationEmails = (managerWithLocations.locations || []).map((loc: any) => {
+    // CRITICAL: Ensure we extract notificationEmail properly from all possible field names
+    const locationEmails = managerLocations.map((loc: any) => {
+      // Try all possible field name variations
       const email = loc.notificationEmail || loc.notification_email || "";
-      console.log(`📍 Location ${loc.locationId || loc.location_id}: notificationEmail = ${email}`);
+      const locationId = loc.locationId || loc.location_id || loc.id;
+      console.log(`📍 Location ${locationId}: notificationEmail = "${email}"`);
       return {
-        locationId: loc.locationId || loc.location_id,
+        locationId: locationId,
         notificationEmail: email,
       };
     });
@@ -1069,80 +1110,73 @@ export default function AdminManageLocations() {
                         Notification Emails by Location
                       </label>
                       {(() => {
-                        // Get locations array (may be empty)
+                        // Get locations from editingManager - should be populated in handleEditManager
                         const locations = editingManager.locations || [];
                         const locationsArray = Array.isArray(locations) ? locations : [];
                         
                         console.log('🔍 Modal render - editingManager:', editingManager);
                         console.log('🔍 Modal render - locations:', locationsArray);
                         console.log('🔍 Modal render - locations count:', locationsArray.length);
+                        console.log('🔍 Modal render - locationNotificationEmails from form:', managerForm.locationNotificationEmails);
                         
-                        // If no locations from API, fetch directly from database for this manager
-                        // This handles the case where API doesn't return locations yet
-                        if (locationsArray.length === 0 && editingManager?.id) {
-                          // Try to load location data directly for this manager
-                          // This is a fallback until API is fixed
-                          console.warn('⚠️ No locations in API response, but manager exists - this should not happen');
-                          
-                          // Still show a field so user can enter email
-                          const generalEmail = managerForm.locationNotificationEmails[0]?.notificationEmail || "";
-                          
+                        // If no locations found, show message
+                        if (locationsArray.length === 0) {
                           return (
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium text-gray-600">
-                                Notification Email (Manager's Location)
-                              </label>
-                              <input
-                                type="email"
-                                value={generalEmail}
-                                onChange={(e) => {
-                                  setManagerForm({
-                                    ...managerForm,
-                                    locationNotificationEmails: [{
-                                      locationId: 0, // Use 0 as placeholder
-                                      notificationEmail: e.target.value
-                                    }]
-                                  });
-                                }}
-                                placeholder="notification@example.com"
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              />
-                              <p className="text-xs text-gray-400 mt-1">Note: Location data may not be loaded yet</p>
+                            <div className="space-y-1 p-3 bg-gray-50 rounded-lg">
+                              <p className="text-sm text-gray-600">
+                                This manager currently has no locations assigned.
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Assign a location to this manager first, then you can set notification emails.
+                              </p>
                             </div>
                           );
                         }
                         
                         // Map through locations and show input for each
                         return locationsArray.map((loc: any) => {
-                          const locId = loc.locationId || loc.location_id;
+                          const locId = loc.locationId || loc.location_id || loc.id;
+                          if (!locId || locId === 0) {
+                            console.warn('⚠️ Location missing valid ID:', loc);
+                            return null;
+                          }
+                          
+                          // Find corresponding email in form state
                           const emailIndex = managerForm.locationNotificationEmails.findIndex(
-                            (e: any) => e.locationId === locId
+                            (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
                           );
-                          // Get email from form state first, then fallback to location data
+                          
+                          // Get email value: prefer form state, then location data
                           let currentEmail = "";
-                          if (emailIndex >= 0) {
+                          if (emailIndex >= 0 && managerForm.locationNotificationEmails[emailIndex]) {
                             currentEmail = managerForm.locationNotificationEmails[emailIndex].notificationEmail || "";
                           } else {
-                            // Try both camelCase and snake_case from location
+                            // Fallback to location's stored email
                             currentEmail = loc.notificationEmail || loc.notification_email || "";
                           }
+                          
+                          const locationName = loc.locationName || loc.location_name || loc.name || `Location ${locId}`;
                           
                           return (
                             <div key={locId} className="space-y-1">
                               <label className="text-xs font-medium text-gray-600">
-                                {loc.locationName || loc.location_name || `Location ${locId}`}
+                                {locationName}
                               </label>
                               <input
                                 type="email"
                                 value={currentEmail}
                                 onChange={(e) => {
                                   const newEmails = [...managerForm.locationNotificationEmails];
+                                  const newEmailValue = e.target.value;
+                                  
                                   if (emailIndex >= 0) {
-                                    newEmails[emailIndex].notificationEmail = e.target.value;
+                                    // Update existing entry
+                                    newEmails[emailIndex].notificationEmail = newEmailValue;
                                   } else {
+                                    // Add new entry
                                     newEmails.push({
                                       locationId: locId,
-                                      notificationEmail: e.target.value,
+                                      notificationEmail: newEmailValue,
                                     });
                                   }
                                   setManagerForm({ ...managerForm, locationNotificationEmails: newEmails });
@@ -1153,9 +1187,12 @@ export default function AdminManageLocations() {
                               {currentEmail && (
                                 <p className="text-xs text-gray-500 mt-1">Current: {currentEmail}</p>
                               )}
+                              {!currentEmail && (
+                                <p className="text-xs text-gray-400 mt-1">No notification email set</p>
+                              )}
                             </div>
                           );
-                        });
+                        }).filter(Boolean); // Remove any null entries
                       })()}
                     </div>
                   )}
