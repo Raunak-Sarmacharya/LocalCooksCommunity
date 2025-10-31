@@ -52,9 +52,26 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         credentials: "include",
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch bookings');
+        let errorMessage = 'Failed to fetch bookings';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : [];
     },
     // Real-time polling - check frequently for new bookings or changes
     refetchInterval: (data) => {
@@ -99,10 +116,26 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         body: JSON.stringify({ status }),
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update booking status');
+        let errorMessage = 'Failed to update booking status';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });

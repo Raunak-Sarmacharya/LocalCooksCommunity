@@ -63,7 +63,21 @@ export default function ManagerBookingDashboard() {
         headers,
         credentials: "include",
       });
-      if (!response.ok) throw new Error('Failed to fetch locations');
+      if (!response.ok) {
+        let errorMessage = 'Failed to fetch locations';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
       const locations = await response.json();
       return locations.find((l: Location) => l.id === selectedLocation.id) || selectedLocation;
     },
@@ -85,11 +99,32 @@ export default function ManagerBookingDashboard() {
         credentials: "include",
         body: JSON.stringify({ cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit }),
       });
+      
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update location settings');
+        let errorMessage = 'Failed to update location settings';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // If response isn't JSON, try to get text
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      } else {
+        // If response isn't JSON, return the text or empty object
+        const text = await response.text();
+        return text ? JSON.parse(text) : {};
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation?.id] });

@@ -266,10 +266,26 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
         body: JSON.stringify(data),
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || error.error || 'Failed to create date availability');
+        let errorMessage = 'Failed to create date availability';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
@@ -301,10 +317,26 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
         body: JSON.stringify(data),
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || error.error || 'Failed to update date availability');
+        let errorMessage = 'Failed to update date availability';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
@@ -335,10 +367,26 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
         credentials: "include",
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || error.error || 'Failed to delete date availability');
+        let errorMessage = 'Failed to delete date availability';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });

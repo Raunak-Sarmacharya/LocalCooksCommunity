@@ -62,8 +62,25 @@ export function useManagerDashboard() {
         credentials: "include",
         headers,
       });
-      if (!response.ok) throw new Error("Failed to fetch locations");
-      return response.json();
+      if (!response.ok) {
+        let errorMessage = "Failed to fetch locations";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      const contentType = response.headers.get('content-type');
+      return contentType && contentType.includes('application/json')
+        ? await response.json()
+        : [];
     },
   });
 
@@ -74,8 +91,25 @@ export function useManagerDashboard() {
       credentials: "include",
       headers,
     });
-    if (!response.ok) throw new Error("Failed to fetch kitchens");
-    return response.json();
+    if (!response.ok) {
+      let errorMessage = "Failed to fetch kitchens";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        try {
+          const text = await response.text();
+          errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+        } catch (textError) {
+          errorMessage = `Server returned ${response.status} ${response.statusText}`;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+    const contentType = response.headers.get('content-type');
+    return contentType && contentType.includes('application/json')
+      ? await response.json()
+      : [];
   };
 
   // Get all kitchens (across all locations for this manager)
@@ -103,8 +137,25 @@ export function useManagerDashboard() {
         credentials: "include",
         headers,
       });
-      if (!response.ok) throw new Error("Failed to fetch bookings");
-      return response.json();
+      if (!response.ok) {
+        let errorMessage = "Failed to fetch bookings";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      const contentType = response.headers.get('content-type');
+      return contentType && contentType.includes('application/json')
+        ? await response.json()
+        : [];
     },
   });
 
@@ -115,8 +166,25 @@ export function useManagerDashboard() {
       credentials: "include",
       headers,
     });
-    if (!response.ok) throw new Error("Failed to fetch availability");
-    return response.json();
+    if (!response.ok) {
+      let errorMessage = "Failed to fetch availability";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        try {
+          const text = await response.text();
+          errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+        } catch (textError) {
+          errorMessage = `Server returned ${response.status} ${response.statusText}`;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+    const contentType = response.headers.get('content-type');
+    return contentType && contentType.includes('application/json')
+      ? await response.json()
+      : [];
   };
 
   // Set kitchen availability
@@ -140,8 +208,27 @@ export function useManagerDashboard() {
         isAvailable,
       }),
     });
-    if (!response.ok) throw new Error("Failed to set availability");
-    return response.json();
+    if (!response.ok) {
+      let errorMessage = "Failed to set availability";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (jsonError) {
+        try {
+          const text = await response.text();
+          errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+        } catch (textError) {
+          errorMessage = `Server returned ${response.status} ${response.statusText}`;
+        }
+      }
+      throw new Error(errorMessage);
+    }
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json();
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
   };
 
   return {
