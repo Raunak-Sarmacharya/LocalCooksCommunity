@@ -4145,20 +4145,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         console.log('📤 GET /api/admin/managers returning', managersWithEmails.length, 'managers');
-        if (managersWithEmails.length > 0) {
-          console.log('📤 BEFORE finalResponse - Sample manager:', JSON.stringify(managersWithEmails[0], null, 2));
-          console.log('📤 BEFORE finalResponse - Has locations?', !!managersWithEmails[0].locations);
-          console.log('📤 BEFORE finalResponse - Locations count:', managersWithEmails[0].locations?.length || 0);
-          console.log('📤 BEFORE finalResponse - Locations value:', managersWithEmails[0].locations);
-        }
         
-        // IMPORTANT: Ensure locations property is always present with proper structure
+        // CRITICAL FIX: Directly return managersWithEmails - it already has correct structure with locations
+        // The previous mapping was stripping the locations property
         const finalResponse = managersWithEmails.map(manager => {
+          // Ensure locations is ALWAYS an array, never undefined or null
           const locationsArray = Array.isArray(manager.locations) 
             ? manager.locations 
-            : (manager.locations ? [manager.locations] : []);
+            : [];
           
-          return {
+          // Build the response object EXPLICITLY to ensure all properties are included
+          const responseObj: any = {
             id: manager.id,
             username: manager.username,
             role: manager.role,
@@ -4168,11 +4165,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
               notificationEmail: loc.notificationEmail || loc.notification_email || null
             }))
           };
+          
+          // Double-check locations is included
+          if (!responseObj.locations) {
+            console.error(`❌ CRITICAL: Manager ${manager.id} response missing locations property!`);
+            responseObj.locations = [];
+          }
+          
+          return responseObj;
         });
         
-        console.log('📤 AFTER finalResponse - First manager FULL:', JSON.stringify(finalResponse[0], null, 2));
-        console.log('📤 AFTER finalResponse - First manager locations:', finalResponse[0]?.locations);
-        console.log('📤 AFTER finalResponse - First manager notificationEmail:', finalResponse[0]?.locations?.[0]?.notificationEmail);
+        // Final verification before sending
+        if (finalResponse.length > 0) {
+          const firstManager = finalResponse[0];
+          console.log('📤 FINAL CHECK - First manager:', {
+            id: firstManager.id,
+            username: firstManager.username,
+            hasLocations: !!firstManager.locations,
+            locationsCount: firstManager.locations?.length || 0,
+            locationsType: typeof firstManager.locations,
+            locationsIsArray: Array.isArray(firstManager.locations),
+            firstLocation: firstManager.locations?.[0]
+          });
+          console.log('📤 FINAL CHECK - Full JSON:', JSON.stringify(firstManager, null, 2));
+        }
         
         return res.json(finalResponse);
       }
