@@ -1024,23 +1024,45 @@ export default function AdminManageLocations() {
                         Notification Emails by Location
                       </label>
                       {(() => {
-                        // CRITICAL: Check if locations exist and is an array
-                        const locations = editingManager.locations;
-                        const hasLocations = locations && Array.isArray(locations) && locations.length > 0;
+                        // Get locations array (may be empty)
+                        const locations = editingManager.locations || [];
+                        const locationsArray = Array.isArray(locations) ? locations : [];
                         
                         console.log('🔍 Modal render - editingManager:', editingManager);
-                        console.log('🔍 Modal render - locations:', locations);
-                        console.log('🔍 Modal render - hasLocations:', hasLocations);
+                        console.log('🔍 Modal render - locations:', locationsArray);
+                        console.log('🔍 Modal render - locations count:', locationsArray.length);
                         
-                        if (!hasLocations) {
+                        // If no locations, show a single input for general notification email
+                        if (locationsArray.length === 0) {
+                          // Get the notification email from form state if it exists
+                          const generalEmail = managerForm.locationNotificationEmails[0]?.notificationEmail || "";
+                          
                           return (
-                            <div className="text-sm text-gray-500 italic py-2">
-                              No locations assigned to this manager yet. Assign a location to this manager first to set notification emails.
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-gray-600">
+                                Notification Email
+                              </label>
+                              <input
+                                type="email"
+                                value={generalEmail}
+                                onChange={(e) => {
+                                  setManagerForm({
+                                    ...managerForm,
+                                    locationNotificationEmails: [{
+                                      locationId: 0, // Use 0 as placeholder for general email
+                                      notificationEmail: e.target.value
+                                    }]
+                                  });
+                                }}
+                                placeholder="notification@example.com"
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              />
                             </div>
                           );
                         }
                         
-                        return locations.map((loc: any) => {
+                        // Map through locations and show input for each
+                        return locationsArray.map((loc: any) => {
                           const locId = loc.locationId || loc.location_id;
                           const emailIndex = managerForm.locationNotificationEmails.findIndex(
                             (e: any) => e.locationId === locId
