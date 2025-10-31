@@ -4060,14 +4060,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Transform the result to include notification emails in a flat structure
         const managersWithEmails = result.rows.map((row: any) => {
-          const locations = row.locations || [];
+          // Parse JSON if it's a string, otherwise use as-is
+          // PostgreSQL json_agg returns JSON as a string or object depending on driver
+          let locations = row.locations;
+          
+          // Handle different return types from PostgreSQL
+          if (locations === null || locations === undefined) {
+            locations = [];
+          } else if (typeof locations === 'string') {
+            try {
+              locations = JSON.parse(locations);
+            } catch (e) {
+              console.error(`Error parsing locations JSON for manager ${row.id}:`, e);
+              locations = [];
+            }
+          }
+          
+          // Ensure locations is an array (handle case where it's already parsed)
+          if (!Array.isArray(locations)) {
+            console.warn(`Manager ${row.id} locations is not an array:`, typeof locations, locations);
+            locations = [];
+          }
+          
+          console.log(`✅ Manager ${row.id} (${row.username}) has ${locations.length} location(s):`, JSON.stringify(locations, null, 2));
+          
           // Get all notification emails from locations managed by this manager
           // Handle both camelCase (from mapping) and raw snake_case
           const notificationEmails = locations
             .map((loc: any) => loc.notificationEmail || loc.notification_email)
             .filter((email: string) => email && email.trim() !== '');
           
-          return {
+          const managerData = {
             id: row.id,
             username: row.username,
             role: row.role,
@@ -4079,7 +4102,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             notificationEmails: notificationEmails, // Array of all notification emails
             primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null // First one for easy access
           };
+          
+          console.log(`📦 Manager ${row.id} final data:`, {
+            id: managerData.id,
+            username: managerData.username,
+            locationCount: managerData.locations.length,
+            locations: managerData.locations
+          });
+          
+          return managerData;
         });
+        
+        console.log('📤 GET /api/admin/managers returning', managersWithEmails.length, 'managers');
         
         return res.json(managersWithEmails);
       }
@@ -4377,24 +4411,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update location (admin)
+  // IMPORTANT: Route registration order matters - specific routes before catch-all
   app.put("/api/admin/locations/:id", async (req: Request, res: Response) => {
     try {
+      console.log(`📍 PUT /api/admin/locations/:id - Request received for location ID: ${req.params.id}`);
+      console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
+      
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
       
       if (!sessionUser && !isFirebaseAuth) {
+        console.error('❌ PUT /api/admin/locations/:id - Not authenticated');
         return res.status(401).json({ error: "Not authenticated" });
       }
       
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
+        console.error(`❌ PUT /api/admin/locations/:id - User ${user.id} is not admin (role: ${user.role})`);
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const locationId = parseInt(req.params.id);
       if (isNaN(locationId) || locationId <= 0) {
+        console.error(`❌ Invalid location ID: ${req.params.id}`);
         return res.status(400).json({ error: "Invalid location ID" });
       }
+      
+      console.log(`✅ Validated - updating location ${locationId} for admin user ${user.id}`);
 
       const { name, address, managerId, notificationEmail } = req.body;
       
@@ -4424,10 +4467,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (address !== undefined) updates.address = address;
       if (managerIdNum !== undefined) updates.managerId = managerIdNum;
 
+      console.log(`💾 Updating location ${locationId} with:`, updates);
+      
       const updated = await firebaseStorage.updateLocation(locationId, updates);
       if (!updated) {
+        console.error(`❌ Location ${locationId} not found in database`);
         return res.status(404).json({ error: "Location not found" });
       }
+      
+      console.log(`✅ Location ${locationId} updated successfully`);
       
       // Map snake_case to camelCase for consistent API response (matching getAllLocations pattern)
       const mappedLocation = {
@@ -4441,9 +4489,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
       };
       
-      res.json(mappedLocation);
+      return res.json(mappedLocation);
     } catch (error: any) {
-      console.error("Error updating location:", error);
+      console.error("❌ Error updating location:", error);
+      console.error("Error stack:", error.stack);
       res.status(500).json({ error: error.message || "Failed to update location" });
     }
   });
