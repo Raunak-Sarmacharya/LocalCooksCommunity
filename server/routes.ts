@@ -4112,7 +4112,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const locations = await firebaseStorage.getAllLocations();
-      res.json(locations);
+      
+      // Map snake_case fields to camelCase for the frontend (consistent with manager endpoint)
+      // Drizzle ORM may return snake_case depending on configuration, so we ensure camelCase
+      const mappedLocations = locations.map((loc: any) => ({
+        ...loc,
+        managerId: loc.managerId || loc.manager_id || null,
+        notificationEmail: loc.notificationEmail || loc.notification_email || null,
+        cancellationPolicyHours: loc.cancellationPolicyHours || loc.cancellation_policy_hours || 24,
+        cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit || 2,
+        createdAt: loc.createdAt || loc.created_at,
+        updatedAt: loc.updatedAt || loc.updated_at,
+      }));
+      
+      res.json(mappedLocations);
     } catch (error) {
       console.error("Error fetching locations:", error);
       res.status(500).json({ error: "Failed to fetch locations" });
@@ -4162,9 +4176,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const location = await firebaseStorage.createLocation({ 
         name, 
         address, 
-        managerId: managerIdNum 
+        managerId: managerIdNum,
+        notificationEmail: req.body.notificationEmail || undefined
       });
-      res.status(201).json(location);
+      
+      // Map snake_case to camelCase for consistent API response
+      const mappedLocation = {
+        ...location,
+        managerId: (location as any).managerId || (location as any).manager_id || null,
+        notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
+        cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
+        createdAt: (location as any).createdAt || (location as any).created_at,
+        updatedAt: (location as any).updatedAt || (location as any).updated_at,
+      };
+      
+      res.status(201).json(mappedLocation);
     } catch (error: any) {
       console.error("Error creating location:", error);
       console.error("Error details:", error.message, error.stack);
@@ -4303,7 +4331,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Location not found" });
       }
       
-      res.json(updated);
+      // Map snake_case to camelCase for consistent API response (matching getAllLocations pattern)
+      const mappedLocation = {
+        ...updated,
+        managerId: (updated as any).managerId || (updated as any).manager_id || null,
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
+        cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit || 2,
+        createdAt: (updated as any).createdAt || (updated as any).created_at,
+        updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
+      };
+      
+      res.json(mappedLocation);
     } catch (error: any) {
       console.error("Error updating location:", error);
       res.status(500).json({ error: error.message || "Failed to update location" });
