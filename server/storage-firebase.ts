@@ -58,6 +58,53 @@ export class FirebaseStorage {
     }
   }
 
+  async updateUser(id: number, updates: { username?: string; role?: string; isManager?: boolean; isChef?: boolean; isDeliveryPartner?: boolean }): Promise<User | undefined> {
+    try {
+      const [updated] = await db
+        .update(users)
+        .set(updates)
+        .where(eq(users.id, id))
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error updating user:', error);
+      throw error;
+    }
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    try {
+      // Use transaction to ensure atomicity when updating locations and deleting user
+      await db.transaction(async (tx) => {
+        // Check if user is a manager with assigned locations
+        const managedLocations = await tx.select().from(locations).where(eq(locations.managerId, id));
+        if (managedLocations.length > 0) {
+          // Set manager_id to NULL for all locations managed by this user
+          // This prevents foreign key constraint violations (NO ACTION means we must handle it)
+          await tx.update(locations).set({ managerId: null }).where(eq(locations.managerId, id));
+          console.log(`⚠️ Removed manager ${id} from ${managedLocations.length} location(s)`);
+        }
+        
+        // Delete user (must be after updating locations to avoid foreign key constraint violation)
+        await tx.delete(users).where(eq(users.id, id));
+      });
+      
+      console.log(`✅ Deleted user ${id}`);
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
+
+  async getAllManagers(): Promise<User[]> {
+    try {
+      return await db.select().from(users).where(eq(users.role, 'manager'));
+    } catch (error) {
+      console.error('Error getting all managers:', error);
+      throw error;
+    }
+  }
+
   async createUser(insertUser: InsertUser & { firebaseUid?: string, isVerified?: boolean, has_seen_welcome?: boolean }): Promise<User> {
     if (!insertUser.username) {
       throw new Error("Username is required");
@@ -461,7 +508,7 @@ export class FirebaseStorage {
     }
   }
 
-  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number }): Promise<any> {
+  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number; notificationEmail?: string | null }): Promise<any> {
     try {
       const [updated] = await db
         .update(locations)
@@ -471,6 +518,26 @@ export class FirebaseStorage {
       return updated;
     } catch (error) {
       console.error('Error updating location:', error);
+      throw error;
+    }
+  }
+
+  async deleteLocation(id: number): Promise<void> {
+    try {
+      // Check if location has kitchens first (foreign key constraint requires this)
+      const locationKitchens = await db.select().from(kitchens).where(eq(kitchens.locationId, id));
+      if (locationKitchens.length > 0) {
+        throw new Error(`Cannot delete location: It has ${locationKitchens.length} kitchen(s). Please delete or reassign kitchens first.`);
+      }
+      
+      // Use transaction for atomicity (best practice per Drizzle ORM)
+      await db.transaction(async (tx) => {
+        await tx.delete(locations).where(eq(locations.id, id));
+      });
+      
+      console.log(`✅ Deleted location ${id}`);
+    } catch (error: any) {
+      console.error('Error deleting location:', error);
       throw error;
     }
   }
@@ -618,7 +685,7 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number }): Promise<any> {
     try {
       const [updated] = await db
         .update(kitchens)
@@ -628,6 +695,33 @@ export class FirebaseStorage {
       return updated;
     } catch (error) {
       console.error('Error updating kitchen:', error);
+      throw error;
+    }
+  }
+
+  async deleteKitchen(id: number): Promise<void> {
+    try {
+      // Check if kitchen has bookings first (foreign key constraint requires this)
+      const kitchenBookings = await db.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
+      if (kitchenBookings.length > 0) {
+        throw new Error(`Cannot delete kitchen: It has ${kitchenBookings.length} booking(s). Please cancel or reassign bookings first.`);
+      }
+      
+      // Use transaction to ensure atomicity - all related data deleted together (best practice per Drizzle ORM)
+      await db.transaction(async (tx) => {
+        // Delete availability records
+        await tx.delete(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, id));
+        
+        // Delete date overrides
+        await tx.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, id));
+        
+        // Delete kitchen (must be last due to foreign key constraints)
+        await tx.delete(kitchens).where(eq(kitchens.id, id));
+      });
+      
+      console.log(`✅ Deleted kitchen ${id} and all related records`);
+    } catch (error: any) {
+      console.error('Error deleting kitchen:', error);
       throw error;
     }
   }

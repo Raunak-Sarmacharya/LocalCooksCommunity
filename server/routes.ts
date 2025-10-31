@@ -4249,6 +4249,272 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update location (admin)
+  app.put("/api/admin/locations/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const locationId = parseInt(req.params.id);
+      if (isNaN(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      const { name, address, managerId, notificationEmail } = req.body;
+      
+      // Validate managerId if provided
+      let managerIdNum: number | undefined | null = undefined;
+      if (managerId !== undefined && managerId !== null && managerId !== '') {
+        managerIdNum = parseInt(managerId.toString());
+        if (isNaN(managerIdNum) || managerIdNum <= 0) {
+          return res.status(400).json({ error: "Invalid manager ID format" });
+        }
+        
+        // Validate that the manager exists and has manager role
+        const manager = await firebaseStorage.getUser(managerIdNum);
+        if (!manager) {
+          return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
+        }
+        if (manager.role !== 'manager') {
+          return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
+        }
+      } else if (managerId === null || managerId === '') {
+        // Explicitly allow setting to null
+        managerIdNum = null;
+      }
+
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (address !== undefined) updates.address = address;
+      if (managerIdNum !== undefined) updates.managerId = managerIdNum;
+      if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail === '' ? null : notificationEmail;
+
+      const updated = await firebaseStorage.updateLocation(locationId, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating location:", error);
+      res.status(500).json({ error: error.message || "Failed to update location" });
+    }
+  });
+
+  // Delete location (admin)
+  app.delete("/api/admin/locations/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const locationId = parseInt(req.params.id);
+      if (isNaN(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      await firebaseStorage.deleteLocation(locationId);
+      res.json({ success: true, message: "Location deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting location:", error);
+      res.status(500).json({ error: error.message || "Failed to delete location" });
+    }
+  });
+
+  // Update kitchen (admin)
+  app.put("/api/admin/kitchens/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const kitchenId = parseInt(req.params.id);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      const { name, description, isActive, locationId } = req.body;
+      
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (isActive !== undefined) updates.isActive = isActive;
+      if (locationId !== undefined) {
+        const locationIdNum = parseInt(locationId.toString());
+        if (isNaN(locationIdNum) || locationIdNum <= 0) {
+          return res.status(400).json({ error: "Invalid location ID format" });
+        }
+        
+        // Validate that the location exists
+        const location = await firebaseStorage.getLocationById(locationIdNum);
+        if (!location) {
+          return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
+        }
+        updates.locationId = locationIdNum;
+      }
+
+      const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating kitchen:", error);
+      res.status(500).json({ error: error.message || "Failed to update kitchen" });
+    }
+  });
+
+  // Delete kitchen (admin)
+  app.delete("/api/admin/kitchens/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const kitchenId = parseInt(req.params.id);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      await firebaseStorage.deleteKitchen(kitchenId);
+      res.json({ success: true, message: "Kitchen deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting kitchen:", error);
+      res.status(500).json({ error: error.message || "Failed to delete kitchen" });
+    }
+  });
+
+  // Update manager (admin)
+  app.put("/api/admin/managers/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const managerId = parseInt(req.params.id);
+      if (isNaN(managerId) || managerId <= 0) {
+        return res.status(400).json({ error: "Invalid manager ID" });
+      }
+
+      const { username, role, isManager } = req.body;
+      
+      // Verify the user exists and is a manager
+      const manager = await firebaseStorage.getUser(managerId);
+      if (!manager) {
+        return res.status(404).json({ error: "Manager not found" });
+      }
+      if (manager.role !== 'manager') {
+        return res.status(400).json({ error: "User is not a manager" });
+      }
+
+      const updates: any = {};
+      if (username !== undefined) {
+        // Check if username is already taken by another user
+        const existingUser = await firebaseStorage.getUserByUsername(username);
+        if (existingUser && existingUser.id !== managerId) {
+          return res.status(400).json({ error: "Username already exists" });
+        }
+        updates.username = username;
+      }
+      if (role !== undefined) updates.role = role;
+      if (isManager !== undefined) updates.isManager = isManager;
+
+      const updated = await firebaseStorage.updateUser(managerId, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Failed to update manager" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating manager:", error);
+      res.status(500).json({ error: error.message || "Failed to update manager" });
+    }
+  });
+
+  // Delete manager (admin)
+  app.delete("/api/admin/managers/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const managerId = parseInt(req.params.id);
+      if (isNaN(managerId) || managerId <= 0) {
+        return res.status(400).json({ error: "Invalid manager ID" });
+      }
+
+      // Prevent deleting yourself
+      if (managerId === user.id) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+
+      // Verify the user exists and is a manager
+      const manager = await firebaseStorage.getUser(managerId);
+      if (!manager) {
+        return res.status(404).json({ error: "Manager not found" });
+      }
+      if (manager.role !== 'manager') {
+        return res.status(400).json({ error: "User is not a manager" });
+      }
+
+      await firebaseStorage.deleteUser(managerId);
+      res.json({ success: true, message: "Manager deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting manager:", error);
+      res.status(500).json({ error: error.message || "Failed to delete manager" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
