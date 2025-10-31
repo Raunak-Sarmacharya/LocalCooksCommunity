@@ -3162,10 +3162,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (notificationEmail !== undefined) {
         // Validate email format if provided and not empty
-        if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
+        if (notificationEmail && notificationEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
           return res.status(400).json({ error: "Invalid email format" });
         }
-        updates.notificationEmail = notificationEmail || null;
+        // Set to null if empty string, otherwise use the value
+        updates.notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
+        console.log('[PUT] Setting notificationEmail:', { 
+          raw: notificationEmail, 
+          processed: updates.notificationEmail 
+        });
       }
 
       const updatedResults = await db
@@ -3183,10 +3188,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = updatedResults[0];
-      console.log('[PUT] Cancellation policy updated successfully:', {
+      console.log('[PUT] Location settings updated successfully:', {
         locationId: updated.id,
         cancellationPolicyHours: updated.cancellationPolicyHours,
-        defaultDailyBookingLimit: updated.defaultDailyBookingLimit
+        defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
+        notificationEmail: (updated as any).notificationEmail || 'not set'
       });
       res.status(200).json(updated);
     } catch (error: any) {
@@ -3211,6 +3217,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
+      
+      // Log to verify notificationEmail is included in response
+      console.log('[GET] /api/manager/locations - Returning locations:', 
+        locations.map(loc => ({
+          id: loc.id,
+          name: loc.name,
+          notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || 'not set'
+        }))
+      );
+      
       res.json(locations);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
