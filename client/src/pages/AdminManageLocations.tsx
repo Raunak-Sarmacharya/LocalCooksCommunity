@@ -470,17 +470,62 @@ export default function AdminManageLocations() {
     }
   };
 
-  const handleEditManager = (manager: any) => {
+  const handleEditManager = async (manager: any) => {
     console.log('📝 Editing manager (BEFORE fix):', JSON.stringify(manager, null, 2));
     console.log('📝 Manager has locations?', !!manager.locations);
     console.log('📝 Manager locations type:', typeof manager.locations);
     console.log('📝 Manager locations is array?', Array.isArray(manager.locations));
     console.log('📝 Manager locations value:', manager.locations);
     
-    // CRITICAL FIX: Ensure manager has locations array, even if empty
+    // CRITICAL FIX: If locations are missing, fetch them directly
+    let managerLocations = manager.locations;
+    
+    if (!managerLocations || !Array.isArray(managerLocations) || managerLocations.length === 0) {
+      console.log('⚠️ Locations missing or empty in API response, fetching directly from database...');
+      
+      try {
+        // Fetch locations for this manager from all locations
+        const allLocs = locations.filter(loc => loc.managerId === manager.id);
+        console.log(`🔍 Found ${allLocs.length} location(s) for manager ${manager.id} from loaded locations`);
+        
+        if (allLocs.length > 0) {
+          managerLocations = allLocs.map(loc => ({
+            locationId: loc.id,
+            locationName: loc.name,
+            notificationEmail: loc.notificationEmail || loc.notification_email || null
+          }));
+          console.log('✅ Populated locations from local state:', managerLocations);
+        } else {
+          // If still empty, try fetching from API
+          console.log('⚠️ No locations in local state, attempting direct API fetch...');
+          const locationsResponse = await fetch('/api/admin/locations', { credentials: 'include' });
+          if (locationsResponse.ok) {
+            const allLocations = await locationsResponse.json();
+            const managerLocs = allLocations.filter((loc: any) => 
+              loc.managerId === manager.id || loc.manager_id === manager.id
+            );
+            console.log(`🔍 API fetch found ${managerLocs.length} location(s) for manager ${manager.id}`);
+            
+            if (managerLocs.length > 0) {
+              managerLocations = managerLocs.map((loc: any) => ({
+                locationId: loc.id,
+                locationName: loc.name,
+                notificationEmail: loc.notificationEmail || loc.notification_email || null
+              }));
+              console.log('✅ Populated locations from API fetch:', managerLocations);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching locations for manager:', error);
+        managerLocations = [];
+      }
+    }
+    
+    // Ensure manager has locations array, even if empty
     const managerWithLocations = {
       ...manager,
-      locations: Array.isArray(manager.locations) ? manager.locations : []
+      locations: Array.isArray(managerLocations) ? managerLocations : []
     };
     
     console.log('📝 Manager with locations (AFTER fix):', JSON.stringify(managerWithLocations, null, 2));
