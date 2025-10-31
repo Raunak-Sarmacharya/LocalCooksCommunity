@@ -437,7 +437,7 @@ export class FirebaseStorage {
 
   // ===== LOCATIONS MANAGEMENT =====
   
-  async createLocation(locationData: { name: string; address: string; managerId?: number }): Promise<any> {
+  async createLocation(locationData: { name: string; address: string; managerId?: number; notificationEmail?: string }): Promise<any> {
     try {
       console.log('Inserting location into database:', locationData);
       
@@ -450,6 +450,11 @@ export class FirebaseStorage {
       // Only include managerId if it's provided and valid
       if (locationData.managerId !== undefined && locationData.managerId !== null) {
         insertData.managerId = locationData.managerId;
+      }
+      
+      // Include notificationEmail if provided
+      if (locationData.notificationEmail !== undefined && locationData.notificationEmail !== null && locationData.notificationEmail !== '') {
+        insertData.notificationEmail = locationData.notificationEmail;
       }
       
       console.log('Insert data:', insertData);
