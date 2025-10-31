@@ -488,7 +488,19 @@ export class FirebaseStorage {
   async getLocationById(id: number): Promise<any | undefined> {
     try {
       const [location] = await db.select().from(locations).where(eq(locations.id, id));
-      return location || undefined;
+      if (!location) return undefined;
+      
+      // Map snake_case to camelCase for consistent API (same pattern as getAllLocations)
+      return {
+        ...location,
+        managerId: (location as any).managerId || (location as any).manager_id || null,
+        notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
+        cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
+        createdAt: (location as any).createdAt || (location as any).created_at,
+        updatedAt: (location as any).updatedAt || (location as any).updated_at,
+      };
     } catch (error) {
       console.error('Error getting location by ID:', error);
       throw error;

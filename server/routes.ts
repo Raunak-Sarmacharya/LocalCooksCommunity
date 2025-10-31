@@ -3836,49 +3836,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
         specialNotes
       });
 
-      // Send email notifications (background)
+      // Send email notifications (background - don't block booking creation)
       try {
         // Get kitchen and location details
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
-        if (kitchen) {
-          const location = await firebaseStorage.getLocationById(kitchen.locationId);
-          
-          // Get chef and manager details
-          const chef = await storage.getUser(req.user!.id);
-          const manager = location?.managerId ? await storage.getUser(location.managerId) : null;
+        if (!kitchen) {
+          console.warn(`⚠️ Kitchen ${kitchenId} not found, skipping email notifications`);
+        } else {
+          // Handle both camelCase and snake_case for kitchen locationId
+          const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+          if (!kitchenLocationId) {
+            console.warn(`⚠️ Kitchen ${kitchenId} has no locationId, skipping email notifications`);
+          } else {
+            const location = await firebaseStorage.getLocationById(kitchenLocationId);
+            if (!location) {
+              console.warn(`⚠️ Location ${kitchenLocationId} not found, skipping email notifications`);
+            } else {
+              console.log(`📧 Preparing booking emails - Location: ${location.name}, Notification Email: ${location.notificationEmail || 'not set'}`);
+              
+              // Get chef and manager details
+              const chef = await storage.getUser(req.user!.id);
+              if (!chef) {
+                console.warn(`⚠️ Chef ${req.user!.id} not found, skipping email notifications`);
+              } else {
+                // Get manager - location.managerId is now in camelCase after getLocationById mapping
+                const managerId = location.managerId || (location as any).manager_id;
+                const manager = managerId ? await storage.getUser(managerId) : null;
+                
+                if (!manager) {
+                  console.warn(`⚠️ Manager ${managerId} not found for location ${kitchenLocationId}, skipping manager email`);
+                }
 
-          if (chef && kitchen && manager) {
-            // Send booking request confirmation to chef (not approved yet!)
-            const chefEmail = generateBookingRequestEmail({
-              chefEmail: chef.username,
-              chefName: (chef as any).displayName || chef.username,
-              kitchenName: kitchen.name,
-              bookingDate: bookingDate,
-              startTime,
-              endTime,
-              specialNotes
-            });
-            await sendEmail(chefEmail);
-            console.log(`✅ Booking request email sent to chef: ${chef.username}`);
+                // Always send chef email if chef exists
+                if (chef && kitchen) {
+                  const chefEmailAddress = chef.username; // chef.username is the email
+                  const chefEmail = generateBookingRequestEmail({
+                    chefEmail: chefEmailAddress,
+                    chefName: (chef as any).displayName || chef.username || 'Chef',
+                    kitchenName: kitchen.name || 'Kitchen',
+                    bookingDate: bookingDate,
+                    startTime,
+                    endTime,
+                    specialNotes: specialNotes || ''
+                  });
+                  await sendEmail(chefEmail);
+                  console.log(`✅ Booking request email sent to chef: ${chefEmailAddress}`);
+                }
 
-            // Send notification to manager
-            // Use notification email if set, otherwise fallback to manager's username (email)
-            const notificationEmailAddress = (location as any).notificationEmail || manager.username;
-            const managerEmail = generateBookingNotificationEmail({
-              managerEmail: notificationEmailAddress,
-              chefName: (chef as any).displayName || chef.username,
-              kitchenName: kitchen.name,
-              bookingDate: bookingDate,
-              startTime,
-              endTime,
-              specialNotes
-            });
-            await sendEmail(managerEmail);
-            console.log(`✅ Booking notification email sent to manager: ${notificationEmailAddress}`);
+                // Send notification to manager if manager exists and notification email is configured
+                if (manager && location) {
+                  // Use notification email if set, otherwise fallback to manager's username (email)
+                  const notificationEmailAddress = location.notificationEmail || manager.username;
+                  
+                  if (!notificationEmailAddress) {
+                    console.warn(`⚠️ No notification email found for location ${kitchenLocationId} and manager ${managerId} has no username/email`);
+                  } else {
+                    const managerEmail = generateBookingNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: (chef as any).displayName || chef.username || 'Chef',
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: bookingDate,
+                      startTime,
+                      endTime,
+                      specialNotes: specialNotes || ''
+                    });
+                    await sendEmail(managerEmail);
+                    console.log(`✅ Booking notification email sent to: ${notificationEmailAddress}`);
+                  }
+                } else if (!manager) {
+                  console.warn(`⚠️ No manager found for location ${kitchenLocationId}, cannot send manager notification email`);
+                }
+              }
+            }
           }
         }
       } catch (emailError) {
-        console.error("Error sending booking emails:", emailError);
+        console.error("❌ Error sending booking emails:", emailError);
+        console.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
         // Don't fail the booking if emails fail
       }
       
