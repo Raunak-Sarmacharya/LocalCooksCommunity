@@ -4121,76 +4121,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .map((loc: any) => loc.notificationEmail || loc.notification_email)
             .filter((email: string) => email && email.trim() !== '');
           
+          // CRITICAL: Map locations array to ensure proper structure
+          const mappedLocations = locations.map((loc: any) => ({
+            locationId: loc.locationId || loc.location_id || loc.id,
+            locationName: loc.locationName || loc.location_name || loc.name,
+            notificationEmail: loc.notificationEmail || loc.notification_email || null
+          }));
+          
+          console.log(`🔍 Manager ${row.id} mappedLocations:`, JSON.stringify(mappedLocations, null, 2));
+          
           const managerData = {
             id: row.id,
             username: row.username,
             role: row.role,
-            locations: locations.map((loc: any) => ({
-              locationId: loc.locationId || loc.location_id,
-              locationName: loc.locationName || loc.location_name,
-              notificationEmail: loc.notificationEmail || loc.notification_email || null
-            })),
-            notificationEmails: notificationEmails, // Array of all notification emails
-            primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null // First one for easy access
+            locations: mappedLocations, // Use the mapped locations array
           };
           
-          console.log(`📦 Manager ${row.id} final data:`, {
+          console.log(`📦 Manager ${row.id} final data BEFORE return:`, {
             id: managerData.id,
             username: managerData.username,
+            role: managerData.role,
             locationCount: managerData.locations.length,
-            locations: managerData.locations
+            locations: managerData.locations,
+            locationsType: typeof managerData.locations,
+            locationsIsArray: Array.isArray(managerData.locations)
           });
           
           return managerData;
         });
         
-        console.log('📤 GET /api/admin/managers returning', managersWithEmails.length, 'managers');
-        
-        // CRITICAL FIX: Directly return managersWithEmails - it already has correct structure with locations
-        // The previous mapping was stripping the locations property
-        const finalResponse = managersWithEmails.map(manager => {
-          // Ensure locations is ALWAYS an array, never undefined or null
-          const locationsArray = Array.isArray(manager.locations) 
-            ? manager.locations 
-            : [];
-          
-          // Build the response object EXPLICITLY to ensure all properties are included
-          const responseObj: any = {
-            id: manager.id,
-            username: manager.username,
-            role: manager.role,
-            locations: locationsArray.map((loc: any) => ({
-              locationId: loc.locationId || loc.location_id || loc.id,
-              locationName: loc.locationName || loc.location_name || loc.name,
-              notificationEmail: loc.notificationEmail || loc.notification_email || null
-            }))
-          };
-          
-          // Double-check locations is included
-          if (!responseObj.locations) {
-            console.error(`❌ CRITICAL: Manager ${manager.id} response missing locations property!`);
-            responseObj.locations = [];
-          }
-          
-          return responseObj;
-        });
-        
-        // Final verification before sending
-        if (finalResponse.length > 0) {
-          const firstManager = finalResponse[0];
-          console.log('📤 FINAL CHECK - First manager:', {
-            id: firstManager.id,
-            username: firstManager.username,
-            hasLocations: !!firstManager.locations,
-            locationsCount: firstManager.locations?.length || 0,
-            locationsType: typeof firstManager.locations,
-            locationsIsArray: Array.isArray(firstManager.locations),
-            firstLocation: firstManager.locations?.[0]
-          });
-          console.log('📤 FINAL CHECK - Full JSON:', JSON.stringify(firstManager, null, 2));
+        console.log('📤 GET /api/admin/managers - managersWithEmails.length:', managersWithEmails.length);
+        if (managersWithEmails.length > 0) {
+          console.log('📤 managersWithEmails[0] keys:', Object.keys(managersWithEmails[0]));
+          console.log('📤 managersWithEmails[0] has locations?', 'locations' in managersWithEmails[0]);
+          console.log('📤 managersWithEmails[0].locations:', managersWithEmails[0].locations);
+          console.log('📤 managersWithEmails[0] FULL:', JSON.stringify(managersWithEmails[0], null, 2));
         }
         
-        return res.json(finalResponse);
+        // CRITICAL FIX: Return managersWithEmails DIRECTLY - it already has the correct structure with locations
+        // Do NOT map again - that was stripping the locations property!
+        console.log('📤 RETURNING DIRECTLY - managersWithEmails has locations:', managersWithEmails[0]?.locations);
+        console.log('📤 RETURNING DIRECTLY - Full first manager:', JSON.stringify(managersWithEmails[0], null, 2));
+        
+        return res.json(managersWithEmails);
       }
       
       // Fallback to Drizzle if pool is not available
@@ -4242,27 +4215,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         
         console.log('📤 Drizzle fallback returning', managersWithLocations.length, 'managers');
-        // IMPORTANT: Ensure locations property is always present with proper structure
-        const finalResponse = managersWithLocations.map(manager => {
-          const locationsArray = Array.isArray(manager.locations) 
-            ? manager.locations 
-            : (manager.locations ? [manager.locations] : []);
-          
-          return {
-            id: manager.id,
-            username: manager.username,
-            role: manager.role,
-            locations: locationsArray.map((loc: any) => ({
-              locationId: loc.locationId || loc.location_id || loc.id,
-              locationName: loc.locationName || loc.location_name || loc.name,
-              notificationEmail: loc.notificationEmail || loc.notification_email || null
-            }))
-          };
-        });
-        
-        console.log('📤 Drizzle final response - First manager FULL:', JSON.stringify(finalResponse[0], null, 2));
-        console.log('📤 Drizzle final response - First manager notificationEmail:', finalResponse[0]?.locations?.[0]?.notificationEmail);
-        return res.json(finalResponse);
+        if (managersWithLocations.length > 0) {
+          console.log('📤 Drizzle managersWithLocations[0] FULL:', JSON.stringify(managersWithLocations[0], null, 2));
+        }
+        // CRITICAL: Return managersWithLocations directly - it already has locations properly mapped
+        return res.json(managersWithLocations);
       } catch (e) {
         console.error('❌ Error fetching managers with Drizzle:', e);
         return res.json([]);
