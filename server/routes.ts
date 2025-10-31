@@ -3073,9 +3073,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
   // ===================================
 
-  // Get all locations for manager
+  // IMPORTANT: Put route must be defined BEFORE get route with same base path
+  // to avoid Express routing conflicts. Specific routes must come before generic ones.
+  
   // Update location cancellation policy (manager only)
   app.put("/api/manager/locations/:locationId/cancellation-policy", async (req: Request, res: Response) => {
+    console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
+      locationId: req.params.locationId,
+      body: req.body
+    });
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
@@ -3090,7 +3096,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { locationId } = req.params;
+      const locationIdNum = parseInt(locationId);
+      
+      if (isNaN(locationIdNum) || locationIdNum <= 0) {
+        console.error('[PUT] Invalid locationId:', locationId);
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+      
       const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit } = req.body;
+      
+      console.log('[PUT] Request body:', {
+        cancellationPolicyHours,
+        cancellationPolicyMessage,
+        defaultDailyBookingLimit,
+        locationId: locationIdNum
+      });
 
       if (cancellationPolicyHours !== undefined && (typeof cancellationPolicyHours !== 'number' || cancellationPolicyHours < 0)) {
         return res.status(400).json({ error: "Cancellation policy hours must be a non-negative number" });
@@ -3106,14 +3126,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { eq, and } = await import('drizzle-orm');
 
       // Verify manager owns this location
-      const [location] = await db
+      const locationResults = await db
         .select()
         .from(locations)
-        .where(and(eq(locations.id, parseInt(locationId)), eq(locations.managerId, user.id)));
+        .where(and(eq(locations.id, locationIdNum), eq(locations.managerId, user.id)));
+      
+      const location = locationResults[0];
 
       if (!location) {
+        console.error('[PUT] Location not found or access denied:', {
+          locationId: locationIdNum,
+          managerId: user.id,
+          userRole: user.role
+        });
         return res.status(404).json({ error: "Location not found or access denied" });
       }
+      
+      console.log('[PUT] Location verified:', {
+        locationId: location.id,
+        locationName: location.name,
+        managerId: location.managerId
+      });
 
       // Update location settings
       const updates: any = { updatedAt: new Date() };
@@ -3127,13 +3160,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
       }
 
-      const [updated] = await db
+      const updatedResults = await db
         .update(locations)
         .set(updates)
-        .where(eq(locations.id, parseInt(locationId)))
+        .where(eq(locations.id, locationIdNum))
         .returning();
 
-      res.json(updated);
+      if (!updatedResults || updatedResults.length === 0) {
+        console.error('[PUT] Cancellation policy update failed: No location returned from DB', {
+          locationId: locationIdNum,
+          updates
+        });
+        return res.status(500).json({ error: "Failed to update location settings - no rows updated" });
+      }
+
+      const updated = updatedResults[0];
+      console.log('[PUT] Cancellation policy updated successfully:', {
+        locationId: updated.id,
+        cancellationPolicyHours: updated.cancellationPolicyHours,
+        defaultDailyBookingLimit: updated.defaultDailyBookingLimit
+      });
+      res.status(200).json(updated);
     } catch (error: any) {
       console.error("Error updating cancellation policy:", error);
       res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
