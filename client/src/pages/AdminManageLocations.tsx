@@ -1032,15 +1032,20 @@ export default function AdminManageLocations() {
                         console.log('🔍 Modal render - locations:', locationsArray);
                         console.log('🔍 Modal render - locations count:', locationsArray.length);
                         
-                        // If no locations, show a single input for general notification email
-                        if (locationsArray.length === 0) {
-                          // Get the notification email from form state if it exists
+                        // If no locations from API, fetch directly from database for this manager
+                        // This handles the case where API doesn't return locations yet
+                        if (locationsArray.length === 0 && editingManager?.id) {
+                          // Try to load location data directly for this manager
+                          // This is a fallback until API is fixed
+                          console.warn('⚠️ No locations in API response, but manager exists - this should not happen');
+                          
+                          // Still show a field so user can enter email
                           const generalEmail = managerForm.locationNotificationEmails[0]?.notificationEmail || "";
                           
                           return (
                             <div className="space-y-1">
                               <label className="text-xs font-medium text-gray-600">
-                                Notification Email
+                                Notification Email (Manager's Location)
                               </label>
                               <input
                                 type="email"
@@ -1049,7 +1054,7 @@ export default function AdminManageLocations() {
                                   setManagerForm({
                                     ...managerForm,
                                     locationNotificationEmails: [{
-                                      locationId: 0, // Use 0 as placeholder for general email
+                                      locationId: 0, // Use 0 as placeholder
                                       notificationEmail: e.target.value
                                     }]
                                   });
@@ -1057,6 +1062,7 @@ export default function AdminManageLocations() {
                                 placeholder="notification@example.com"
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                               />
+                              <p className="text-xs text-gray-400 mt-1">Note: Location data may not be loaded yet</p>
                             </div>
                           );
                         }

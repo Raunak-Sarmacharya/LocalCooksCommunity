@@ -4036,7 +4036,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch all users with manager role and their managed locations with notification emails
       const { pool, db } = await import('./db');
       
+      console.log('🔍 GET /api/admin/managers - Pool available?', !!pool);
+      console.log('🔍 GET /api/admin/managers - DB available?', !!db);
+      
+      // CRITICAL: Always use pool if available (faster SQL aggregation)
+      // Only fallback to Drizzle if pool is not available
       if (pool) {
+        console.log('✅ Using pool query for GET /api/admin/managers');
+        
         // Get managers with their locations and notification emails
         // CRITICAL: Use COALESCE with json_agg to ensure we always get an array (even if empty)
         const result = await pool.query(
@@ -4224,10 +4231,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('📤 SENDING RESPONSE - Full response array:', JSON.stringify(verifiedManagers, null, 2));
         
         return res.json(verifiedManagers);
-      }
-      
-      // Fallback to Drizzle if pool is not available
-      try {
+      } else {
+        // Fallback to Drizzle if pool is not available
+        try {
         console.log('⚠️ Using Drizzle fallback for GET /api/admin/managers');
         const { users, locations } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
@@ -4252,22 +4258,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
               .filter(email => email && email.trim() !== '');
             
-            const managerData = {
-              ...manager,
-              locations: managerLocations.map(loc => ({
-                locationId: loc.id,
-                locationName: (loc as any).name,
-                notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
-              })),
-              notificationEmails: notificationEmails,
-              primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
+            // CRITICAL: Build managerData with explicit locations property
+            const managerData: any = {
+              id: manager.id,
+              username: manager.username,
+              role: manager.role,
             };
             
-            console.log(`Manager ${manager.id} final structure:`, {
+            // EXPLICITLY set locations property
+            managerData.locations = managerLocations.map(loc => ({
+              locationId: loc.id,
+              locationName: (loc as any).name,
+              notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
+            }));
+            
+            console.log(`📤 Drizzle Manager ${manager.id} final structure:`, {
               id: managerData.id,
               username: managerData.username,
+              role: managerData.role,
+              hasLocations: 'locations' in managerData,
               locationCount: managerData.locations.length,
-              locations: managerData.locations
+              locations: managerData.locations,
+              fullJSON: JSON.stringify(managerData, null, 2)
             });
             
             return managerData;
