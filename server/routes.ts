@@ -3192,9 +3192,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         locationId: updated.id,
         cancellationPolicyHours: updated.cancellationPolicyHours,
         defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
-        notificationEmail: (updated as any).notificationEmail || 'not set'
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || 'not set'
       });
-      res.status(200).json(updated);
+      
+      // Map snake_case fields to camelCase for the frontend
+      const response = {
+        ...updated,
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
+        cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours,
+        cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
+        defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
+      };
+      
+      console.log('[PUT] Sending response with notificationEmail:', response.notificationEmail);
+      res.status(200).json(response);
     } catch (error: any) {
       console.error("Error updating cancellation policy:", error);
       res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
@@ -3218,16 +3229,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
       
+      // Map snake_case fields to camelCase for the frontend
+      const mappedLocations = locations.map(loc => ({
+        ...loc,
+        notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null,
+        cancellationPolicyHours: (loc as any).cancellationPolicyHours || (loc as any).cancellation_policy_hours,
+        cancellationPolicyMessage: (loc as any).cancellationPolicyMessage || (loc as any).cancellation_policy_message,
+        defaultDailyBookingLimit: (loc as any).defaultDailyBookingLimit || (loc as any).default_daily_booking_limit,
+      }));
+      
       // Log to verify notificationEmail is included in response
       console.log('[GET] /api/manager/locations - Returning locations:', 
-        locations.map(loc => ({
+        mappedLocations.map(loc => ({
           id: loc.id,
           name: loc.name,
-          notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || 'not set'
+          notificationEmail: loc.notificationEmail || 'not set'
         }))
       );
       
-      res.json(locations);
+      res.json(mappedLocations);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
       res.status(500).json({ error: error.message || "Failed to fetch locations" });
