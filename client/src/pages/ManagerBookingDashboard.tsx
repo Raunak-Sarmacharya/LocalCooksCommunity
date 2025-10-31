@@ -114,12 +114,16 @@ export default function ManagerBookingDashboard() {
       defaultDailyBookingLimit?: number;
       notificationEmail?: string;
     }) => {
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail };
+      console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
+      console.log('📡 Request body:', payload);
+      
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/locations/${locationId}/cancellation-policy`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail }),
+        body: JSON.stringify(payload),
       });
       
       if (!response.ok) {
@@ -140,13 +144,17 @@ export default function ManagerBookingDashboard() {
       }
       
       const contentType = response.headers.get('content-type');
+      let result;
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        result = await response.json();
       } else {
         // If response isn't JSON, return the text or empty object
         const text = await response.text();
-        return text ? JSON.parse(text) : {};
+        result = text ? JSON.parse(text) : {};
       }
+      
+      console.log('✅ Save response:', result);
+      return result;
     },
     onSuccess: (data) => {
       // Update the location details cache with the returned data
@@ -647,13 +655,18 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
   const handleSave = () => {
     if (!location.id) return;
-    onUpdateSettings.mutate({
+    
+    const payload = {
       locationId: location.id,
       cancellationPolicyHours: cancellationHours,
       cancellationPolicyMessage: cancellationMessage,
       defaultDailyBookingLimit: dailyBookingLimit,
       notificationEmail: notificationEmail || undefined,
-    });
+    };
+    
+    console.log('🚀 Saving location settings:', payload);
+    
+    onUpdateSettings.mutate(payload);
   };
 
   return (
