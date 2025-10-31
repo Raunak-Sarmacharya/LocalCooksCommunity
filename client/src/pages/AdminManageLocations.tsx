@@ -496,98 +496,77 @@ export default function AdminManageLocations() {
   };
 
   const handleEditManager = async (manager: any) => {
-    console.log('📝 Editing manager (BEFORE fix):', JSON.stringify(manager, null, 2));
-    console.log('📝 Manager has locations?', !!manager.locations);
-    console.log('📝 Manager locations type:', typeof manager.locations);
-    console.log('📝 Manager locations is array?', Array.isArray(manager.locations));
-    console.log('📝 Manager locations value:', manager.locations);
+    console.log('📝 Editing manager:', manager.id, manager.username);
     
-    // CRITICAL FIX: Always ensure we have the latest locations data
+    // CRITICAL: Always fetch locations directly from API to ensure we get the latest notification emails
+    // Don't rely on manager.locations or local state - always fetch fresh from database
     let managerLocations: any[] = [];
     
-    // First, try to use locations from manager object if available and not empty
-    if (manager.locations && Array.isArray(manager.locations) && manager.locations.length > 0) {
-      managerLocations = manager.locations.map((loc: any) => ({
-        locationId: loc.locationId || loc.location_id || loc.id,
-        locationName: loc.locationName || loc.location_name || loc.name,
-        notificationEmail: loc.notificationEmail || loc.notification_email || null
-      }));
-      console.log('✅ Using locations from manager object:', managerLocations);
-    }
-    
-    // If still empty, try to fetch from loaded locations state
-    if (managerLocations.length === 0) {
-      console.log('⚠️ No locations in manager object, checking local state...');
-      const allLocs = locations.filter(loc => {
-        const locManagerId = loc.managerId || loc.manager_id;
-        return locManagerId === manager.id || locManagerId === manager.id?.toString();
-      });
-      console.log(`🔍 Found ${allLocs.length} location(s) for manager ${manager.id} from loaded locations`);
-      
-      if (allLocs.length > 0) {
-        managerLocations = allLocs.map(loc => ({
-          locationId: loc.id,
-          locationName: loc.name,
-          notificationEmail: loc.notificationEmail || loc.notification_email || null
-        }));
-        console.log('✅ Populated locations from local state:', managerLocations);
-      }
-    }
-    
-    // If still empty, try fetching fresh from API
-    if (managerLocations.length === 0) {
-      console.log('⚠️ No locations in local state, fetching fresh from API...');
-      try {
-        const locationsResponse = await fetch('/api/admin/locations', { credentials: 'include' });
-        if (locationsResponse.ok) {
-          const allLocations = await locationsResponse.json();
-          const managerLocs = allLocations.filter((loc: any) => {
-            const locManagerId = loc.managerId || loc.manager_id;
-            return locManagerId === manager.id || locManagerId === manager.id?.toString();
-          });
-          console.log(`🔍 API fetch found ${managerLocs.length} location(s) for manager ${manager.id}`);
-          
-          if (managerLocs.length > 0) {
-            managerLocations = managerLocs.map((loc: any) => ({
-              locationId: loc.id,
-              locationName: loc.name,
-              notificationEmail: loc.notificationEmail || loc.notification_email || null
-            }));
-            console.log('✅ Populated locations from API fetch:', managerLocations);
+    try {
+      console.log('🔍 Fetching locations for manager from API...');
+      const locationsResponse = await fetch('/api/admin/locations', { credentials: 'include' });
+      if (locationsResponse.ok) {
+        const allLocations = await locationsResponse.json();
+        console.log(`📊 Fetched ${allLocations.length} total locations from API`);
+        
+        // Filter locations assigned to this manager
+        const managerLocs = allLocations.filter((loc: any) => {
+          const locManagerId = loc.managerId || loc.manager_id;
+          const matches = locManagerId === manager.id || locManagerId === manager.id?.toString();
+          if (matches) {
+            console.log(`✅ Found location: ${loc.name} (ID: ${loc.id}), email: ${loc.notificationEmail || loc.notification_email || 'none'}`);
           }
-        }
-      } catch (error) {
-        console.error('❌ Error fetching locations for manager:', error);
+          return matches;
+        });
+        
+        console.log(`🔍 Found ${managerLocs.length} location(s) for manager ${manager.id}`);
+        
+        // Map to consistent structure, ensuring we extract notification emails
+        managerLocations = managerLocs.map((loc: any) => {
+          const locationId = loc.id;
+          const locationName = loc.name;
+          // Extract notification email from all possible field variations
+          const notificationEmail = loc.notificationEmail || loc.notification_email || null;
+          
+          console.log(`📍 Mapping location ${locationId} (${locationName}): email = "${notificationEmail}"`);
+          
+          return {
+            locationId: locationId,
+            locationName: locationName,
+            notificationEmail: notificationEmail
+          };
+        });
+        
+        console.log('✅ Final manager locations with emails:', JSON.stringify(managerLocations, null, 2));
+      } else {
+        console.error('❌ Failed to fetch locations:', locationsResponse.status, locationsResponse.statusText);
       }
+    } catch (error) {
+      console.error('❌ Error fetching locations for manager:', error);
     }
     
-    // Ensure manager has locations array, even if empty
+    // Set the manager with locations (even if empty array)
     const managerWithLocations = {
       ...manager,
       locations: managerLocations
     };
     
-    console.log('📝 Manager with locations (AFTER fix):', JSON.stringify(managerWithLocations, null, 2));
-    console.log('📝 Manager with locations has locations?', !!managerWithLocations.locations);
-    console.log('📝 Manager with locations locations count:', managerWithLocations.locations.length);
-    
     setEditingManager(managerWithLocations);
     
-    // Pre-populate location notification emails from manager's locations
-    // CRITICAL: Ensure we extract notificationEmail properly from all possible field names
+    // Pre-populate location notification emails - this is what will be displayed in the form
     const locationEmails = managerLocations.map((loc: any) => {
-      // Try all possible field name variations
-      const email = loc.notificationEmail || loc.notification_email || "";
-      const locationId = loc.locationId || loc.location_id || loc.id;
-      console.log(`📍 Location ${locationId}: notificationEmail = "${email}"`);
+      const email = loc.notificationEmail || "";
+      const locationId = loc.locationId || loc.id;
+      
+      console.log(`📧 Pre-populating email for location ${locationId}: "${email}"`);
+      
       return {
         locationId: locationId,
         notificationEmail: email,
       };
     });
     
-    console.log('📧 Pre-populated location emails:', locationEmails);
-    console.log('📧 Location emails count:', locationEmails.length);
+    console.log('📧 Final location notification emails array:', JSON.stringify(locationEmails, null, 2));
     
     setManagerForm({
       username: manager.username || "",
@@ -1110,14 +1089,11 @@ export default function AdminManageLocations() {
                         Notification Emails by Location
                       </label>
                       {(() => {
-                        // Get locations from editingManager - should be populated in handleEditManager
-                        const locations = editingManager.locations || [];
-                        const locationsArray = Array.isArray(locations) ? locations : [];
+                        // Use locations from editingManager which are fetched fresh from API
+                        const locationsArray = Array.isArray(editingManager.locations) ? editingManager.locations : [];
                         
-                        console.log('🔍 Modal render - editingManager:', editingManager);
-                        console.log('🔍 Modal render - locations:', locationsArray);
-                        console.log('🔍 Modal render - locations count:', locationsArray.length);
-                        console.log('🔍 Modal render - locationNotificationEmails from form:', managerForm.locationNotificationEmails);
+                        console.log('🔍 Modal render - editingManager.locations:', locationsArray);
+                        console.log('🔍 Modal render - managerForm.locationNotificationEmails:', managerForm.locationNotificationEmails);
                         
                         // If no locations found, show message
                         if (locationsArray.length === 0) {
@@ -1134,28 +1110,25 @@ export default function AdminManageLocations() {
                         }
                         
                         // Map through locations and show input for each
+                        // Use managerForm.locationNotificationEmails as the source of truth for email values
                         return locationsArray.map((loc: any) => {
-                          const locId = loc.locationId || loc.location_id || loc.id;
+                          const locId = loc.locationId || loc.id;
                           if (!locId || locId === 0) {
                             console.warn('⚠️ Location missing valid ID:', loc);
                             return null;
                           }
                           
-                          // Find corresponding email in form state
-                          const emailIndex = managerForm.locationNotificationEmails.findIndex(
+                          // Find corresponding email in form state - this is populated from database
+                          const emailEntry = managerForm.locationNotificationEmails.find(
                             (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
                           );
                           
-                          // Get email value: prefer form state, then location data
-                          let currentEmail = "";
-                          if (emailIndex >= 0 && managerForm.locationNotificationEmails[emailIndex]) {
-                            currentEmail = managerForm.locationNotificationEmails[emailIndex].notificationEmail || "";
-                          } else {
-                            // Fallback to location's stored email
-                            currentEmail = loc.notificationEmail || loc.notification_email || "";
-                          }
+                          // Use email from form state (which we populated from database), or empty string
+                          const currentEmail = emailEntry?.notificationEmail || "";
                           
-                          const locationName = loc.locationName || loc.location_name || loc.name || `Location ${locId}`;
+                          const locationName = loc.locationName || loc.name || `Location ${locId}`;
+                          
+                          console.log(`📍 Rendering location ${locId} (${locationName}): email = "${currentEmail}"`);
                           
                           return (
                             <div key={locId} className="space-y-1">
@@ -1168,10 +1141,13 @@ export default function AdminManageLocations() {
                                 onChange={(e) => {
                                   const newEmails = [...managerForm.locationNotificationEmails];
                                   const newEmailValue = e.target.value;
+                                  const existingIndex = newEmails.findIndex(
+                                    (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
+                                  );
                                   
-                                  if (emailIndex >= 0) {
+                                  if (existingIndex >= 0) {
                                     // Update existing entry
-                                    newEmails[emailIndex].notificationEmail = newEmailValue;
+                                    newEmails[existingIndex].notificationEmail = newEmailValue;
                                   } else {
                                     // Add new entry
                                     newEmails.push({
