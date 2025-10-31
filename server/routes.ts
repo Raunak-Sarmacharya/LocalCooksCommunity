@@ -4047,7 +4047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               json_build_object(
                 'locationId', l.id,
                 'locationName', l.name,
-                'notificationEmail', l.notification_email
+                'notificationEmail', COALESCE(l.notification_email, NULL)
               )
             ) FILTER (WHERE l.id IS NOT NULL) as locations
           FROM users u
@@ -4062,15 +4062,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const managersWithEmails = result.rows.map((row: any) => {
           const locations = row.locations || [];
           // Get all notification emails from locations managed by this manager
+          // Handle both camelCase (from mapping) and raw snake_case
           const notificationEmails = locations
-            .map((loc: any) => loc.notificationEmail)
+            .map((loc: any) => loc.notificationEmail || loc.notification_email)
             .filter((email: string) => email && email.trim() !== '');
           
           return {
             id: row.id,
             username: row.username,
             role: row.role,
-            locations: locations,
+            locations: locations.map((loc: any) => ({
+              locationId: loc.locationId || loc.location_id,
+              locationName: loc.locationName || loc.location_name,
+              notificationEmail: loc.notificationEmail || loc.notification_email || null
+            })),
             notificationEmails: notificationEmails, // Array of all notification emails
             primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null // First one for easy access
           };
@@ -4418,7 +4423,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (name !== undefined) updates.name = name;
       if (address !== undefined) updates.address = address;
       if (managerIdNum !== undefined) updates.managerId = managerIdNum;
-      if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail === '' ? null : notificationEmail;
 
       const updated = await firebaseStorage.updateLocation(locationId, updates);
       if (!updated) {
