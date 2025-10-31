@@ -23,7 +23,6 @@ export default function AdminManageLocations() {
     name: "",
     address: "",
     managerId: "",
-    notificationEmail: "",
   });
 
   const [kitchenForm, setKitchenForm] = useState({
@@ -59,7 +58,10 @@ export default function AdminManageLocations() {
       const response = await fetch("/api/admin/managers", { credentials: "include" });
       if (response.ok) {
         const data = await response.json();
+        console.log('👥 Loaded managers data:', data);
         setManagers(data);
+      } else {
+        console.error("Failed to load managers:", response.status, response.statusText);
       }
     } catch (error) {
       console.error("Error loading managers:", error);
@@ -98,13 +100,12 @@ export default function AdminManageLocations() {
           name: locationForm.name,
           address: locationForm.address,
           managerId: locationForm.managerId || undefined,
-          notificationEmail: locationForm.notificationEmail || undefined,
         }),
       });
       if (response.ok) {
         toast({ title: "Success", description: "Location created successfully" });
         setShowLocationForm(false);
-        setLocationForm({ name: "", address: "", managerId: "", notificationEmail: "" });
+        setLocationForm({ name: "", address: "", managerId: "" });
         loadLocations();
       } else {
         const error = await response.json();
@@ -131,14 +132,13 @@ export default function AdminManageLocations() {
           name: locationForm.name,
           address: locationForm.address,
           managerId: locationForm.managerId || null,
-          notificationEmail: locationForm.notificationEmail || null,
         }),
       });
       if (response.ok) {
         toast({ title: "Success", description: "Location updated successfully" });
         setShowLocationForm(false);
         setEditingLocation(null);
-        setLocationForm({ name: "", address: "", managerId: "", notificationEmail: "" });
+        setLocationForm({ name: "", address: "", managerId: "" });
         loadLocations();
       } else {
         const error = await response.json();
@@ -185,7 +185,6 @@ export default function AdminManageLocations() {
       name: location.name || "",
       address: location.address || "",
       managerId: location.managerId ? location.managerId.toString() : "",
-      notificationEmail: location.notificationEmail || location.notification_email || "",
     });
     setShowLocationForm(true);
   };
@@ -379,12 +378,21 @@ export default function AdminManageLocations() {
   };
 
   const handleEditManager = (manager: any) => {
+    console.log('📝 Editing manager:', manager);
     setEditingManager(manager);
+    
     // Pre-populate location notification emails from manager's locations
-    const locationEmails = (manager.locations || []).map((loc: any) => ({
-      locationId: loc.locationId,
-      notificationEmail: loc.notificationEmail || "",
-    }));
+    // Handle both camelCase and snake_case from API response
+    const locationEmails = (manager.locations || []).map((loc: any) => {
+      const email = loc.notificationEmail || loc.notification_email || "";
+      console.log(`📍 Location ${loc.locationId || loc.location_id}: notificationEmail = ${email}`);
+      return {
+        locationId: loc.locationId || loc.location_id,
+        notificationEmail: email,
+      };
+    });
+    
+    console.log('📧 Pre-populated location emails:', locationEmails);
     
     setManagerForm({
       username: manager.username || "",
@@ -419,7 +427,7 @@ export default function AdminManageLocations() {
                 <button
                   onClick={() => {
                     setEditingLocation(null);
-                    setLocationForm({ name: "", address: "", managerId: "", notificationEmail: "" });
+                    setLocationForm({ name: "", address: "", managerId: "" });
                     setShowLocationForm(true);
                   }}
                   className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -654,7 +662,7 @@ export default function AdminManageLocations() {
                     onClick={() => {
                       setShowLocationForm(false);
                       setEditingLocation(null);
-                      setLocationForm({ name: "", address: "", managerId: "", notificationEmail: "" });
+                      setLocationForm({ name: "", address: "", managerId: "" });
                     }}
                     className="text-gray-400 hover:text-gray-600"
                   >
@@ -703,18 +711,6 @@ export default function AdminManageLocations() {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notification Email (Optional)
-                    </label>
-                    <input
-                      type="email"
-                      value={locationForm.notificationEmail}
-                      onChange={(e) => setLocationForm({ ...locationForm, notificationEmail: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                      placeholder="email@example.com"
-                    />
-                  </div>
                   <div className="flex gap-3">
                     <button
                       type="submit"
@@ -728,7 +724,7 @@ export default function AdminManageLocations() {
                       onClick={() => {
                         setShowLocationForm(false);
                         setEditingLocation(null);
-                        setLocationForm({ name: "", address: "", managerId: "", notificationEmail: "" });
+                        setLocationForm({ name: "", address: "", managerId: "" });
                       }}
                       className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
                     >
@@ -919,17 +915,23 @@ export default function AdminManageLocations() {
                         Notification Emails by Location
                       </label>
                       {editingManager.locations.map((loc: any) => {
+                        const locId = loc.locationId || loc.location_id;
                         const emailIndex = managerForm.locationNotificationEmails.findIndex(
-                          (e: any) => e.locationId === loc.locationId
+                          (e: any) => e.locationId === locId
                         );
-                        const currentEmail = emailIndex >= 0 
-                          ? managerForm.locationNotificationEmails[emailIndex].notificationEmail
-                          : loc.notificationEmail || "";
+                        // Get email from form state first, then fallback to location data
+                        let currentEmail = "";
+                        if (emailIndex >= 0) {
+                          currentEmail = managerForm.locationNotificationEmails[emailIndex].notificationEmail || "";
+                        } else {
+                          // Try both camelCase and snake_case from location
+                          currentEmail = loc.notificationEmail || loc.notification_email || "";
+                        }
                         
                         return (
-                          <div key={loc.locationId} className="space-y-1">
+                          <div key={locId} className="space-y-1">
                             <label className="text-xs font-medium text-gray-600">
-                              {loc.locationName || `Location ${loc.locationId}`}
+                              {loc.locationName || loc.location_name || `Location ${locId}`}
                             </label>
                             <input
                               type="email"
@@ -940,7 +942,7 @@ export default function AdminManageLocations() {
                                   newEmails[emailIndex].notificationEmail = e.target.value;
                                 } else {
                                   newEmails.push({
-                                    locationId: loc.locationId,
+                                    locationId: locId,
                                     notificationEmail: e.target.value,
                                   });
                                 }
@@ -949,6 +951,9 @@ export default function AdminManageLocations() {
                               placeholder="notification@example.com"
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                             />
+                            {currentEmail && (
+                              <p className="text-xs text-gray-500 mt-1">Current: {currentEmail}</p>
+                            )}
                           </div>
                         );
                       })}
