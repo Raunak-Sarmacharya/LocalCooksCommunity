@@ -10669,6 +10669,24 @@ app.post("/api/admin/managers", async (req, res) => {
       is_manager: true
     });
     
+    // Send welcome email to manager with credentials
+    try {
+      const { sendEmail } = await import('../server/email.js');
+      
+      const welcomeEmail = {
+        to: username, // username is the email
+        subject: "Your Manager Account - Local Cooks Community",
+        text: `Hello ${name || 'Manager'},\n\nYour manager account has been created!\n\nUsername: ${username}\nPassword: ${password}\n\nPlease login at: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/login\n\nBest regards,\nLocal Cooks Team`,
+        html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Your Manager Account</title></head><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;"><div style="background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;"><h1 style="color: white; margin: 0;">Local Cooks Community</h1></div><div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;"><h2 style="color: #333;">Hello ${name || 'Manager'},</h2><p>Your manager account has been created for the Local Cooks kitchen booking system!</p><div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid hsl(347, 91%, 51%); margin: 20px 0;"><h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Your Login Credentials</h3><p><strong>Username:</strong> ${username}</p><p><strong>Temporary Password:</strong> <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${password}</code></p></div><p><strong>⚠️ Important:</strong> Please change your password after your first login for security.</p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" style="display: inline-block; background: hsl(347, 91%, 51%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0;">Login Now</a><p style="margin-top: 30px; color: #666; font-size: 14px;">If you have any questions, please contact support.</p></div><div style="text-align: center; padding: 20px; color: #999; font-size: 12px;"><p>&copy; ${new Date().getFullYear()} Local Cooks Community. All rights reserved.</p></div></body></html>`
+      };
+      
+      await sendEmail(welcomeEmail);
+      console.log(`✅ Welcome email sent to manager: ${username}`);
+    } catch (emailError) {
+      console.error("Error sending manager welcome email:", emailError);
+      // Don't fail manager creation if email fails
+    }
+    
     res.status(201).json({ success: true, managerId: manager.id });
   } catch (error) {
     console.error("Error creating manager:", error);
@@ -12238,8 +12256,8 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
     }
 
-    // Send email notification to chef when booking is confirmed
-    if (status === 'confirmed' && booking) {
+    // Send email notification to chef based on status change
+    if (booking) {
       try {
         const kitchenResult = await pool.query('SELECT * FROM kitchens WHERE id = $1', [booking.kitchen_id]);
         const chefResult = await pool.query('SELECT * FROM users WHERE id = $1', [booking.chef_id]);
@@ -12248,22 +12266,38 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
         const chef = chefResult.rows[0];
         
         if (chef && kitchen) {
-          const { sendEmail, generateBookingConfirmationEmail } = await import('../server/email.js');
+          const { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail } = await import('../server/email.js');
           
-          const approvalEmail = generateBookingConfirmationEmail({
-            chefEmail: chef.username,
-            chefName: chef.username,
-            kitchenName: kitchen.name,
-            bookingDate: booking.booking_date,
-            startTime: booking.start_time,
-            endTime: booking.end_time,
-            specialNotes: booking.special_notes
-          });
-          await sendEmail(approvalEmail);
-          console.log(`✅ Booking approval email sent to chef: ${chef.username}`);
+          if (status === 'confirmed') {
+            // Send confirmation email
+            const confirmationEmail = generateBookingConfirmationEmail({
+              chefEmail: chef.username,
+              chefName: chef.username,
+              kitchenName: kitchen.name,
+              bookingDate: booking.booking_date,
+              startTime: booking.start_time,
+              endTime: booking.end_time,
+              specialNotes: booking.special_notes
+            });
+            await sendEmail(confirmationEmail);
+            console.log(`✅ Booking confirmation email sent to chef: ${chef.username}`);
+          } else if (status === 'cancelled') {
+            // Send cancellation email
+            const cancellationEmail = generateBookingCancellationEmail({
+              chefEmail: chef.username,
+              chefName: chef.username,
+              kitchenName: kitchen.name,
+              bookingDate: booking.booking_date,
+              startTime: booking.start_time,
+              endTime: booking.end_time,
+              cancellationReason: 'The manager has cancelled this booking'
+            });
+            await sendEmail(cancellationEmail);
+            console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+          }
         }
       } catch (emailError) {
-        console.error("Error sending booking approval email:", emailError);
+        console.error("Error sending booking status email:", emailError);
         // Don't fail the status update if email fails
       }
     }
