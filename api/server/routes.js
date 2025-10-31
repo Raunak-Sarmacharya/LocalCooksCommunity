@@ -3747,6 +3747,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "manager",
         isChef: false,
         isDeliveryPartner: false,
+        isManager: true,
         has_seen_welcome: false  // Manager must change password on first login
       });
 

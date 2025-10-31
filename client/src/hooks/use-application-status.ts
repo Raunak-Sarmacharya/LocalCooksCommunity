@@ -131,8 +131,8 @@ export function useApplicationStatus() {
    * - User only has cancelled/rejected applications
    */
   const shouldShowStartApplication = () => {
-    if (!user || user.role === "admin") {
-      return false; // Admins have different logic
+    if (!user || user.role === "admin" || user.role === "manager" || (user as any)?.isManager) {
+      return false; // Admins and managers have different logic
     }
 
     if (applications.length === 0) {
@@ -155,13 +155,19 @@ export function useApplicationStatus() {
       return defaultText;
     } else if (user.role === "admin") {
       return "Go to Admin Dashboard";
+    } else if (user.role === "manager") {
+      return "Go to Manager Dashboard";
     } else if (shouldShowStartApplication()) {
       const isChef = (user as any)?.isChef;
       const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+      const isManager = (user as any)?.isManager;
       
-      console.log('🔍 getButtonText: checking roles', { isChef, isDeliveryPartner, user });
+      console.log('🔍 getButtonText: checking roles', { isChef, isDeliveryPartner, isManager, user });
       
-      if (isDeliveryPartner && !isChef) {
+      // Manager role check - managers go to their own dashboard
+      if (isManager || user.role === "manager") {
+        return "Go to Manager Dashboard";
+      } else if (isDeliveryPartner && !isChef) {
         return "Start Delivery Partner Application";
       } else if (isChef && !isDeliveryPartner) {
         return defaultText.includes("Start") ? defaultText : "Start Chef Application";
@@ -186,14 +192,20 @@ export function useApplicationStatus() {
       return "/auth";
     } else if (user.role === "admin") {
       return "/admin";
+    } else if (user.role === "manager" || (user as any)?.isManager) {
+      return "/manager/dashboard";
     } else if (shouldShowStartApplication()) {
       // Direct to appropriate application form based on user's exclusive role
       const isChef = (user as any)?.isChef;
       const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+      const isManager = (user as any)?.isManager;
       
-      console.log('🔍 getNavigationPath: checking exclusive roles', { isChef, isDeliveryPartner });
+      console.log('🔍 getNavigationPath: checking exclusive roles', { isChef, isDeliveryPartner, isManager });
       
-      if (isDeliveryPartner && user.role !== "admin") {
+      // Manager role check - managers go to their own dashboard
+      if (isManager || user.role === "manager") {
+        return "/manager/dashboard";
+      } else if (isDeliveryPartner && user.role !== "admin") {
         return "/delivery-partner-apply";
       } else if (isChef && user.role !== "admin") {
         return "/apply";
@@ -216,6 +228,8 @@ export function useApplicationStatus() {
       return "/dashboard";
     } else if (user.role === "admin") {
       return "/admin";
+    } else if (user.role === "manager" || (user as any)?.isManager) {
+      return "/manager/dashboard";
     } else {
       return "/dashboard";
     }

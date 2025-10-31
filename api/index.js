@@ -10665,7 +10665,8 @@ app.post("/api/admin/managers", async (req, res) => {
       role: 'manager',
       firebase_uid: null,
       is_verified: false,
-      has_seen_welcome: false
+      has_seen_welcome: false,
+      is_manager: true
     });
     
     res.status(201).json({ success: true, managerId: manager.id });

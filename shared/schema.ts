@@ -40,6 +40,7 @@ export const users = pgTable("users", {
   // Support dual roles - users can be both chef and delivery partner
   isChef: boolean("is_chef").default(false).notNull(),
   isDeliveryPartner: boolean("is_delivery_partner").default(false).notNull(),
+  isManager: boolean("is_manager").default(false).notNull(),
   applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
 });
 
@@ -171,6 +172,7 @@ export const insertUserSchema = z.object({
   firebaseUid: z.string().optional(),
   isChef: z.boolean().default(false),
   isDeliveryPartner: z.boolean().default(false),
+  isManager: z.boolean().default(false),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -319,6 +321,7 @@ export const locations = pgTable("locations", {
   name: text("name").notNull(),
   address: text("address").notNull(),
   managerId: integer("manager_id").references(() => users.id),
+  notificationEmail: text("notification_email"), // Email where notifications will be sent
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
@@ -380,6 +383,7 @@ export const insertLocationSchema = createInsertSchema(locations, {
   name: z.string().min(2, "Location name must be at least 2 characters"),
   address: z.string().min(5, "Address must be at least 5 characters"),
   managerId: z.number().optional(),
+  notificationEmail: z.string().email("Please enter a valid email address").optional(),
 }).omit({ 
   id: true, 
   createdAt: true,
@@ -391,6 +395,7 @@ export const updateLocationSchema = z.object({
   name: z.string().min(2).optional(),
   address: z.string().min(5).optional(),
   managerId: z.number().optional(),
+  notificationEmail: z.string().email("Please enter a valid email address").optional(),
 });
 
 export const insertKitchenSchema = createInsertSchema(kitchens, {

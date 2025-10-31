@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info
+  ChevronLeft, ChevronRight, Sliders, Info, Mail
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
@@ -579,6 +579,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
   );
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
+  const [notificationEmail, setNotificationEmail] = useState((location as any).notificationEmail || '');
 
   const handleSave = () => {
     if (!location.id) return;
@@ -587,6 +588,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       cancellationPolicyHours: cancellationHours,
       cancellationPolicyMessage: cancellationMessage,
       defaultDailyBookingLimit: dailyBookingLimit,
+      notificationEmail: notificationEmail || undefined,
     });
   };
 
@@ -599,6 +601,59 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Notification Email Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <Mail className="h-5 w-5 text-purple-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Notification Email</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  placeholder="notifications@localcooks.com"
+                  className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  All booking notifications for this location will be sent to this email address
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSave}
+                  disabled={isUpdating}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => {
+                    setNotificationEmail((location as any).notificationEmail || '');
+                    setCancellationHours(location.cancellationPolicyHours || 24);
+                    setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
+                    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Cancellation Policy Section */}
           <div className="space-y-4">
             <div className="flex items-start gap-3">
