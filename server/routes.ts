@@ -4033,26 +4033,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      // Fetch all users with manager role
+      // Fetch all users with manager role and their managed locations with notification emails
       const { pool, db } = await import('./db');
       
       if (pool) {
+        // Get managers with their locations and notification emails
         const result = await pool.query(
-          'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
+          `SELECT 
+            u.id, 
+            u.username, 
+            u.role,
+            json_agg(
+              json_build_object(
+                'locationId', l.id,
+                'locationName', l.name,
+                'notificationEmail', l.notification_email
+              )
+            ) FILTER (WHERE l.id IS NOT NULL) as locations
+          FROM users u
+          LEFT JOIN locations l ON l.manager_id = u.id
+          WHERE u.role = $1
+          GROUP BY u.id, u.username, u.role
+          ORDER BY u.username ASC`,
           ['manager']
         );
-        return res.json(result.rows);
+        
+        // Transform the result to include notification emails in a flat structure
+        const managersWithEmails = result.rows.map((row: any) => {
+          const locations = row.locations || [];
+          // Get all notification emails from locations managed by this manager
+          const notificationEmails = locations
+            .map((loc: any) => loc.notificationEmail)
+            .filter((email: string) => email && email.trim() !== '');
+          
+          return {
+            id: row.id,
+            username: row.username,
+            role: row.role,
+            locations: locations,
+            notificationEmails: notificationEmails, // Array of all notification emails
+            primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null // First one for easy access
+          };
+        });
+        
+        return res.json(managersWithEmails);
       }
       
       // Fallback to Drizzle if pool is not available
       try {
-        const { users } = await import('@shared/schema');
+        const { users, locations } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
-        const rows = await db
+        const managerRows = await db
           .select({ id: users.id, username: users.username, role: users.role })
           .from(users)
           .where(eq(users.role as any, 'manager'));
-        return res.json(rows);
+        
+        // Get locations for each manager
+        const managersWithLocations = await Promise.all(
+          managerRows.map(async (manager) => {
+            const managerLocations = await db
+              .select()
+              .from(locations)
+              .where(eq(locations.managerId, manager.id));
+            
+            const notificationEmails = managerLocations
+              .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
+              .filter(email => email && email.trim() !== '');
+            
+            return {
+              ...manager,
+              locations: managerLocations.map(loc => ({
+                locationId: loc.id,
+                locationName: (loc as any).name,
+                notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
+              })),
+              notificationEmails: notificationEmails,
+              primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
+            };
+          })
+        );
+        return res.json(managersWithLocations);
       } catch (e) {
         console.error('Error fetching managers with Drizzle:', e);
         return res.json([]);
@@ -4512,7 +4572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid manager ID" });
       }
 
-      const { username, role, isManager } = req.body;
+      const { username, role, isManager, locationNotificationEmails } = req.body;
       
       // Verify the user exists and is a manager
       const manager = await firebaseStorage.getUser(managerId);
@@ -4540,7 +4600,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Failed to update manager" });
       }
       
-      res.json(updated);
+      // Update notification emails for locations managed by this manager
+      if (locationNotificationEmails && Array.isArray(locationNotificationEmails)) {
+        const { db } = await import('./db');
+        const { locations } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        
+        // Get all locations managed by this manager
+        const managedLocations = await db
+          .select()
+          .from(locations)
+          .where(eq(locations.managerId, managerId));
+        
+        // Update each location's notification email
+        for (const emailUpdate of locationNotificationEmails) {
+          if (emailUpdate.locationId && emailUpdate.notificationEmail !== undefined) {
+            const locationId = parseInt(emailUpdate.locationId.toString());
+            if (!isNaN(locationId)) {
+              // Validate email format if provided and not empty
+              const email = emailUpdate.notificationEmail?.trim() || '';
+              if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                console.warn(`Invalid email format for location ${locationId}: ${email}`);
+                continue; // Skip invalid emails
+              }
+              
+              await db
+                .update(locations)
+                .set({ 
+                  notificationEmail: email || null,
+                  updatedAt: new Date()
+                })
+                .where(eq(locations.id, locationId));
+              
+              console.log(`✅ Updated notification email for location ${locationId}: ${email || 'null'}`);
+            }
+          }
+        }
+      }
+      
+      // Return updated manager with location info
+      const { locations } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const managedLocations = await db
+        .select()
+        .from(locations)
+        .where(eq(locations.managerId, managerId));
+      
+      const notificationEmails = managedLocations
+        .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
+        .filter(email => email && email.trim() !== '');
+      
+      const response = {
+        ...updated,
+        locations: managedLocations.map(loc => ({
+          locationId: loc.id,
+          locationName: (loc as any).name,
+          notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
+        })),
+        notificationEmails: notificationEmails,
+        primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
+      };
+      
+      res.json(response);
     } catch (error: any) {
       console.error("Error updating manager:", error);
       res.status(500).json({ error: error.message || "Failed to update manager" });
