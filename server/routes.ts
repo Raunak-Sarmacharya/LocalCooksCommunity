@@ -4043,13 +4043,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             u.id, 
             u.username, 
             u.role,
-            json_agg(
-              json_build_object(
-                'locationId', l.id,
-                'locationName', l.name,
-                'notificationEmail', COALESCE(l.notification_email, NULL)
-              )
-            ) FILTER (WHERE l.id IS NOT NULL) as locations
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'locationId', l.id,
+                  'locationName', l.name,
+                  'notificationEmail', COALESCE(l.notification_email, NULL)
+                )
+              ) FILTER (WHERE l.id IS NOT NULL),
+              '[]'::json
+            ) as locations
           FROM users u
           LEFT JOIN locations l ON l.manager_id = u.id
           WHERE u.role = $1
@@ -4059,30 +4062,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         
         // Transform the result to include notification emails in a flat structure
+        console.log(`📊 Raw database result - ${result.rows.length} manager(s) found`);
+        
         const managersWithEmails = result.rows.map((row: any) => {
           // Parse JSON if it's a string, otherwise use as-is
           // PostgreSQL json_agg returns JSON as a string or object depending on driver
           let locations = row.locations;
           
+          console.log(`🔍 Manager ${row.id} (${row.username}): raw locations =`, typeof locations, locations);
+          
           // Handle different return types from PostgreSQL
+          // COALESCE in SQL should ensure we get []::json, but handle all cases
           if (locations === null || locations === undefined) {
+            console.log(`⚠️ Manager ${row.id}: locations is null/undefined, using empty array`);
             locations = [];
           } else if (typeof locations === 'string') {
             try {
-              locations = JSON.parse(locations);
+              // Handle empty JSON array string
+              const trimmed = locations.trim();
+              if (trimmed === '[]' || trimmed === '' || trimmed === 'null') {
+                locations = [];
+                console.log(`✅ Manager ${row.id}: Empty locations string converted to array`);
+              } else {
+                locations = JSON.parse(locations);
+                console.log(`✅ Manager ${row.id}: Parsed JSON string, got ${Array.isArray(locations) ? locations.length : 'non-array'} items`);
+              }
             } catch (e) {
-              console.error(`Error parsing locations JSON for manager ${row.id}:`, e);
+              console.error(`❌ Error parsing locations JSON for manager ${row.id}:`, e, 'Raw value:', locations);
               locations = [];
             }
+          } else if (typeof locations === 'object') {
+            // Already parsed JSON object/array
+            console.log(`✅ Manager ${row.id}: locations is already object, isArray=${Array.isArray(locations)}`);
           }
           
           // Ensure locations is an array (handle case where it's already parsed)
           if (!Array.isArray(locations)) {
-            console.warn(`Manager ${row.id} locations is not an array:`, typeof locations, locations);
-            locations = [];
+            console.warn(`⚠️ Manager ${row.id} locations is not an array after processing:`, typeof locations, locations);
+            // Try to extract array if it's wrapped in an object
+            if (locations && typeof locations === 'object' && '0' in locations) {
+              locations = Object.values(locations);
+            } else {
+              locations = [];
+            }
           }
           
-          console.log(`✅ Manager ${row.id} (${row.username}) has ${locations.length} location(s):`, JSON.stringify(locations, null, 2));
+          console.log(`✅ Manager ${row.id} (${row.username}) FINAL: ${locations.length} location(s):`, JSON.stringify(locations, null, 2));
           
           // Get all notification emails from locations managed by this manager
           // Handle both camelCase (from mapping) and raw snake_case
@@ -4114,18 +4139,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         console.log('📤 GET /api/admin/managers returning', managersWithEmails.length, 'managers');
+        console.log('📤 Sample manager data structure:', JSON.stringify(managersWithEmails[0], null, 2));
         
         return res.json(managersWithEmails);
       }
       
       // Fallback to Drizzle if pool is not available
       try {
+        console.log('⚠️ Using Drizzle fallback for GET /api/admin/managers');
         const { users, locations } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
         const managerRows = await db
           .select({ id: users.id, username: users.username, role: users.role })
           .from(users)
           .where(eq(users.role as any, 'manager'));
+        
+        console.log(`Found ${managerRows.length} managers with Drizzle`);
         
         // Get locations for each manager
         const managersWithLocations = await Promise.all(
@@ -4135,11 +4164,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .from(locations)
               .where(eq(locations.managerId, manager.id));
             
+            console.log(`Manager ${manager.id} has ${managerLocations.length} locations`);
+            
             const notificationEmails = managerLocations
               .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
               .filter(email => email && email.trim() !== '');
             
-            return {
+            const managerData = {
               ...manager,
               locations: managerLocations.map(loc => ({
                 locationId: loc.id,
@@ -4149,11 +4180,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               notificationEmails: notificationEmails,
               primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
             };
+            
+            console.log(`Manager ${manager.id} final structure:`, {
+              id: managerData.id,
+              username: managerData.username,
+              locationCount: managerData.locations.length,
+              locations: managerData.locations
+            });
+            
+            return managerData;
           })
         );
+        
+        console.log('📤 Drizzle fallback returning', managersWithLocations.length, 'managers');
         return res.json(managersWithLocations);
       } catch (e) {
-        console.error('Error fetching managers with Drizzle:', e);
+        console.error('❌ Error fetching managers with Drizzle:', e);
         return res.json([]);
       }
     } catch (error: any) {
@@ -4606,24 +4648,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update manager (admin)
+  // IMPORTANT: Route registration order matters - specific routes before catch-all
   app.put("/api/admin/managers/:id", async (req: Request, res: Response) => {
     try {
+      console.log(`📍 PUT /api/admin/managers/:id - Request received for manager ID: ${req.params.id}`);
+      console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
+      
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
       
       if (!sessionUser && !isFirebaseAuth) {
+        console.error('❌ PUT /api/admin/managers/:id - Not authenticated');
         return res.status(401).json({ error: "Not authenticated" });
       }
       
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
+        console.error(`❌ PUT /api/admin/managers/:id - User ${user.id} is not admin (role: ${user.role})`);
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const managerId = parseInt(req.params.id);
       if (isNaN(managerId) || managerId <= 0) {
+        console.error(`❌ Invalid manager ID: ${req.params.id}`);
         return res.status(400).json({ error: "Invalid manager ID" });
       }
+      
+      console.log(`✅ Validated - updating manager ${managerId} for admin user ${user.id}`);
 
       const { username, role, isManager, locationNotificationEmails } = req.body;
       

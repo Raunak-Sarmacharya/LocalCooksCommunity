@@ -43,11 +43,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication
-  registerFirebaseRoutes(app);
-  
-  // Register traditional routes (includes unsubscribe endpoint)
+  // Register traditional routes FIRST (includes admin PUT routes that must come before any catch-all)
   await registerRoutes(app);
+  
+  // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication (registered after specific routes)
+  registerFirebaseRoutes(app);
   
   // Create HTTP server for Firebase-only architecture
   const { createServer } = await import('http');
