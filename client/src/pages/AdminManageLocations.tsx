@@ -60,7 +60,19 @@ export default function AdminManageLocations() {
         const data = await response.json();
         console.log('👥 Loaded managers data:', JSON.stringify(data, null, 2));
         console.log('👥 First manager locations:', data[0]?.locations);
-        setManagers(data);
+        console.log('👥 First manager has locations?', !!data[0]?.locations);
+        console.log('👥 First manager locations type:', typeof data[0]?.locations);
+        console.log('👥 First manager locations is array?', Array.isArray(data[0]?.locations));
+        console.log('👥 First manager locations count:', data[0]?.locations?.length);
+        
+        // CRITICAL: Ensure every manager has a locations array, even if empty
+        const managersWithLocations = data.map((manager: any) => ({
+          ...manager,
+          locations: Array.isArray(manager.locations) ? manager.locations : []
+        }));
+        
+        console.log('👥 After ensuring locations array - First manager:', JSON.stringify(managersWithLocations[0], null, 2));
+        setManagers(managersWithLocations);
       } else {
         console.error("Failed to load managers:", response.status, response.statusText);
         const errorText = await response.text();
