@@ -4148,57 +4148,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
             };
           });
           
-          const managerData = {
+          // CRITICAL: Build managerData with explicit locations property
+          const managerData: any = {
             id: row.id,
             username: row.username,
             role: row.role,
-            locations: mappedLocations, // Always an array, possibly empty
           };
           
-          console.log(`📦 Manager ${row.id} FINAL structure:`, {
+          // EXPLICITLY set locations property - do not rely on object spread
+          managerData.locations = mappedLocations;
+          
+          console.log(`📦 Manager ${row.id} FINAL structure (BEFORE return):`, {
             id: managerData.id,
             username: managerData.username,
-            locationsCount: managerData.locations.length,
+            role: managerData.role,
+            hasLocationsProperty: 'locations' in managerData,
+            locationsCount: managerData.locations?.length || 0,
             locationsIsArray: Array.isArray(managerData.locations),
-            firstLocation: managerData.locations[0] || 'none'
+            locationsValue: managerData.locations,
+            fullObject: JSON.stringify(managerData, null, 2)
           });
+          
+          // Verify the object has locations before returning
+          if (!('locations' in managerData)) {
+            console.error(`❌ CRITICAL ERROR: Manager ${row.id} object missing locations property!`);
+            managerData.locations = [];
+          }
           
           return managerData;
         });
         
         console.log('📤 GET /api/admin/managers - managersWithEmails.length:', managersWithEmails.length);
         if (managersWithEmails.length > 0) {
-          console.log('📤 managersWithEmails[0] keys:', Object.keys(managersWithEmails[0]));
-          console.log('📤 managersWithEmails[0] has locations?', 'locations' in managersWithEmails[0]);
-          console.log('📤 managersWithEmails[0].locations:', managersWithEmails[0].locations);
-          console.log('📤 managersWithEmails[0] FULL:', JSON.stringify(managersWithEmails[0], null, 2));
+          const firstManager = managersWithEmails[0];
+          console.log('📤 managersWithEmails[0] keys:', Object.keys(firstManager));
+          console.log('📤 managersWithEmails[0] has locations?', 'locations' in firstManager);
+          console.log('📤 managersWithEmails[0].locations:', firstManager.locations);
+          console.log('📤 managersWithEmails[0].locations type:', typeof firstManager.locations);
+          console.log('📤 managersWithEmails[0].locations is array?', Array.isArray(firstManager.locations));
+          console.log('📤 managersWithEmails[0] FULL OBJECT:', JSON.stringify(firstManager, null, 2));
         }
-        
-        // CRITICAL FIX: Return managersWithEmails DIRECTLY - it already has the correct structure with locations
-        // Do NOT map again - that was stripping the locations property!
-        console.log('📤 RETURNING DIRECTLY - managersWithEmails has locations:', managersWithEmails[0]?.locations);
-        console.log('📤 RETURNING DIRECTLY - Full first manager:', JSON.stringify(managersWithEmails[0], null, 2));
         
         // FINAL VERIFICATION: Ensure every manager has a locations array before sending
         const verifiedManagers = managersWithEmails.map((manager: any) => {
-          // Double-check locations is an array
-          if (!manager.locations || !Array.isArray(manager.locations)) {
-            console.warn(`⚠️ Manager ${manager.id} missing locations array, adding empty array`);
-            return {
-              ...manager,
-              locations: []
-            };
+          // CRITICAL: Explicitly check and ensure locations property exists
+          if (!manager.hasOwnProperty('locations')) {
+            console.error(`❌ Manager ${manager.id} is missing locations property! Adding it.`);
+            manager.locations = [];
+          } else if (!Array.isArray(manager.locations)) {
+            console.warn(`⚠️ Manager ${manager.id} has locations but it's not an array (${typeof manager.locations}), converting`);
+            manager.locations = Array.isArray(manager.locations) ? manager.locations : [];
           }
-          return manager;
+          
+          // Return a new object with explicit structure to ensure properties are preserved
+          return {
+            id: manager.id,
+            username: manager.username,
+            role: manager.role,
+            locations: Array.isArray(manager.locations) ? manager.locations : []
+          };
         });
         
         console.log('📤 FINAL VERIFIED - First manager structure:', {
           id: verifiedManagers[0]?.id,
           username: verifiedManagers[0]?.username,
-          locationsCount: verifiedManagers[0]?.locations?.length,
+          role: verifiedManagers[0]?.role,
+          hasLocations: 'locations' in verifiedManagers[0],
+          locationsCount: verifiedManagers[0]?.locations?.length || 0,
+          locationsIsArray: Array.isArray(verifiedManagers[0]?.locations),
           locations: verifiedManagers[0]?.locations,
           fullJSON: JSON.stringify(verifiedManagers[0], null, 2)
         });
+        
+        // CRITICAL: Log what we're actually sending
+        console.log('📤 SENDING RESPONSE - Full response array:', JSON.stringify(verifiedManagers, null, 2));
         
         return res.json(verifiedManagers);
       }
