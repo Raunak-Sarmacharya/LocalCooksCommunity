@@ -12191,6 +12191,13 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
     const id = parseInt(req.params.id);
     const { status } = req.body;
 
+    // Get booking details before updating
+    const bookingResult = await pool.query(`
+      SELECT * FROM kitchen_bookings WHERE id = $1
+    `, [id]);
+    
+    const booking = bookingResult.rows[0];
+
     const result = await pool.query(`
       UPDATE kitchen_bookings
       SET status = $1, updated_at = NOW()
@@ -12200,6 +12207,36 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Send email notification to chef when booking is confirmed
+    if (status === 'confirmed' && booking) {
+      try {
+        const kitchenResult = await pool.query('SELECT * FROM kitchens WHERE id = $1', [booking.kitchen_id]);
+        const chefResult = await pool.query('SELECT * FROM users WHERE id = $1', [booking.chef_id]);
+        
+        const kitchen = kitchenResult.rows[0];
+        const chef = chefResult.rows[0];
+        
+        if (chef && kitchen) {
+          const { sendEmail, generateBookingConfirmationEmail } = await import('../server/email.js');
+          
+          const approvalEmail = generateBookingConfirmationEmail({
+            chefEmail: chef.username,
+            chefName: chef.username,
+            kitchenName: kitchen.name,
+            bookingDate: booking.booking_date,
+            startTime: booking.start_time,
+            endTime: booking.end_time,
+            specialNotes: booking.special_notes
+          });
+          await sendEmail(approvalEmail);
+          console.log(`✅ Booking approval email sent to chef: ${chef.username}`);
+        }
+      } catch (emailError) {
+        console.error("Error sending booking approval email:", emailError);
+        // Don't fail the status update if email fails
+      }
     }
 
     res.json(result.rows[0]);

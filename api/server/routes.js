@@ -3255,7 +3255,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const id = parseInt(req.params.id);
       const { status } = req.body;
+      
+      // Get booking details before updating
+      const booking = await firebaseStorage.getBookingById(id);
+      
       await firebaseStorage.updateKitchenBookingStatus(id, status);
+      
+      // Send email notification to chef when booking is confirmed
+      if (status === 'confirmed' && booking) {
+        try {
+          const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+          const chef = await storage.getUser(booking.chefId);
+          
+          if (chef && kitchen) {
+            const approvalEmail = generateBookingConfirmationEmail({
+              chefEmail: chef.username,
+              chefName: (chef as any).displayName || chef.username,
+              kitchenName: kitchen.name,
+              bookingDate: booking.bookingDate,
+              startTime: booking.startTime,
+              endTime: booking.endTime,
+              specialNotes: booking.specialNotes
+            });
+            await sendEmail(approvalEmail);
+            console.log(`✅ Booking approval email sent to chef: ${chef.username}`);
+          }
+        } catch (emailError) {
+          console.error("Error sending booking approval email:", emailError);
+          // Don't fail the status update if email fails
+        }
+      }
+      
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error updating booking status:", error);
@@ -3658,8 +3688,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await sendEmail(chefEmail);
 
             // Send notification to manager
+            // Use notification email if set, otherwise fallback to manager's username (email)
+            const notificationEmailAddress = location.notification_email || manager.username;
             const managerEmail = generateBookingNotificationEmail({
-              managerEmail: manager.username,
+              managerEmail: notificationEmailAddress,
               chefName: (chef as any).displayName || chef.username,
               kitchenName: kitchen.name,
               bookingDate: bookingDate,

@@ -67,11 +67,11 @@ export default function ManagerDashboard() {
               <p className="text-gray-600 mt-2">Manage your locations, kitchens, and bookings</p>
             </div>
             <Link
-              href="/manager/availability"
+              href="/manager/booking-dashboard"
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Calendar className="h-5 w-5" />
-              Set Availability
+              Booking Management
             </Link>
           </div>
 
