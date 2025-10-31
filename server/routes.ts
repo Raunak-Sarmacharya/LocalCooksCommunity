@@ -4038,21 +4038,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (pool) {
         // Get managers with their locations and notification emails
+        // CRITICAL: This query MUST return locations as a JSON array, even if empty
         const result = await pool.query(
           `SELECT 
             u.id, 
             u.username, 
             u.role,
-            COALESCE(
-              json_agg(
-                json_build_object(
-                  'locationId', l.id,
-                  'locationName', l.name,
-                  'notificationEmail', COALESCE(l.notification_email, NULL)
-                )
-              ) FILTER (WHERE l.id IS NOT NULL),
-              '[]'::json
-            ) as locations
+            CASE 
+              WHEN COUNT(l.id) > 0 THEN
+                json_agg(
+                  json_build_object(
+                    'locationId', l.id,
+                    'locationName', l.name,
+                    'notificationEmail', COALESCE(l.notification_email, NULL)
+                  )
+                ) FILTER (WHERE l.id IS NOT NULL)
+              ELSE '[]'::json
+            END as locations
           FROM users u
           LEFT JOIN locations l ON l.manager_id = u.id
           WHERE u.role = $1
@@ -4060,6 +4062,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ORDER BY u.username ASC`,
           ['manager']
         );
+        
+        console.log('📊 Database query executed, rows returned:', result.rows.length);
+        if (result.rows.length > 0) {
+          console.log('📊 First row from database:', {
+            id: result.rows[0].id,
+            username: result.rows[0].username,
+            role: result.rows[0].role,
+            locations: result.rows[0].locations,
+            locationsType: typeof result.rows[0].locations,
+            locationsIsArray: Array.isArray(result.rows[0].locations)
+          });
+        }
         
         // Transform the result to include notification emails in a flat structure
         console.log(`📊 Raw database result - ${result.rows.length} manager(s) found`);
