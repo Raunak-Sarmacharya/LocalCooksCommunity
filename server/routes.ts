@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -3153,6 +3153,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         managerId: location.managerId
       });
 
+      // Get old notification email before updating
+      const oldNotificationEmail = (location as any).notificationEmail || (location as any).notification_email || null;
+
       // Update location settings
       const updates: any = { updatedAt: new Date() };
       if (cancellationPolicyHours !== undefined) {
@@ -3173,7 +3176,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
         console.log('[PUT] Setting notificationEmail:', { 
           raw: notificationEmail, 
-          processed: updates.notificationEmail 
+          processed: updates.notificationEmail,
+          oldEmail: oldNotificationEmail
         });
       }
 
@@ -3207,6 +3211,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
         defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
       };
+      
+      // Send email to new notification email if it was changed
+      if (notificationEmail !== undefined && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
+        try {
+          const emailContent = generateLocationEmailChangedEmail({
+            email: response.notificationEmail,
+            locationName: (location as any).name || 'Location',
+            locationId: locationIdNum
+          });
+          await sendEmail(emailContent);
+          console.log(`✅ Location notification email change notification sent to: ${response.notificationEmail}`);
+        } catch (emailError) {
+          console.error("Error sending location email change notification:", emailError);
+          // Don't fail the update if email fails
+        }
+      }
       
       console.log('[PUT] Sending response with notificationEmail:', response.notificationEmail);
       res.status(200).json(response);
