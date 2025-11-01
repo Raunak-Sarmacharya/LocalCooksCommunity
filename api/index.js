@@ -11268,6 +11268,54 @@ app.put("/api/manager/chef-profiles/:id/status", async (req, res) => {
     `, [status, user.id, reviewFeedback || null, profileId]);
 
     const updated = updateResult.rows[0];
+    
+    // Send email notification to chef when access is approved
+    if (status === 'approved') {
+      try {
+        // Get location details
+        const locationData = await pool.query(`
+          SELECT l.id, l.name
+          FROM locations l
+          WHERE l.id = $1
+        `, [updated.location_id]);
+        
+        if (locationData.rows.length > 0) {
+          const location = locationData.rows[0];
+          
+          // Get chef details
+          const chefData = await pool.query(`
+            SELECT id, username
+            FROM users
+            WHERE id = $1
+          `, [updated.chef_id]);
+          
+          if (chefData.rows.length > 0) {
+            const chef = chefData.rows[0];
+            
+            // Import email functions
+            const { sendEmail, generateChefLocationAccessApprovedEmail } = await import('../server/email.js');
+            
+            try {
+              const chefEmail = generateChefLocationAccessApprovedEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                locationName: location.name,
+                locationId: location.id
+              });
+              await sendEmail(chefEmail);
+              console.log(`✅ Chef location access approved email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef approval email:", emailError);
+              console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending chef approval emails:", emailError);
+        // Don't fail the status update if emails fail
+      }
+    }
+    
     res.json({
       id: updated.id,
       chefId: updated.chef_id,
@@ -12338,6 +12386,105 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     `, [req.user.id, kitchenId, bookingDate, startTime, endTime, specialNotes || null]);
     
     const booking = result.rows[0];
+    
+    // Send email notifications to chef and manager
+    try {
+      // Get kitchen details
+      const kitchenData = await pool.query(`
+        SELECT k.id, k.name, k.location_id
+        FROM kitchens k
+        WHERE k.id = $1
+      `, [kitchenId]);
+      
+      if (kitchenData.rows.length > 0) {
+        const kitchen = kitchenData.rows[0];
+        
+        // Get location details with notification email
+        const locationData = await pool.query(`
+          SELECT l.id, l.name, l.manager_id, l.notification_email
+          FROM locations l
+          WHERE l.id = $1
+        `, [kitchen.location_id]);
+        
+        if (locationData.rows.length > 0) {
+          const location = locationData.rows[0];
+          
+          // Get chef details
+          const chefData = await pool.query(`
+            SELECT id, username
+            FROM users
+            WHERE id = $1
+          `, [req.user.id]);
+          
+          const chef = chefData.rows[0];
+          
+          // Get manager details if manager_id is set
+          let manager = null;
+          if (location.manager_id) {
+            const managerData = await pool.query(`
+              SELECT id, username
+              FROM users
+              WHERE id = $1
+            `, [location.manager_id]);
+            
+            if (managerData.rows.length > 0) {
+              manager = managerData.rows[0];
+            }
+          }
+          
+          // Import email functions
+          const { sendEmail, generateBookingRequestEmail, generateBookingNotificationEmail } = await import('../server/email.js');
+          
+          // Send email to chef
+          if (chef) {
+            try {
+              const chefEmail = generateBookingRequestEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: bookingDate,
+                startTime,
+                endTime,
+                specialNotes: specialNotes || ''
+              });
+              await sendEmail(chefEmail);
+              console.log(`✅ Booking request email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef email:", emailError);
+            }
+          }
+          
+          // Send email to manager
+          // Use notification email if set, otherwise fallback to manager's username (email)
+          const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
+          
+          if (notificationEmailAddress) {
+            try {
+              const managerEmail = generateBookingNotificationEmail({
+                managerEmail: notificationEmailAddress,
+                chefName: chef ? chef.username : 'Chef',
+                kitchenName: kitchen.name,
+                bookingDate: bookingDate,
+                startTime,
+                endTime,
+                specialNotes: specialNotes || ''
+              });
+              await sendEmail(managerEmail);
+              console.log(`✅ Booking notification email sent to manager: ${notificationEmailAddress}`);
+            } catch (emailError) {
+              console.error("Error sending manager email:", emailError);
+              console.error("Manager email error details:", emailError instanceof Error ? emailError.message : emailError);
+            }
+          } else {
+            console.warn(`⚠️ No notification email found for location ${location.id} - location.notification_email: ${location.notification_email || 'NOT SET'}, manager: ${manager ? manager.username : 'NOT FOUND'}`);
+          }
+        }
+      }
+    } catch (emailError) {
+      console.error("Error sending booking emails:", emailError);
+      // Don't fail the booking if emails fail
+    }
+    
     res.status(201).json({
       id: booking.id,
       chefId: booking.chef_id,
@@ -12388,15 +12535,17 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
       return res.status(500).json({ error: "Database not available" });
     }
     
-    // Verify the booking belongs to this chef
-    const checkResult = await pool.query(`
-      SELECT id FROM kitchen_bookings 
+    // Get booking details before updating
+    const bookingResult = await pool.query(`
+      SELECT * FROM kitchen_bookings 
       WHERE id = $1 AND chef_id = $2
     `, [bookingId, req.user.id]);
     
-    if (checkResult.rows.length === 0) {
+    if (bookingResult.rows.length === 0) {
       return res.status(404).json({ error: "Booking not found" });
     }
+    
+    const booking = bookingResult.rows[0];
     
     // Update booking status
     await pool.query(`
@@ -12404,6 +12553,103 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
       SET status = 'cancelled' 
       WHERE id = $1
     `, [bookingId]);
+    
+    // Send email notifications to chef and manager
+    try {
+      // Get kitchen details
+      const kitchenData = await pool.query(`
+        SELECT k.id, k.name, k.location_id
+        FROM kitchens k
+        WHERE k.id = $1
+      `, [booking.kitchen_id]);
+      
+      if (kitchenData.rows.length > 0) {
+        const kitchen = kitchenData.rows[0];
+        
+        // Get location details with notification email
+        const locationData = await pool.query(`
+          SELECT l.id, l.name, l.manager_id, l.notification_email
+          FROM locations l
+          WHERE l.id = $1
+        `, [kitchen.location_id]);
+        
+        if (locationData.rows.length > 0) {
+          const location = locationData.rows[0];
+          
+          // Get chef details
+          const chefData = await pool.query(`
+            SELECT id, username
+            FROM users
+            WHERE id = $1
+          `, [req.user.id]);
+          
+          const chef = chefData.rows[0];
+          
+          // Get manager details if manager_id is set
+          let manager = null;
+          if (location.manager_id) {
+            const managerData = await pool.query(`
+              SELECT id, username
+              FROM users
+              WHERE id = $1
+            `, [location.manager_id]);
+            
+            if (managerData.rows.length > 0) {
+              manager = managerData.rows[0];
+            }
+          }
+          
+          // Import email functions
+          const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../server/email.js');
+          
+          // Send email to chef
+          if (chef) {
+            try {
+              const chefEmail = generateBookingCancellationEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: booking.booking_date,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                cancellationReason: 'You cancelled this booking'
+              });
+              await sendEmail(chefEmail);
+              console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef cancellation email:", emailError);
+            }
+          }
+          
+          // Send email to manager
+          const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
+          
+          if (notificationEmailAddress && chef) {
+            try {
+              const managerEmail = generateBookingCancellationNotificationEmail({
+                managerEmail: notificationEmailAddress,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: booking.booking_date,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                cancellationReason: 'Cancelled by chef'
+              });
+              await sendEmail(managerEmail);
+              console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
+            } catch (emailError) {
+              console.error("Error sending manager cancellation email:", emailError);
+              console.error("Manager email error details:", emailError instanceof Error ? emailError.message : emailError);
+            }
+          } else {
+            console.warn(`⚠️ No notification email found for location ${location.id} - location.notification_email: ${location.notification_email || 'NOT SET'}, manager: ${manager ? manager.username : 'NOT FOUND'}`);
+          }
+        }
+      }
+    } catch (emailError) {
+      console.error("Error sending booking cancellation emails:", emailError);
+      // Don't fail the cancellation if emails fail
+    }
     
     res.json({ success: true });
   } catch (error) {
@@ -12914,7 +13160,7 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
       return res.status(404).json({ error: "Booking not found" });
     }
 
-    // Send email notification to chef based on status change
+    // Send email notifications to chef and manager based on status change
     if (booking) {
       try {
         const kitchenResult = await pool.query('SELECT * FROM kitchens WHERE id = $1', [booking.kitchen_id]);
@@ -12924,34 +13170,100 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
         const chef = chefResult.rows[0];
         
         if (chef && kitchen) {
-          const { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail } = await import('../server/email.js');
+          // Get location details with notification email
+          const locationResult = await pool.query(`
+            SELECT l.id, l.name, l.manager_id, l.notification_email
+            FROM locations l
+            WHERE l.id = $1
+          `, [kitchen.location_id]);
+          
+          const location = locationResult.rows[0];
+          
+          // Get manager details if manager_id is set
+          let manager = null;
+          if (location && location.manager_id) {
+            const managerResult = await pool.query('SELECT * FROM users WHERE id = $1', [location.manager_id]);
+            if (managerResult.rows.length > 0) {
+              manager = managerResult.rows[0];
+            }
+          }
+          
+          const { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateBookingStatusChangeNotificationEmail } = await import('../server/email.js');
           
           if (status === 'confirmed') {
-            // Send confirmation email
-            const confirmationEmail = generateBookingConfirmationEmail({
-              chefEmail: chef.username,
-              chefName: chef.username,
-              kitchenName: kitchen.name,
-              bookingDate: booking.booking_date,
-              startTime: booking.start_time,
-              endTime: booking.end_time,
-              specialNotes: booking.special_notes
-            });
-            await sendEmail(confirmationEmail);
-            console.log(`✅ Booking confirmation email sent to chef: ${chef.username}`);
+            // Send confirmation email to chef
+            try {
+              const confirmationEmail = generateBookingConfirmationEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: booking.booking_date,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                specialNotes: booking.special_notes
+              });
+              await sendEmail(confirmationEmail);
+              console.log(`✅ Booking confirmation email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef confirmation email:", emailError);
+            }
+            
+            // Send notification email to manager
+            const notificationEmailAddress = location ? (location.notification_email || (manager ? manager.username : null)) : null;
+            if (notificationEmailAddress) {
+              try {
+                const managerEmail = generateBookingStatusChangeNotificationEmail({
+                  managerEmail: notificationEmailAddress,
+                  chefName: chef.username,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.booking_date,
+                  startTime: booking.start_time,
+                  endTime: booking.end_time,
+                  status: 'confirmed'
+                });
+                await sendEmail(managerEmail);
+                console.log(`✅ Booking confirmation notification email sent to manager: ${notificationEmailAddress}`);
+              } catch (emailError) {
+                console.error("Error sending manager confirmation email:", emailError);
+              }
+            }
           } else if (status === 'cancelled') {
-            // Send cancellation email
-            const cancellationEmail = generateBookingCancellationEmail({
-              chefEmail: chef.username,
-              chefName: chef.username,
-              kitchenName: kitchen.name,
-              bookingDate: booking.booking_date,
-              startTime: booking.start_time,
-              endTime: booking.end_time,
-              cancellationReason: 'The manager has cancelled this booking'
-            });
-            await sendEmail(cancellationEmail);
-            console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+            // Send cancellation email to chef
+            try {
+              const cancellationEmail = generateBookingCancellationEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: booking.booking_date,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                cancellationReason: 'The manager has cancelled this booking'
+              });
+              await sendEmail(cancellationEmail);
+              console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef cancellation email:", emailError);
+            }
+            
+            // Send notification email to manager
+            const notificationEmailAddress = location ? (location.notification_email || (manager ? manager.username : null)) : null;
+            if (notificationEmailAddress) {
+              try {
+                const managerEmail = generateBookingStatusChangeNotificationEmail({
+                  managerEmail: notificationEmailAddress,
+                  chefName: chef.username,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.booking_date,
+                  startTime: booking.start_time,
+                  endTime: booking.end_time,
+                  status: 'cancelled'
+                });
+                await sendEmail(managerEmail);
+                console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
+              } catch (emailError) {
+                console.error("Error sending manager cancellation email:", emailError);
+              }
+            }
           }
         }
       } catch (emailError) {
@@ -13198,7 +13510,54 @@ app.post("/api/admin/chef-location-access", async (req, res) => {
       [chefId, locationId, user.id]
     );
 
-    res.status(201).json(result.rows[0]);
+    const access = result.rows[0];
+    
+    // Send email notification to chef when access is granted
+    try {
+      // Get location details
+      const locationData = await pool.query(`
+        SELECT l.id, l.name
+        FROM locations l
+        WHERE l.id = $1
+      `, [locationId]);
+      
+      if (locationData.rows.length > 0) {
+        const location = locationData.rows[0];
+        
+        // Get chef details
+        const chefData = await pool.query(`
+          SELECT id, username
+          FROM users
+          WHERE id = $1
+        `, [chefId]);
+        
+        if (chefData.rows.length > 0) {
+          const chef = chefData.rows[0];
+          
+          // Import email functions
+          const { sendEmail, generateChefLocationAccessApprovedEmail } = await import('../server/email.js');
+          
+          try {
+            const chefEmail = generateChefLocationAccessApprovedEmail({
+              chefEmail: chef.username,
+              chefName: chef.username,
+              locationName: location.name,
+              locationId: location.id
+            });
+            await sendEmail(chefEmail);
+            console.log(`✅ Chef location access granted email sent to chef: ${chef.username}`);
+          } catch (emailError) {
+            console.error("Error sending chef access email:", emailError);
+            console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+          }
+        }
+      }
+    } catch (emailError) {
+      console.error("Error sending chef access emails:", emailError);
+      // Don't fail the access grant if emails fail
+    }
+    
+    res.status(201).json(access);
   } catch (error) {
     console.error("Error granting chef location access:", error);
     res.status(500).json({ error: error.message || "Failed to grant access" });

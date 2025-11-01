@@ -102,21 +102,21 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
     switch (status) {
       case 'pending':
         return (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap flex-shrink-0">
             <Clock className="inline h-3 w-3 mr-1" />
             Pending
           </span>
         );
       case 'approved':
         return (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap flex-shrink-0">
             <CheckCircle className="inline h-3 w-3 mr-1" />
             Approved
           </span>
         );
       case 'rejected':
         return (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap flex-shrink-0">
             <XCircle className="inline h-3 w-3 mr-1" />
             Rejected
           </span>
@@ -418,21 +418,21 @@ function ProfileCard({ profile, onReview }: { profile: any; onReview: () => void
     switch (status) {
       case 'pending':
         return (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap flex-shrink-0">
             <Clock className="inline h-3 w-3 mr-1" />
             Pending
           </span>
         );
       case 'approved':
         return (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap flex-shrink-0">
             <CheckCircle className="inline h-3 w-3 mr-1" />
             Approved
           </span>
         );
       case 'rejected':
         return (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap flex-shrink-0">
             <XCircle className="inline h-3 w-3 mr-1" />
             Rejected
           </span>
@@ -444,21 +444,25 @@ function ProfileCard({ profile, onReview }: { profile: any; onReview: () => void
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start gap-3 flex-1">
-          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <User className="h-6 w-6 text-blue-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate">
-              {profile.application?.fullName || profile.chef?.username || 'Unknown Chef'}
-            </h3>
-            {profile.location && (
-              <p className="text-sm text-gray-600 mt-1">{profile.location.name}</p>
-            )}
+      <div className="flex items-start gap-3 mb-4">
+        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+          <User className="h-6 w-6 text-blue-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-gray-900 truncate">
+                {profile.application?.fullName || profile.chef?.username || 'Unknown Chef'}
+              </h3>
+              {profile.location && (
+                <p className="text-sm text-gray-600 mt-1 truncate">{profile.location.name}</p>
+              )}
+            </div>
+            <div className="flex-shrink-0">
+              {getStatusBadge(profile.status)}
+            </div>
           </div>
         </div>
-        {getStatusBadge(profile.status)}
       </div>
 
       {profile.application && (

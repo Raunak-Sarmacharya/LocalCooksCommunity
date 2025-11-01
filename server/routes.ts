@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -3486,6 +3486,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reviewFeedback
       );
       
+      // Send email notification to chef when access is approved
+      if (status === 'approved') {
+        try {
+          // Get location details
+          const location = await firebaseStorage.getLocationById(updated.locationId);
+          if (!location) {
+            console.warn(`⚠️ Location ${updated.locationId} not found for email notification`);
+          } else {
+            // Get chef details
+            const chef = await storage.getUser(updated.chefId);
+            if (!chef) {
+              console.warn(`⚠️ Chef ${updated.chefId} not found for email notification`);
+            } else {
+              try {
+                const chefEmail = generateChefLocationAccessApprovedEmail({
+                  chefEmail: chef.username || '',
+                  chefName: chef.username || 'Chef',
+                  locationName: location.name || 'Location',
+                  locationId: updated.locationId
+                });
+                await sendEmail(chefEmail);
+                console.log(`✅ Chef location access approved email sent to chef: ${chef.username}`);
+              } catch (emailError) {
+                console.error("Error sending chef approval email:", emailError);
+                console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+              }
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending chef approval emails:", emailError);
+          // Don't fail the status update if emails fail
+        }
+      }
+      
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating chef profile status:", error);
@@ -3547,13 +3581,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await firebaseStorage.updateKitchenBookingStatus(id, status);
       
-      // Send email notification to chef based on status change
+      // Send email notifications to chef and manager based on status change
       if (booking) {
         try {
           const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
           const chef = await storage.getUser(booking.chefId);
           
           if (chef && kitchen) {
+            // Get location details
+            const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+            let location = null;
+            let manager = null;
+            
+            if (kitchenLocationId) {
+              location = await firebaseStorage.getLocationById(kitchenLocationId);
+              if (location) {
+                // Get manager details if manager_id is set
+                const managerId = location.managerId || (location as any).manager_id;
+                if (managerId) {
+                  manager = await storage.getUser(managerId);
+                }
+              }
+            }
+            
             // Get chef's full name from application if available (better than just email)
             let chefName = chef.username || 'Chef';
             if (pool && booking.chefId) {
@@ -3577,7 +3627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.warn(`⚠️ Chef ${booking.chefId} has no email address, skipping status update email`);
             } else {
               if (status === 'confirmed') {
-                // Send confirmation email
+                // Send confirmation email to chef
                 try {
                   const confirmationEmail = generateBookingConfirmationEmail({
                     chefEmail: chefEmailAddress,
@@ -3598,8 +3648,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error(`❌ Error sending booking confirmation email to chef ${chefEmailAddress}:`, confirmationEmailError);
                   console.error("Confirmation email error details:", confirmationEmailError instanceof Error ? confirmationEmailError.message : String(confirmationEmailError));
                 }
+                
+                // Send notification email to manager
+                const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
+                if (notificationEmailAddress) {
+                  try {
+                    const managerEmail = generateBookingStatusChangeNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: chefName,
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      status: 'confirmed'
+                    });
+                    const emailSent = await sendEmail(managerEmail);
+                    if (emailSent) {
+                      console.log(`✅ Booking confirmation notification email sent to manager: ${notificationEmailAddress}`);
+                    } else {
+                      console.error(`❌ Failed to send booking confirmation notification email to manager: ${notificationEmailAddress}`);
+                    }
+                  } catch (managerEmailError) {
+                    console.error(`❌ Error sending manager confirmation email:`, managerEmailError);
+                  }
+                }
               } else if (status === 'cancelled') {
-                // Send cancellation email
+                // Send cancellation email to chef
                 try {
                   const cancellationEmail = generateBookingCancellationEmail({
                     chefEmail: chefEmailAddress,
@@ -3619,6 +3693,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 } catch (cancellationEmailError) {
                   console.error(`❌ Error sending booking cancellation email to chef ${chefEmailAddress}:`, cancellationEmailError);
                   console.error("Cancellation email error details:", cancellationEmailError instanceof Error ? cancellationEmailError.message : String(cancellationEmailError));
+                }
+                
+                // Send notification email to manager
+                const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
+                if (notificationEmailAddress) {
+                  try {
+                    const managerEmail = generateBookingStatusChangeNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: chefName,
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      status: 'cancelled'
+                    });
+                    const emailSent = await sendEmail(managerEmail);
+                    if (emailSent) {
+                      console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
+                    } else {
+                      console.error(`❌ Failed to send booking cancellation notification email to manager: ${notificationEmailAddress}`);
+                    }
+                  } catch (managerEmailError) {
+                    console.error(`❌ Error sending manager cancellation email:`, managerEmailError);
+                  }
                 }
               }
             }
@@ -4379,7 +4477,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
+      
+      // Get booking details before cancelling
+      const booking = await firebaseStorage.getBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+      
+      // Verify the booking belongs to this chef
+      if (booking.chefId !== req.user!.id) {
+        return res.status(403).json({ error: "You don't have permission to cancel this booking" });
+      }
+      
       await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
+      
+      // Send email notifications to chef and manager
+      try {
+        // Get kitchen details
+        const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+        if (!kitchen) {
+          console.warn(`⚠️ Kitchen ${booking.kitchenId} not found for email notification`);
+        } else {
+          // Get location details
+          const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+          if (!kitchenLocationId) {
+            console.warn(`⚠️ Kitchen ${booking.kitchenId} has no locationId`);
+          } else {
+            const location = await firebaseStorage.getLocationById(kitchenLocationId);
+            if (!location) {
+              console.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
+            } else {
+              // Get chef details
+              const chef = await storage.getUser(booking.chefId);
+              if (!chef) {
+                console.warn(`⚠️ Chef ${booking.chefId} not found for email notification`);
+              } else {
+                // Get manager details if manager_id is set
+                const managerId = location.managerId || (location as any).manager_id;
+                let manager = null;
+                if (managerId) {
+                  manager = await storage.getUser(managerId);
+                }
+                
+                // Import email functions
+                const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('./email.js');
+                
+                // Send email to chef
+                try {
+                  const chefEmail = generateBookingCancellationEmail({
+                    chefEmail: chef.username || '',
+                    chefName: chef.username || 'Chef',
+                    kitchenName: kitchen.name || 'Kitchen',
+                    bookingDate: booking.bookingDate,
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    cancellationReason: 'You cancelled this booking'
+                  });
+                  await sendEmail(chefEmail);
+                  console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+                } catch (emailError) {
+                  console.error("Error sending chef cancellation email:", emailError);
+                }
+                
+                // Send email to manager
+                const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null);
+                
+                if (notificationEmailAddress) {
+                  try {
+                    const managerEmail = generateBookingCancellationNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: chef.username || 'Chef',
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      cancellationReason: 'Cancelled by chef'
+                    });
+                    await sendEmail(managerEmail);
+                    console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
+                  } catch (emailError) {
+                    console.error("Error sending manager cancellation email:", emailError);
+                    console.error("Manager email error details:", emailError instanceof Error ? emailError.message : emailError);
+                  }
+                } else {
+                  console.warn(`⚠️ No notification email found for location ${kitchenLocationId}`);
+                }
+              }
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending booking cancellation emails:", emailError);
+        // Don't fail the cancellation if emails fail
+      }
+      
       res.json({ success: true });
     } catch (error) {
       console.error("Error cancelling booking:", error);
@@ -4477,6 +4668,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const access = await firebaseStorage.grantChefLocationAccess(chefId, locationId, user.id);
+      
+      // Send email notification to chef when access is granted
+      try {
+        // Get location details
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location) {
+          console.warn(`⚠️ Location ${locationId} not found for email notification`);
+        } else {
+          // Get chef details
+          const chef = await storage.getUser(chefId);
+          if (!chef) {
+            console.warn(`⚠️ Chef ${chefId} not found for email notification`);
+          } else {
+            try {
+              const chefEmail = generateChefLocationAccessApprovedEmail({
+                chefEmail: chef.username || '',
+                chefName: chef.username || 'Chef',
+                locationName: location.name || 'Location',
+                locationId: locationId
+              });
+              await sendEmail(chefEmail);
+              console.log(`✅ Chef location access granted email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef access email:", emailError);
+              console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending chef access emails:", emailError);
+        // Don't fail the access grant if emails fail
+      }
+      
       res.status(201).json(access);
     } catch (error: any) {
       console.error("Error granting chef location access:", error);
