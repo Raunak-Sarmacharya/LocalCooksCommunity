@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
@@ -345,18 +345,96 @@ export default function ManagerBookingDashboard() {
 
 // Overview View Component
 function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Location | null; onNavigate: (view: ViewType) => void }) {
-  const { bookings, isLoadingBookings } = useManagerDashboard();
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  
+  // Use the same query as ManagerBookingsPanel for consistency and real-time updates
+  const { data: bookings = [], isLoading: isLoadingBookings } = useQuery({
+    queryKey: ['managerBookings'],
+    queryFn: async () => {
+      const token = localStorage.getItem('firebaseToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      };
+      
+      const response = await fetch('/api/manager/bookings', {
+        headers,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to fetch bookings';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (jsonError) {
+          try {
+            const text = await response.text();
+            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+          } catch (textError) {
+            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : [];
+    },
+    // Real-time polling - same as ManagerBookingsPanel
+    refetchInterval: (data) => {
+      if (!data || !Array.isArray(data)) return 10000;
+      const hasPendingBookings = data.some((b: any) => b.status === "pending");
+      const hasUpcomingBookings = data.some((b: any) => {
+        try {
+          const bookingDate = new Date(b.bookingDate);
+          return bookingDate >= new Date();
+        } catch {
+          return false;
+        }
+      });
+      if (hasPendingBookings) return 5000;
+      if (hasUpcomingBookings) return 15000;
+      return 30000;
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    staleTime: 0,
+  });
   
   const pendingBookings = bookings.filter((b: any) => b.status === "pending");
   const confirmedBookings = bookings.filter((b: any) => b.status === "confirmed");
   const cancelledBookings = bookings.filter((b: any) => b.status === "cancelled");
 
-  // Group bookings by date
+  // Helper function to normalize date to YYYY-MM-DD format
+  const normalizeDate = (date: Date | string): string => {
+    try {
+      const d = typeof date === 'string' ? new Date(date) : date;
+      // Get date in local timezone to avoid timezone issues
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch (error) {
+      console.error('Error normalizing date:', error);
+      return '';
+    }
+  };
+
+  // Group bookings by date - handle both timestamp and date string formats
   const bookingsByDate = useMemo(() => {
     const grouped: { [key: string]: any[] } = {};
     bookings.forEach((booking: any) => {
-      const dateStr = new Date(booking.bookingDate).toISOString().split('T')[0];
+      if (!booking.bookingDate) return;
+      const dateStr = normalizeDate(booking.bookingDate);
+      if (!dateStr) return;
+      
       if (!grouped[dateStr]) {
         grouped[dateStr] = [];
       }
@@ -367,13 +445,8 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
 
   // Get bookings for a specific date
   const getBookingsForDate = (date: Date): any[] => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = normalizeDate(date);
     return bookingsByDate[dateStr] || [];
-  };
-
-  // Format date to YYYY-MM-DD for comparison
-  const formatDateKey = (date: Date): string => {
-    return date.toISOString().split('T')[0];
   };
 
   // Custom tile content with booking indicators
@@ -459,7 +532,12 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
       {/* Modern Calendar */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-900">Booking Calendar</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-gray-900">Booking Calendar</h2>
+            {isLoadingBookings && (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            )}
+          </div>
           <div className="flex items-center gap-4 text-xs text-gray-600">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
@@ -476,14 +554,23 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
           </div>
         </div>
         <div className="react-calendar-wrapper">
-          <CalendarComponent
-            onChange={setSelectedDate}
-            value={selectedDate}
-            tileContent={tileContent}
-            tileClassName={tileClassName}
-            className="w-full border-0"
-            locale="en-US"
-          />
+          {isLoadingBookings && bookings.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading bookings...</p>
+              </div>
+            </div>
+          ) : (
+            <CalendarComponent
+              onChange={setSelectedDate}
+              value={selectedDate}
+              tileContent={tileContent}
+              tileClassName={tileClassName}
+              className="w-full border-0"
+              locale="en-US"
+            />
+          )}
         </div>
         <style>{`
           .react-calendar-wrapper .react-calendar {
@@ -533,58 +620,96 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
             </h3>
             <button
               onClick={() => setSelectedDate(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
-          {getBookingsForDate(selectedDate).length === 0 ? (
-            <p className="text-gray-500">No bookings on this date</p>
+          {isLoadingBookings ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : getBookingsForDate(selectedDate).length === 0 ? (
+            <div className="text-center py-8">
+              <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No bookings on this date</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              {getBookingsForDate(selectedDate).map((booking: any) => (
-                <div
-                  key={booking.id}
-                  className={`p-4 rounded-lg border ${
-                    booking.status === 'pending'
-                      ? 'bg-yellow-50 border-yellow-200'
-                      : booking.status === 'confirmed'
-                      ? 'bg-green-50 border-green-200'
-                      : 'bg-gray-50 border-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          booking.status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : booking.status === 'confirmed'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {booking.status.toUpperCase()}
-                        </span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {booking.startTime?.slice(0, 5)} - {booking.endTime?.slice(0, 5)}
-                        </span>
+              {getBookingsForDate(selectedDate).map((booking: any) => {
+                const formatTime = (time: string) => {
+                  if (!time) return '';
+                  const [hours, minutes] = time.split(':');
+                  const hour = parseInt(hours);
+                  const ampm = hour >= 12 ? 'PM' : 'AM';
+                  const displayHour = hour % 12 || 12;
+                  return `${displayHour}:${minutes} ${ampm}`;
+                };
+
+                return (
+                  <div
+                    key={booking.id}
+                    className={`p-4 rounded-lg border ${
+                      booking.status === 'pending'
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : booking.status === 'confirmed'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            booking.status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : booking.status === 'confirmed'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {booking.status.toUpperCase()}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
+                          </span>
+                        </div>
+                        {booking.kitchenName && (
+                          <p className="text-sm text-gray-600 flex items-center gap-1 mb-1">
+                            <ChefHat className="h-3 w-3" />
+                            {booking.kitchenName}
+                          </p>
+                        )}
+                        {booking.locationName && (
+                          <p className="text-sm text-gray-600 flex items-center gap-1 mb-1">
+                            <MapPin className="h-3 w-3" />
+                            {booking.locationName}
+                          </p>
+                        )}
+                        {booking.chefName && (
+                          <p className="text-sm text-gray-600 flex items-center gap-1 mb-1">
+                            <User className="h-3 w-3" />
+                            Chef: {booking.chefName}
+                          </p>
+                        )}
+                        {booking.specialNotes && (
+                          <div className="mt-2 p-2 bg-white rounded border border-gray-200">
+                            <p className="text-xs font-medium text-gray-700 mb-1">Notes:</p>
+                            <p className="text-sm text-gray-600">{booking.specialNotes}</p>
+                          </div>
+                        )}
                       </div>
-                      {booking.kitchenName && (
-                        <p className="text-sm text-gray-600">Kitchen: {booking.kitchenName}</p>
-                      )}
-                      {booking.specialNotes && (
-                        <p className="text-sm text-gray-500 mt-1">{booking.specialNotes}</p>
-                      )}
+                      <button
+                        onClick={() => onNavigate('bookings')}
+                        className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors whitespace-nowrap"
+                      >
+                        View Details
+                      </button>
                     </div>
-                    <button
-                      onClick={() => onNavigate('bookings')}
-                      className="ml-4 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                    >
-                      View Details
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
