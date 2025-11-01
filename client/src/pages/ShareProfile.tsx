@@ -137,7 +137,8 @@ export default function ShareProfile() {
 
           {/* Kitchens Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {kitchens.map((kitchen: any) => {
+            {kitchens.map((kitchen) => {
+              const locationName = (kitchen as any).locationName || (kitchen as any).location?.name;
               const profile = getProfileStatus(kitchen.id);
               const isPending = profile?.status === 'pending';
               const isApproved = profile?.status === 'approved';
@@ -156,8 +157,8 @@ export default function ShareProfile() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 truncate">{kitchen.name}</h3>
-                        {kitchen.locationName && (
-                          <p className="text-sm text-gray-600 mt-1">{kitchen.locationName}</p>
+                        {locationName && (
+                          <p className="text-sm text-gray-600 mt-1">{locationName}</p>
                         )}
                       </div>
                     </div>

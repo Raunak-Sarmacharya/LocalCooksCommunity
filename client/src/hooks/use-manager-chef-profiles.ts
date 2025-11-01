@@ -30,7 +30,7 @@ interface ChefProfileForManager {
 export function useManagerChefProfiles() {
   const queryClient = useQueryClient();
 
-  const profilesQuery = useQuery<ChefProfileForManager[]>({
+  const profilesQuery = useQuery<ChefProfileForManager[], Error>({
     queryKey: ["/api/manager/chef-profiles"],
     queryFn: async () => {
       const response = await fetch("/api/manager/chef-profiles", {
