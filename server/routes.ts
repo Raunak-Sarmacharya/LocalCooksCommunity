@@ -14,6 +14,7 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
+import { pool } from "./db";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -3508,32 +3509,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
             
-            if (status === 'confirmed') {
-              // Send confirmation email
-              const confirmationEmail = generateBookingConfirmationEmail({
-                chefEmail: chef.username,
-                chefName: chefName,
-                kitchenName: kitchen.name,
-                bookingDate: booking.bookingDate,
-                startTime: booking.startTime,
-                endTime: booking.endTime,
-                specialNotes: booking.specialNotes
-              });
-              await sendEmail(confirmationEmail);
-              console.log(`✅ Booking confirmation email sent to chef: ${chef.username}`);
-            } else if (status === 'cancelled') {
-              // Send cancellation email
-              const cancellationEmail = generateBookingCancellationEmail({
-                chefEmail: chef.username,
-                chefName: chefName,
-                kitchenName: kitchen.name,
-                bookingDate: booking.bookingDate,
-                startTime: booking.startTime,
-                endTime: booking.endTime,
-                cancellationReason: 'The manager has cancelled this booking'
-              });
-              await sendEmail(cancellationEmail);
-              console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+            const chefEmailAddress = chef.username;
+            
+            if (!chefEmailAddress) {
+              console.warn(`⚠️ Chef ${booking.chefId} has no email address, skipping status update email`);
+            } else {
+              if (status === 'confirmed') {
+                // Send confirmation email
+                try {
+                  const confirmationEmail = generateBookingConfirmationEmail({
+                    chefEmail: chefEmailAddress,
+                    chefName: chefName,
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate,
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    specialNotes: booking.specialNotes
+                  });
+                  const emailSent = await sendEmail(confirmationEmail);
+                  if (emailSent) {
+                    console.log(`✅ Booking confirmation email sent to chef: ${chefEmailAddress}`);
+                  } else {
+                    console.error(`❌ Failed to send booking confirmation email to chef: ${chefEmailAddress}`);
+                  }
+                } catch (confirmationEmailError) {
+                  console.error(`❌ Error sending booking confirmation email to chef ${chefEmailAddress}:`, confirmationEmailError);
+                  console.error("Confirmation email error details:", confirmationEmailError instanceof Error ? confirmationEmailError.message : String(confirmationEmailError));
+                }
+              } else if (status === 'cancelled') {
+                // Send cancellation email
+                try {
+                  const cancellationEmail = generateBookingCancellationEmail({
+                    chefEmail: chefEmailAddress,
+                    chefName: chefName,
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate,
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    cancellationReason: 'The manager has cancelled this booking'
+                  });
+                  const emailSent = await sendEmail(cancellationEmail);
+                  if (emailSent) {
+                    console.log(`✅ Booking cancellation email sent to chef: ${chefEmailAddress}`);
+                  } else {
+                    console.error(`❌ Failed to send booking cancellation email to chef: ${chefEmailAddress}`);
+                  }
+                } catch (cancellationEmailError) {
+                  console.error(`❌ Error sending booking cancellation email to chef ${chefEmailAddress}:`, cancellationEmailError);
+                  console.error("Cancellation email error details:", cancellationEmailError instanceof Error ? cancellationEmailError.message : String(cancellationEmailError));
+                }
+              }
             }
           }
         } catch (emailError) {
@@ -4105,17 +4130,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Always send chef email if chef exists
                 if (chef && kitchen) {
                   const chefEmailAddress = chef.username; // chef.username is the email
-                  const chefEmail = generateBookingRequestEmail({
-                    chefEmail: chefEmailAddress,
-                    chefName: chefName,
-                    kitchenName: kitchen.name || 'Kitchen',
-                    bookingDate: bookingDate,
-                    startTime,
-                    endTime,
-                    specialNotes: specialNotes || ''
-                  });
-                  await sendEmail(chefEmail);
-                  console.log(`✅ Booking request email sent to chef: ${chefEmailAddress}`);
+                  
+                  if (!chefEmailAddress) {
+                    console.warn(`⚠️ Chef ${req.user!.id} has no email address, skipping chef confirmation email`);
+                  } else {
+                    try {
+                      const chefEmail = generateBookingRequestEmail({
+                        chefEmail: chefEmailAddress,
+                        chefName: chefName,
+                        kitchenName: kitchen.name || 'Kitchen',
+                        bookingDate: bookingDate,
+                        startTime,
+                        endTime,
+                        specialNotes: specialNotes || ''
+                      });
+                      const emailSent = await sendEmail(chefEmail);
+                      if (emailSent) {
+                        console.log(`✅ Booking request email sent to chef: ${chefEmailAddress}`);
+                      } else {
+                        console.error(`❌ Failed to send booking request email to chef: ${chefEmailAddress}`);
+                      }
+                    } catch (chefEmailError) {
+                      console.error(`❌ Error sending booking request email to chef ${chefEmailAddress}:`, chefEmailError);
+                      console.error("Chef email error details:", chefEmailError instanceof Error ? chefEmailError.message : String(chefEmailError));
+                    }
+                  }
                 }
 
                 // Send notification to manager if manager exists and notification email is configured
@@ -4127,17 +4166,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   if (!notificationEmailAddress) {
                     console.warn(`⚠️ No notification email found for location ${kitchenLocationId} and manager ${managerId} has no username/email`);
                   } else {
-                    const managerEmail = generateBookingNotificationEmail({
-                      managerEmail: notificationEmailAddress,
-                      chefName: chefName,
-                      kitchenName: kitchen.name || 'Kitchen',
-                      bookingDate: bookingDate,
-                      startTime,
-                      endTime,
-                      specialNotes: specialNotes || ''
-                    });
-                    await sendEmail(managerEmail);
-                    console.log(`✅ Booking notification email sent to manager: ${notificationEmailAddress}`);
+                    try {
+                      const managerEmail = generateBookingNotificationEmail({
+                        managerEmail: notificationEmailAddress,
+                        chefName: chefName,
+                        kitchenName: kitchen.name || 'Kitchen',
+                        bookingDate: bookingDate,
+                        startTime,
+                        endTime,
+                        specialNotes: specialNotes || ''
+                      });
+                      const emailSent = await sendEmail(managerEmail);
+                      if (emailSent) {
+                        console.log(`✅ Booking notification email sent to manager: ${notificationEmailAddress}`);
+                      } else {
+                        console.error(`❌ Failed to send booking notification email to manager: ${notificationEmailAddress}`);
+                      }
+                    } catch (managerEmailError) {
+                      console.error(`❌ Error sending booking notification email to manager ${notificationEmailAddress}:`, managerEmailError);
+                      console.error("Manager email error details:", managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError));
+                    }
                   }
                 } else if (!manager) {
                   console.warn(`⚠️ No manager found for location ${kitchenLocationId}, cannot send manager notification email`);
