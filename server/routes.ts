@@ -3491,11 +3491,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const chef = await storage.getUser(booking.chefId);
           
           if (chef && kitchen) {
+            // Get chef's full name from application if available (better than just email)
+            let chefName = chef.username || 'Chef';
+            if (pool && booking.chefId) {
+              try {
+                const appResult = await pool.query(
+                  'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                  [booking.chefId]
+                );
+                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                  chefName = appResult.rows[0].full_name;
+                  console.log(`📋 Using application full name "${chefName}" for chef ${booking.chefId} in confirmation email`);
+                }
+              } catch (error) {
+                console.debug(`Could not get full name for chef ${booking.chefId} from applications, using username`);
+              }
+            }
+            
             if (status === 'confirmed') {
               // Send confirmation email
               const confirmationEmail = generateBookingConfirmationEmail({
                 chefEmail: chef.username,
-                chefName: (chef as any).displayName || chef.username,
+                chefName: chefName,
                 kitchenName: kitchen.name,
                 bookingDate: booking.bookingDate,
                 startTime: booking.startTime,
@@ -3508,7 +3525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Send cancellation email
               const cancellationEmail = generateBookingCancellationEmail({
                 chefEmail: chef.username,
-                chefName: (chef as any).displayName || chef.username,
+                chefName: chefName,
                 kitchenName: kitchen.name,
                 bookingDate: booking.bookingDate,
                 startTime: booking.startTime,
@@ -4068,12 +4085,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.warn(`⚠️ Manager ${managerId} not found for location ${kitchenLocationId}, skipping manager email`);
                 }
 
+                // Get chef's full name from application if available (better than just email)
+                let chefName = chef.username || 'Chef';
+                if (pool && req.user!.id) {
+                  try {
+                    const appResult = await pool.query(
+                      'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                      [req.user!.id]
+                    );
+                    if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                      chefName = appResult.rows[0].full_name;
+                      console.log(`📋 Using application full name "${chefName}" for chef ${req.user!.id} in booking emails`);
+                    }
+                  } catch (error) {
+                    console.debug(`Could not get full name for chef ${req.user!.id} from applications, using username`);
+                  }
+                }
+
                 // Always send chef email if chef exists
                 if (chef && kitchen) {
                   const chefEmailAddress = chef.username; // chef.username is the email
                   const chefEmail = generateBookingRequestEmail({
                     chefEmail: chefEmailAddress,
-                    chefName: (chef as any).displayName || chef.username || 'Chef',
+                    chefName: chefName,
                     kitchenName: kitchen.name || 'Kitchen',
                     bookingDate: bookingDate,
                     startTime,
@@ -4087,14 +4121,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Send notification to manager if manager exists and notification email is configured
                 if (manager && location) {
                   // Use notification email if set, otherwise fallback to manager's username (email)
-                  const notificationEmailAddress = location.notificationEmail || manager.username;
+                  // Ensure we check both camelCase and snake_case
+                  const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || manager.username;
                   
                   if (!notificationEmailAddress) {
                     console.warn(`⚠️ No notification email found for location ${kitchenLocationId} and manager ${managerId} has no username/email`);
                   } else {
                     const managerEmail = generateBookingNotificationEmail({
                       managerEmail: notificationEmailAddress,
-                      chefName: (chef as any).displayName || chef.username || 'Chef',
+                      chefName: chefName,
                       kitchenName: kitchen.name || 'Kitchen',
                       bookingDate: bookingDate,
                       startTime,
@@ -4102,7 +4137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       specialNotes: specialNotes || ''
                     });
                     await sendEmail(managerEmail);
-                    console.log(`✅ Booking notification email sent to: ${notificationEmailAddress}`);
+                    console.log(`✅ Booking notification email sent to manager: ${notificationEmailAddress}`);
                   }
                 } else if (!manager) {
                   console.warn(`⚠️ No manager found for location ${kitchenLocationId}, cannot send manager notification email`);

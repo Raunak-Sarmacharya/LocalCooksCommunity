@@ -1059,12 +1059,74 @@ export class FirebaseStorage {
         return [];
       }
 
-      // Get all bookings for these kitchens
-      return await db
-        .select()
+      // Get all bookings for these kitchens with joins to get chef, kitchen, and location info
+      const bookingsWithDetails = await db
+        .select({
+          // Booking fields
+          id: kitchenBookings.id,
+          chefId: kitchenBookings.chefId,
+          kitchenId: kitchenBookings.kitchenId,
+          bookingDate: kitchenBookings.bookingDate,
+          startTime: kitchenBookings.startTime,
+          endTime: kitchenBookings.endTime,
+          status: kitchenBookings.status,
+          specialNotes: kitchenBookings.specialNotes,
+          createdAt: kitchenBookings.createdAt,
+          updatedAt: kitchenBookings.updatedAt,
+          // Chef fields - get username which is the email, we'll enhance with application full_name if available
+          chefUsername: users.username,
+          // Kitchen fields
+          kitchenName: kitchens.name,
+          // Location fields
+          locationName: locations.name,
+        })
         .from(kitchenBookings)
+        .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+        .leftJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .leftJoin(locations, eq(kitchens.locationId, locations.id))
         .where(inArray(kitchenBookings.kitchenId, kitchenIds))
         .orderBy(asc(kitchenBookings.bookingDate));
+      
+      // Transform to match expected format and enhance chef names with application full_name if available
+      const enhancedBookings = await Promise.all(
+        bookingsWithDetails.map(async (booking) => {
+          let chefName = booking.chefUsername || `Chef #${booking.chefId}`;
+          
+          // Try to get chef's full name from their application for better display
+          if (booking.chefId && pool) {
+            try {
+              const appResult = await pool.query(
+                'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [booking.chefId]
+              );
+              if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                chefName = appResult.rows[0].full_name;
+              }
+            } catch (error) {
+              // If we can't get application name, just use username/email
+              console.debug(`Could not get full name for chef ${booking.chefId}, using username`);
+            }
+          }
+          
+          return {
+            id: booking.id,
+            chefId: booking.chefId,
+            kitchenId: booking.kitchenId,
+            bookingDate: booking.bookingDate,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+            status: booking.status,
+            specialNotes: booking.specialNotes,
+            createdAt: booking.createdAt,
+            updatedAt: booking.updatedAt,
+            chefName: chefName,
+            kitchenName: booking.kitchenName,
+            locationName: booking.locationName,
+          };
+        })
+      );
+      
+      return enhancedBookings;
     } catch (error) {
       console.error('Error getting bookings by manager:', error);
       throw error;

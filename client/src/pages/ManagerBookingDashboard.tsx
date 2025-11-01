@@ -45,7 +45,7 @@ export default function ManagerBookingDashboard() {
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [activeView, setActiveView] = useState<ViewType>('bookings');
+  const [activeView, setActiveView] = useState<ViewType>('overview');
 
   // Auto-select location if only one exists
   useEffect(() => {
