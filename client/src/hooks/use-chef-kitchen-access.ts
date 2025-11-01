@@ -48,7 +48,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 export function useChefProfiles() {
   const queryClient = useQueryClient();
 
-  const profilesQuery = useQuery<ChefProfile[]>({
+  const profilesQuery = useQuery<ChefProfile[], Error>({
     queryKey: ["/api/chef/profiles"],
     queryFn: async () => {
       const headers = await getAuthHeaders();
@@ -121,7 +121,7 @@ export function useChefKitchenAccessStatus() {
 export function useAdminChefKitchenAccess() {
   const queryClient = useQueryClient();
 
-  const accessQuery = useQuery<ChefKitchenAccess[]>({
+  const accessQuery = useQuery<ChefKitchenAccess[], Error>({
     queryKey: ["/api/admin/chef-kitchen-access"],
     queryFn: async () => {
       const response = await fetch("/api/admin/chef-kitchen-access", {

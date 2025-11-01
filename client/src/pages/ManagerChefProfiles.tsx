@@ -215,7 +215,7 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
               </p>
             </div>
           )}
-        </div>
+
       {/* Review Dialog */}
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
