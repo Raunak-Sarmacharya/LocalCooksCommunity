@@ -10968,7 +10968,7 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
 
     // Verify manager owns this location
     const locationResult = await pool.query(`
-      SELECT id, name, manager_id
+      SELECT id, name, manager_id, notification_email
       FROM locations
       WHERE id = $1 AND manager_id = $2
     `, [locationIdNum, user.id]);
@@ -10989,6 +10989,9 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       locationName: location.name,
       managerId: location.manager_id
     });
+
+    // Get old notification email before updating
+    const oldNotificationEmail = location.notification_email || null;
 
     // Update location settings
     const updates = [];
@@ -11057,6 +11060,25 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
       notificationEmail: updated.notificationEmail || 'not set'
     });
+    
+    // Send email to new notification email if it was changed
+    if (notificationEmail !== undefined && updated.notificationEmail && updated.notificationEmail !== oldNotificationEmail) {
+      try {
+        // Import email functions
+        const { sendEmail, generateLocationEmailChangedEmail } = await import('../server/email.js');
+        
+        const emailContent = generateLocationEmailChangedEmail({
+          email: updated.notificationEmail,
+          locationName: location.name,
+          locationId: location.id
+        });
+        await sendEmail(emailContent);
+        console.log(`✅ Location notification email change notification sent to: ${updated.notificationEmail}`);
+      } catch (emailError) {
+        console.error("Error sending location email change notification:", emailError);
+        // Don't fail the update if email fails
+      }
+    }
     
     console.log('[PUT] Sending response with notificationEmail:', updated.notificationEmail);
     res.status(200).json(updated);
