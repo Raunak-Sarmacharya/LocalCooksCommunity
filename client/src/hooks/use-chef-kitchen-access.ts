@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-interface ChefKitchenAccess {
+interface ChefLocationAccess {
   chef: {
     id: number;
     username: string;
   };
-  accessibleKitchens: Array<{
+  accessibleLocations: Array<{
     id: number;
     name: string;
-    locationName?: string;
+    address?: string;
     accessGrantedAt?: string;
   }>;
 }
@@ -58,12 +58,15 @@ export function useChefProfiles() {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: "Failed to fetch profiles" }));
         throw new Error(errorData.error || "Failed to fetch profiles");
       }
       
       return await response.json();
     },
+    retry: 1, // Only retry once to prevent infinite loops
+    retryDelay: 1000,
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   const shareProfile = useMutation({
@@ -117,14 +120,14 @@ export function useChefKitchenAccessStatus() {
   };
 }
 
-// Hook for admin to manage chef-kitchen access
+// Hook for admin to manage chef-location access
 export function useAdminChefKitchenAccess() {
   const queryClient = useQueryClient();
 
-  const accessQuery = useQuery<ChefKitchenAccess[], Error>({
-    queryKey: ["/api/admin/chef-kitchen-access"],
+  const accessQuery = useQuery<ChefLocationAccess[], Error>({
+    queryKey: ["/api/admin/chef-location-access"],
     queryFn: async () => {
-      const response = await fetch("/api/admin/chef-kitchen-access", {
+      const response = await fetch("/api/admin/chef-location-access", {
         credentials: "include",
       });
       
@@ -138,14 +141,14 @@ export function useAdminChefKitchenAccess() {
   });
 
   const grantAccess = useMutation({
-    mutationFn: async ({ chefId, kitchenId }: { chefId: number; kitchenId: number }) => {
-      const response = await fetch("/api/admin/chef-kitchen-access", {
+    mutationFn: async ({ chefId, locationId }: { chefId: number; locationId: number }) => {
+      const response = await fetch("/api/admin/chef-location-access", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ chefId, kitchenId }),
+        body: JSON.stringify({ chefId, locationId }),
       });
       
       if (!response.ok) {
@@ -156,19 +159,19 @@ export function useAdminChefKitchenAccess() {
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/chef-kitchen-access"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chef-location-access"] });
     },
   });
 
   const revokeAccess = useMutation({
-    mutationFn: async ({ chefId, kitchenId }: { chefId: number; kitchenId: number }) => {
-      const response = await fetch("/api/admin/chef-kitchen-access", {
+    mutationFn: async ({ chefId, locationId }: { chefId: number; locationId: number }) => {
+      const response = await fetch("/api/admin/chef-location-access", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ chefId, kitchenId }),
+        body: JSON.stringify({ chefId, locationId }),
       });
       
       if (!response.ok) {
@@ -179,7 +182,7 @@ export function useAdminChefKitchenAccess() {
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/chef-kitchen-access"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chef-location-access"] });
     },
   });
 

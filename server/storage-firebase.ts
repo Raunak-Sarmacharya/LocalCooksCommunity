@@ -9,7 +9,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefKitchenProfiles } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 
@@ -705,25 +705,26 @@ export class FirebaseStorage {
   // Get kitchens that a chef has access to (admin must grant access first)
   async getKitchensForChef(chefId: number): Promise<any[]> {
     try {
-      // Get all kitchens chef has access to
-      const chefAccess = await db
+      // Get all locations chef has access to
+      const locationAccessRecords = await db
         .select()
-        .from(chefKitchenAccess)
-        .where(eq(chefKitchenAccess.chefId, chefId));
+        .from(chefLocationAccess)
+        .where(eq(chefLocationAccess.chefId, chefId));
       
-      if (chefAccess.length === 0) {
-        return []; // Chef has no access to any kitchens
+      if (locationAccessRecords.length === 0) {
+        return []; // Chef has no access to any locations
       }
       
-      const kitchenIds = chefAccess.map(access => access.kitchenId);
+      const locationIds = locationAccessRecords.map(access => access.locationId);
       
       // Get all kitchens with location and manager details
       const allKitchensWithDetails = await this.getAllKitchensWithLocationAndManager();
       
-      // Filter to only kitchens chef has access to and that are active
+      // Filter to only kitchens in locations chef has access to and that are active
       return allKitchensWithDetails.filter(kitchen => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : (kitchen as any).is_active;
-        return kitchenIds.includes((kitchen as any).id) && isActive !== false && isActive !== null;
+        const kitchenLocationId = (kitchen as any).locationId ?? (kitchen as any).location?.id;
+        return locationIds.includes(kitchenLocationId) && isActive !== false && isActive !== null;
       });
     } catch (error) {
       console.error('Error getting kitchens for chef:', error);
@@ -1526,6 +1527,94 @@ export class FirebaseStorage {
 
   // ===== CHEF KITCHEN ACCESS MANAGEMENT (Admin grants access) =====
 
+  // ===== CHEF LOCATION ACCESS MANAGEMENT (Admin grants access to locations) =====
+  // When a chef has access to a location, they can book any kitchen within that location
+  
+  async grantChefLocationAccess(chefId: number, locationId: number, grantedBy: number): Promise<any> {
+    try {
+      const [access] = await db
+        .insert(chefLocationAccess)
+        .values({
+          chefId,
+          locationId,
+          grantedBy,
+        })
+        .onConflictDoNothing()
+        .returning();
+      
+      return access;
+    } catch (error) {
+      console.error('Error granting chef location access:', error);
+      throw error;
+    }
+  }
+
+  async revokeChefLocationAccess(chefId: number, locationId: number): Promise<void> {
+    try {
+      await db
+        .delete(chefLocationAccess)
+        .where(
+          and(
+            eq(chefLocationAccess.chefId, chefId),
+            eq(chefLocationAccess.locationId, locationId)
+          )
+        );
+    } catch (error) {
+      console.error('Error revoking chef location access:', error);
+      throw error;
+    }
+  }
+
+  async getChefLocationAccess(chefId: number): Promise<any[]> {
+    try {
+      return await db
+        .select()
+        .from(chefLocationAccess)
+        .where(eq(chefLocationAccess.chefId, chefId));
+    } catch (error) {
+      console.error('Error getting chef location access:', error);
+      throw error;
+    }
+  }
+
+  // Helper: Check if chef has access to a location (used for booking validation)
+  async chefHasLocationAccess(chefId: number, locationId: number): Promise<boolean> {
+    try {
+      const access = await db
+        .select()
+        .from(chefLocationAccess)
+        .where(
+          and(
+            eq(chefLocationAccess.chefId, chefId),
+            eq(chefLocationAccess.locationId, locationId)
+          )
+        )
+        .limit(1);
+      
+      return access.length > 0;
+    } catch (error) {
+      console.error('Error checking chef location access:', error);
+      return false;
+    }
+  }
+
+  // Helper: Get location ID for a kitchen
+  async getKitchenLocation(kitchenId: number): Promise<number | null> {
+    try {
+      const [kitchen] = await db
+        .select({ locationId: kitchens.locationId })
+        .from(kitchens)
+        .where(eq(kitchens.id, kitchenId))
+        .limit(1);
+      
+      return kitchen?.locationId ?? null;
+    } catch (error) {
+      console.error('Error getting kitchen location:', error);
+      return null;
+    }
+  }
+
+  // Legacy methods - kept for backward compatibility
   async grantChefKitchenAccess(chefId: number, kitchenId: number, grantedBy: number): Promise<any> {
     try {
       const [access] = await db

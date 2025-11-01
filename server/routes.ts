@@ -15,7 +15,7 @@ import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
-import { chefKitchenAccess, users } from "@shared/schema";
+import { chefKitchenAccess, chefLocationAccess, users, locations } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access...");
@@ -4108,12 +4108,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
       const chefId = req.user!.id;
       
-      // Check if chef has admin-granted access to this kitchen
-      const chefAccess = await firebaseStorage.getChefKitchenAccess(chefId);
-      const hasAccess = chefAccess.some(access => access.kitchenId === kitchenId);
+      // Check if chef has admin-granted access to the location containing this kitchen
+      const kitchenLocationId = await firebaseStorage.getKitchenLocation(kitchenId);
+      if (!kitchenLocationId) {
+        return res.status(400).json({ error: "Kitchen location not found" });
+      }
       
-      if (!hasAccess) {
-        return res.status(403).json({ error: "You don't have access to book this kitchen. Please contact an administrator." });
+      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId);
+      
+      if (!hasLocationAccess) {
+        return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
       }
       
       // Check if chef has shared their profile and it's been approved by manager
@@ -4392,12 +4396,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "kitchenId is required" });
       }
 
-      // Check if chef has admin-granted access first
-      const chefAccess = await firebaseStorage.getChefKitchenAccess(chefId);
-      const hasAccess = chefAccess.some(access => access.kitchenId === kitchenId);
+      // Check if chef has admin-granted access to the location containing this kitchen
+      const kitchenLocationId = await firebaseStorage.getKitchenLocation(kitchenId);
+      if (!kitchenLocationId) {
+        return res.status(400).json({ error: "Kitchen location not found" });
+      }
       
-      if (!hasAccess) {
-        return res.status(403).json({ error: "You don't have access to this kitchen. Please contact an administrator." });
+      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId);
+      
+      if (!hasLocationAccess) {
+        return res.status(403).json({ error: "You don't have access to kitchens in this location. Please contact an administrator." });
       }
 
       const profile = await firebaseStorage.shareChefProfileWithKitchen(chefId, kitchenId);
@@ -4408,13 +4416,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Chef: Get profile status for kitchens
+  // Chef: Get profile status for kitchens (using location-based access)
   app.get("/api/chef/profiles", requireChef, async (req: Request, res: Response) => {
     try {
       const chefId = req.user!.id;
-      const access = await firebaseStorage.getChefKitchenAccess(chefId);
-      const kitchenIds = access.map(a => a.kitchenId);
       
+      // Get all kitchens chef has access to via location access
+      const chefKitchens = await firebaseStorage.getKitchensForChef(chefId);
+      const kitchenIds = chefKitchens.map((k: any) => (k as any).id ?? (k as any).kitchenId).filter((id: any): id is number => typeof id === 'number');
+      
+      // Get profiles for all accessible kitchens
       const profiles = await Promise.all(
         kitchenIds.map(async (kitchenId) => {
           const profile = await firebaseStorage.getChefKitchenProfile(chefId, kitchenId);
@@ -4433,8 +4444,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // KITCHEN BOOKING SYSTEM - ADMIN ROUTES
   // ===================================
 
-  // Admin: Grant chef access to a kitchen
-  app.post("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
+  // Admin: Grant chef access to a location (NEW - location-based access)
+  app.post("/api/admin/chef-location-access", async (req: Request, res: Response) => {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
@@ -4448,22 +4459,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { chefId, kitchenId } = req.body;
+      const { chefId, locationId } = req.body;
       
-      if (!chefId || !kitchenId) {
-        return res.status(400).json({ error: "chefId and kitchenId are required" });
+      if (!chefId || !locationId) {
+        return res.status(400).json({ error: "chefId and locationId are required" });
       }
 
-      const access = await firebaseStorage.grantChefKitchenAccess(chefId, kitchenId, user.id);
+      const access = await firebaseStorage.grantChefLocationAccess(chefId, locationId, user.id);
       res.status(201).json(access);
     } catch (error: any) {
-      console.error("Error granting chef kitchen access:", error);
+      console.error("Error granting chef location access:", error);
       res.status(500).json({ error: error.message || "Failed to grant access" });
     }
   });
 
-  // Admin: Revoke chef access to a kitchen
-  app.delete("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
+  // Admin: Revoke chef access to a location (NEW - location-based access)
+  app.delete("/api/admin/chef-location-access", async (req: Request, res: Response) => {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
@@ -4477,22 +4488,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { chefId, kitchenId } = req.body;
+      const { chefId, locationId } = req.body;
       
-      if (!chefId || !kitchenId) {
-        return res.status(400).json({ error: "chefId and kitchenId are required" });
+      if (!chefId || !locationId) {
+        return res.status(400).json({ error: "chefId and locationId are required" });
       }
 
-      await firebaseStorage.revokeChefKitchenAccess(chefId, kitchenId);
+      await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Error revoking chef kitchen access:", error);
+      console.error("Error revoking chef location access:", error);
       res.status(500).json({ error: error.message || "Failed to revoke access" });
     }
   });
 
-  // Admin: Get all chefs with their kitchen access
-  app.get("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
+  // Admin: Get all chefs with their location access (NEW - location-based access)
+  app.get("/api/admin/chef-location-access", async (req: Request, res: Response) => {
     try {
       console.log("[Admin Chef Access] GET request received");
       const sessionUser = await getAuthenticatedUser(req);
@@ -4525,44 +4536,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
       console.log(`[Admin Chef Access] Chefs:`, chefs.map(c => ({ id: c.id, username: c.username, role: (c as any).role, isChef: (c as any).isChef ?? (c as any).is_chef })));
       
-      // Get all kitchens
-      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      console.log(`[Admin Chef Access] Found ${allKitchens.length} kitchens`);
+      // Get all locations
+      const allLocations = await db.select().from(locations);
+      console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
       
-      // Get all access records
-      const allAccess = await db.select().from(chefKitchenAccess);
-      console.log(`[Admin Chef Access] Found ${allAccess.length} access records`);
+      // Get all location access records
+      const allAccess = await db.select().from(chefLocationAccess);
+      console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
       
-      // Build response with chef access info
+      // Build response with chef location access info
       const response = chefs.map(chef => {
         const chefAccess = allAccess.filter(a => a.chefId === chef.id);
-        const accessibleKitchens = chefAccess.map(access => {
-          const kitchen = allKitchens.find(k => {
-            const kitchenId = (k as any).id ?? (k as any).kitchenId;
-            return kitchenId === access.kitchenId;
-          });
+        const accessibleLocations = chefAccess.map(access => {
+          const location = allLocations.find(l => l.id === access.locationId);
           
-          if (kitchen) {
+          if (location) {
             return {
-              id: (kitchen as any).id,
-              name: (kitchen as any).name,
-              locationName: (kitchen as any).locationName ?? (kitchen as any).location?.name,
+              id: location.id,
+              name: location.name,
+              address: location.address,
               accessGrantedAt: access.grantedAt ? (typeof access.grantedAt === 'string' ? access.grantedAt : access.grantedAt.toISOString()) : undefined,
             };
           }
           return null;
-        }).filter((k): k is NonNullable<typeof k> => k !== null);
+        }).filter((l): l is NonNullable<typeof l> => l !== null);
         
         return {
           chef: {
             id: chef.id,
             username: chef.username,
           },
-          accessibleKitchens,
+          accessibleLocations,
         };
       });
       
-      console.log(`[Admin Chef Access] Returning ${response.length} chefs with access info`);
+      console.log(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
       res.json(response);
     } catch (error: any) {
       console.error("[Admin Chef Access] Error:", error);
