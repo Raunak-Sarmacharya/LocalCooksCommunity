@@ -12181,6 +12181,194 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
   }
 });
 
+// Chef: Share profile with kitchen
+app.post("/api/chef/share-profile", requireChef, async (req, res) => {
+  try {
+    const { kitchenId } = req.body;
+    const chefId = req.user.id;
+    
+    if (!kitchenId) {
+      return res.status(400).json({ error: "kitchenId is required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the kitchen's location
+    const kitchenResult = await pool.query(
+      'SELECT location_id FROM kitchens WHERE id = $1',
+      [kitchenId]
+    );
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(400).json({ error: "Kitchen not found" });
+    }
+    
+    const kitchenLocationId = kitchenResult.rows[0].location_id;
+    
+    // Check if chef has admin-granted access to this location
+    const accessCheck = await pool.query(
+      'SELECT id FROM chef_location_access WHERE chef_id = $1 AND location_id = $2',
+      [chefId, kitchenLocationId]
+    );
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: "You don't have access to kitchens in this location. Please contact an administrator." });
+    }
+
+    // Check if profile already exists (handle case if table doesn't exist yet)
+    let existingProfile;
+    try {
+      existingProfile = await pool.query(
+        'SELECT id FROM chef_kitchen_profiles WHERE chef_id = $1 AND kitchen_id = $2',
+        [chefId, kitchenId]
+      );
+    } catch (error) {
+      // If table doesn't exist, treat as if no profile exists and will create one
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        console.log(`[Share Profile] chef_kitchen_profiles table doesn't exist yet`);
+        existingProfile = { rows: [] };
+      } else {
+        throw error;
+      }
+    }
+    
+    if (existingProfile.rows.length > 0) {
+      // Profile already shared, return existing profile
+      const profileResult = await pool.query(
+        'SELECT * FROM chef_kitchen_profiles WHERE id = $1',
+        [existingProfile.rows[0].id]
+      );
+      const profile = profileResult.rows[0];
+      return res.json({
+        id: profile.id,
+        chefId: profile.chef_id,
+        kitchenId: profile.kitchen_id,
+        status: profile.status,
+        sharedAt: profile.shared_at,
+        reviewedBy: profile.reviewed_by,
+        reviewedAt: profile.reviewed_at,
+        reviewFeedback: profile.review_feedback,
+      });
+    }
+
+    // Create new profile (status: 'pending')
+    const insertResult = await pool.query(
+      `INSERT INTO chef_kitchen_profiles (chef_id, kitchen_id, status, shared_at)
+       VALUES ($1, $2, 'pending', NOW())
+       RETURNING *`,
+      [chefId, kitchenId]
+    );
+    
+    const profile = insertResult.rows[0];
+    res.status(201).json({
+      id: profile.id,
+      chefId: profile.chef_id,
+      kitchenId: profile.kitchen_id,
+      status: profile.status,
+      sharedAt: profile.shared_at,
+      reviewedBy: profile.reviewed_by,
+      reviewedAt: profile.reviewed_at,
+      reviewFeedback: profile.review_feedback,
+    });
+  } catch (error) {
+    console.error("Error sharing chef profile:", error);
+    res.status(500).json({ error: error.message || "Failed to share profile" });
+  }
+});
+
+// Chef: Get profile status for kitchens (using location-based access)
+app.get("/api/chef/profiles", requireChef, async (req, res) => {
+  try {
+    const chefId = req.user.id;
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get all locations chef has access to (handle case if table doesn't exist yet)
+    let locationAccessResult;
+    try {
+      locationAccessResult = await pool.query(
+        'SELECT location_id FROM chef_location_access WHERE chef_id = $1',
+        [chefId]
+      );
+    } catch (error) {
+      // If table doesn't exist, return empty array
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        console.log(`[Chef Profiles] chef_location_access table doesn't exist yet, returning empty`);
+        return res.json([]);
+      }
+      throw error;
+    }
+    
+    if (locationAccessResult.rows.length === 0) {
+      return res.json([]); // Chef has no access to any locations
+    }
+    
+    const locationIds = locationAccessResult.rows.map(row => row.location_id);
+    
+    // Get all kitchens in these locations that are active
+    const kitchensResult = await pool.query(
+      `SELECT k.id, k.name, k.description, k.location_id, k.is_active
+       FROM kitchens k
+       WHERE k.location_id = ANY($1::int[])
+       AND (k.is_active IS NULL OR k.is_active = true)
+       ORDER BY k.name`,
+      [locationIds]
+    );
+    
+    const kitchenIds = kitchensResult.rows.map(k => k.id);
+    
+    if (kitchenIds.length === 0) {
+      return res.json([]);
+    }
+    
+    // Get profiles for all accessible kitchens (handle case if table doesn't exist yet)
+    let profilesResult;
+    try {
+      profilesResult = await pool.query(
+        `SELECT * FROM chef_kitchen_profiles 
+         WHERE chef_id = $1 AND kitchen_id = ANY($2::int[])
+         ORDER BY kitchen_id`,
+        [chefId, kitchenIds]
+      );
+    } catch (error) {
+      // If table doesn't exist, return profiles with null status
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        console.log(`[Chef Profiles] chef_kitchen_profiles table doesn't exist yet, returning null profiles`);
+        profilesResult = { rows: [] };
+      } else {
+        throw error;
+      }
+    }
+    
+    // Build response with kitchen info and profile status
+    const response = kitchenIds.map(kitchenId => {
+      const profile = profilesResult.rows.find(p => p.kitchen_id === kitchenId);
+      return {
+        kitchenId,
+        profile: profile ? {
+          id: profile.id,
+          chefId: profile.chef_id,
+          kitchenId: profile.kitchen_id,
+          status: profile.status,
+          sharedAt: profile.shared_at,
+          reviewedBy: profile.reviewed_by,
+          reviewedAt: profile.reviewed_at,
+          reviewFeedback: profile.review_feedback,
+        } : null,
+      };
+    });
+    
+    res.json(response);
+  } catch (error) {
+    console.error("Error getting chef profiles:", error);
+    res.status(500).json({ error: error.message || "Failed to get profiles" });
+  }
+});
+
 // ===================================================================
 // MANAGER ENDPOINTS - Kitchen Booking Management
 // ===================================================================
@@ -12881,12 +13069,24 @@ app.get("/api/admin/chef-location-access", async (req, res) => {
     const allLocations = locationsResult.rows;
     console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
     
-    // Get all location access records
-    const accessResult = await pool.query(
-      'SELECT * FROM chef_location_access ORDER BY granted_at DESC'
-    );
-    const allAccess = accessResult.rows;
-    console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+    // Get all location access records (handle case if table doesn't exist yet)
+    let allAccess = [];
+    try {
+      const accessResult = await pool.query(
+        'SELECT * FROM chef_location_access ORDER BY granted_at DESC'
+      );
+      allAccess = accessResult.rows;
+      console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+    } catch (error) {
+      console.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
+      // If table doesn't exist, return empty array (table will be created via migration)
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        console.log(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
+        allAccess = [];
+      } else {
+        throw error; // Re-throw if it's a different error
+      }
+    }
     
     // Build response with chef location access info
     const response = chefs.map(chef => {
