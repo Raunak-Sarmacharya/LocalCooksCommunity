@@ -377,12 +377,22 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Define chef_kitchen_access table (admin grants chef access to specific kitchens)
+// Define chef_location_access table (admin grants chef access to specific locations)
+// When a chef has access to a location, they can book any kitchen within that location
+export const chefLocationAccess = pgTable("chef_location_access", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(), // admin who granted access
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+});
+
+// Legacy table - kept for backward compatibility during migration
 export const chefKitchenAccess = pgTable("chef_kitchen_access", {
   id: serial("id").primaryKey(),
   chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
-  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(), // admin who granted access
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(),
   grantedAt: timestamp("granted_at").defaultNow().notNull(),
 });
 
@@ -508,7 +518,17 @@ export type KitchenBooking = typeof kitchenBookings.$inferSelect;
 export type InsertKitchenBooking = z.infer<typeof insertKitchenBookingSchema>;
 export type UpdateKitchenBooking = z.infer<typeof updateKitchenBookingSchema>;
 
-// Zod schemas for chef kitchen access
+// Zod schemas for chef location access
+export const insertChefLocationAccessSchema = createInsertSchema(chefLocationAccess, {
+  chefId: z.number(),
+  locationId: z.number(),
+  grantedBy: z.number(),
+}).omit({
+  id: true,
+  grantedAt: true,
+});
+
+// Zod schemas for chef kitchen access (legacy - for backward compatibility)
 export const insertChefKitchenAccessSchema = createInsertSchema(chefKitchenAccess, {
   chefId: z.number(),
   kitchenId: z.number(),
@@ -537,7 +557,11 @@ export const updateChefKitchenProfileSchema = z.object({
   reviewFeedback: z.string().optional(),
 });
 
-// Type exports for chef kitchen access
+// Type exports for chef location access
+export type ChefLocationAccess = typeof chefLocationAccess.$inferSelect;
+export type InsertChefLocationAccess = z.infer<typeof insertChefLocationAccessSchema>;
+
+// Type exports for chef kitchen access (legacy)
 export type ChefKitchenAccess = typeof chefKitchenAccess.$inferSelect;
 export type InsertChefKitchenAccess = z.infer<typeof insertChefKitchenAccessSchema>;
 

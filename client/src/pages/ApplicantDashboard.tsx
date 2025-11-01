@@ -129,6 +129,9 @@ export default function ApplicantDashboard() {
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   
+  // Call hook unconditionally at top level (Rules of Hooks)
+  const { hasAccess, hasApprovedProfile, hasAnyPending, profiles, isLoading: accessLoading } = useChefKitchenAccessStatus();
+  
   // Use localStorage to track if vendor popup has been shown for this user
   const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(() => {
     if (typeof window !== 'undefined' && user?.uid) {
@@ -2058,8 +2061,7 @@ export default function ApplicantDashboard() {
 
             if (!approvedChefApp) return null;
 
-            // Check kitchen access status
-            const { hasAccess, hasApprovedProfile, hasAnyPending, profiles, isLoading: accessLoading } = useChefKitchenAccessStatus();
+            // Use hook values (already called at top level)
 
             // Show different UI based on access status
             if (accessLoading) {

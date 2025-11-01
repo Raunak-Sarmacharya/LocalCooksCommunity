@@ -5,10 +5,10 @@ import { Building, User, X, Check, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-interface Kitchen {
+interface Location {
   id: number;
   name: string;
-  locationName?: string;
+  address?: string;
 }
 
 export default function ChefKitchenAccessManager() {
@@ -17,55 +17,31 @@ export default function ChefKitchenAccessManager() {
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedChef, setExpandedChef] = useState<number | null>(null);
 
-  // Fetch all kitchens by getting all locations and their kitchens
-  const { data: allKitchens = [] } = useQuery<Kitchen[]>({
-    queryKey: ["/api/admin/all-kitchens"],
+  // Fetch all locations
+  const { data: allLocations = [] } = useQuery<Location[]>({
+    queryKey: ["/api/admin/locations"],
     queryFn: async () => {
       try {
-        // Get all locations first
         const locationsRes = await fetch("/api/admin/locations", {
           credentials: "include",
         });
         if (!locationsRes.ok) {
           throw new Error("Failed to fetch locations");
         }
-        const locations = await locationsRes.json();
-
-        // Get kitchens for each location
-        const allKitchens: Kitchen[] = [];
-        for (const location of locations) {
-          try {
-            const kitchensRes = await fetch(`/api/admin/kitchens/${location.id}`, {
-              credentials: "include",
-            });
-            if (kitchensRes.ok) {
-              const locationKitchens = await kitchensRes.json();
-              allKitchens.push(
-                ...locationKitchens.map((k: any) => ({
-                  id: k.id,
-                  name: k.name,
-                  locationName: location.name,
-                }))
-              );
-            }
-          } catch (err) {
-            console.error(`Error fetching kitchens for location ${location.id}:`, err);
-          }
-        }
-        return allKitchens;
+        return await locationsRes.json();
       } catch (error) {
-        console.error("Error fetching all kitchens:", error);
+        console.error("Error fetching locations:", error);
         return [];
       }
     },
   });
 
-  const handleGrantAccess = async (chefId: number, kitchenId: number) => {
+  const handleGrantAccess = async (chefId: number, locationId: number) => {
     try {
-      await grantAccess.mutateAsync({ chefId, kitchenId });
+      await grantAccess.mutateAsync({ chefId, locationId });
       toast({
         title: "Access Granted",
-        description: "Chef now has access to this kitchen.",
+        description: "Chef now has access to this location.",
       });
       refetch();
     } catch (error: any) {
@@ -77,12 +53,12 @@ export default function ChefKitchenAccessManager() {
     }
   };
 
-  const handleRevokeAccess = async (chefId: number, kitchenId: number) => {
+  const handleRevokeAccess = async (chefId: number, locationId: number) => {
     try {
-      await revokeAccess.mutateAsync({ chefId, kitchenId });
+      await revokeAccess.mutateAsync({ chefId, locationId });
       toast({
         title: "Access Revoked",
-        description: "Chef access to this kitchen has been removed.",
+        description: "Chef access to this location has been removed.",
       });
       refetch();
     } catch (error: any) {
@@ -111,9 +87,9 @@ export default function ChefKitchenAccessManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Chef Kitchen Access Management</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Chef Location Access Management</h2>
           <p className="text-gray-600 mt-1">
-            Grant or revoke access for chefs to specific kitchens. Chefs must have access before they can share profiles.
+            Grant or revoke access for chefs to specific locations. Chefs will have access to all kitchens within granted locations.
           </p>
         </div>
       </div>
@@ -140,7 +116,7 @@ export default function ChefKitchenAccessManager() {
         ) : (
           filteredChefs.map((chefAccess) => {
             const isExpanded = expandedChef === chefAccess.chef.id;
-            const accessibleKitchenIds = chefAccess.accessibleKitchens.map((k) => k.id);
+            const accessibleLocationIds = chefAccess.accessibleLocations.map((l) => l.id);
 
             return (
               <div
@@ -156,7 +132,7 @@ export default function ChefKitchenAccessManager() {
                     <div>
                       <h3 className="font-semibold text-gray-900">{chefAccess.chef.username}</h3>
                       <p className="text-sm text-gray-600">
-                        Access to {chefAccess.accessibleKitchens.length} kitchen(s)
+                        Access to {chefAccess.accessibleLocations.length} location(s)
                       </p>
                     </div>
                   </div>
@@ -175,21 +151,21 @@ export default function ChefKitchenAccessManager() {
                 {isExpanded && (
                   <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
                     {/* Current Access */}
-                    {chefAccess.accessibleKitchens.length > 0 && (
+                    {chefAccess.accessibleLocations.length > 0 && (
                       <div>
                         <h4 className="font-medium text-gray-900 mb-3">Current Access</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {chefAccess.accessibleKitchens.map((kitchen) => (
+                          {chefAccess.accessibleLocations.map((location) => (
                             <div
-                              key={kitchen.id}
+                              key={location.id}
                               className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg"
                             >
                               <div className="flex items-center gap-2">
                                 <Building className="h-4 w-4 text-green-600" />
                                 <div>
-                                  <p className="font-medium text-gray-900">{kitchen.name}</p>
-                                  {kitchen.locationName && (
-                                    <p className="text-xs text-gray-600">{kitchen.locationName}</p>
+                                  <p className="font-medium text-gray-900">{location.name}</p>
+                                  {location.address && (
+                                    <p className="text-xs text-gray-600">{location.address}</p>
                                   )}
                                 </div>
                               </div>
@@ -197,7 +173,7 @@ export default function ChefKitchenAccessManager() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() =>
-                                  handleRevokeAccess(chefAccess.chef.id, kitchen.id)
+                                  handleRevokeAccess(chefAccess.chef.id, location.id)
                                 }
                                 disabled={revokeAccess.isPending}
                                 className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -212,21 +188,21 @@ export default function ChefKitchenAccessManager() {
 
                     {/* Grant New Access */}
                     <div>
-                      <h4 className="font-medium text-gray-900 mb-3">Grant Access to Kitchen</h4>
+                      <h4 className="font-medium text-gray-900 mb-3">Grant Access to Location</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {allKitchens
-                          .filter((kitchen) => !accessibleKitchenIds.includes(kitchen.id))
-                          .map((kitchen) => (
+                        {allLocations
+                          .filter((location) => !accessibleLocationIds.includes(location.id))
+                          .map((location) => (
                             <div
-                              key={kitchen.id}
+                              key={location.id}
                               className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg"
                             >
                               <div className="flex items-center gap-2">
                                 <Building className="h-4 w-4 text-gray-600" />
                                 <div>
-                                  <p className="font-medium text-gray-900">{kitchen.name}</p>
-                                  {kitchen.locationName && (
-                                    <p className="text-xs text-gray-600">{kitchen.locationName}</p>
+                                  <p className="font-medium text-gray-900">{location.name}</p>
+                                  {location.address && (
+                                    <p className="text-xs text-gray-600">{location.address}</p>
                                   )}
                                 </div>
                               </div>
@@ -234,7 +210,7 @@ export default function ChefKitchenAccessManager() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() =>
-                                  handleGrantAccess(chefAccess.chef.id, kitchen.id)
+                                  handleGrantAccess(chefAccess.chef.id, location.id)
                                 }
                                 disabled={grantAccess.isPending}
                                 className="text-green-600 hover:text-green-700 hover:bg-green-50"
@@ -244,10 +220,10 @@ export default function ChefKitchenAccessManager() {
                             </div>
                           ))}
                       </div>
-                      {allKitchens.filter((kitchen) => !accessibleKitchenIds.includes(kitchen.id))
+                      {allLocations.filter((location) => !accessibleLocationIds.includes(location.id))
                         .length === 0 && (
                         <p className="text-sm text-gray-500 text-center py-4">
-                          Chef has access to all available kitchens
+                          Chef has access to all available locations
                         </p>
                       )}
                     </div>
