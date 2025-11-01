@@ -287,7 +287,12 @@ async function getAllLocations() {
       return [];
     }
     const result = await pool.query(`
-      SELECT id, name, address, manager_id as "managerId", created_at, updated_at 
+      SELECT id, name, address, manager_id as "managerId", 
+             notification_email as "notificationEmail",
+             cancellation_policy_hours as "cancellationPolicyHours",
+             cancellation_policy_message as "cancellationPolicyMessage",
+             default_daily_booking_limit as "defaultDailyBookingLimit",
+             created_at, updated_at 
       FROM locations 
       ORDER BY created_at DESC
     `);
