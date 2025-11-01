@@ -15,8 +15,8 @@ import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
-import { chefKitchenAccess, chefLocationAccess, users, locations } from "@shared/schema";
-import { eq, inArray } from "drizzle-orm";
+import { chefKitchenAccess, chefLocationAccess, users, locations, applications } from "@shared/schema";
+import { eq, inArray, and, desc } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access...");
@@ -4615,7 +4615,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
       }
 
+      // Get chef details before sharing profile
+      const chef = await storage.getUser(chefId);
+      if (!chef) {
+        return res.status(404).json({ error: "Chef not found" });
+      }
+
+      // Get location details
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Get chef's application details for email
+      const chefApp = await db
+        .select()
+        .from(applications)
+        .where(and(
+          eq(applications.userId, chefId),
+          eq(applications.status, 'approved')
+        ))
+        .orderBy(desc(applications.createdAt))
+        .limit(1);
+
       const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
+      
+      // Send email to manager if this is a new profile share (status is pending)
+      if (profile && profile.status === 'pending') {
+        try {
+          const managerEmail = (location as any).notificationEmail || (location as any).notification_email;
+          if (managerEmail) {
+            const chefName = chefApp.length > 0 && chefApp[0].fullName 
+              ? chefApp[0].fullName 
+              : (chef as any).username || 'Chef';
+            const chefEmail = chefApp.length > 0 && chefApp[0].email 
+              ? chefApp[0].email 
+              : (chef as any).email || (chef as any).username || 'chef@example.com';
+            
+            const emailContent = generateChefProfileRequestEmail({
+              managerEmail: managerEmail,
+              chefName: chefName,
+              chefEmail: chefEmail,
+              locationName: (location as any).name || 'Location',
+              locationId: locationId
+            });
+            await sendEmail(emailContent);
+            console.log(`✅ Chef profile request notification sent to manager: ${managerEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Error sending chef profile request notification:", emailError);
+          // Don't fail the profile share if email fails
+        }
+      }
+      
       res.status(201).json(profile);
     } catch (error: any) {
       console.error("Error sharing chef profile:", error);
