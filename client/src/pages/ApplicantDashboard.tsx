@@ -36,10 +36,14 @@ import {
     Shield,
     Truck,
     Upload,
-    XCircle
+    XCircle,
+    User,
+    Share2,
+    AlertCircle
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
+import { useChefKitchenAccessStatus } from "@/hooks/use-chef-kitchen-access";
 
 // Union type for handling both application types
 type AnyApplication = Application | DeliveryPartnerApplication;
@@ -2043,7 +2047,7 @@ export default function ApplicantDashboard() {
             </motion.div>
           )}
 
-          {/* Kitchen Booking Section - Only for Approved Chefs with Commercial Preference */}
+          {/* Kitchen Booking Section - Only for Approved Chefs with Commercial Preference + Admin Access + Profile Approved */}
           {(() => {
             const approvedChefApp = userDisplayInfo.applications?.find(
               (app): app is Application => 
@@ -2054,6 +2058,86 @@ export default function ApplicantDashboard() {
 
             if (!approvedChefApp) return null;
 
+            // Check kitchen access status
+            const { hasAccess, hasApprovedProfile, hasAnyPending, profiles, isLoading: accessLoading } = useChefKitchenAccessStatus();
+
+            // Show different UI based on access status
+            if (accessLoading) {
+              return (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 }}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-3xl p-8 shadow-sm border border-blue-200/60 mb-8"
+                >
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="text-gray-600 mt-2">Checking kitchen access...</p>
+                  </div>
+                </motion.div>
+              );
+            }
+
+            // No admin access granted yet
+            if (!hasAccess) {
+              return (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 }}
+                  className="bg-gradient-to-br from-yellow-50 to-orange-100 rounded-3xl p-8 shadow-sm border border-yellow-200/60 mb-8"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center flex-shrink-0">
+                      <AlertCircle className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-semibold text-gray-900 mb-2">Waiting for Kitchen Access</h3>
+                      <p className="text-gray-700 mb-4">
+                        Your account has been approved! An administrator will grant you access to specific kitchens soon. 
+                        Once you receive access, you'll be able to share your profile with kitchens and start booking.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            }
+
+            // Has access but no approved profiles yet
+            if (!hasApprovedProfile) {
+              return (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 }}
+                  className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-3xl p-8 shadow-sm border border-blue-200/60 mb-8"
+                >
+                  <div className="flex flex-col gap-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <Share2 className="h-8 w-8 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-2">Share Your Profile with Kitchens</h3>
+                        <p className="text-gray-700 mb-4">
+                          {hasAnyPending 
+                            ? "Your profile has been shared and is pending manager approval. Once approved, you'll be able to book kitchens."
+                            : "You have access to kitchens! Share your profile with each kitchen to get started. Managers will review your application and documents before approving you for bookings."}
+                        </p>
+                        <Link href="/share-profile">
+                          <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 px-6 py-3">
+                            <Share2 className="mr-2 h-5 w-5" />
+                            Manage Kitchen Profiles
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            }
+
+            // All conditions met - show booking UI
             return (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}

@@ -377,6 +377,27 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Define chef_kitchen_access table (admin grants chef access to specific kitchens)
+export const chefKitchenAccess = pgTable("chef_kitchen_access", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(), // admin who granted access
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+});
+
+// Define chef_kitchen_profiles table (chef shares profile, manager approves)
+export const chefKitchenProfiles = pgTable("chef_kitchen_profiles", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  sharedAt: timestamp("shared_at").defaultNow().notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }), // manager who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  reviewFeedback: text("review_feedback"), // optional feedback from manager
+});
+
 // Zod schemas for kitchen booking system
 
 export const insertLocationSchema = createInsertSchema(locations, {
@@ -486,3 +507,40 @@ export type UpdateKitchenDateOverride = z.infer<typeof updateKitchenDateOverride
 export type KitchenBooking = typeof kitchenBookings.$inferSelect;
 export type InsertKitchenBooking = z.infer<typeof insertKitchenBookingSchema>;
 export type UpdateKitchenBooking = z.infer<typeof updateKitchenBookingSchema>;
+
+// Zod schemas for chef kitchen access
+export const insertChefKitchenAccessSchema = createInsertSchema(chefKitchenAccess, {
+  chefId: z.number(),
+  kitchenId: z.number(),
+  grantedBy: z.number(),
+}).omit({
+  id: true,
+  grantedAt: true,
+});
+
+// Zod schemas for chef kitchen profiles
+export const insertChefKitchenProfileSchema = createInsertSchema(chefKitchenProfiles, {
+  chefId: z.number(),
+  kitchenId: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+}).omit({
+  id: true,
+  sharedAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewFeedback: true,
+});
+
+export const updateChefKitchenProfileSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]),
+  reviewFeedback: z.string().optional(),
+});
+
+// Type exports for chef kitchen access
+export type ChefKitchenAccess = typeof chefKitchenAccess.$inferSelect;
+export type InsertChefKitchenAccess = z.infer<typeof insertChefKitchenAccessSchema>;
+
+export type ChefKitchenProfile = typeof chefKitchenProfiles.$inferSelect;
+export type InsertChefKitchenProfile = z.infer<typeof insertChefKitchenProfileSchema>;
+export type UpdateChefKitchenProfile = z.infer<typeof updateChefKitchenProfileSchema>;

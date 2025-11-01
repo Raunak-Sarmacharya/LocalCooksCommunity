@@ -45,6 +45,7 @@ const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabi
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
 const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboard"));
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
+const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 
 
@@ -144,6 +145,7 @@ function Router() {
         
         {/* Kitchen Booking Routes */}
         <ProtectedRoute path="/book-kitchen" component={KitchenBookingCalendar} />
+        <ProtectedRoute path="/share-profile" component={ShareProfile} />
         
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin">
