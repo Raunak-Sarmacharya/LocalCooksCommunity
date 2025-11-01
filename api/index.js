@@ -11104,6 +11104,186 @@ app.get("/api/manager/kitchens/:locationId", async (req, res) => {
   }
 });
 // Get all bookings for manager
+// Manager: Get chef profiles for locations managed by this manager
+app.get("/api/manager/chef-profiles", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get all locations managed by this manager
+    const locationsResult = await pool.query(`
+      SELECT id FROM locations WHERE manager_id = $1
+    `, [user.id]);
+    
+    if (locationsResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const locationIds = locationsResult.rows.map(row => row.id);
+
+    // Get all chef profiles for these locations (NEW - location-based)
+    let profilesResult;
+    try {
+      profilesResult = await pool.query(`
+        SELECT * FROM chef_location_profiles 
+        WHERE location_id = ANY($1::int[])
+        ORDER BY shared_at DESC
+      `, [locationIds]);
+    } catch (error) {
+      // If table doesn't exist, return empty array
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        console.log(`[Manager Chef Profiles] chef_location_profiles table doesn't exist yet`);
+        return res.json([]);
+      }
+      throw error;
+    }
+
+    // Enrich with chef, location, and application details
+    const enrichedProfiles = await Promise.all(
+      profilesResult.rows.map(async (profile) => {
+        // Get chef details
+        const chefResult = await pool.query('SELECT id, username FROM users WHERE id = $1', [profile.chef_id]);
+        const chef = chefResult.rows[0] || null;
+
+        // Get location details
+        const locationResult = await pool.query('SELECT id, name, address FROM locations WHERE id = $1', [profile.location_id]);
+        const location = locationResult.rows[0] || null;
+
+        // Get chef's latest approved application
+        const appResult = await pool.query(`
+          SELECT id, full_name, email, phone, food_safety_license_url, food_establishment_cert_url
+          FROM applications
+          WHERE user_id = $1 AND status = 'approved'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, [profile.chef_id]);
+        const latestApp = appResult.rows[0] || null;
+
+        return {
+          id: profile.id,
+          chefId: profile.chef_id,
+          locationId: profile.location_id,
+          status: profile.status,
+          sharedAt: profile.shared_at,
+          reviewedBy: profile.reviewed_by,
+          reviewedAt: profile.reviewed_at,
+          reviewFeedback: profile.review_feedback,
+          chef: chef ? {
+            id: chef.id,
+            username: chef.username,
+          } : null,
+          location: location ? {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+          } : null,
+          application: latestApp ? {
+            id: latestApp.id,
+            fullName: latestApp.full_name,
+            email: latestApp.email,
+            phone: latestApp.phone,
+            foodSafetyLicenseUrl: latestApp.food_safety_license_url,
+            foodEstablishmentCertUrl: latestApp.food_establishment_cert_url,
+          } : null,
+        };
+      })
+    );
+
+    res.json(enrichedProfiles);
+  } catch (error) {
+    console.error("Error getting chef profiles for manager:", error);
+    res.status(500).json({ error: error.message || "Failed to get profiles" });
+  }
+});
+
+// Manager: Approve or reject chef profile
+app.put("/api/manager/chef-profiles/:id/status", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const profileId = parseInt(req.params.id);
+    const { status, reviewFeedback } = req.body;
+    
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify this profile belongs to a location managed by this manager
+    let profileCheck;
+    try {
+      profileCheck = await pool.query(`
+        SELECT clp.*, l.manager_id
+        FROM chef_location_profiles clp
+        INNER JOIN locations l ON l.id = clp.location_id
+        WHERE clp.id = $1
+      `, [profileId]);
+    } catch (error) {
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        return res.status(404).json({ error: "Profile not found or table doesn't exist" });
+      }
+      throw error;
+    }
+
+    if (profileCheck.rows.length === 0) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    const profile = profileCheck.rows[0];
+    if (profile.manager_id !== user.id) {
+      return res.status(403).json({ error: "You don't have permission to manage this profile" });
+    }
+
+    // Update the profile status
+    const updateResult = await pool.query(`
+      UPDATE chef_location_profiles
+      SET status = $1,
+          reviewed_by = $2,
+          reviewed_at = NOW(),
+          review_feedback = $3
+      WHERE id = $4
+      RETURNING *
+    `, [status, user.id, reviewFeedback || null, profileId]);
+
+    const updated = updateResult.rows[0];
+    res.json({
+      id: updated.id,
+      chefId: updated.chef_id,
+      locationId: updated.location_id,
+      status: updated.status,
+      sharedAt: updated.shared_at,
+      reviewedBy: updated.reviewed_by,
+      reviewedAt: updated.reviewed_at,
+      reviewFeedback: updated.review_feedback,
+    });
+  } catch (error) {
+    console.error("Error updating chef profile status:", error);
+    res.status(500).json({ error: error.message || "Failed to update profile status" });
+  }
+});
+
 app.get("/api/manager/bookings", async (req, res) => {
   try {
     const rawUserId = req.session.userId || req.headers['x-user-id'];
