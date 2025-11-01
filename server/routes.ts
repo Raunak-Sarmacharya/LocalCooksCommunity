@@ -18,6 +18,7 @@ import { pool, db } from "./db";
 import { chefKitchenAccess, users } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  console.log("[Routes] Registering all routes including chef-kitchen-access...");
   // Set up authentication routes and middleware
   setupAuth(app);
 
@@ -4493,35 +4494,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: Get all chefs with their kitchen access
   app.get("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
     try {
+      console.log("[Admin Chef Access] GET request received");
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
       
+      console.log("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
+      
       if (!sessionUser && !isFirebaseAuth) {
+        console.log("[Admin Chef Access] Not authenticated");
         return res.status(401).json({ error: "Not authenticated" });
       }
       
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      console.log("[Admin Chef Access] User:", { id: user.id, role: user.role });
+      
       if (user.role !== "admin") {
+        console.log("[Admin Chef Access] Not admin");
         return res.status(403).json({ error: "Admin access required" });
       }
 
       // Get all chefs from database
+      // Chefs are identified by role = 'chef' OR isChef = true
       const allUsers = await db.select().from(users);
-      const chefs = allUsers.filter(u => u.isChef);
+      const chefs = allUsers.filter(u => {
+        const role = (u as any).role;
+        const isChef = (u as any).isChef ?? (u as any).is_chef;
+        return role === 'chef' || isChef === true;
+      });
+      
+      console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
+      console.log(`[Admin Chef Access] Chefs:`, chefs.map(c => ({ id: c.id, username: c.username, role: (c as any).role, isChef: (c as any).isChef ?? (c as any).is_chef })));
       
       // Get all kitchens
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      console.log(`[Admin Chef Access] Found ${allKitchens.length} kitchens`);
       
       // Get all access records
       const allAccess = await db.select().from(chefKitchenAccess);
+      console.log(`[Admin Chef Access] Found ${allAccess.length} access records`);
       
       // Build response with chef access info
       const response = chefs.map(chef => {
         const chefAccess = allAccess.filter(a => a.chefId === chef.id);
         const accessibleKitchens = chefAccess.map(access => {
-          const kitchen = allKitchens.find(k => (k as any).id === access.kitchenId);
-          return kitchen ? { ...kitchen, accessGrantedAt: access.grantedAt } : null;
-        }).filter(Boolean);
+          const kitchen = allKitchens.find(k => {
+            const kitchenId = (k as any).id ?? (k as any).kitchenId;
+            return kitchenId === access.kitchenId;
+          });
+          
+          if (kitchen) {
+            return {
+              id: (kitchen as any).id,
+              name: (kitchen as any).name,
+              locationName: (kitchen as any).locationName ?? (kitchen as any).location?.name,
+              accessGrantedAt: access.grantedAt ? (typeof access.grantedAt === 'string' ? access.grantedAt : access.grantedAt.toISOString()) : undefined,
+            };
+          }
+          return null;
+        }).filter((k): k is NonNullable<typeof k> => k !== null);
         
         return {
           chef: {
@@ -4532,9 +4562,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
+      console.log(`[Admin Chef Access] Returning ${response.length} chefs with access info`);
       res.json(response);
     } catch (error: any) {
-      console.error("Error getting chef kitchen access:", error);
+      console.error("[Admin Chef Access] Error:", error);
+      console.error("[Admin Chef Access] Error stack:", error.stack);
       res.status(500).json({ error: error.message || "Failed to get access" });
     }
   });
