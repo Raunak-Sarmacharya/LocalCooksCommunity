@@ -408,6 +408,18 @@ export const chefKitchenProfiles = pgTable("chef_kitchen_profiles", {
   reviewFeedback: text("review_feedback"), // optional feedback from manager
 });
 
+// Define chef_location_profiles table (NEW - location-based profile sharing)
+export const chefLocationProfiles = pgTable("chef_location_profiles", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  sharedAt: timestamp("shared_at").defaultNow().notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }), // manager who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  reviewFeedback: text("review_feedback"), // optional feedback from manager
+});
+
 // Zod schemas for kitchen booking system
 
 export const insertLocationSchema = createInsertSchema(locations, {
@@ -568,3 +580,27 @@ export type InsertChefKitchenAccess = z.infer<typeof insertChefKitchenAccessSche
 export type ChefKitchenProfile = typeof chefKitchenProfiles.$inferSelect;
 export type InsertChefKitchenProfile = z.infer<typeof insertChefKitchenProfileSchema>;
 export type UpdateChefKitchenProfile = z.infer<typeof updateChefKitchenProfileSchema>;
+
+// Zod schemas for location-based profiles (NEW)
+export const insertChefLocationProfileSchema = createInsertSchema(chefLocationProfiles, {
+  chefId: z.number(),
+  locationId: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+}).omit({
+  id: true,
+  sharedAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewFeedback: true,
+});
+
+export const updateChefLocationProfileSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]),
+  reviewFeedback: z.string().optional(),
+});
+
+// Type exports for location-based profiles
+export type ChefLocationProfile = typeof chefLocationProfiles.$inferSelect;
+export type InsertChefLocationProfile = z.infer<typeof insertChefLocationProfileSchema>;
+export type UpdateChefLocationProfile = z.infer<typeof updateChefLocationProfileSchema>;

@@ -16,6 +16,7 @@ import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, users, locations } from "@shared/schema";
+import { eq, inArray } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access...");
@@ -3478,7 +3479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
 
-      const updated = await firebaseStorage.updateChefKitchenProfileStatus(
+      const updated = await firebaseStorage.updateChefLocationProfileStatus(
         profileId,
         status,
         user.id,
@@ -4120,17 +4121,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
       }
       
-      // Check if chef has shared their profile and it's been approved by manager
-      const profile = await firebaseStorage.getChefKitchenProfile(chefId, kitchenId);
+      // Check if chef has shared their profile with the location and it's been approved by manager
+      const profile = await firebaseStorage.getChefLocationProfile(chefId, kitchenLocationId);
       if (!profile) {
-        return res.status(403).json({ error: "You must share your profile with this kitchen before booking. Please share your profile first." });
+        return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
       }
       
       if (profile.status !== 'approved') {
         return res.status(403).json({ 
           error: profile.status === 'pending' 
             ? "Your profile is pending manager approval. Please wait for approval before booking."
-            : "Your profile was rejected. Please contact the kitchen manager for more information."
+            : "Your profile was rejected. Please contact the location manager for more information."
         });
       }
       
@@ -4386,29 +4387,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Chef: Share profile with kitchen
+  // Chef: Share profile with location (NEW - location-based)
   app.post("/api/chef/share-profile", requireChef, async (req: Request, res: Response) => {
     try {
-      const { kitchenId } = req.body;
+      const { locationId } = req.body;
       const chefId = req.user!.id;
       
-      if (!kitchenId) {
-        return res.status(400).json({ error: "kitchenId is required" });
+      if (!locationId) {
+        return res.status(400).json({ error: "locationId is required" });
       }
 
-      // Check if chef has admin-granted access to the location containing this kitchen
-      const kitchenLocationId = await firebaseStorage.getKitchenLocation(kitchenId);
-      if (!kitchenLocationId) {
-        return res.status(400).json({ error: "Kitchen location not found" });
-      }
-      
-      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId);
+      // Check if chef has admin-granted access to this location
+      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, locationId);
       
       if (!hasLocationAccess) {
-        return res.status(403).json({ error: "You don't have access to kitchens in this location. Please contact an administrator." });
+        return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
       }
 
-      const profile = await firebaseStorage.shareChefProfileWithKitchen(chefId, kitchenId);
+      const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
       res.status(201).json(profile);
     } catch (error: any) {
       console.error("Error sharing chef profile:", error);
@@ -4416,20 +4412,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Chef: Get profile status for kitchens (using location-based access)
+  // Chef: Get profile status for locations (using location-based access)
   app.get("/api/chef/profiles", requireChef, async (req: Request, res: Response) => {
     try {
       const chefId = req.user!.id;
       
-      // Get all kitchens chef has access to via location access
-      const chefKitchens = await firebaseStorage.getKitchensForChef(chefId);
-      const kitchenIds = chefKitchens.map((k: any) => (k as any).id ?? (k as any).kitchenId).filter((id: any): id is number => typeof id === 'number');
+      // Get all locations chef has access to via admin-granted access
+      const locationAccessRecords = await db
+        .select()
+        .from(chefLocationAccess)
+        .where(eq(chefLocationAccess.chefId, chefId));
       
-      // Get profiles for all accessible kitchens
+      const locationIds = locationAccessRecords.map(access => access.locationId);
+      
+      if (locationIds.length === 0) {
+        return res.json([]);
+      }
+      
+      // Get all locations with details
+      const allLocations = await db
+        .select()
+        .from(locations)
+        .where(inArray(locations.id, locationIds));
+      
+      // Get profiles for all accessible locations
       const profiles = await Promise.all(
-        kitchenIds.map(async (kitchenId) => {
-          const profile = await firebaseStorage.getChefKitchenProfile(chefId, kitchenId);
-          return { kitchenId, profile };
+        locationIds.map(async (locationId) => {
+          const profile = await firebaseStorage.getChefLocationProfile(chefId, locationId);
+          const location = allLocations.find(l => l.id === locationId);
+          return { locationId, location, profile };
         })
       );
       

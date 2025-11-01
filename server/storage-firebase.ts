@@ -9,7 +9,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 
@@ -1771,32 +1771,20 @@ export class FirebaseStorage {
       
       const locationIds = managerLocations.map(loc => (loc as any).id);
       
-      // Get all kitchens for these locations
-      const managerKitchens = await db
-        .select()
-        .from(kitchens)
-        .where(inArray(kitchens.locationId, locationIds));
-      
-      if (managerKitchens.length === 0) {
-        return [];
-      }
-      
-      const kitchenIds = managerKitchens.map(k => (k as any).id);
-      
-      // Get all chef profiles for these kitchens
+      // Get all chef profiles for these locations (NEW - location-based)
       const profiles = await db
         .select()
-        .from(chefKitchenProfiles)
-        .where(inArray(chefKitchenProfiles.kitchenId, kitchenIds));
+        .from(chefLocationProfiles)
+        .where(inArray(chefLocationProfiles.locationId, locationIds));
       
-      // Enrich with chef, kitchen, and application details
+      // Enrich with chef, location, and application details
       const enrichedProfiles = await Promise.all(
         profiles.map(async (profile) => {
           const chef = await this.getUser(profile.chefId);
-          const kitchen = await db
+          const location = await db
             .select()
-            .from(kitchens)
-            .where(eq(kitchens.id, profile.kitchenId))
+            .from(locations)
+            .where(eq(locations.id, profile.locationId))
             .then(rows => rows[0]);
           
           // Get chef's latest approved application
@@ -1819,9 +1807,10 @@ export class FirebaseStorage {
               id: chef.id,
               username: chef.username,
             } : null,
-            kitchen: kitchen ? {
-              id: (kitchen as any).id,
-              name: (kitchen as any).name,
+            location: location ? {
+              id: (location as any).id,
+              name: (location as any).name,
+              address: (location as any).address,
             } : null,
             application: latestApp ? {
               id: (latestApp as any).id,
@@ -1838,6 +1827,115 @@ export class FirebaseStorage {
       return enrichedProfiles;
     } catch (error) {
       console.error('Error getting chef profiles for manager:', error);
+      throw error;
+    }
+  }
+
+  // ===== CHEF LOCATION PROFILE MANAGEMENT (NEW - Location-based profile sharing) =====
+
+  async shareChefProfileWithLocation(chefId: number, locationId: number): Promise<any> {
+    try {
+      // Check if profile already shared
+      const existing = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(
+          and(
+            eq(chefLocationProfiles.chefId, chefId),
+            eq(chefLocationProfiles.locationId, locationId)
+          )
+        );
+      
+      if (existing.length > 0) {
+        // Update status back to pending if it was rejected
+        if (existing[0].status === 'rejected') {
+          const [updated] = await db
+            .update(chefLocationProfiles)
+            .set({
+              status: 'pending',
+              sharedAt: new Date(),
+              reviewedBy: null,
+              reviewedAt: null,
+              reviewFeedback: null,
+            })
+            .where(eq(chefLocationProfiles.id, existing[0].id))
+            .returning();
+          return updated;
+        }
+        return existing[0]; // Already shared
+      }
+      
+      // Create new profile sharing
+      const [profile] = await db
+        .insert(chefLocationProfiles)
+        .values({
+          chefId,
+          locationId,
+          status: 'pending',
+        })
+        .returning();
+      
+      return profile;
+    } catch (error) {
+      console.error('Error sharing chef profile with location:', error);
+      throw error;
+    }
+  }
+
+  async getChefLocationProfile(chefId: number, locationId: number): Promise<any | undefined> {
+    try {
+      const [profile] = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(
+          and(
+            eq(chefLocationProfiles.chefId, chefId),
+            eq(chefLocationProfiles.locationId, locationId)
+          )
+        );
+      
+      return profile || undefined;
+    } catch (error) {
+      console.error('Error getting chef location profile:', error);
+      throw error;
+    }
+  }
+
+  async getChefLocationProfiles(chefId: number): Promise<any[]> {
+    try {
+      const profiles = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(eq(chefLocationProfiles.chefId, chefId));
+      
+      return profiles;
+    } catch (error) {
+      console.error('Error getting chef location profiles:', error);
+      throw error;
+    }
+  }
+
+  async updateChefLocationProfileStatus(
+    profileId: number,
+    status: 'approved' | 'rejected',
+    reviewedBy: number,
+    reviewFeedback?: string
+  ): Promise<any> {
+    try {
+      const [updated] = await db
+        .update(chefLocationProfiles)
+        .set({
+          status,
+          reviewedBy,
+          reviewedAt: new Date(),
+          reviewFeedback: reviewFeedback || null,
+        })
+        .where(eq(chefLocationProfiles.id, profileId))
+        .returning();
+      
+      return updated;
+    } catch (error) {
+      console.error('Error updating chef location profile status:', error);
       throw error;
     }
   }
