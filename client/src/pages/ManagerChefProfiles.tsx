@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { 
   User, 
-  Building, 
+  MapPin, 
   FileText, 
   CheckCircle, 
   XCircle, 
@@ -46,7 +46,7 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
       });
       toast({
         title: "Profile Approved",
-        description: "Chef can now book this kitchen.",
+        description: "Chef can now book kitchens in this location.",
       });
       setShowReviewDialog(false);
       setSelectedProfile(null);
@@ -153,7 +153,7 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Chef Profiles</h1>
           <p className="text-gray-600 text-lg">
-            Review chef profiles and documents. Approve chefs to allow them to book your kitchens.
+            Review chef profiles and documents. Approve chefs to allow them to book kitchens in your locations.
           </p>
         </div>
       )}
@@ -211,7 +211,7 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
               <User className="h-16 w-16 text-gray-400 mx-auto mb-4" />
               <h2 className="text-2xl font-semibold text-gray-900 mb-2">No Chef Profiles</h2>
               <p className="text-gray-600 max-w-md mx-auto">
-                No chefs have shared their profiles with your kitchens yet.
+                No chefs have shared their profiles with your locations yet.
               </p>
             </div>
           )}
@@ -236,10 +236,13 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
                     <User className="h-4 w-4 text-gray-600" />
                     <span className="font-medium">Username:</span> {selectedProfile.chef?.username}
                   </div>
-                  {selectedProfile.kitchen && (
+                  {selectedProfile.location && (
                     <div className="flex items-center gap-2">
-                      <Building className="h-4 w-4 text-gray-600" />
-                      <span className="font-medium">Kitchen:</span> {selectedProfile.kitchen.name}
+                      <MapPin className="h-4 w-4 text-gray-600" />
+                      <span className="font-medium">Location:</span> {selectedProfile.location.name}
+                      {selectedProfile.location.address && (
+                        <span className="text-gray-500"> ({selectedProfile.location.address})</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -450,8 +453,8 @@ function ProfileCard({ profile, onReview }: { profile: any; onReview: () => void
             <h3 className="font-semibold text-gray-900 truncate">
               {profile.application?.fullName || profile.chef?.username || 'Unknown Chef'}
             </h3>
-            {profile.kitchen && (
-              <p className="text-sm text-gray-600 mt-1">{profile.kitchen.name}</p>
+            {profile.location && (
+              <p className="text-sm text-gray-600 mt-1">{profile.location.name}</p>
             )}
           </div>
         </div>

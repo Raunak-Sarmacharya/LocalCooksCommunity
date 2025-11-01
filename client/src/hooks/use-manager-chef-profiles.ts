@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 interface ChefProfileForManager {
   id: number;
   chefId: number;
-  kitchenId: number;
+  locationId: number; // NEW - location-based instead of kitchen-based
   status: 'pending' | 'approved' | 'rejected';
   sharedAt: string;
   reviewedBy?: number;
@@ -13,9 +13,10 @@ interface ChefProfileForManager {
     id: number;
     username: string;
   } | null;
-  kitchen: {
+  location: { // NEW - location instead of kitchen
     id: number;
     name: string;
+    address?: string;
   } | null;
   application: {
     id: number;
