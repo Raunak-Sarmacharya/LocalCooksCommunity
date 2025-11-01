@@ -3689,7 +3689,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Send notification to manager
             // Use notification email if set, otherwise fallback to manager's username (email)
-            const notificationEmailAddress = location.notification_email || manager.username;
+            const notificationEmailAddress = location.notificationEmail || location.notification_email || manager.username;
             const managerEmail = generateBookingNotificationEmail({
               managerEmail: notificationEmailAddress,
               chefName: (chef as any).displayName || chef.username,

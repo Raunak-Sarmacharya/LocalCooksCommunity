@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -3308,6 +3308,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
       await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
+      
+      // Send email notifications to chefs and managers
+      try {
+        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        if (kitchen) {
+          const location = await firebaseStorage.getLocationById(kitchen.locationId);
+          
+          // Get all chefs who have bookings at this kitchen
+          const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+          const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+          
+          // Send emails to chefs
+          for (const chefId of uniqueChefIds) {
+            try {
+              const chef = await storage.getUser(chefId);
+              if (chef) {
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const changeType = isAvailable ? 'Availability Updated' : 'Kitchen Closed';
+                const details = isAvailable 
+                  ? `The kitchen is now available on ${dayNames[dayOfWeek]} from ${startTime} to ${endTime}.`
+                  : `The kitchen is now closed on ${dayNames[dayOfWeek]}.`;
+                
+                const email = generateKitchenAvailabilityChangeEmail({
+                  chefEmail: chef.username,
+                  chefName: (chef as any).displayName || chef.username || 'Chef',
+                  kitchenName: kitchen.name,
+                  changeType,
+                  details
+                });
+                await sendEmail(email);
+                console.log(`✅ Availability change email sent to chef: ${chef.username}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to chef ${chefId}:`, emailError);
+            }
+          }
+          
+          // Send email to manager
+          if (location?.managerId) {
+            try {
+              const manager = await storage.getUser(location.managerId);
+              if (manager) {
+                const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const changes = `Kitchen availability updated: ${dayNames[dayOfWeek]} ${isAvailable ? `is now available from ${startTime} to ${endTime}` : 'is now closed'}.`;
+                
+                const email = generateKitchenSettingsChangeEmail({
+                  email: notificationEmail,
+                  name: manager.username,
+                  kitchenName: kitchen.name,
+                  changes,
+                  isChef: false
+                });
+                await sendEmail(email);
+                console.log(`✅ Availability change email sent to manager: ${notificationEmail}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to manager:`, emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending availability change emails:", emailError);
+        // Don't fail the request if emails fail
+      }
+      
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error setting availability:", error);
@@ -3561,6 +3627,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reason,
       });
       
+      // Send email notifications to chefs and managers
+      try {
+        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        if (kitchen) {
+          const location = await firebaseStorage.getLocationById(kitchen.locationId);
+          const dateStr = new Date(specificDate).toLocaleDateString();
+          
+          // Get all chefs who have bookings at this kitchen
+          const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+          const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+          
+          const changeType = isAvailable ? 'Special Availability Added' : 'Kitchen Closed for Date';
+          const details = isAvailable 
+            ? `Special availability on ${dateStr} from ${startTime} to ${endTime}.${reason ? ` Reason: ${reason}` : ''}`
+            : `Kitchen will be closed on ${dateStr}.${reason ? ` Reason: ${reason}` : ''}`;
+          
+          // Send emails to chefs
+          for (const chefId of uniqueChefIds) {
+            try {
+              const chef = await storage.getUser(chefId);
+              if (chef) {
+                const email = generateKitchenAvailabilityChangeEmail({
+                  chefEmail: chef.username,
+                  chefName: (chef as any).displayName || chef.username || 'Chef',
+                  kitchenName: kitchen.name,
+                  changeType,
+                  details
+                });
+                await sendEmail(email);
+                console.log(`✅ Date override email sent to chef: ${chef.username}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to chef ${chefId}:`, emailError);
+            }
+          }
+          
+          // Send email to manager
+          if (location?.managerId) {
+            try {
+              const manager = await storage.getUser(location.managerId);
+              if (manager) {
+                const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                const changes = `Date override created: ${dateStr} - ${isAvailable ? `special availability from ${startTime} to ${endTime}` : 'kitchen closed'}.${reason ? ` Reason: ${reason}` : ''}`;
+                
+                const email = generateKitchenSettingsChangeEmail({
+                  email: notificationEmail,
+                  name: manager.username,
+                  kitchenName: kitchen.name,
+                  changes,
+                  isChef: false
+                });
+                await sendEmail(email);
+                console.log(`✅ Date override email sent to manager: ${notificationEmail}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to manager:`, emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending date override emails:", emailError);
+        // Don't fail the request if emails fail
+      }
+      
       res.json(override);
     } catch (error: any) {
       console.error("Error creating date override:", error);
@@ -3628,6 +3758,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isAvailable,
         reason,
       });
+      
+      // Send email notifications to chefs and managers
+      try {
+        const override = await firebaseStorage.getKitchenDateOverrideById(id);
+        if (override) {
+          const kitchen = await firebaseStorage.getKitchenById(override.kitchenId);
+          if (kitchen) {
+            const location = await firebaseStorage.getLocationById(kitchen.locationId);
+            const dateStr = new Date(override.specificDate).toLocaleDateString();
+            
+            // Get all chefs who have bookings at this kitchen
+            const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
+            const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+            
+            const changeType = isAvailable !== undefined 
+              ? (isAvailable ? 'Date Override Updated - Special Availability' : 'Date Override Updated - Kitchen Closed')
+              : 'Date Override Updated';
+            const details = isAvailable !== undefined
+              ? (isAvailable 
+                  ? `Date override updated: ${dateStr} is now available${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}.${reason ? ` Reason: ${reason}` : ''}`
+                  : `Date override updated: ${dateStr} is now closed.${reason ? ` Reason: ${reason}` : ''}`)
+              : `Date override updated for ${dateStr}.${startTime && endTime ? ` Time: ${startTime} to ${endTime}` : ''}${reason ? ` Reason: ${reason}` : ''}`;
+            
+            // Send emails to chefs
+            for (const chefId of uniqueChefIds) {
+              try {
+                const chef = await storage.getUser(chefId);
+                if (chef) {
+                  const email = generateKitchenAvailabilityChangeEmail({
+                    chefEmail: chef.username,
+                    chefName: (chef as any).displayName || chef.username || 'Chef',
+                    kitchenName: kitchen.name,
+                    changeType,
+                    details
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Date override update email sent to chef: ${chef.username}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to chef ${chefId}:`, emailError);
+              }
+            }
+            
+            // Send email to manager
+            if (location?.managerId) {
+              try {
+                const manager = await storage.getUser(location.managerId);
+                if (manager) {
+                  const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                  const changes = `Date override updated for ${dateStr}.${isAvailable !== undefined ? (isAvailable ? ` Special availability${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}` : ' Kitchen closed') : ''}${reason ? `. Reason: ${reason}` : ''}`;
+                  
+                  const email = generateKitchenSettingsChangeEmail({
+                    email: notificationEmail,
+                    name: manager.username,
+                    kitchenName: kitchen.name,
+                    changes,
+                    isChef: false
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Date override update email sent to manager: ${notificationEmail}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to manager:`, emailError);
+              }
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending date override update emails:", emailError);
+        // Don't fail the request if emails fail
+      }
       
       res.json(updated);
     } catch (error: any) {
@@ -4686,12 +4887,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid kitchen ID" });
       }
 
+      // Get current kitchen data for comparison
+      const currentKitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!currentKitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
       const { name, description, isActive, locationId } = req.body;
       
       const updates: any = {};
-      if (name !== undefined) updates.name = name;
-      if (description !== undefined) updates.description = description;
-      if (isActive !== undefined) updates.isActive = isActive;
+      const changesList: string[] = [];
+      
+      if (name !== undefined && name !== currentKitchen.name) {
+        updates.name = name;
+        changesList.push(`Name changed to "${name}"`);
+      }
+      if (description !== undefined && description !== currentKitchen.description) {
+        updates.description = description;
+        changesList.push(`Description updated`);
+      }
+      if (isActive !== undefined && isActive !== currentKitchen.isActive) {
+        updates.isActive = isActive;
+        changesList.push(`Status changed to ${isActive ? 'Active' : 'Inactive'}`);
+      }
       if (locationId !== undefined) {
         const locationIdNum = parseInt(locationId.toString());
         if (isNaN(locationIdNum) || locationIdNum <= 0) {
@@ -4703,12 +4921,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!location) {
           return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
         }
-        updates.locationId = locationIdNum;
+        if (locationIdNum !== currentKitchen.locationId) {
+          updates.locationId = locationIdNum;
+          changesList.push(`Location changed to "${location.name}"`);
+        }
+      }
+
+      // Only update if there are actual changes
+      if (Object.keys(updates).length === 0) {
+        return res.json(currentKitchen);
       }
 
       const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
       if (!updated) {
         return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      // Send email notifications to chefs and managers
+      if (changesList.length > 0) {
+        try {
+          const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+          if (kitchen) {
+            const location = await firebaseStorage.getLocationById(kitchen.locationId);
+            
+            // Get all chefs who have bookings at this kitchen
+            const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+            const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+            
+            const changes = changesList.join(', ');
+            
+            // Send emails to chefs
+            for (const chefId of uniqueChefIds) {
+              try {
+                const chef = await storage.getUser(chefId);
+                if (chef) {
+                  const email = generateKitchenSettingsChangeEmail({
+                    email: chef.username,
+                    name: (chef as any).displayName || chef.username || 'Chef',
+                    kitchenName: kitchen.name,
+                    changes,
+                    isChef: true
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Kitchen settings change email sent to chef: ${chef.username}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to chef ${chefId}:`, emailError);
+              }
+            }
+            
+            // Send email to manager
+            if (location?.managerId) {
+              try {
+                const manager = await storage.getUser(location.managerId);
+                if (manager) {
+                  const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                  const email = generateKitchenSettingsChangeEmail({
+                    email: notificationEmail,
+                    name: manager.username,
+                    kitchenName: kitchen.name,
+                    changes,
+                    isChef: false
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Kitchen settings change email sent to manager: ${notificationEmail}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to manager:`, emailError);
+              }
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending kitchen settings change emails:", emailError);
+          // Don't fail the request if emails fail
+        }
       }
       
       res.json(updated);
