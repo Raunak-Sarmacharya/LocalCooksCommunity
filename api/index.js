@@ -12708,7 +12708,7 @@ app.post("/api/chef/share-profile", requireChef, async (req, res) => {
     let existingProfile;
     try {
       existingProfile = await pool.query(
-        'SELECT id FROM chef_location_profiles WHERE chef_id = $1 AND location_id = $2',
+        'SELECT id, status FROM chef_location_profiles WHERE chef_id = $1 AND location_id = $2',
         [chefId, locationId]
       );
     } catch (error) {
@@ -12722,10 +12722,104 @@ app.post("/api/chef/share-profile", requireChef, async (req, res) => {
     }
     
     if (existingProfile.rows.length > 0) {
-      // Profile already shared, return existing profile
+      const existing = existingProfile.rows[0];
+      
+      // If profile was rejected, update it back to pending (allow re-sharing)
+      if (existing.status === 'rejected') {
+        const updateResult = await pool.query(
+          `UPDATE chef_location_profiles
+           SET status = 'pending', 
+               shared_at = NOW(),
+               reviewed_by = NULL,
+               reviewed_at = NULL,
+               review_feedback = NULL
+           WHERE id = $1
+           RETURNING *`,
+          [existing.id]
+        );
+        
+        const profile = updateResult.rows[0];
+        
+        // Send email to manager when chef re-shares rejected profile
+        if (profile && profile.status === 'pending') {
+          try {
+            // Get location details with notification email
+            const locationResult = await pool.query(
+              `SELECT id, name, notification_email, manager_id
+               FROM locations
+               WHERE id = $1`,
+              [locationId]
+            );
+            
+            if (locationResult.rows.length > 0) {
+              const location = locationResult.rows[0];
+              const managerEmail = location.notification_email;
+              
+              if (managerEmail) {
+                // Get chef details
+                const chefResult = await pool.query(
+                  `SELECT id, username FROM users WHERE id = $1`,
+                  [chefId]
+                );
+                
+                const chef = chefResult.rows[0];
+                if (chef) {
+                  // Get chef's application details for email
+                  const appResult = await pool.query(
+                    `SELECT id, full_name, email
+                     FROM applications
+                     WHERE user_id = $1 AND status = 'approved'
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [chefId]
+                  );
+                  
+                  const chefApp = appResult.rows[0];
+                  const chefName = chefApp && chefApp.full_name 
+                    ? chefApp.full_name 
+                    : chef.username || 'Chef';
+                  const chefEmail = chefApp && chefApp.email 
+                    ? chefApp.email 
+                    : chef.username || 'chef@example.com';
+                  
+                  // Import email functions
+                  const { sendEmail, generateChefProfileRequestEmail } = await import('../server/email.js');
+                  
+                  const emailContent = generateChefProfileRequestEmail({
+                    managerEmail: managerEmail,
+                    chefName: chefName,
+                    chefEmail: chefEmail,
+                    locationName: location.name || 'Location',
+                    locationId: locationId
+                  });
+                  
+                  await sendEmail(emailContent);
+                  console.log(`✅ Chef profile re-share notification sent to manager: ${managerEmail}`);
+                }
+              }
+            }
+          } catch (emailError) {
+            console.error("Error sending chef profile re-share notification:", emailError);
+            // Don't fail the profile re-share if email fails
+          }
+        }
+        
+        return res.json({
+          id: profile.id,
+          chefId: profile.chef_id,
+          locationId: profile.location_id,
+          status: profile.status,
+          sharedAt: profile.shared_at,
+          reviewedBy: profile.reviewed_by,
+          reviewedAt: profile.reviewed_at,
+          reviewFeedback: profile.review_feedback,
+        });
+      }
+      
+      // Profile already shared (and not rejected), return existing profile
       const profileResult = await pool.query(
         'SELECT * FROM chef_location_profiles WHERE id = $1',
-        [existingProfile.rows[0].id]
+        [existing.id]
       );
       const profile = profileResult.rows[0];
       return res.json({
