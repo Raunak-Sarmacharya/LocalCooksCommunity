@@ -10676,19 +10676,23 @@ app.post("/api/admin/managers", async (req, res) => {
     
     // Send welcome email to manager with credentials
     try {
-      const { sendEmail } = await import('../server/email.js');
+      const { sendEmail, generateManagerCredentialsEmail } = await import('../server/email.js');
       
-      const welcomeEmail = {
-        to: username, // username is the email
-        subject: "Your Manager Account - Local Cooks Community",
-        text: `Hello ${name || 'Manager'},\n\nYour manager account has been created!\n\nUsername: ${username}\nPassword: ${password}\n\nPlease login at: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/login\n\nBest regards,\nLocal Cooks Team`,
-        html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Your Manager Account</title></head><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;"><div style="background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;"><h1 style="color: white; margin: 0;">Local Cooks Community</h1></div><div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;"><h2 style="color: #333;">Hello ${name || 'Manager'},</h2><p>Your manager account has been created for the Local Cooks kitchen booking system!</p><div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid hsl(347, 91%, 51%); margin: 20px 0;"><h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Your Login Credentials</h3><p><strong>Username:</strong> ${username}</p><p><strong>Temporary Password:</strong> <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${password}</code></p></div><p><strong>⚠️ Important:</strong> Please change your password after your first login for security.</p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" style="display: inline-block; background: hsl(347, 91%, 51%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0;">Login Now</a><p style="margin-top: 30px; color: #666; font-size: 14px;">If you have any questions, please contact support.</p></div><div style="text-align: center; padding: 20px; color: #999; font-size: 12px;"><p>&copy; ${new Date().getFullYear()} Local Cooks Community. All rights reserved.</p></div></body></html>`
-      };
+      // Use email field if provided, otherwise fallback to username
+      const managerEmail = email || username;
+      
+      const welcomeEmail = generateManagerCredentialsEmail({
+        email: managerEmail,
+        name: name || 'Manager',
+        username: username,
+        password: password
+      });
       
       await sendEmail(welcomeEmail);
-      console.log(`✅ Welcome email sent to manager: ${username}`);
+      console.log(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
     } catch (emailError) {
       console.error("Error sending manager welcome email:", emailError);
+      console.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
       // Don't fail manager creation if email fails
     }
     
@@ -10780,6 +10784,92 @@ app.get("/api/admin/managers", async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to fetch managers" });
   }
 });
+
+// Delete manager (admin)
+app.delete("/api/admin/managers/:id", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const managerId = parseInt(req.params.id);
+    if (isNaN(managerId) || managerId <= 0) {
+      return res.status(400).json({ error: "Invalid manager ID" });
+    }
+
+    // Prevent deleting yourself
+    if (managerId === user.id) {
+      return res.status(400).json({ error: "You cannot delete your own account" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the user exists and is a manager
+    const managerResult = await pool.query(
+      'SELECT id, username, role FROM users WHERE id = $1',
+      [managerId]
+    );
+
+    if (managerResult.rows.length === 0) {
+      return res.status(404).json({ error: "Manager not found" });
+    }
+
+    const manager = managerResult.rows[0];
+    if (manager.role !== 'manager') {
+      return res.status(400).json({ error: "User is not a manager" });
+    }
+
+    // Check if manager has locations assigned
+    const locationsResult = await pool.query(
+      'SELECT id FROM locations WHERE manager_id = $1',
+      [managerId]
+    );
+
+    // Use transaction to update locations and delete manager
+    await pool.query('BEGIN');
+    try {
+      // Set manager_id to NULL for all locations managed by this user
+      if (locationsResult.rows.length > 0) {
+        await pool.query(
+          'UPDATE locations SET manager_id = NULL WHERE manager_id = $1',
+          [managerId]
+        );
+        console.log(`⚠️ Removed manager ${managerId} from ${locationsResult.rows.length} location(s)`);
+      }
+
+      // Delete the manager user
+      const deleteResult = await pool.query(
+        'DELETE FROM users WHERE id = $1 RETURNING id',
+        [managerId]
+      );
+
+      if (deleteResult.rows.length === 0) {
+        await pool.query('ROLLBACK');
+        return res.status(404).json({ error: "Manager not found" });
+      }
+
+      await pool.query('COMMIT');
+      console.log(`✅ Deleted manager ${managerId}`);
+      
+      res.json({ success: true, message: "Manager deleted successfully" });
+    } catch (deleteError) {
+      await pool.query('ROLLBACK');
+      throw deleteError;
+    }
+  } catch (error) {
+    console.error("Error deleting manager:", error);
+    res.status(500).json({ error: error.message || "Failed to delete manager" });
+  }
+});
+
 // ===================================
 // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
 // ===================================
@@ -11373,6 +11463,57 @@ app.post("/api/admin/locations", async (req, res) => {
   }
 });
 
+// Delete location (admin)
+app.delete("/api/admin/locations/:id", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const locationId = parseInt(req.params.id);
+    if (isNaN(locationId) || locationId <= 0) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Check if location has kitchens first (foreign key constraint requires this)
+    const kitchensResult = await pool.query(
+      'SELECT id FROM kitchens WHERE location_id = $1',
+      [locationId]
+    );
+    
+    if (kitchensResult.rows.length > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete location: It has ${kitchensResult.rows.length} kitchen(s). Please delete or reassign kitchens first.` 
+      });
+    }
+
+    // Delete the location
+    const result = await pool.query(
+      'DELETE FROM locations WHERE id = $1 RETURNING id',
+      [locationId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    res.json({ success: true, message: "Location deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting location:", error);
+    res.status(500).json({ error: error.message || "Failed to delete location" });
+  }
+});
+
 // Get kitchens for a location (admin)
 app.get("/api/admin/kitchens/:locationId", async (req, res) => {
   try {
@@ -11443,6 +11584,58 @@ app.post("/api/admin/kitchens", async (req, res) => {
     res.status(500).json({ error: error.message || "Failed to create kitchen" });
   }
 });
+
+// Delete kitchen (admin)
+app.delete("/api/admin/kitchens/:id", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const kitchenId = parseInt(req.params.id);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Check if kitchen has bookings first (foreign key constraint requires this)
+    const bookingsResult = await pool.query(
+      'SELECT id FROM kitchen_bookings WHERE kitchen_id = $1',
+      [kitchenId]
+    );
+    
+    if (bookingsResult.rows.length > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete kitchen: It has ${bookingsResult.rows.length} booking(s). Please cancel or reassign bookings first.` 
+      });
+    }
+
+    // Delete the kitchen
+    const result = await pool.query(
+      'DELETE FROM kitchens WHERE id = $1 RETURNING id',
+      [kitchenId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    res.json({ success: true, message: "Kitchen deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting kitchen:", error);
+    res.status(500).json({ error: error.message || "Failed to delete kitchen" });
+  }
+});
+
 // ===================================
 // KITCHEN BOOKING SYSTEM - CHEF ROUTES
 // ===================================
