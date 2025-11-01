@@ -12560,4 +12560,190 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
   }
 });
 
+// ===================================
+// KITCHEN BOOKING SYSTEM - ADMIN CHEF KITCHEN ACCESS ROUTES
+// ===================================
+
+// Admin: Grant chef access to a kitchen
+app.post("/api/admin/chef-kitchen-access", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { chefId, kitchenId } = req.body;
+    
+    if (!chefId || !kitchenId) {
+      return res.status(400).json({ error: "chefId and kitchenId are required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Check if access already exists
+    const existingResult = await pool.query(
+      'SELECT id FROM chef_kitchen_access WHERE chef_id = $1 AND kitchen_id = $2',
+      [chefId, kitchenId]
+    );
+
+    if (existingResult.rows.length > 0) {
+      return res.status(400).json({ error: "Access already granted" });
+    }
+
+    // Grant access
+    const result = await pool.query(
+      `INSERT INTO chef_kitchen_access (chef_id, kitchen_id, granted_by, granted_at)
+       VALUES ($1, $2, $3, NOW())
+       RETURNING *`,
+      [chefId, kitchenId, user.id]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Error granting chef kitchen access:", error);
+    res.status(500).json({ error: error.message || "Failed to grant access" });
+  }
+});
+
+// Admin: Revoke chef access to a kitchen
+app.delete("/api/admin/chef-kitchen-access", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { chefId, kitchenId } = req.body;
+    
+    if (!chefId || !kitchenId) {
+      return res.status(400).json({ error: "chefId and kitchenId are required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM chef_kitchen_access WHERE chef_id = $1 AND kitchen_id = $2 RETURNING id',
+      [chefId, kitchenId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Access record not found" });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error revoking chef kitchen access:", error);
+    res.status(500).json({ error: error.message || "Failed to revoke access" });
+  }
+});
+
+// Admin: Get all chefs with their kitchen access
+app.get("/api/admin/chef-kitchen-access", async (req, res) => {
+  try {
+    console.log("[Admin Chef Access] GET request received");
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    
+    console.log("[Admin Chef Access] Auth check:", { hasSession: !!req.session.userId, hasHeader: !!req.headers['x-user-id'] });
+    
+    if (!rawUserId) {
+      console.log("[Admin Chef Access] Not authenticated");
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    console.log("[Admin Chef Access] User:", user ? { id: user.id, role: user.role } : null);
+    
+    if (!user || user.role !== "admin") {
+      console.log("[Admin Chef Access] Not admin");
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get all chefs from database (role = 'chef' OR is_chef = true)
+    const chefsResult = await pool.query(
+      `SELECT id, username, role, is_chef 
+       FROM users 
+       WHERE role = 'chef' OR is_chef = true
+       ORDER BY username`
+    );
+    const chefs = chefsResult.rows;
+    
+    console.log(`[Admin Chef Access] Total users checked, Found ${chefs.length} chefs in database`);
+    console.log(`[Admin Chef Access] Chefs:`, chefs.map(c => ({ id: c.id, username: c.username, role: c.role, is_chef: c.is_chef })));
+    
+    // Get all kitchens with location info
+    const kitchensResult = await pool.query(`
+      SELECT k.id, k.name, k.location_id, l.name as location_name
+      FROM kitchens k
+      LEFT JOIN locations l ON k.location_id = l.id
+      WHERE k.is_active != false
+      ORDER BY l.name, k.name
+    `);
+    const allKitchens = kitchensResult.rows.map(k => ({
+      id: k.id,
+      name: k.name,
+      locationName: k.location_name,
+      locationId: k.location_id
+    }));
+    console.log(`[Admin Chef Access] Found ${allKitchens.length} kitchens`);
+    
+    // Get all access records
+    const accessResult = await pool.query(
+      'SELECT * FROM chef_kitchen_access ORDER BY granted_at DESC'
+    );
+    const allAccess = accessResult.rows;
+    console.log(`[Admin Chef Access] Found ${allAccess.length} access records`);
+    
+    // Build response with chef access info
+    const response = chefs.map(chef => {
+      const chefAccess = allAccess.filter(a => a.chef_id === chef.id);
+      const accessibleKitchens = chefAccess.map(access => {
+        const kitchen = allKitchens.find(k => k.id === access.kitchen_id);
+        
+        if (kitchen) {
+          return {
+            id: kitchen.id,
+            name: kitchen.name,
+            locationName: kitchen.locationName,
+            accessGrantedAt: access.granted_at ? new Date(access.granted_at).toISOString() : undefined,
+          };
+        }
+        return null;
+      }).filter(k => k !== null);
+      
+      return {
+        chef: {
+          id: chef.id,
+          username: chef.username,
+        },
+        accessibleKitchens,
+      };
+    });
+    
+    console.log(`[Admin Chef Access] Returning ${response.length} chefs with access info`);
+    res.json(response);
+  } catch (error) {
+    console.error("[Admin Chef Access] Error:", error);
+    console.error("[Admin Chef Access] Error stack:", error.stack);
+    res.status(500).json({ error: error.message || "Failed to get access" });
+  }
+});
+
 export default app;
