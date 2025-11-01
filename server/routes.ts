@@ -8,7 +8,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail } from "./email";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -4195,17 +4195,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Send welcome email to manager with credentials
       try {
-        const welcomeEmail = {
-          to: username, // username is the email
-          subject: "Your Manager Account - Local Cooks Community",
-          text: `Hello ${name || 'Manager'},\n\nYour manager account has been created!\n\nUsername: ${username}\nPassword: ${password}\n\nPlease login at: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/login\n\nBest regards,\nLocal Cooks Team`,
-          html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Your Manager Account</title></head><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;"><div style="background: linear-gradient(135deg, hsl(347, 91%, 51%) 0%, hsl(347, 91%, 45%) 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;"><h1 style="color: white; margin: 0;">Local Cooks Community</h1></div><div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;"><h2 style="color: #333;">Hello ${name || 'Manager'},</h2><p>Your manager account has been created for the Local Cooks kitchen booking system!</p><div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid hsl(347, 91%, 51%); margin: 20px 0;"><h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Your Login Credentials</h3><p><strong>Username:</strong> ${username}</p><p><strong>Temporary Password:</strong> <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${password}</code></p></div><p><strong>⚠️ Important:</strong> Please change your password after your first login for security.</p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/login" style="display: inline-block; background: hsl(347, 91%, 51%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0;">Login Now</a><p style="margin-top: 30px; color: #666; font-size: 14px;">If you have any questions, please contact support.</p></div><div style="text-align: center; padding: 20px; color: #999; font-size: 12px;"><p>&copy; ${new Date().getFullYear()} Local Cooks Community. All rights reserved.</p></div></body></html>`
-        };
+        // Use email field if provided, otherwise fallback to username
+        const managerEmail = email || username;
+        
+        const welcomeEmail = generateManagerCredentialsEmail({
+          email: managerEmail,
+          name: name || 'Manager',
+          username: username,
+          password: password
+        });
         
         await sendEmail(welcomeEmail);
-        console.log(`✅ Welcome email sent to manager: ${username}`);
+        console.log(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
       } catch (emailError) {
         console.error("Error sending manager welcome email:", emailError);
+        console.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
         // Don't fail manager creation if email fails
       }
 
