@@ -4540,22 +4540,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allLocations = await db.select().from(locations);
       console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
       
-      // Get all location access records
-      const allAccess = await db.select().from(chefLocationAccess);
-      console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+      // Get all location access records (handle case if table doesn't exist yet)
+      let allAccess: any[] = [];
+      try {
+        allAccess = await db.select().from(chefLocationAccess);
+        console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+      } catch (error: any) {
+        console.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
+        // If table doesn't exist, return empty array (table will be created via migration)
+        if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+          console.log(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
+          allAccess = [];
+        } else {
+          throw error; // Re-throw if it's a different error
+        }
+      }
       
       // Build response with chef location access info
       const response = chefs.map(chef => {
-        const chefAccess = allAccess.filter(a => a.chefId === chef.id);
+        // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
+        const chefAccess = allAccess.filter(a => {
+          const accessChefId = (a as any).chefId ?? (a as any).chef_id;
+          return accessChefId === chef.id;
+        });
         const accessibleLocations = chefAccess.map(access => {
-          const location = allLocations.find(l => l.id === access.locationId);
+          // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
+          const accessLocationId = (access as any).locationId ?? (access as any).location_id;
+          const location = allLocations.find(l => l.id === accessLocationId);
           
           if (location) {
+            const grantedAt = (access as any).grantedAt ?? (access as any).granted_at;
             return {
               id: location.id,
               name: location.name,
-              address: location.address,
-              accessGrantedAt: access.grantedAt ? (typeof access.grantedAt === 'string' ? access.grantedAt : access.grantedAt.toISOString()) : undefined,
+              address: location.address ?? null,
+              accessGrantedAt: grantedAt ? (typeof grantedAt === 'string' ? grantedAt : new Date(grantedAt).toISOString()) : undefined,
             };
           }
           return null;
