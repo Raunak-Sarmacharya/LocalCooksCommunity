@@ -12019,6 +12019,57 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       return res.status(500).json({ error: "Database not available" });
     }
 
+    // Get the kitchen's location
+    const kitchenResult = await pool.query(
+      'SELECT location_id FROM kitchens WHERE id = $1',
+      [kitchenId]
+    );
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(400).json({ error: "Kitchen not found" });
+    }
+    
+    const kitchenLocationId = kitchenResult.rows[0].location_id;
+
+    // Check if chef has admin-granted access to this location
+    const accessCheck = await pool.query(
+      'SELECT id FROM chef_location_access WHERE chef_id = $1 AND location_id = $2',
+      [req.user.id, kitchenLocationId]
+    );
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
+    }
+
+    // Check if chef has shared their profile with the location and it's been approved
+    let profileResult;
+    try {
+      profileResult = await pool.query(
+        'SELECT * FROM chef_location_profiles WHERE chef_id = $1 AND location_id = $2',
+        [req.user.id, kitchenLocationId]
+      );
+    } catch (error) {
+      // If table doesn't exist, treat as if no profile
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        profileResult = { rows: [] };
+      } else {
+        throw error;
+      }
+    }
+    
+    if (profileResult.rows.length === 0) {
+      return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
+    }
+    
+    const profile = profileResult.rows[0];
+    if (profile.status !== 'approved') {
+      return res.status(403).json({ 
+        error: profile.status === 'pending' 
+          ? "Your profile is pending manager approval. Please wait for approval before booking."
+          : "Your profile was rejected. Please contact the location manager for more information."
+      });
+    }
+
     // Determine slots requested (1-hour slots)
     const [sH, sM] = String(startTime).split(':').map(Number);
     const [eH, eM] = String(endTime).split(':').map(Number);
@@ -12181,53 +12232,41 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
   }
 });
 
-// Chef: Share profile with kitchen
+// Chef: Share profile with location (NEW - location-based)
 app.post("/api/chef/share-profile", requireChef, async (req, res) => {
   try {
-    const { kitchenId } = req.body;
+    const { locationId } = req.body;
     const chefId = req.user.id;
     
-    if (!kitchenId) {
-      return res.status(400).json({ error: "kitchenId is required" });
+    if (!locationId) {
+      return res.status(400).json({ error: "locationId is required" });
     }
 
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
     }
-
-    // Get the kitchen's location
-    const kitchenResult = await pool.query(
-      'SELECT location_id FROM kitchens WHERE id = $1',
-      [kitchenId]
-    );
-    
-    if (kitchenResult.rows.length === 0) {
-      return res.status(400).json({ error: "Kitchen not found" });
-    }
-    
-    const kitchenLocationId = kitchenResult.rows[0].location_id;
     
     // Check if chef has admin-granted access to this location
     const accessCheck = await pool.query(
       'SELECT id FROM chef_location_access WHERE chef_id = $1 AND location_id = $2',
-      [chefId, kitchenLocationId]
+      [chefId, locationId]
     );
     
     if (accessCheck.rows.length === 0) {
-      return res.status(403).json({ error: "You don't have access to kitchens in this location. Please contact an administrator." });
+      return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
     }
 
     // Check if profile already exists (handle case if table doesn't exist yet)
     let existingProfile;
     try {
       existingProfile = await pool.query(
-        'SELECT id FROM chef_kitchen_profiles WHERE chef_id = $1 AND kitchen_id = $2',
-        [chefId, kitchenId]
+        'SELECT id FROM chef_location_profiles WHERE chef_id = $1 AND location_id = $2',
+        [chefId, locationId]
       );
     } catch (error) {
       // If table doesn't exist, treat as if no profile exists and will create one
       if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
-        console.log(`[Share Profile] chef_kitchen_profiles table doesn't exist yet`);
+        console.log(`[Share Profile] chef_location_profiles table doesn't exist yet`);
         existingProfile = { rows: [] };
       } else {
         throw error;
@@ -12237,14 +12276,14 @@ app.post("/api/chef/share-profile", requireChef, async (req, res) => {
     if (existingProfile.rows.length > 0) {
       // Profile already shared, return existing profile
       const profileResult = await pool.query(
-        'SELECT * FROM chef_kitchen_profiles WHERE id = $1',
+        'SELECT * FROM chef_location_profiles WHERE id = $1',
         [existingProfile.rows[0].id]
       );
       const profile = profileResult.rows[0];
       return res.json({
         id: profile.id,
         chefId: profile.chef_id,
-        kitchenId: profile.kitchen_id,
+        locationId: profile.location_id,
         status: profile.status,
         sharedAt: profile.shared_at,
         reviewedBy: profile.reviewed_by,
@@ -12255,17 +12294,17 @@ app.post("/api/chef/share-profile", requireChef, async (req, res) => {
 
     // Create new profile (status: 'pending')
     const insertResult = await pool.query(
-      `INSERT INTO chef_kitchen_profiles (chef_id, kitchen_id, status, shared_at)
+      `INSERT INTO chef_location_profiles (chef_id, location_id, status, shared_at)
        VALUES ($1, $2, 'pending', NOW())
        RETURNING *`,
-      [chefId, kitchenId]
+      [chefId, locationId]
     );
     
     const profile = insertResult.rows[0];
     res.status(201).json({
       id: profile.id,
       chefId: profile.chef_id,
-      kitchenId: profile.kitchen_id,
+      locationId: profile.location_id,
       status: profile.status,
       sharedAt: profile.shared_at,
       reviewedBy: profile.reviewed_by,
@@ -12309,50 +12348,50 @@ app.get("/api/chef/profiles", requireChef, async (req, res) => {
     
     const locationIds = locationAccessResult.rows.map(row => row.location_id);
     
-    // Get all kitchens in these locations that are active
-    const kitchensResult = await pool.query(
-      `SELECT k.id, k.name, k.description, k.location_id, k.is_active
-       FROM kitchens k
-       WHERE k.location_id = ANY($1::int[])
-       AND (k.is_active IS NULL OR k.is_active = true)
-       ORDER BY k.name`,
+    // Get all locations with details
+    const locationsResult = await pool.query(
+      `SELECT id, name, address FROM locations WHERE id = ANY($1::int[]) ORDER BY name`,
       [locationIds]
     );
     
-    const kitchenIds = kitchensResult.rows.map(k => k.id);
-    
-    if (kitchenIds.length === 0) {
+    if (locationsResult.rows.length === 0) {
       return res.json([]);
     }
     
-    // Get profiles for all accessible kitchens (handle case if table doesn't exist yet)
+    // Get profiles for all accessible locations (handle case if table doesn't exist yet)
     let profilesResult;
     try {
       profilesResult = await pool.query(
-        `SELECT * FROM chef_kitchen_profiles 
-         WHERE chef_id = $1 AND kitchen_id = ANY($2::int[])
-         ORDER BY kitchen_id`,
-        [chefId, kitchenIds]
+        `SELECT * FROM chef_location_profiles 
+         WHERE chef_id = $1 AND location_id = ANY($2::int[])
+         ORDER BY location_id`,
+        [chefId, locationIds]
       );
     } catch (error) {
       // If table doesn't exist, return profiles with null status
       if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
-        console.log(`[Chef Profiles] chef_kitchen_profiles table doesn't exist yet, returning null profiles`);
+        console.log(`[Chef Profiles] chef_location_profiles table doesn't exist yet, returning null profiles`);
         profilesResult = { rows: [] };
       } else {
         throw error;
       }
     }
     
-    // Build response with kitchen info and profile status
-    const response = kitchenIds.map(kitchenId => {
-      const profile = profilesResult.rows.find(p => p.kitchen_id === kitchenId);
+    // Build response with location info and profile status
+    const response = locationIds.map(locationId => {
+      const profile = profilesResult.rows.find(p => p.location_id === locationId);
+      const location = locationsResult.rows.find(l => l.id === locationId);
       return {
-        kitchenId,
+        locationId,
+        location: location ? {
+          id: location.id,
+          name: location.name,
+          address: location.address,
+        } : null,
         profile: profile ? {
           id: profile.id,
           chefId: profile.chef_id,
-          kitchenId: profile.kitchen_id,
+          locationId: profile.location_id,
           status: profile.status,
           sharedAt: profile.shared_at,
           reviewedBy: profile.reviewed_by,

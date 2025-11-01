@@ -70,7 +70,7 @@ export function useChefProfiles() {
   });
 
   const shareProfile = useMutation({
-    mutationFn: async (kitchenId: number) => {
+    mutationFn: async (locationId: number) => {
       const headers = await getAuthHeaders();
       const response = await fetch("/api/chef/share-profile", {
         method: "POST",
@@ -79,7 +79,7 @@ export function useChefProfiles() {
           ...headers,
         },
         credentials: "include",
-        body: JSON.stringify({ kitchenId }),
+        body: JSON.stringify({ locationId }),
       });
       
       if (!response.ok) {
