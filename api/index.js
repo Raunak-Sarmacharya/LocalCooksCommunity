@@ -10712,13 +10712,66 @@ app.get("/api/admin/managers", async (req, res) => {
       return res.status(403).json({ error: "Admin access required" });
     }
 
-    // Fetch all users with missing role from database
+    // Fetch all managers with their locations and notification emails
     if (pool) {
+      // Get managers with their locations and notification emails
       const result = await pool.query(
-        'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
+        `SELECT 
+          u.id, 
+          u.username, 
+          u.role,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'locationId', l.id,
+                'locationName', l.name,
+                'notificationEmail', l.notification_email
+              )
+            ) FILTER (WHERE l.id IS NOT NULL),
+            '[]'::json
+          ) as locations
+        FROM users u
+        LEFT JOIN locations l ON l.manager_id = u.id
+        WHERE u.role = $1
+        GROUP BY u.id, u.username, u.role
+        ORDER BY u.username ASC`,
         ['manager']
       );
-      return res.json(result.rows);
+      
+      // Transform the result to include notification emails
+      const managersWithEmails = result.rows.map((row) => {
+        // Parse JSON if it's a string, otherwise use as-is
+        let locations = row.locations;
+        if (typeof locations === 'string') {
+          try {
+            locations = JSON.parse(locations);
+          } catch (e) {
+            console.warn(`Failed to parse locations JSON for manager ${row.id}:`, e);
+            locations = [];
+          }
+        }
+        
+        // Ensure locations is an array
+        if (!Array.isArray(locations)) {
+          locations = [];
+        }
+        
+        // Map to consistent structure (camelCase)
+        const mappedLocations = locations.map((loc) => ({
+          locationId: loc.locationId || loc.location_id || loc.id,
+          locationName: loc.locationName || loc.location_name || loc.name,
+          notificationEmail: loc.notificationEmail || loc.notification_email || null
+        }));
+        
+        return {
+          id: row.id,
+          username: row.username,
+          role: row.role,
+          locations: mappedLocations
+        };
+      });
+      
+      return res.json(managersWithEmails);
     } else {
       return res.json([]);
     }
