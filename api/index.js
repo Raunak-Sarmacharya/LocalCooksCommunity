@@ -12749,6 +12749,71 @@ app.post("/api/chef/share-profile", requireChef, async (req, res) => {
     );
     
     const profile = insertResult.rows[0];
+    
+    // Send email to manager when chef shares profile for kitchen access
+    if (profile && profile.status === 'pending') {
+      try {
+        // Get location details with notification email
+        const locationResult = await pool.query(
+          `SELECT id, name, notification_email, manager_id
+           FROM locations
+           WHERE id = $1`,
+          [locationId]
+        );
+        
+        if (locationResult.rows.length > 0) {
+          const location = locationResult.rows[0];
+          const managerEmail = location.notification_email;
+          
+          if (managerEmail) {
+            // Get chef details
+            const chefResult = await pool.query(
+              `SELECT id, username FROM users WHERE id = $1`,
+              [chefId]
+            );
+            
+            const chef = chefResult.rows[0];
+            if (chef) {
+              // Get chef's application details for email
+              const appResult = await pool.query(
+                `SELECT id, full_name, email
+                 FROM applications
+                 WHERE user_id = $1 AND status = 'approved'
+                 ORDER BY created_at DESC
+                 LIMIT 1`,
+                [chefId]
+              );
+              
+              const chefApp = appResult.rows[0];
+              const chefName = chefApp && chefApp.full_name 
+                ? chefApp.full_name 
+                : chef.username || 'Chef';
+              const chefEmail = chefApp && chefApp.email 
+                ? chefApp.email 
+                : chef.username || 'chef@example.com';
+              
+              // Import email functions
+              const { sendEmail, generateChefProfileRequestEmail } = await import('../server/email.js');
+              
+              const emailContent = generateChefProfileRequestEmail({
+                managerEmail: managerEmail,
+                chefName: chefName,
+                chefEmail: chefEmail,
+                locationName: location.name || 'Location',
+                locationId: locationId
+              });
+              
+              await sendEmail(emailContent);
+              console.log(`✅ Chef profile request notification sent to manager: ${managerEmail}`);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending chef profile request notification:", emailError);
+        // Don't fail the profile share if email fails
+      }
+    }
+    
     res.status(201).json({
       id: profile.id,
       chefId: profile.chef_id,
