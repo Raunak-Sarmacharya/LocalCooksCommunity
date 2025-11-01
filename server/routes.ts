@@ -14,7 +14,8 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
-import { pool } from "./db";
+import { pool, db } from "./db";
+import { chefKitchenAccess, users } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes and middleware
@@ -3431,6 +3432,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager: Get chef profiles for review
+  app.get("/api/manager/chef-profiles", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const profiles = await firebaseStorage.getChefProfilesForManager(user.id);
+      res.json(profiles);
+    } catch (error: any) {
+      console.error("Error getting chef profiles for manager:", error);
+      res.status(500).json({ error: error.message || "Failed to get profiles" });
+    }
+  });
+
+  // Manager: Approve or reject chef profile
+  app.put("/api/manager/chef-profiles/:id/status", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const profileId = parseInt(req.params.id);
+      const { status, reviewFeedback } = req.body;
+      
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+      }
+
+      const updated = await firebaseStorage.updateChefKitchenProfileStatus(
+        profileId,
+        status,
+        user.id,
+        reviewFeedback
+      );
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating chef profile status:", error);
+      res.status(500).json({ error: error.message || "Failed to update profile status" });
+    }
+  });
+
   // Get bookings for a specific kitchen (for availability management)
   app.get("/api/manager/kitchens/:kitchenId/bookings", async (req: Request, res: Response) => {
     try {
@@ -3958,15 +4018,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens with location and manager info
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      // Only return kitchens the chef has been granted access to by admin
+      const chefKitchens = await firebaseStorage.getKitchensForChef(req.user!.id);
       
-      // Filter to only return active kitchens - handle both camelCase and snake_case
-      const activeKitchens = allKitchens.filter(k => {
-        const isActive = k.isActive !== undefined ? k.isActive : (k as any).is_active;
-        return isActive !== false && isActive !== null;
-      });
-      
-      res.json(activeKitchens);
+      res.json(chefKitchens);
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
@@ -4050,6 +4105,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
+      const chefId = req.user!.id;
+      
+      // Check if chef has admin-granted access to this kitchen
+      const chefAccess = await firebaseStorage.getChefKitchenAccess(chefId);
+      const hasAccess = chefAccess.some(access => access.kitchenId === kitchenId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ error: "You don't have access to book this kitchen. Please contact an administrator." });
+      }
+      
+      // Check if chef has shared their profile and it's been approved by manager
+      const profile = await firebaseStorage.getChefKitchenProfile(chefId, kitchenId);
+      if (!profile) {
+        return res.status(403).json({ error: "You must share your profile with this kitchen before booking. Please share your profile first." });
+      }
+      
+      if (profile.status !== 'approved') {
+        return res.status(403).json({ 
+          error: profile.status === 'pending' 
+            ? "Your profile is pending manager approval. Please wait for approval before booking."
+            : "Your profile was rejected. Please contact the kitchen manager for more information."
+        });
+      }
       
       // First validate that the booking is within manager-set availability
       const bookingDateObj = new Date(bookingDate);
@@ -4303,9 +4381,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Chef: Share profile with kitchen
+  app.post("/api/chef/share-profile", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { kitchenId } = req.body;
+      const chefId = req.user!.id;
+      
+      if (!kitchenId) {
+        return res.status(400).json({ error: "kitchenId is required" });
+      }
+
+      // Check if chef has admin-granted access first
+      const chefAccess = await firebaseStorage.getChefKitchenAccess(chefId);
+      const hasAccess = chefAccess.some(access => access.kitchenId === kitchenId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ error: "You don't have access to this kitchen. Please contact an administrator." });
+      }
+
+      const profile = await firebaseStorage.shareChefProfileWithKitchen(chefId, kitchenId);
+      res.status(201).json(profile);
+    } catch (error: any) {
+      console.error("Error sharing chef profile:", error);
+      res.status(500).json({ error: error.message || "Failed to share profile" });
+    }
+  });
+
+  // Chef: Get profile status for kitchens
+  app.get("/api/chef/profiles", requireChef, async (req: Request, res: Response) => {
+    try {
+      const chefId = req.user!.id;
+      const access = await firebaseStorage.getChefKitchenAccess(chefId);
+      const kitchenIds = access.map(a => a.kitchenId);
+      
+      const profiles = await Promise.all(
+        kitchenIds.map(async (kitchenId) => {
+          const profile = await firebaseStorage.getChefKitchenProfile(chefId, kitchenId);
+          return { kitchenId, profile };
+        })
+      );
+      
+      res.json(profiles);
+    } catch (error: any) {
+      console.error("Error getting chef profiles:", error);
+      res.status(500).json({ error: error.message || "Failed to get profiles" });
+    }
+  });
+
   // ===================================
   // KITCHEN BOOKING SYSTEM - ADMIN ROUTES
   // ===================================
+
+  // Admin: Grant chef access to a kitchen
+  app.post("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { chefId, kitchenId } = req.body;
+      
+      if (!chefId || !kitchenId) {
+        return res.status(400).json({ error: "chefId and kitchenId are required" });
+      }
+
+      const access = await firebaseStorage.grantChefKitchenAccess(chefId, kitchenId, user.id);
+      res.status(201).json(access);
+    } catch (error: any) {
+      console.error("Error granting chef kitchen access:", error);
+      res.status(500).json({ error: error.message || "Failed to grant access" });
+    }
+  });
+
+  // Admin: Revoke chef access to a kitchen
+  app.delete("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { chefId, kitchenId } = req.body;
+      
+      if (!chefId || !kitchenId) {
+        return res.status(400).json({ error: "chefId and kitchenId are required" });
+      }
+
+      await firebaseStorage.revokeChefKitchenAccess(chefId, kitchenId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error revoking chef kitchen access:", error);
+      res.status(500).json({ error: error.message || "Failed to revoke access" });
+    }
+  });
+
+  // Admin: Get all chefs with their kitchen access
+  app.get("/api/admin/chef-kitchen-access", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Get all chefs from database
+      const allUsers = await db.select().from(users);
+      const chefs = allUsers.filter(u => u.isChef);
+      
+      // Get all kitchens
+      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      
+      // Get all access records
+      const allAccess = await db.select().from(chefKitchenAccess);
+      
+      // Build response with chef access info
+      const response = chefs.map(chef => {
+        const chefAccess = allAccess.filter(a => a.chefId === chef.id);
+        const accessibleKitchens = chefAccess.map(access => {
+          const kitchen = allKitchens.find(k => (k as any).id === access.kitchenId);
+          return kitchen ? { ...kitchen, accessGrantedAt: access.grantedAt } : null;
+        }).filter(Boolean);
+        
+        return {
+          chef: {
+            id: chef.id,
+            username: chef.username,
+          },
+          accessibleKitchens,
+        };
+      });
+      
+      res.json(response);
+    } catch (error: any) {
+      console.error("Error getting chef kitchen access:", error);
+      res.status(500).json({ error: error.message || "Failed to get access" });
+    }
+  });
 
   // Create manager account
   app.post("/api/admin/managers", async (req: Request, res: Response) => {

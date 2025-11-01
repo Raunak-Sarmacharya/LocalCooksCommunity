@@ -9,7 +9,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefKitchenProfiles } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 
@@ -698,6 +698,35 @@ export class FirebaseStorage {
       return kitchensWithDetails;
     } catch (error) {
       console.error('Error getting kitchens with location and manager:', error);
+      throw error;
+    }
+  }
+
+  // Get kitchens that a chef has access to (admin must grant access first)
+  async getKitchensForChef(chefId: number): Promise<any[]> {
+    try {
+      // Get all kitchens chef has access to
+      const chefAccess = await db
+        .select()
+        .from(chefKitchenAccess)
+        .where(eq(chefKitchenAccess.chefId, chefId));
+      
+      if (chefAccess.length === 0) {
+        return []; // Chef has no access to any kitchens
+      }
+      
+      const kitchenIds = chefAccess.map(access => access.kitchenId);
+      
+      // Get all kitchens with location and manager details
+      const allKitchensWithDetails = await this.getAllKitchensWithLocationAndManager();
+      
+      // Filter to only kitchens chef has access to and that are active
+      return allKitchensWithDetails.filter(kitchen => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : (kitchen as any).is_active;
+        return kitchenIds.includes((kitchen as any).id) && isActive !== false && isActive !== null;
+      });
+    } catch (error) {
+      console.error('Error getting kitchens for chef:', error);
       throw error;
     }
   }
@@ -1492,6 +1521,235 @@ export class FirebaseStorage {
     } catch (error) {
       console.error('Error checking booking conflict:', error);
       return true; // Return true on error to prevent double booking
+    }
+  }
+
+  // ===== CHEF KITCHEN ACCESS MANAGEMENT (Admin grants access) =====
+
+  async grantChefKitchenAccess(chefId: number, kitchenId: number, grantedBy: number): Promise<any> {
+    try {
+      const [access] = await db
+        .insert(chefKitchenAccess)
+        .values({
+          chefId,
+          kitchenId,
+          grantedBy,
+        })
+        .onConflictDoNothing()
+        .returning();
+      
+      return access;
+    } catch (error) {
+      console.error('Error granting chef kitchen access:', error);
+      throw error;
+    }
+  }
+
+  async revokeChefKitchenAccess(chefId: number, kitchenId: number): Promise<void> {
+    try {
+      await db
+        .delete(chefKitchenAccess)
+        .where(
+          and(
+            eq(chefKitchenAccess.chefId, chefId),
+            eq(chefKitchenAccess.kitchenId, kitchenId)
+          )
+        );
+    } catch (error) {
+      console.error('Error revoking chef kitchen access:', error);
+      throw error;
+    }
+  }
+
+  async getChefKitchenAccess(chefId: number): Promise<any[]> {
+    try {
+      return await db
+        .select()
+        .from(chefKitchenAccess)
+        .where(eq(chefKitchenAccess.chefId, chefId));
+    } catch (error) {
+      console.error('Error getting chef kitchen access:', error);
+      throw error;
+    }
+  }
+
+  // ===== CHEF KITCHEN PROFILE MANAGEMENT (Chef shares, Manager approves) =====
+
+  async shareChefProfileWithKitchen(chefId: number, kitchenId: number): Promise<any> {
+    try {
+      // Check if profile already shared
+      const existing = await db
+        .select()
+        .from(chefKitchenProfiles)
+        .where(
+          and(
+            eq(chefKitchenProfiles.chefId, chefId),
+            eq(chefKitchenProfiles.kitchenId, kitchenId)
+          )
+        );
+      
+      if (existing.length > 0) {
+        // Update status back to pending if it was rejected
+        if (existing[0].status === 'rejected') {
+          const [updated] = await db
+            .update(chefKitchenProfiles)
+            .set({
+              status: 'pending',
+              sharedAt: new Date(),
+              reviewedBy: null,
+              reviewedAt: null,
+              reviewFeedback: null,
+            })
+            .where(eq(chefKitchenProfiles.id, existing[0].id))
+            .returning();
+          return updated;
+        }
+        return existing[0]; // Already shared
+      }
+      
+      // Create new profile sharing
+      const [profile] = await db
+        .insert(chefKitchenProfiles)
+        .values({
+          chefId,
+          kitchenId,
+          status: 'pending',
+        })
+        .returning();
+      
+      return profile;
+    } catch (error) {
+      console.error('Error sharing chef profile with kitchen:', error);
+      throw error;
+    }
+  }
+
+  async updateChefKitchenProfileStatus(
+    profileId: number,
+    status: 'approved' | 'rejected',
+    reviewedBy: number,
+    reviewFeedback?: string
+  ): Promise<any> {
+    try {
+      const [updated] = await db
+        .update(chefKitchenProfiles)
+        .set({
+          status,
+          reviewedBy,
+          reviewedAt: new Date(),
+          reviewFeedback: reviewFeedback || null,
+        })
+        .where(eq(chefKitchenProfiles.id, profileId))
+        .returning();
+      
+      return updated;
+    } catch (error) {
+      console.error('Error updating chef kitchen profile status:', error);
+      throw error;
+    }
+  }
+
+  async getChefKitchenProfile(chefId: number, kitchenId: number): Promise<any | undefined> {
+    try {
+      const [profile] = await db
+        .select()
+        .from(chefKitchenProfiles)
+        .where(
+          and(
+            eq(chefKitchenProfiles.chefId, chefId),
+            eq(chefKitchenProfiles.kitchenId, kitchenId)
+          )
+        );
+      
+      return profile || undefined;
+    } catch (error) {
+      console.error('Error getting chef kitchen profile:', error);
+      throw error;
+    }
+  }
+
+  async getChefProfilesForManager(managerId: number): Promise<any[]> {
+    try {
+      // Get all locations managed by this manager
+      const managerLocations = await db
+        .select()
+        .from(locations)
+        .where(eq(locations.managerId, managerId));
+      
+      if (managerLocations.length === 0) {
+        return [];
+      }
+      
+      const locationIds = managerLocations.map(loc => (loc as any).id);
+      
+      // Get all kitchens for these locations
+      const managerKitchens = await db
+        .select()
+        .from(kitchens)
+        .where(inArray(kitchens.locationId, locationIds));
+      
+      if (managerKitchens.length === 0) {
+        return [];
+      }
+      
+      const kitchenIds = managerKitchens.map(k => (k as any).id);
+      
+      // Get all chef profiles for these kitchens
+      const profiles = await db
+        .select()
+        .from(chefKitchenProfiles)
+        .where(inArray(chefKitchenProfiles.kitchenId, kitchenIds));
+      
+      // Enrich with chef, kitchen, and application details
+      const enrichedProfiles = await Promise.all(
+        profiles.map(async (profile) => {
+          const chef = await this.getUser(profile.chefId);
+          const kitchen = await db
+            .select()
+            .from(kitchens)
+            .where(eq(kitchens.id, profile.kitchenId))
+            .then(rows => rows[0]);
+          
+          // Get chef's latest approved application
+          const chefApplications = await db
+            .select()
+            .from(applications)
+            .where(
+              and(
+                eq(applications.userId, profile.chefId),
+                eq(applications.status, 'approved')
+              )
+            )
+            .orderBy(asc(applications.createdAt));
+          
+          const latestApp = chefApplications.length > 0 ? chefApplications[chefApplications.length - 1] : null;
+          
+          return {
+            ...profile,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username,
+            } : null,
+            kitchen: kitchen ? {
+              id: (kitchen as any).id,
+              name: (kitchen as any).name,
+            } : null,
+            application: latestApp ? {
+              id: (latestApp as any).id,
+              fullName: (latestApp as any).fullName,
+              email: (latestApp as any).email,
+              phone: (latestApp as any).phone,
+              foodSafetyLicenseUrl: (latestApp as any).foodSafetyLicenseUrl,
+              foodEstablishmentCertUrl: (latestApp as any).foodEstablishmentCertUrl,
+            } : null,
+          };
+        })
+      );
+      
+      return enrichedProfiles;
+    } catch (error) {
+      console.error('Error getting chef profiles for manager:', error);
+      throw error;
     }
   }
 }

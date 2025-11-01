@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
@@ -14,6 +14,7 @@ import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
+import ManagerChefProfiles from "./ManagerChefProfiles";
 
 interface Location {
   id: number;
@@ -38,7 +39,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -199,6 +200,7 @@ export default function ManagerBookingDashboard() {
     { id: 'overview' as ViewType, label: 'Overview', icon: Calendar },
     { id: 'bookings' as ViewType, label: 'Bookings', icon: BookOpen },
     { id: 'availability' as ViewType, label: 'Availability', icon: Clock },
+    { id: 'chef-profiles' as ViewType, label: 'Chef Profiles', icon: Users },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
   ];
 
@@ -309,6 +311,10 @@ export default function ManagerBookingDashboard() {
               
               {activeView === 'availability' && selectedLocation && (
                 <KitchenAvailabilityManagement embedded={true} />
+              )}
+              
+              {activeView === 'chef-profiles' && (
+                <ManagerChefProfiles embedded={true} />
               )}
               
               {activeView === 'settings' && selectedLocation && (

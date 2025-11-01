@@ -1,5 +1,6 @@
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import PromoCodeSender from "@/components/admin/PromoCodeSender";
+import ChefKitchenAccessManager from "@/components/admin/ChefKitchenAccessManager";
 import {
     formatApplicationStatus,
     formatCertificationStatus,
@@ -1091,7 +1092,7 @@ function AdminDashboard() {
           >
             {/* Main Admin Tabs */}
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 rounded-xl bg-gray-100 p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-5 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
                   Chef Applications
@@ -1103,6 +1104,10 @@ function AdminDashboard() {
                 <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
                   <Gift className="h-4 w-4" />
                   Send Promo Codes
+                </TabsTrigger>
+                <TabsTrigger value="chef-kitchen-access" className="flex items-center gap-2 rounded-lg">
+                  <UserIcon className="h-4 w-4" />
+                  Chef Kitchen Access
                 </TabsTrigger>
                 <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
                   <ExternalLink className="h-4 w-4" />
@@ -1379,6 +1384,10 @@ function AdminDashboard() {
               {/* Promo Codes Tab Content */}
               <TabsContent value="promos" className="mt-0">
                 <PromoCodeSender />
+              </TabsContent>
+
+              <TabsContent value="chef-kitchen-access" className="mt-0">
+                <ChefKitchenAccessManager />
               </TabsContent>
 
               <TabsContent value="kitchen-management" className="mt-0">
