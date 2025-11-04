@@ -112,6 +112,7 @@ export class MemStorage implements IStorage {
       firebaseUid: null,
       isVerified: true,
       has_seen_welcome: true,
+      isManager: false,
       isChef: false,
       isDeliveryPartner: false,
       applicationType: null,

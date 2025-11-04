@@ -9,14 +9,15 @@ import { Link } from "wouter";
 
 export default function ShareProfile() {
   const { profiles, isLoading, shareProfile, refetch } = useChefProfiles();
-  const { data: accessData } = useAdminChefKitchenAccess(); // This gives us locations the chef has access to
+  const { accessData } = useAdminChefKitchenAccess(); // This gives us locations the chef has access to
   const { toast } = useToast();
 
   // Get locations the chef has access to from profiles
+  // Note: profiles have kitchenId, we need to map to locations
   const accessibleLocations = profiles.map(p => ({
-    id: p.locationId,
-    name: p.location?.name || `Location ${p.locationId}`,
-    address: p.location?.address,
+    id: p.kitchenId, // ChefProfile has kitchenId, not locationId
+    name: `Kitchen ${p.kitchenId}`, // Location name not directly available in ChefProfile
+    address: undefined,
     profile: p.profile,
   }));
 
@@ -38,7 +39,7 @@ export default function ShareProfile() {
   };
 
   const getProfileStatus = (locationId: number) => {
-    const profile = profiles.find(p => p.locationId === locationId);
+    const profile = profiles.find(p => p.kitchenId === locationId);
     return profile?.profile;
   };
 

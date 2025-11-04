@@ -504,8 +504,8 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
         (a.endTime ?? a.end_time)
       );
       if (openOverride) {
-        const start = (openOverride.startTime ?? openOverride.start_time)?.slice(0, 5) || '';
-        const end = (openOverride.endTime ?? openOverride.end_time)?.slice(0, 5) || '';
+        const start = (openOverride.startTime ?? (openOverride as any).start_time)?.slice(0, 5) || '';
+        const end = (openOverride.endTime ?? (openOverride as any).end_time)?.slice(0, 5) || '';
         return { 
           isOpen: true, 
           hours: `${formatTimeDisplay(start)} - ${formatTimeDisplay(end)}`, 

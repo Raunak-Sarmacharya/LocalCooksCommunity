@@ -738,7 +738,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
         role: req.body.role || "chef", // Base role but don't set flags
         isChef: false, // No default roles - user must choose
-        isDeliveryPartner: false // No default roles - user must choose
+        isDeliveryPartner: false, // No default roles - user must choose
+        isManager: false
       });
       
       // Log the user in
@@ -3446,7 +3447,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Get all chefs who have bookings at this kitchen
           const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
-          const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+          const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
           
           // Send emails to chefs
           for (const chefId of uniqueChefIds) {
@@ -3963,7 +3964,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Get all chefs who have bookings at this kitchen
           const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
-          const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+          const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
           
           const changeType = isAvailable ? 'Special Availability Added' : 'Kitchen Closed for Date';
           const details = isAvailable 
@@ -4097,7 +4098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Get all chefs who have bookings at this kitchen
             const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
-            const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+            const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
             
             const changeType = isAvailable !== undefined 
               ? (isAvailable ? 'Date Override Updated - Special Availability' : 'Date Override Updated - Kitchen Closed')
@@ -4333,19 +4334,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const chefId = req.user!.id;
       
       // Check if chef has admin-granted access to the location containing this kitchen
-      const kitchenLocationId = await firebaseStorage.getKitchenLocation(kitchenId);
-      if (!kitchenLocationId) {
+      const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
+      if (!kitchenLocationId1) {
         return res.status(400).json({ error: "Kitchen location not found" });
       }
       
-      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId);
+      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId1);
       
       if (!hasLocationAccess) {
         return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
       }
       
       // Check if chef has shared their profile with the location and it's been approved by manager
-      const profile = await firebaseStorage.getChefLocationProfile(chefId, kitchenLocationId);
+      const profile = await firebaseStorage.getChefLocationProfile(chefId, kitchenLocationId1);
       if (!profile) {
         return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
       }
@@ -4383,11 +4384,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get minimum booking window from location
-      const kitchenLocationId = await firebaseStorage.getKitchenLocation(kitchenId);
+      const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
       let minimumBookingWindowHours = 2; // Default
       
-      if (kitchenLocationId) {
-        const location = await firebaseStorage.getLocationById(kitchenLocationId);
+      if (kitchenLocationId2) {
+        const location = await firebaseStorage.getLocationById(kitchenLocationId2);
         if (location && (location as any).minimumBookingWindowHours) {
           minimumBookingWindowHours = (location as any).minimumBookingWindowHours;
         }
@@ -5839,7 +5840,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Get all chefs who have bookings at this kitchen
             const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
-            const uniqueChefIds = [...new Set(bookings.map(b => b.chefId))];
+            const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
             
             const changes = changesList.join(', ');
             

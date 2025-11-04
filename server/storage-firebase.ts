@@ -62,7 +62,7 @@ export class FirebaseStorage {
     try {
       const [updated] = await db
         .update(users)
-        .set(updates)
+        .set(updates as any)
         .where(eq(users.id, id))
         .returning();
       return updated || undefined;
@@ -749,9 +749,9 @@ export class FirebaseStorage {
   async deleteKitchen(id: number): Promise<void> {
     try {
       // Check if kitchen has bookings first (foreign key constraint requires this)
-      const kitchenBookings = await db.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
-      if (kitchenBookings.length > 0) {
-        throw new Error(`Cannot delete kitchen: It has ${kitchenBookings.length} booking(s). Please cancel or reassign bookings first.`);
+      const existingBookings = await db.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
+      if (existingBookings.length > 0) {
+        throw new Error(`Cannot delete kitchen: It has ${existingBookings.length} booking(s). Please cancel or reassign bookings first.`);
       }
       
       // Use transaction to ensure atomicity - all related data deleted together (best practice per Drizzle ORM)
