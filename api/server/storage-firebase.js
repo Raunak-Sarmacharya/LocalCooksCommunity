@@ -784,17 +784,36 @@ export class FirebaseStorage {
       
       console.log(`   Found ${allOverrides.length} total overrides for kitchen ${kitchenId}`);
       
-      // Find override for the specific date
-      const override = allOverrides.find(o => {
+      // Find all overrides for the specific date
+      const dateOverrides = allOverrides.filter(o => {
         const overrideDate = new Date(o.specificDate);
         overrideDate.setHours(0, 0, 0, 0);
         const matches = overrideDate.getTime() === targetDate.getTime();
-        console.log(`   Comparing ${overrideDate.toISOString()} === ${targetDate.toISOString()}: ${matches}`);
+        if (matches) {
+          console.log(`   Found override ID ${o.id}: isAvailable=${o.isAvailable}, startTime=${o.startTime}, endTime=${o.endTime}`);
+        }
         return matches;
       });
       
-      console.log(`   Result:`, override ? `FOUND override ID ${override.id}` : 'NO MATCH');
+      if (dateOverrides.length === 0) {
+        console.log(`   Result: NO MATCH`);
+        return undefined;
+      }
       
+      // Prioritize available overrides (isAvailable=true) with hours
+      // This handles the case where there might be both an "open" override and "closed" override
+      const availableOverride = dateOverrides.find(o => 
+        o.isAvailable === true && o.startTime && o.endTime
+      );
+      
+      if (availableOverride) {
+        console.log(`   Result: FOUND AVAILABLE override ID ${availableOverride.id}`);
+        return availableOverride;
+      }
+      
+      // If no available override, return the first override (could be closed or incomplete)
+      const override = dateOverrides[0];
+      console.log(`   Result: FOUND override ID ${override.id} (isAvailable=${override.isAvailable})`);
       return override;
     } catch (error) {
       console.error('Error getting kitchen date override for specific date:', error);
