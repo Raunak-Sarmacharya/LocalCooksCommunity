@@ -3204,7 +3204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid location ID" });
       }
       
-      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail } = req.body;
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl } = req.body;
       
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
@@ -3212,6 +3212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         defaultDailyBookingLimit,
         minimumBookingWindowHours,
         notificationEmail,
+        logoUrl,
         locationId: locationIdNum
       });
 
@@ -3285,6 +3286,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           oldEmail: oldNotificationEmail
         });
       }
+      if (logoUrl !== undefined) {
+        // Set to null if empty string, otherwise use the value
+        updates.logoUrl = logoUrl && logoUrl.trim() !== '' ? logoUrl.trim() : null;
+        console.log('[PUT] Setting logoUrl:', logoUrl);
+      }
 
       const updatedResults = await db
         .update(locations)
@@ -3311,11 +3317,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Map snake_case fields to camelCase for the frontend
       const response = {
         ...updated,
+        logoUrl: (updated as any).logoUrl || (updated as any).logo_url || null,
         notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
         cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours,
         cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
         defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
-        minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 2,
+        minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 1,
       };
       
       // Send email to new notification email if it was changed
@@ -3366,6 +3373,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cancellationPolicyHours: (loc as any).cancellationPolicyHours || (loc as any).cancellation_policy_hours,
         cancellationPolicyMessage: (loc as any).cancellationPolicyMessage || (loc as any).cancellation_policy_message,
         defaultDailyBookingLimit: (loc as any).defaultDailyBookingLimit || (loc as any).default_daily_booking_limit,
+        minimumBookingWindowHours: (loc as any).minimumBookingWindowHours || (loc as any).minimum_booking_window_hours || 1,
+        logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
       }));
       
       // Log to verify notificationEmail is included in response
@@ -4385,7 +4394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get minimum booking window from location
       const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
-      let minimumBookingWindowHours = 2; // Default
+      let minimumBookingWindowHours = 1; // Default
       
       if (kitchenLocationId2) {
         const location = await firebaseStorage.getLocationById(kitchenLocationId2);

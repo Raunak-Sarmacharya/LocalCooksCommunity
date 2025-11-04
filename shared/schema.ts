@@ -325,7 +325,8 @@ export const locations = pgTable("locations", {
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
-  minimumBookingWindowHours: integer("minimum_booking_window_hours").default(2).notNull(),
+  minimumBookingWindowHours: integer("minimum_booking_window_hours").default(1).notNull(),
+  logoUrl: text("logo_url"), // Logo URL for the location (for manager header)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

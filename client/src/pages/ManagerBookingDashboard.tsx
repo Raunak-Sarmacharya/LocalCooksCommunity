@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
@@ -25,6 +25,7 @@ interface Location {
   defaultDailyBookingLimit?: number;
   notificationEmail?: string;
   minimumBookingWindowHours?: number;
+  logoUrl?: string;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -109,15 +110,16 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
       defaultDailyBookingLimit?: number;
       minimumBookingWindowHours?: number;
       notificationEmail?: string;
+      logoUrl?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail };
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
       
@@ -766,8 +768,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
   );
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
-  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 2);
+  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
+  const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
@@ -776,7 +780,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
     );
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
+    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+    setLogoUrl(location.logoUrl || '');
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
@@ -788,7 +793,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setNotificationEmail(savedEmail);
   }, [location]);
 
-  const handleSave = () => {
+  const handleSave = (overrideLogoUrl?: string) => {
     if (!location.id) return;
     
     const payload = {
@@ -798,11 +803,46 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       defaultDailyBookingLimit: dailyBookingLimit,
       minimumBookingWindowHours: minimumBookingWindowHours,
       notificationEmail: notificationEmail || undefined,
+      logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
     };
     
     console.log('🚀 Saving location settings:', payload);
     
     onUpdateSettings.mutate(payload);
+  };
+
+  // Handle logo file upload for session-based auth (managers)
+  const handleLogoUpload = async (file: File) => {
+    setIsUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload-file', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload logo');
+      }
+      
+      const result = await response.json();
+      const uploadedUrl = result.url;
+      setLogoUrl(uploadedUrl);
+      
+      // Auto-save after upload with the uploaded URL
+      handleSave(uploadedUrl);
+      
+      return uploadedUrl;
+    } catch (error: any) {
+      console.error('Logo upload error:', error);
+      throw error;
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   return (
@@ -845,7 +885,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={isUpdating}
                   className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -855,15 +895,92 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <button
                   onClick={() => {
                     setNotificationEmail(location.notificationEmail || '');
+                    setLogoUrl(location.logoUrl || '');
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Reset
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Location Logo Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <ImageIcon className="h-5 w-5 text-green-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Location Logo</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Upload your kitchen location logo to display in the manager header alongside the Local Cooks logo.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Logo Image
+                </label>
+                {logoUrl ? (
+                  <div className="flex items-center gap-4 mb-4">
+                    <img 
+                      src={logoUrl} 
+                      alt="Location logo" 
+                      className="h-16 w-auto object-contain border border-gray-200 rounded-lg p-2 bg-white"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600">Current logo</p>
+                      <button
+                        onClick={() => setLogoUrl('')}
+                        className="text-sm text-red-600 hover:text-red-700 mt-1"
+                      >
+                        Remove logo
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleLogoUpload(file).catch((error) => {
+                          console.error('Logo upload failed:', error);
+                        });
+                      }
+                    }}
+                    disabled={isUploadingLogo}
+                    className="hidden"
+                    id="logo-upload"
+                  />
+                  <label
+                    htmlFor="logo-upload"
+                    className="cursor-pointer flex flex-col items-center gap-2"
+                  >
+                    {isUploadingLogo ? (
+                      <>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                        <span className="text-sm text-gray-600">Uploading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 text-gray-400" />
+                        <span className="text-sm font-medium text-green-600">Click to upload logo</span>
+                        <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB)</span>
+                      </>
+                    )}
+                  </label>
+                </div>
+                <p className="text-xs text-gray-600 mt-2">
+                  Logo will appear in the manager header next to Local Cooks logo
+                </p>
               </div>
             </div>
           </div>
@@ -916,7 +1033,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={isUpdating}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -928,7 +1045,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -974,7 +1091,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={isUpdating}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -986,7 +1103,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+                    setLogoUrl(location.logoUrl || '');
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -1018,21 +1136,21 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   min="0"
                   max="168"
                   value={minimumBookingWindowHours}
-                  onChange={(e) => setMinimumBookingWindowHours(parseInt(e.target.value) || 2)}
+                  onChange={(e) => setMinimumBookingWindowHours(parseInt(e.target.value) || 1)}
                   className="w-full max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 />
                 <p className="text-xs text-gray-600 mt-1">
-                  Chefs must book at least this many hours before the booking time (0 = no restrictions, default: 2 hours)
+                  Chefs must book at least this many hours before the booking time (0 = no restrictions, default: 1 hour)
                 </p>
                 <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
                   <Info className="h-3 w-3 inline mr-1" />
-                  <strong>Example:</strong> With 2 hours, if it's 1:00 PM, chefs can only book times starting from 3:00 PM onwards.
+                  <strong>Example:</strong> With 1 hour, if it's 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
                 </div>
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={isUpdating}
                   className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -1044,7 +1162,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+                    setLogoUrl(location.logoUrl || '');
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
