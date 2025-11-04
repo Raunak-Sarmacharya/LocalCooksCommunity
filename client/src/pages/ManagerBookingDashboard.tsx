@@ -122,6 +122,7 @@ export default function ManagerBookingDashboard() {
       const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
+      console.log('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
       
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/locations/${locationId}/cancellation-policy`, {
