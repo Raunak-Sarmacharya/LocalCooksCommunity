@@ -115,6 +115,7 @@ export class MemStorage implements IStorage {
       isManager: false,
       isChef: false,
       isDeliveryPartner: false,
+      isPortalUser: false,
       applicationType: null,
     };
     this.users.set(adminUser.id, adminUser);
@@ -184,6 +185,7 @@ export class MemStorage implements IStorage {
       isChef: insertUser.isChef || false,
       isDeliveryPartner: insertUser.isDeliveryPartner || false,
       isManager: insertUser.isManager || false,
+      isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
       applicationType: (insertUser as any).applicationType || null,
     };
 

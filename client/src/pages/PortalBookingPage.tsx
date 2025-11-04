@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { Building2, MapPin, Loader2, ArrowRight, Calendar, Lock } from "lucide-react";
+import { useLocation, Redirect } from "wouter";
+import { Building2, MapPin, Loader2, ArrowRight, Calendar, Lock, LogOut } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
 
 interface PublicLocation {
   id: number;
@@ -15,16 +16,66 @@ interface PublicLocation {
 
 export default function PortalBookingPage() {
   const [, setLocation] = useLocation();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  // Fetch all public locations
+  // Check authentication
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch("/api/user-session", {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const user = await response.json();
+          const isPortalUser = user?.isPortalUser || user?.is_portal_user;
+          setIsAuthenticated(isPortalUser);
+          if (!isPortalUser) {
+            setIsAuthenticated(false);
+          }
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        setIsAuthenticated(false);
+      }
+    };
+    checkAuth();
+  }, []);
+
+  // Fetch user's assigned location (requires authentication)
   const { data: locations, isLoading, error } = useQuery<PublicLocation[]>({
-    queryKey: ["/api/public/locations"],
+    queryKey: ["/api/portal/locations"],
     queryFn: async () => {
-      const response = await fetch("/api/public/locations");
-      if (!response.ok) throw new Error("Failed to fetch locations");
+      const response = await fetch("/api/portal/locations", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Authentication required");
+        }
+        throw new Error("Failed to fetch locations");
+      }
       return response.json();
     },
+    enabled: isAuthenticated === true,
   });
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      setLocation("/portal/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  // Redirect to login if not authenticated
+  if (isAuthenticated === false) {
+    return <Redirect to="/portal/login" />;
+  }
 
   const handleLocationClick = (slug: string) => {
     setLocation(`/portal/${slug}`);
@@ -60,11 +111,12 @@ export default function PortalBookingPage() {
                 Book a Kitchen
               </Button>
               <Button
-                onClick={() => setLocation("/manager/login")}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+                onClick={handleLogout}
+                variant="outline"
+                className="flex items-center gap-2"
               >
-                <Lock className="h-4 w-4" />
-                Manager Login
+                <LogOut className="h-4 w-4" />
+                Logout
               </Button>
             </div>
           </div>
@@ -80,17 +132,17 @@ export default function PortalBookingPage() {
               <Building2 className="h-8 w-8 text-blue-600" />
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-              Commercial Kitchen Booking
+              Your Assigned Location
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Select a location below to browse available kitchens and book your time slot.
+              Browse available kitchens at your assigned location and book your time slot.
             </p>
           </div>
 
           {/* Featured Locations Section */}
           <div className="mb-16">
             <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
-              Featured Locations
+              Your Location
             </h3>
 
           {/* Locations List */}

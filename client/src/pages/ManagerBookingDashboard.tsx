@@ -16,6 +16,7 @@ import Footer from "@/components/layout/Footer";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
 import ManagerChefProfiles from "./ManagerChefProfiles";
+import ManagerPortalApplications from "./ManagerPortalApplications";
 
 interface Location {
   id: number;
@@ -42,7 +43,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles' | 'portal-applications';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -207,6 +208,7 @@ export default function ManagerBookingDashboard() {
     { id: 'bookings' as ViewType, label: 'Bookings', icon: BookOpen },
     { id: 'availability' as ViewType, label: 'Availability', icon: Clock },
     { id: 'chef-profiles' as ViewType, label: 'Chef Profiles', icon: Users },
+    { id: 'portal-applications' as ViewType, label: 'Portal Applications', icon: User },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
   ];
 
@@ -321,6 +323,10 @@ export default function ManagerBookingDashboard() {
               
               {activeView === 'chef-profiles' && (
                 <ManagerChefProfiles embedded={true} />
+              )}
+              
+              {activeView === 'portal-applications' && (
+                <ManagerPortalApplications embedded={true} />
               )}
               
               {activeView === 'settings' && selectedLocation && (

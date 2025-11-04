@@ -137,7 +137,8 @@ export function setupAuth(app: Express) {
                 role: "chef", // Base role but don't set flags - let user choose
                 isChef: false, // No default roles - user must choose
                 isDeliveryPartner: false, // No default roles - user must choose
-                isManager: false
+                isManager: false,
+                isPortalUser: false
               });
             }
             
@@ -188,7 +189,8 @@ export function setupAuth(app: Express) {
         role: req.body.role || "chef", // Base role but don't set flags
         isChef: false, // No default roles - user must choose
         isDeliveryPartner: false, // No default roles - user must choose
-        isManager: false
+        isManager: false,
+        isPortalUser: false
       });
       
       // Log the user in
