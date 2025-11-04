@@ -16169,6 +16169,59 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
   }
 });
 
+// Get portal user's bookings
+app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.json([]);
+    }
+    
+    const userId = req.user.id;
+    
+    // Get user's assigned location
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    // Get bookings for this portal user with kitchen and location details
+    const result = await pool.query(`
+      SELECT 
+        kb.id,
+        kb.chef_id as "chefId",
+        kb.kitchen_id as "kitchenId",
+        kb.booking_date as "bookingDate",
+        kb.start_time as "startTime",
+        kb.end_time as "endTime",
+        kb.status,
+        kb.special_notes as "specialNotes",
+        kb.created_at as "createdAt",
+        kb.updated_at as "updatedAt",
+        k.name as "kitchenName",
+        l.name as "locationName"
+      FROM kitchen_bookings kb
+      INNER JOIN kitchens k ON k.id = kb.kitchen_id
+      INNER JOIN locations l ON l.id = k.location_id
+      WHERE kb.chef_id = $1
+        AND k.location_id = $2
+      ORDER BY kb.booking_date DESC, kb.start_time DESC
+    `, [userId, userLocationId]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching portal bookings:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to fetch bookings" });
+    }
+  }
+});
+
 // Global error handler to ensure JSON responses
 app.use((err, req, res, next) => {
   console.error('Global error handler caught error:', err);

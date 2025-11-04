@@ -107,7 +107,7 @@ export default function PortalLanding() {
               {isPortalUserForDisplay && (
               <Button
                 variant="ghost"
-                onClick={() => setLocation("/portal/book")}
+                onClick={() => setLocation("/portal/my-bookings")}
                 className="flex items-center gap-2"
               >
                 <Calendar className="h-4 w-4" />
