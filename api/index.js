@@ -14173,36 +14173,68 @@ app.get("/api/public/kitchens/:kitchenId/availability", async (req, res) => {
       return res.status(400).json({ error: "Date parameter is required" });
     }
 
-    // Get available slots using the same logic as chef bookings
-    // Note: This requires getAvailableTimeSlots function from storage
-    // For now, we'll use a simplified approach
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
     }
 
-    // Get kitchen availability
-    const availabilityResult = await pool.query(`
-      SELECT day_of_week, start_time, end_time, is_available
-      FROM kitchen_availability
-      WHERE kitchen_id = $1
-    `, [kitchenId]);
-
     const dateObj = new Date(date);
-    const dayOfWeek = dateObj.getDay();
-    const dayAvailability = availabilityResult.rows.find(a => a.day_of_week === dayOfWeek);
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({ error: "Invalid date format" });
+    }
 
-    if (!dayAvailability || !dayAvailability.is_available) {
+    const dateStr = dateObj.toISOString().split('T')[0];
+    const dayOfWeek = dateObj.getDay(); // 0-6, Sunday is 0
+
+    // Check for date-specific override first
+    const dateOverrideResult = await pool.query(`
+      SELECT is_available, start_time, end_time, reason
+      FROM kitchen_date_overrides
+      WHERE kitchen_id = $1
+        AND DATE(override_date) = $2
+    `, [kitchenId, dateStr]);
+
+    let startHour, endHour;
+
+    if (dateOverrideResult.rows.length > 0) {
+      const override = dateOverrideResult.rows[0];
+      if (!override.is_available) {
+        return res.json({ slots: [] });
+      }
+      if (!override.start_time || !override.end_time) {
+        return res.json({ slots: [] });
+      }
+      startHour = parseInt(override.start_time.split(':')[0]);
+      endHour = parseInt(override.end_time.split(':')[0]);
+    } else {
+      // No override, use weekly schedule
+      const availabilityResult = await pool.query(`
+        SELECT day_of_week, start_time, end_time, is_available
+        FROM kitchen_availability
+        WHERE kitchen_id = $1 AND day_of_week = $2
+      `, [kitchenId, dayOfWeek]);
+
+      if (availabilityResult.rows.length === 0) {
+        return res.json({ slots: [] });
+      }
+
+      const dayAvailability = availabilityResult.rows[0];
+      if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
+        return res.json({ slots: [] });
+      }
+
+      startHour = parseInt(dayAvailability.start_time.split(':')[0]);
+      endHour = parseInt(dayAvailability.end_time.split(':')[0]);
+    }
+
+    if (isNaN(startHour) || isNaN(endHour) || startHour >= endHour) {
       return res.json({ slots: [] });
     }
 
     // Generate 30-minute interval slots
     const slots = [];
-    const [startHour, startMin] = dayAvailability.start_time.split(':').map(Number);
-    const [endHour, endMin] = dayAvailability.end_time.split(':').map(Number);
-    
     for (let hour = startHour; hour < endHour; hour++) {
-      slots.push({ time: `${hour.toString().padStart(2, '0')}:00`, available: true });
-      slots.push({ time: `${hour.toString().padStart(2, '0')}:30`, available: true });
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+      slots.push(`${hour.toString().padStart(2, '0')}:30`);
     }
 
     // Filter out booked slots
@@ -14212,29 +14244,37 @@ app.get("/api/public/kitchens/:kitchenId/availability", async (req, res) => {
       WHERE kitchen_id = $1
         AND DATE(booking_date) = $2
         AND status != 'cancelled'
-    `, [kitchenId, date]);
+    `, [kitchenId, dateStr]);
 
     const bookedSlots = new Set();
     bookingsResult.rows.forEach(booking => {
+      if (!booking.start_time || !booking.end_time) return;
+      
       const [startHours, startMins] = booking.start_time.split(':').map(Number);
       const [endHours, endMins] = booking.end_time.split(':').map(Number);
+      
+      if (isNaN(startHours) || isNaN(startMins) || isNaN(endHours) || isNaN(endMins)) return;
+      
       const startTotalMins = startHours * 60 + startMins;
       const endTotalMins = endHours * 60 + endMins;
       
       slots.forEach(slot => {
-        const [slotHours, slotMins] = slot.time.split(':').map(Number);
+        const [slotHours, slotMins] = slot.split(':').map(Number);
         const slotTotalMins = slotHours * 60 + slotMins;
         if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
-          bookedSlots.add(slot.time);
+          bookedSlots.add(slot);
         }
       });
     });
 
-    const availableSlots = slots.filter(slot => !bookedSlots.has(slot.time));
+    const availableSlots = slots
+      .filter(slot => !bookedSlots.has(slot))
+      .map(time => ({ time, available: true }));
     
     res.json({ slots: availableSlots });
   } catch (error) {
     console.error("Error fetching public availability:", error);
+    console.error("Error stack:", error.stack);
     res.status(500).json({ error: error.message || "Failed to fetch availability" });
   }
 });
