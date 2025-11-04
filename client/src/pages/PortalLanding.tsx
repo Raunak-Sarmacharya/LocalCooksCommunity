@@ -1,11 +1,75 @@
-import { useLocation } from "wouter";
-import { Building2, ArrowRight, Calendar, Lock } from "lucide-react";
+import { useLocation, Redirect } from "wouter";
+import { Building2, ArrowRight, Calendar, Lock, LogOut, Loader2 } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 
 export default function PortalLanding() {
   const [, setLocation] = useLocation();
+  const [isPortalUser, setIsPortalUser] = useState<boolean | null>(null);
+
+  // Check if user is already logged in as portal user
+  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
+    queryKey: ["/api/user-session"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user-session", {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          return null;
+        }
+        return response.json();
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+  });
+
+  useEffect(() => {
+    if (sessionUser) {
+      const isPortal = sessionUser?.isPortalUser || sessionUser?.is_portal_user;
+      setIsPortalUser(isPortal);
+      // If already logged in as portal user, redirect to portal booking page
+      if (isPortal) {
+        setLocation("/portal/book");
+      }
+    } else if (!sessionLoading && sessionUser === null) {
+      setIsPortalUser(false);
+    }
+  }, [sessionUser, sessionLoading, setLocation]);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      setIsPortalUser(false);
+      window.location.reload();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  // Check if user is portal user for display purposes
+  const isPortalUserForDisplay = sessionUser && (sessionUser?.isPortalUser || sessionUser?.is_portal_user);
+
+  // If already logged in as portal user, redirect (handled in useEffect)
+  if (sessionLoading || (sessionUser && isPortalUserForDisplay)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -21,21 +85,45 @@ export default function PortalLanding() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                onClick={() => setLocation("/portal/register")}
-                className="flex items-center gap-2"
-              >
-                Register
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setLocation("/portal/login")}
-                className="flex items-center gap-2"
-              >
-                <Lock className="h-4 w-4" />
-                Portal Login
-              </Button>
+              {!isPortalUserForDisplay && (
+                <>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setLocation("/portal/register")}
+                    className="flex items-center gap-2"
+                  >
+                    Register
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setLocation("/portal/login")}
+                    className="flex items-center gap-2"
+                  >
+                    <Lock className="h-4 w-4" />
+                    Portal Login
+                  </Button>
+                </>
+              )}
+              {isPortalUserForDisplay && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setLocation("/portal/book")}
+                  className="flex items-center gap-2"
+                >
+                  <Calendar className="h-4 w-4" />
+                  My Bookings
+                </Button>
+              )}
+              {isPortalUserForDisplay && (
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </Button>
+              )}
               <Button
                 onClick={() => setLocation("/manager/login")}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"

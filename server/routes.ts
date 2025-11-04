@@ -3651,17 +3651,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all locations managed by this manager
       const { users } = await import('@shared/schema');
       
+      console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
+      
       const managedLocations = await db.select()
         .from(locations)
         .where(eq(locations.managerId, user.id));
       
+      console.log(`[Manager Portal Applications] Found ${managedLocations.length} managed locations`);
+      
       if (managedLocations.length === 0) {
+        console.log(`[Manager Portal Applications] No locations found for manager ${user.id}`);
         return res.json([]);
       }
       
       const locationIds = managedLocations.map(loc => loc.id);
+      console.log(`[Manager Portal Applications] Location IDs: ${locationIds.join(', ')}`);
       
-      // Get all portal user applications for these locations
+      // Get ALL portal user applications for these locations (not just inReview)
       const applications = await db.select({
         application: portalUserApplications,
         location: locations,
@@ -3671,11 +3677,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
         .innerJoin(users, eq(portalUserApplications.userId, users.id))
         .where(
-          and(
-            eq(portalUserApplications.status, 'inReview'),
-            inArray(portalUserApplications.locationId, locationIds)
-          )
+          inArray(portalUserApplications.locationId, locationIds)
         );
+      
+      console.log(`[Manager Portal Applications] Found ${applications.length} total applications`);
       
       // Format response
       const formatted = applications.map(app => ({
@@ -3701,6 +3706,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           username: app.user.username,
         },
       }));
+      
+      console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
       
       res.json(formatted);
     } catch (error: any) {
@@ -6649,8 +6656,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
       
       if (accessRecords.length === 0) {
+        // Check if user has a pending application
+        const applications = await db.select()
+          .from(portalUserApplications)
+          .where(eq(portalUserApplications.userId, user.id))
+          .limit(1);
+        
+        if (applications.length > 0) {
+          const app = applications[0];
+          return res.status(403).json({ 
+            error: "Access denied. Your application is pending approval by the location manager.",
+            applicationStatus: app.status,
+            awaitingApproval: true
+          });
+        }
+        
         return res.status(403).json({ 
-          error: "Access denied. Your application is pending approval by the location manager." 
+          error: "Access denied. Your application is pending approval by the location manager.",
+          awaitingApproval: true
         });
       }
       
@@ -6718,6 +6741,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
   // PORTAL USER BOOKING ROUTES (Auth required - filtered by user's location)
   // ===============================
+
+  // Get portal user application status (for authenticated portal users without approved access)
+  app.get("/api/portal/application-status", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
+      
+      if (!isPortalUser) {
+        return res.status(403).json({ error: "Portal user access required" });
+      }
+
+      // Check for approved access first
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, user.id))
+        .limit(1);
+      
+      if (accessRecords.length > 0) {
+        return res.json({ 
+          hasAccess: true,
+          status: 'approved'
+        });
+      }
+
+      // Check application status
+      const applications = await db.select()
+        .from(portalUserApplications)
+        .where(eq(portalUserApplications.userId, user.id))
+        .orderBy(desc(portalUserApplications.createdAt))
+        .limit(1);
+      
+      if (applications.length > 0) {
+        const app = applications[0];
+        return res.json({
+          hasAccess: false,
+          status: app.status,
+          applicationId: app.id,
+          locationId: app.locationId,
+          awaitingApproval: app.status === 'inReview'
+        });
+      }
+
+      return res.json({
+        hasAccess: false,
+        status: 'no_application',
+        awaitingApproval: false
+      });
+    } catch (error: any) {
+      console.error("Error getting portal application status:", error);
+      res.status(500).json({ error: error.message || "Failed to get application status" });
+    }
+  });
 
   // Get portal user's assigned location (for authenticated portal users)
   app.get("/api/portal/locations", requirePortalUser, async (req: Request, res: Response) => {
