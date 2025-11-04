@@ -15953,10 +15953,17 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
 
     // Validate booking date/time
     const bookingDateObj = new Date(bookingDate);
-    const now = new Date();
+    if (isNaN(bookingDateObj.getTime())) {
+      return res.status(400).json({ error: "Invalid booking date format" });
+    }
     
-    if (bookingDateObj < now) {
-      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+    const now = new Date();
+    // Compare dates only (not time) to allow bookings for future dates
+    const bookingDateOnly = new Date(bookingDateObj.getFullYear(), bookingDateObj.getMonth(), bookingDateObj.getDate());
+    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    if (bookingDateOnly < todayOnly) {
+      return res.status(400).json({ error: "Cannot book a date that has already passed" });
     }
 
     // Get location to check minimum booking window
@@ -15969,9 +15976,12 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     const minimumBookingWindowHours = location?.minimum_booking_window_hours ?? 1;
 
     // Check minimum booking window if booking is today
-    const isToday = bookingDateObj.toDateString() === now.toDateString();
+    const isToday = bookingDateOnly.getTime() === todayOnly.getTime();
     if (isToday) {
       const [startHours, startMins] = startTime.split(':').map(Number);
+      if (isNaN(startHours) || isNaN(startMins)) {
+        return res.status(400).json({ error: "Invalid start time format" });
+      }
       const slotTime = new Date(bookingDateObj);
       slotTime.setHours(startHours, startMins, 0, 0);
       const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
