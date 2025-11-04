@@ -292,6 +292,8 @@ async function getAllLocations() {
              cancellation_policy_hours as "cancellationPolicyHours",
              cancellation_policy_message as "cancellationPolicyMessage",
              default_daily_booking_limit as "defaultDailyBookingLimit",
+             minimum_booking_window_hours as "minimumBookingWindowHours",
+             logo_url as "logoUrl",
              created_at, updated_at 
       FROM locations 
       ORDER BY created_at DESC
@@ -299,6 +301,25 @@ async function getAllLocations() {
     return result.rows;
   } catch (error) {
     console.error('Error fetching locations from database:', error);
+    return [];
+  }
+}
+
+// Get kitchens by location ID
+async function getKitchensByLocation(locationId) {
+  try {
+    if (!pool) {
+      return [];
+    }
+    const result = await pool.query(`
+      SELECT id, name, description, location_id as "locationId", is_active as "isActive"
+      FROM kitchens
+      WHERE location_id = $1
+      ORDER BY name
+    `, [locationId]);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching kitchens by location:', error);
     return [];
   }
 }
@@ -355,25 +376,6 @@ async function getAllKitchens() {
     return result.rows;
   } catch (error) {
     console.error('Error fetching kitchens from database:', error);
-    return [];
-  }
-}
-
-// Get kitchens by location ID
-async function getKitchensByLocation(locationId) {
-  try {
-    if (!pool) {
-      return [];
-    }
-    const result = await pool.query(`
-      SELECT id, location_id as "locationId", name, description, is_active as "isActive", created_at, updated_at 
-      FROM kitchens 
-      WHERE location_id = $1
-      ORDER BY created_at DESC
-    `, [locationId]);
-    return result.rows;
-  } catch (error) {
-    console.error('Error fetching kitchens by location from database:', error);
     return [];
   }
 }
@@ -3923,13 +3925,21 @@ app.get("/api/admin/sessions/stats", async (req, res) => {
 
     const stats = await getSessionStats();
     
+    // Check if stats has an error or is null
+    if (stats.error || !stats) {
+      return res.status(500).json({ 
+        message: "Failed to get session stats", 
+        error: stats?.error || "Unknown error" 
+      });
+    }
+    
     return res.status(200).json({
       message: "Session statistics",
       stats: stats,
       recommendations: {
-        shouldCleanup: stats.expired_sessions > 100,
-        cleanupRecommended: stats.total_sessions > 1000,
-        criticalLevel: stats.total_sessions > 5000
+        shouldCleanup: (stats.expired_sessions || 0) > 100,
+        cleanupRecommended: (stats.total_sessions || 0) > 1000,
+        criticalLevel: (stats.total_sessions || 0) > 5000
       }
     });
   } catch (error) {
@@ -3955,11 +3965,21 @@ app.post("/api/admin/sessions/cleanup", async (req, res) => {
     const cleanupResult = await cleanupExpiredSessions();
     const afterStats = await getSessionStats();
 
+    // Check for errors in cleanup result
+    if (cleanupResult.error) {
+      return res.status(500).json({ 
+        message: "Session cleanup failed", 
+        error: cleanupResult.error,
+        before: beforeStats,
+        after: afterStats
+      });
+    }
+
     return res.status(200).json({
       message: "Session cleanup completed",
       before: beforeStats,
       after: afterStats,
-      cleaned: cleanupResult.cleaned,
+      cleaned: cleanupResult.cleaned || 0,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -3984,26 +4004,51 @@ app.post("/api/admin/sessions/cleanup-old", async (req, res) => {
 
     const { days = 30 } = req.body; // Default to 30 days
     
+    // Validate and sanitize days parameter to prevent SQL injection
+    const daysNum = parseInt(days, 10);
+    if (isNaN(daysNum) || daysNum < 1 || daysNum > 365) {
+      return res.status(400).json({ message: "Invalid days parameter. Must be between 1 and 365." });
+    }
+    
     if (!pool) {
       return res.status(500).json({ message: "Database not available" });
     }
 
     const beforeStats = await getSessionStats();
     
+    // Check if beforeStats has an error
+    if (beforeStats?.error) {
+      return res.status(500).json({ 
+        message: "Failed to get session stats before cleanup", 
+        error: beforeStats.error 
+      });
+    }
+    
+    // Use parameterized query to prevent SQL injection
     const result = await pool.query(`
       DELETE FROM session 
-      WHERE expire < NOW() - INTERVAL '${days} days'
+      WHERE expire < NOW() - INTERVAL '1 day' * $1
       RETURNING sid;
-    `);
+    `, [daysNum]);
 
     const afterStats = await getSessionStats();
+    
+    // Check if afterStats has an error
+    if (afterStats?.error) {
+      return res.status(500).json({ 
+        message: "Failed to get session stats after cleanup", 
+        error: afterStats.error,
+        before: beforeStats,
+        cleaned: result.rowCount
+      });
+    }
 
     return res.status(200).json({
-      message: `Cleaned up sessions older than ${days} days`,
+      message: `Cleaned up sessions older than ${daysNum} days`,
       before: beforeStats,
       after: afterStats,
-      cleaned: result.rowCount,
-      days: days,
+      cleaned: result.rowCount || 0,
+      days: daysNum,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -14003,6 +14048,348 @@ app.get("/api/admin/chef-location-access", async (req, res) => {
     console.error("[Admin Chef Access] Error:", error);
     console.error("[Admin Chef Access] Error stack:", error.stack);
     res.status(500).json({ error: error.message || "Failed to get access" });
+  }
+});
+
+// ===============================
+// PUBLIC MANAGER BOOKING PORTAL ROUTES (No auth required)
+// ===============================
+
+// Get public location info for booking portal (by name slug)
+app.get("/api/public/locations/:locationSlug", async (req, res) => {
+  try {
+    const locationSlug = req.params.locationSlug;
+    
+    // Try to find location by name (slugified)
+    const allLocations = await getAllLocations();
+    const location = allLocations.find((loc) => {
+      const slug = loc.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      return slug === locationSlug;
+    });
+
+    if (!location) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    // Return public location info (no sensitive data)
+    res.json({
+      id: location.id,
+      name: location.name,
+      address: location.address,
+      logoUrl: location.logoUrl || location.logo_url || null,
+    });
+  } catch (error) {
+    console.error("Error fetching public location:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch location" });
+  }
+});
+
+// Get public kitchens for a location (by name slug)
+app.get("/api/public/locations/:locationSlug/kitchens", async (req, res) => {
+  try {
+    const locationSlug = req.params.locationSlug;
+    
+    // Find location by name (slugified)
+    const allLocations = await getAllLocations();
+    const location = allLocations.find((loc) => {
+      const slug = loc.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      return slug === locationSlug;
+    });
+
+    if (!location) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const kitchens = await getKitchensByLocation(location.id);
+    
+    // Filter only active kitchens and return public info
+    const publicKitchens = kitchens
+      .filter((kitchen) => kitchen.isActive !== false)
+      .map((kitchen) => ({
+        id: kitchen.id,
+        name: kitchen.name,
+        description: kitchen.description,
+        locationId: kitchen.locationId || kitchen.location_id,
+      }));
+
+    res.json(publicKitchens);
+  } catch (error) {
+    console.error("Error fetching public kitchens:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+  }
+});
+
+// Get available slots for a kitchen (public)
+app.get("/api/public/kitchens/:kitchenId/availability", async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    const date = req.query.date;
+
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!date) {
+      return res.status(400).json({ error: "Date parameter is required" });
+    }
+
+    // Get available slots using the same logic as chef bookings
+    // Note: This requires getAvailableTimeSlots function from storage
+    // For now, we'll use a simplified approach
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get kitchen availability
+    const availabilityResult = await pool.query(`
+      SELECT day_of_week, start_time, end_time, is_available
+      FROM kitchen_availability
+      WHERE kitchen_id = $1
+    `, [kitchenId]);
+
+    const dateObj = new Date(date);
+    const dayOfWeek = dateObj.getDay();
+    const dayAvailability = availabilityResult.rows.find(a => a.day_of_week === dayOfWeek);
+
+    if (!dayAvailability || !dayAvailability.is_available) {
+      return res.json({ slots: [] });
+    }
+
+    // Generate 30-minute interval slots
+    const slots = [];
+    const [startHour, startMin] = dayAvailability.start_time.split(':').map(Number);
+    const [endHour, endMin] = dayAvailability.end_time.split(':').map(Number);
+    
+    for (let hour = startHour; hour < endHour; hour++) {
+      slots.push({ time: `${hour.toString().padStart(2, '0')}:00`, available: true });
+      slots.push({ time: `${hour.toString().padStart(2, '0')}:30`, available: true });
+    }
+
+    // Filter out booked slots
+    const bookingsResult = await pool.query(`
+      SELECT start_time, end_time
+      FROM kitchen_bookings
+      WHERE kitchen_id = $1
+        AND DATE(booking_date) = $2
+        AND status != 'cancelled'
+    `, [kitchenId, date]);
+
+    const bookedSlots = new Set();
+    bookingsResult.rows.forEach(booking => {
+      const [startHours, startMins] = booking.start_time.split(':').map(Number);
+      const [endHours, endMins] = booking.end_time.split(':').map(Number);
+      const startTotalMins = startHours * 60 + startMins;
+      const endTotalMins = endHours * 60 + endMins;
+      
+      slots.forEach(slot => {
+        const [slotHours, slotMins] = slot.time.split(':').map(Number);
+        const slotTotalMins = slotHours * 60 + slotMins;
+        if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+          bookedSlots.add(slot.time);
+        }
+      });
+    });
+
+    const availableSlots = slots.filter(slot => !bookedSlots.has(slot.time));
+    
+    res.json({ slots: availableSlots });
+  } catch (error) {
+    console.error("Error fetching public availability:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch availability" });
+  }
+});
+
+// Submit public booking (third-party booking)
+app.post("/api/public/bookings", async (req, res) => {
+  try {
+    const {
+      locationId,
+      kitchenId,
+      bookingDate,
+      startTime,
+      endTime,
+      bookingName,
+      bookingEmail,
+      bookingPhone,
+      bookingCompany,
+      specialNotes,
+    } = req.body;
+
+    if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Validate booking date/time
+    const bookingDateObj = new Date(bookingDate);
+    const now = new Date();
+    
+    if (bookingDateObj < now) {
+      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+    }
+
+    // Get location to check minimum booking window
+    const locationResult = await pool.query(`
+      SELECT id, name, address, minimum_booking_window_hours, notification_email
+      FROM locations
+      WHERE id = $1
+    `, [locationId]);
+
+    if (locationResult.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const location = locationResult.rows[0];
+    const minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
+
+    // Check minimum booking window if booking is today
+    const isToday = bookingDateObj.toDateString() === now.toDateString();
+    if (isToday) {
+      const [startHours, startMins] = startTime.split(':').map(Number);
+      const slotTime = new Date(bookingDateObj);
+      slotTime.setHours(startHours, startMins, 0, 0);
+      const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursUntilBooking < minimumBookingWindowHours) {
+        return res.status(400).json({ 
+          error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+        });
+      }
+    }
+
+    // Check availability
+    const availabilityResult = await pool.query(`
+      SELECT day_of_week, start_time, end_time, is_available
+      FROM kitchen_availability
+      WHERE kitchen_id = $1
+    `, [kitchenId]);
+
+    const dayOfWeek = bookingDateObj.getDay();
+    const dayAvailability = availabilityResult.rows.find(a => a.day_of_week === dayOfWeek);
+
+    if (!dayAvailability || !dayAvailability.is_available) {
+      return res.status(400).json({ error: "Kitchen is not available on this day" });
+    }
+
+    if (startTime < dayAvailability.start_time || endTime > dayAvailability.end_time) {
+      return res.status(400).json({ error: "Booking time must be within manager-set available hours" });
+    }
+
+    // Check for conflicts
+    const conflictCheck = await pool.query(`
+      SELECT id
+      FROM kitchen_bookings
+      WHERE kitchen_id = $1
+        AND DATE(booking_date) = $2
+        AND status != 'cancelled'
+        AND (
+          (start_time < $3 AND end_time > $4) OR
+          (start_time >= $4 AND start_time < $3)
+        )
+    `, [kitchenId, bookingDate, endTime, startTime]);
+
+    if (conflictCheck.rows.length > 0) {
+      return res.status(400).json({ error: "Time slot is already booked" });
+    }
+
+    // Create booking
+    const bookingNotes = specialNotes || `Third-party booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}. Email: ${bookingEmail}${bookingPhone ? `, Phone: ${bookingPhone}` : ''}`;
+
+    const insertResult = await pool.query(`
+      INSERT INTO kitchen_bookings (
+        kitchen_id, booking_date, start_time, end_time,
+        special_notes, booking_type, status,
+        external_contact_name, external_contact_email, external_contact_phone, external_contact_company
+      )
+      VALUES ($1, $2, $3, $4, $5, 'external', 'pending', $6, $7, $8, $9)
+      RETURNING *
+    `, [
+      kitchenId,
+      bookingDateObj,
+      startTime,
+      endTime,
+      bookingNotes,
+      bookingName,
+      bookingEmail,
+      bookingPhone || null,
+      bookingCompany || null
+    ]);
+
+    const booking = insertResult.rows[0];
+
+    // Get kitchen name for email
+    const kitchenResult = await pool.query(`
+      SELECT name FROM kitchens WHERE id = $1
+    `, [kitchenId]);
+    const kitchenName = kitchenResult.rows[0]?.name || 'Kitchen';
+
+    // Send notification to manager
+    try {
+      const { sendEmail } = await import('../server/email.js');
+      if (location.notification_email) {
+        const emailContent = {
+          to: location.notification_email,
+          subject: `New Third-Party Booking Request - ${location.name}`,
+          text: `A new booking request has been submitted:\n\n` +
+                `Kitchen: ${kitchenName}\n` +
+                `Date: ${bookingDate}\n` +
+                `Time: ${startTime} - ${endTime}\n\n` +
+                `Contact Information:\n` +
+                `Name: ${bookingName}\n` +
+                `Email: ${bookingEmail}\n` +
+                `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+                `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+                `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+                `Please log in to your manager dashboard to confirm or manage this booking.`,
+          html: `<h2>New Third-Party Booking Request</h2>` +
+                `<p><strong>Location:</strong> ${location.name}</p>` +
+                `<p><strong>Kitchen:</strong> ${kitchenName}</p>` +
+                `<p><strong>Date:</strong> ${bookingDate}</p>` +
+                `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+                `<h3>Contact Information:</h3>` +
+                `<ul>` +
+                `<li><strong>Name:</strong> ${bookingName}</li>` +
+                `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+                `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+                `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+                `</ul>` +
+                `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+                `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+        };
+        await sendEmail(emailContent);
+      }
+    } catch (emailError) {
+      console.error("Error sending booking notification email:", emailError);
+      // Don't fail the booking if email fails
+    }
+
+    res.status(201).json({
+      success: true,
+      booking: {
+        id: booking.id,
+        bookingDate,
+        startTime,
+        endTime,
+        status: 'pending',
+      },
+      message: "Booking request submitted successfully. The kitchen manager will contact you shortly.",
+    });
+  } catch (error) {
+    console.error("Error creating public booking:", error);
+    res.status(500).json({ error: error.message || "Failed to create booking" });
   }
 });
 
