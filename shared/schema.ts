@@ -41,6 +41,7 @@ export const users = pgTable("users", {
   isChef: boolean("is_chef").default(false).notNull(),
   isDeliveryPartner: boolean("is_delivery_partner").default(false).notNull(),
   isManager: boolean("is_manager").default(false).notNull(),
+  isPortalUser: boolean("is_portal_user").default(false).notNull(), // Portal user (third-party kitchen users)
   applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
 });
 
@@ -173,6 +174,7 @@ export const insertUserSchema = z.object({
   isChef: z.boolean().default(false),
   isDeliveryPartner: z.boolean().default(false),
   isManager: z.boolean().default(false),
+  isPortalUser: z.boolean().default(false),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -428,6 +430,33 @@ export const chefLocationProfiles = pgTable("chef_location_profiles", {
   reviewFeedback: text("review_feedback"), // optional feedback from manager
 });
 
+// Define portal_user_applications table (portal users apply for location access)
+export const portalUserApplications = pgTable("portal_user_applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  company: text("company"), // Optional company name
+  status: applicationStatusEnum("status").default("inReview").notNull(), // 'inReview', 'approved', 'rejected', 'cancelled'
+  feedback: text("feedback"), // Manager feedback
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }), // manager who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Define portal_user_location_access table (manager grants portal user access after approval)
+// Portal users can book kitchens at their assigned location
+export const portalUserLocationAccess = pgTable("portal_user_location_access", {
+  id: serial("id").primaryKey(),
+  portalUserId: integer("portal_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(), // manager who granted access
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+  applicationId: integer("application_id").references(() => portalUserApplications.id, { onDelete: "set null" }), // Link to original application
+});
+
 // Zod schemas for kitchen booking system
 
 export const insertLocationSchema = createInsertSchema(locations, {
@@ -612,3 +641,46 @@ export const updateChefLocationProfileSchema = z.object({
 export type ChefLocationProfile = typeof chefLocationProfiles.$inferSelect;
 export type InsertChefLocationProfile = z.infer<typeof insertChefLocationProfileSchema>;
 export type UpdateChefLocationProfile = z.infer<typeof updateChefLocationProfileSchema>;
+
+// Zod schemas for portal user applications
+export const insertPortalUserApplicationSchema = createInsertSchema(portalUserApplications, {
+  userId: z.number(),
+  locationId: z.number(),
+  fullName: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  phone: z.string().min(1, "Phone number is required"),
+  company: z.string().optional(),
+}).omit({
+  id: true,
+  status: true,
+  createdAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  feedback: true,
+});
+
+export const updatePortalUserApplicationStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["inReview", "approved", "rejected", "cancelled"]),
+  feedback: z.string().optional(),
+});
+
+// Zod schemas for portal user location access
+export const insertPortalUserLocationAccessSchema = createInsertSchema(portalUserLocationAccess, {
+  portalUserId: z.number(),
+  locationId: z.number(),
+  grantedBy: z.number(),
+  applicationId: z.number().optional(),
+}).omit({
+  id: true,
+  grantedAt: true,
+});
+
+// Type exports for portal user applications
+export type PortalUserApplication = typeof portalUserApplications.$inferSelect;
+export type InsertPortalUserApplication = z.infer<typeof insertPortalUserApplicationSchema>;
+export type UpdatePortalUserApplicationStatus = z.infer<typeof updatePortalUserApplicationStatusSchema>;
+
+// Type exports for portal user location access
+export type PortalUserLocationAccess = typeof portalUserLocationAccess.$inferSelect;
+export type InsertPortalUserLocationAccess = z.infer<typeof insertPortalUserLocationAccessSchema>;

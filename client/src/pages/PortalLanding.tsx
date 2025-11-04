@@ -23,17 +23,23 @@ export default function PortalLanding() {
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
-                onClick={() => setLocation("/portal/book")}
+                onClick={() => setLocation("/portal/register")}
                 className="flex items-center gap-2"
               >
-                <Calendar className="h-4 w-4" />
-                Book a Kitchen
+                Register
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setLocation("/portal/login")}
+                className="flex items-center gap-2"
+              >
+                <Lock className="h-4 w-4" />
+                Portal Login
               </Button>
               <Button
                 onClick={() => setLocation("/manager/login")}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
               >
-                <Lock className="h-4 w-4" />
                 Manager Login
               </Button>
             </div>

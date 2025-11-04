@@ -16,6 +16,7 @@ interface CreateUserData {
   isChef: boolean;
   isDeliveryPartner: boolean;
   isManager: boolean;
+  isPortalUser: boolean;
   firebaseUid: string;
   isVerified: boolean;
 }
@@ -77,6 +78,7 @@ export async function syncFirebaseUserToNeon(params: {
       isChef: isChef, // Auto-set based on role
       isDeliveryPartner: isDeliveryPartner, // Auto-set based on role
       isManager: false,
+      isPortalUser: false,
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
     };

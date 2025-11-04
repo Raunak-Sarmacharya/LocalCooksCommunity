@@ -93,23 +93,43 @@ export default function ManagerBookingPortal() {
   const locationSlugMatch = locationPath.match(/\/portal\/([^/]+)/);
   const locationSlug = locationSlugMatch ? locationSlugMatch[1] : null;
 
-  // Fetch location details by slug
+  // Fetch location details by slug (requires authentication)
   const { data: locationData, isLoading: loadingLocation } = useQuery<Location>({
-    queryKey: [`/api/public/locations/${locationSlug}`],
+    queryKey: [`/api/portal/locations/${locationSlug}`],
     queryFn: async () => {
-      const response = await fetch(`/api/public/locations/${locationSlug}`);
-      if (!response.ok) throw new Error('Location not found');
+      const response = await fetch(`/api/portal/locations/${locationSlug}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required');
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. You can only access your assigned location.');
+        }
+        throw new Error('Location not found');
+      }
       return response.json();
     },
     enabled: !!locationSlug,
   });
 
-  // Fetch kitchens for location
+  // Fetch kitchens for location (requires authentication)
   const { data: kitchens, isLoading: loadingKitchens } = useQuery<Kitchen[]>({
-    queryKey: [`/api/public/locations/${locationSlug}/kitchens`],
+    queryKey: [`/api/portal/locations/${locationSlug}/kitchens`],
     queryFn: async () => {
-      const response = await fetch(`/api/public/locations/${locationSlug}/kitchens`);
-      if (!response.ok) throw new Error('Failed to fetch kitchens');
+      const response = await fetch(`/api/portal/locations/${locationSlug}/kitchens`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required');
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. You can only access kitchens at your assigned location.');
+        }
+        throw new Error('Failed to fetch kitchens');
+      }
       return response.json();
     },
     enabled: !!locationSlug && !!locationData,
@@ -129,9 +149,20 @@ export default function ManagerBookingPortal() {
     const dateStr = selectedDate.toISOString().split('T')[0];
     try {
       const response = await fetch(
-        `/api/public/kitchens/${selectedKitchen.id}/availability?date=${dateStr}`
+        `/api/portal/kitchens/${selectedKitchen.id}/availability?date=${dateStr}`,
+        {
+          credentials: "include",
+        }
       );
-      if (!response.ok) throw new Error('Failed to load availability');
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required');
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. You can only access kitchens at your assigned location.');
+        }
+        throw new Error('Failed to load availability');
+      }
       const data = await response.json();
       setAvailableSlots(data.slots || []);
     } catch (error) {
@@ -139,7 +170,7 @@ export default function ManagerBookingPortal() {
       setAvailableSlots([]);
       toast({
         title: "Error",
-        description: "Failed to load available time slots. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to load available time slots. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -232,9 +263,10 @@ export default function ManagerBookingPortal() {
       
       const bookingDate = selectedDate.toISOString().split('T')[0];
       
-      const response = await fetch('/api/public/bookings', {
+      const response = await fetch('/api/portal/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           locationId: locationData?.id,
           kitchenId: selectedKitchen.id,

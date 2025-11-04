@@ -18,6 +18,9 @@ import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, users, locations, applications } from "@shared/schema";
 import { eq, inArray, and, desc } from "drizzle-orm";
 
+// Import portal user applications schema
+import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
+
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access...");
   // Set up authentication routes and middleware
@@ -739,7 +742,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: req.body.role || "chef", // Base role but don't set flags
         isChef: false, // No default roles - user must choose
         isDeliveryPartner: false, // No default roles - user must choose
-        isManager: false
+        isManager: false,
+        isPortalUser: false
       });
       
       // Log the user in
@@ -3629,6 +3633,227 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager: Get portal user applications for review
+  app.get("/api/manager/portal-applications", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      // Get all locations managed by this manager
+      const { users } = await import('@shared/schema');
+      
+      const managedLocations = await db.select()
+        .from(locations)
+        .where(eq(locations.managerId, user.id));
+      
+      if (managedLocations.length === 0) {
+        return res.json([]);
+      }
+      
+      const locationIds = managedLocations.map(loc => loc.id);
+      
+      // Get all portal user applications for these locations
+      const applications = await db.select({
+        application: portalUserApplications,
+        location: locations,
+        user: users,
+      })
+        .from(portalUserApplications)
+        .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
+        .innerJoin(users, eq(portalUserApplications.userId, users.id))
+        .where(
+          and(
+            eq(portalUserApplications.status, 'inReview'),
+            inArray(portalUserApplications.locationId, locationIds)
+          )
+        );
+      
+      // Format response
+      const formatted = applications.map(app => ({
+        id: app.application.id,
+        userId: app.application.userId,
+        locationId: app.application.locationId,
+        fullName: app.application.fullName,
+        email: app.application.email,
+        phone: app.application.phone,
+        company: app.application.company,
+        status: app.application.status,
+        feedback: app.application.feedback,
+        reviewedBy: app.application.reviewedBy,
+        reviewedAt: app.application.reviewedAt,
+        createdAt: app.application.createdAt,
+        location: {
+          id: app.location.id,
+          name: (app.location as any).name,
+          address: (app.location as any).address,
+        },
+        user: {
+          id: app.user.id,
+          username: app.user.username,
+        },
+      }));
+      
+      res.json(formatted);
+    } catch (error: any) {
+      console.error("Error getting portal applications for manager:", error);
+      res.status(500).json({ error: error.message || "Failed to get applications" });
+    }
+  });
+
+  // Manager: Approve or reject portal user application
+  app.put("/api/manager/portal-applications/:id/status", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const applicationId = parseInt(req.params.id);
+      const { status, feedback } = req.body;
+      
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+      }
+
+      const { users } = await import('@shared/schema');
+      
+      // Get application and verify it belongs to a location managed by this manager
+      const applicationRecords = await db.select({
+        application: portalUserApplications,
+        location: locations,
+      })
+        .from(portalUserApplications)
+        .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
+        .where(eq(portalUserApplications.id, applicationId))
+        .limit(1);
+      
+      if (applicationRecords.length === 0) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      
+      const applicationData = applicationRecords[0];
+      const location = applicationData.location;
+      const application = applicationData.application;
+      
+      // Verify manager owns this location
+      if ((location as any).managerId !== user.id) {
+        return res.status(403).json({ error: "You don't have permission to manage this application" });
+      }
+      
+      // Update application status
+      const updatedApplication = await db.update(portalUserApplications)
+        .set({
+          status: status,
+          feedback: feedback || null,
+          reviewedBy: user.id,
+          reviewedAt: new Date(),
+        })
+        .where(eq(portalUserApplications.id, applicationId))
+        .returning();
+      
+      // If approved, grant location access
+      if (status === 'approved') {
+        // Check if access already exists
+        const existingAccess = await db.select()
+          .from(portalUserLocationAccess)
+          .where(
+            and(
+              eq(portalUserLocationAccess.portalUserId, application.userId),
+              eq(portalUserLocationAccess.locationId, application.locationId)
+            )
+          )
+          .limit(1);
+        
+        if (existingAccess.length === 0) {
+          // Create location access
+          await db.insert(portalUserLocationAccess).values({
+            portalUserId: application.userId,
+            locationId: application.locationId,
+            grantedBy: user.id,
+            applicationId: applicationId,
+          });
+        }
+        
+        // Send notification email to portal user
+        try {
+          const { sendEmail } = await import('./email');
+          const portalUser = await firebaseStorage.getUser(application.userId);
+          if (portalUser && (portalUser as any).username) {
+            const userEmail = (portalUser as any).username;
+            const emailContent = {
+              to: userEmail,
+              subject: `Portal Access Approved - ${(location as any).name}`,
+              text: `Your application for portal access has been approved!\n\n` +
+                    `Location: ${(location as any).name}\n` +
+                    `Address: ${(location as any).address}\n` +
+                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                    `\nYou can now log in to the portal and book kitchens at this location.`,
+              html: `<h2>Portal Access Approved</h2>` +
+                    `<p>Your application for portal access has been approved!</p>` +
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Address:</strong> ${(location as any).address}</p>` +
+                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                    `<p>You can now log in to the portal and book kitchens at this location.</p>`,
+            };
+            await sendEmail(emailContent);
+          }
+        } catch (emailError) {
+          console.error("Error sending portal approval email:", emailError);
+          // Don't fail the approval if email fails
+        }
+      } else if (status === 'rejected') {
+        // Send rejection email
+        try {
+          const { sendEmail } = await import('./email');
+          const portalUser = await firebaseStorage.getUser(application.userId);
+          if (portalUser && (portalUser as any).username) {
+            const userEmail = (portalUser as any).username;
+            const emailContent = {
+              to: userEmail,
+              subject: `Portal Access Application - ${(location as any).name}`,
+              text: `Your application for portal access has been reviewed.\n\n` +
+                    `Location: ${(location as any).name}\n` +
+                    `Status: Rejected\n` +
+                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                    `\nIf you have questions, please contact the location manager.`,
+              html: `<h2>Portal Access Application</h2>` +
+                    `<p>Your application for portal access has been reviewed.</p>` +
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Status:</strong> Rejected</p>` +
+                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                    `<p>If you have questions, please contact the location manager.</p>`,
+            };
+            await sendEmail(emailContent);
+          }
+        } catch (emailError) {
+          console.error("Error sending portal rejection email:", emailError);
+          // Don't fail the rejection if email fails
+        }
+      }
+      
+      res.json(updatedApplication[0]);
+    } catch (error: any) {
+      console.error("Error updating portal application status:", error);
+      res.status(500).json({ error: error.message || "Failed to update application status" });
+    }
+  });
+
   // Manager: Approve or reject chef profile
   app.put("/api/manager/chef-profiles/:id/status", async (req: Request, res: Response) => {
     try {
@@ -5126,6 +5351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isChef: false,
         isDeliveryPartner: false,
         isManager: true,
+        isPortalUser: false,
         has_seen_welcome: false  // Manager must change password on first login
       });
 
@@ -6140,97 +6366,469 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===============================
-  // PUBLIC MANAGER BOOKING PORTAL ROUTES (No auth required)
+  // PORTAL USER AUTHENTICATION ROUTES
   // ===============================
 
-  // Get all public locations for portal landing page
-  app.get("/api/public/locations", async (req: Request, res: Response) => {
+  // Portal user login endpoint
+  app.post("/api/portal-login", async (req, res) => {
     try {
-      const allLocations = await firebaseStorage.getAllLocations();
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      console.log('Portal user login attempt for:', username);
+
+      // Get portal user
+      const portalUser = await firebaseStorage.getUserByUsername(username);
+
+      if (!portalUser) {
+        console.log('Portal user not found:', username);
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      // Verify user is portal user
+      const isPortalUser = (portalUser as any).isPortalUser || (portalUser as any).is_portal_user;
+      if (!isPortalUser) {
+        console.log('User is not a portal user:', username);
+        return res.status(403).json({ error: 'Not authorized - portal user access required' });
+      }
+
+      // Check password
+      const passwordMatches = await comparePasswords(password, portalUser.password);
+
+      if (!passwordMatches) {
+        console.log('Password mismatch for portal user:', username);
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      // Log in the user
+      req.login(portalUser, (err: Error | null) => {
+        if (err) {
+          console.error('Login error:', err);
+          return res.status(500).json({ error: 'Login failed' });
+        }
+
+        // Get user's assigned location
+        const getPortalUserLocation = async () => {
+          try {
+            const { portalUserLocationAccess } = await import('../shared/schema');
+            const { eq } = await import('drizzle-orm');
+            
+            const accessRecords = await db.select()
+              .from(portalUserLocationAccess)
+              .where(eq(portalUserLocationAccess.portalUserId, portalUser.id));
+            
+            if (accessRecords.length > 0) {
+              return accessRecords[0].locationId;
+            }
+            return null;
+          } catch (error) {
+            console.error('Error fetching portal user location:', error);
+            return null;
+          }
+        };
+
+        getPortalUserLocation().then((locationId) => {
+          res.json({
+            id: portalUser.id,
+            username: portalUser.username,
+            role: portalUser.role,
+            isPortalUser: true,
+            locationId: locationId,
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("Portal login error:", error);
+      res.status(500).json({ error: error.message || "Portal login failed" });
+    }
+  });
+
+  // Portal user registration endpoint - creates application instead of direct access
+  app.post("/api/portal-register", async (req, res) => {
+    try {
+      const { username, password, locationId, fullName, email, phone, company } = req.body;
+
+      if (!username || !password || !locationId || !fullName || !email || !phone) {
+        return res.status(400).json({ error: 'Username, password, locationId, fullName, email, and phone are required' });
+      }
+
+      // Validate location exists
+      const location = await firebaseStorage.getLocationById(parseInt(locationId));
+      if (!location) {
+        return res.status(400).json({ error: "Location not found" });
+      }
+
+      // Check if user already exists
+      let user = await firebaseStorage.getUserByUsername(username);
+      let isNewUser = false;
       
-      // Return only public info (no sensitive data)
-      const publicLocations = allLocations.map((loc: any) => {
-        const slug = loc.name
+      if (!user) {
+        // Hash password and create user
+        const hashedPassword = await hashPassword(password);
+
+        user = await firebaseStorage.createUser({
+          username: username,
+          password: hashedPassword,
+          role: "chef", // Default role, but portal user flag takes precedence
+          isChef: false,
+          isDeliveryPartner: false,
+          isManager: false,
+          isPortalUser: true,
+        });
+        isNewUser = true;
+      } else {
+        // Check if user is already a portal user
+        const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
+        if (!isPortalUser) {
+          return res.status(400).json({ error: "Username already exists with different account type" });
+        }
+      }
+
+      // Check if user already has an application for this location
+      const existingApplications = await db.select()
+        .from(portalUserApplications)
+        .where(
+          and(
+            eq(portalUserApplications.userId, user.id),
+            eq(portalUserApplications.locationId, parseInt(locationId))
+          )
+        );
+      
+      if (existingApplications.length > 0) {
+        const existingApp = existingApplications[0];
+        if (existingApp.status === 'inReview' || existingApp.status === 'approved') {
+          return res.status(400).json({ 
+            error: "You already have an application for this location",
+            applicationId: existingApp.id,
+            status: existingApp.status
+          });
+        }
+      }
+
+      // Create application
+      const application = await db.insert(portalUserApplications).values({
+        userId: user.id,
+        locationId: parseInt(locationId),
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        company: company || null,
+        status: 'inReview',
+      }).returning();
+
+      // Log the user in
+      if (isNewUser) {
+        req.login(user, (err: Error | null) => {
+          if (err) {
+            return res.status(500).json({ error: "Login failed after registration" });
+          }
+        });
+      }
+
+      // Send notification to manager
+    try {
+        const { sendEmail } = await import('./email');
+        const managerId = (location as any).managerId || (location as any).manager_id;
+        if (managerId) {
+          const manager = await firebaseStorage.getUser(managerId);
+          if (manager && (manager as any).username) {
+            const managerEmail = (manager as any).username;
+            const emailContent = {
+              to: managerEmail,
+              subject: `New Portal User Application - ${(location as any).name}`,
+              text: `A new portal user has applied for access to your location:\n\n` +
+                    `Location: ${(location as any).name}\n` +
+                    `Applicant Name: ${fullName}\n` +
+                    `Email: ${email}\n` +
+                    `Phone: ${phone}\n` +
+                    `${company ? `Company: ${company}\n` : ''}` +
+                    `\nPlease log in to your manager dashboard to review and approve this application.`,
+              html: `<h2>New Portal User Application</h2>` +
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                    `<p><strong>Email:</strong> ${email}</p>` +
+                    `<p><strong>Phone:</strong> ${phone}</p>` +
+                    `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                    `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+            };
+            await sendEmail(emailContent);
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending application notification email:", emailError);
+        // Don't fail registration if email fails
+      }
+
+      return res.status(201).json({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        isPortalUser: true,
+        application: {
+          id: application[0].id,
+          status: application[0].status,
+          message: "Your application has been submitted. The location manager will review it shortly."
+        }
+      });
+    } catch (error: any) {
+      console.error("Portal registration error:", error);
+      res.status(500).json({ error: error.message || "Portal registration failed" });
+    }
+  });
+
+  // ===============================
+  // PORTAL USER BOOKING ROUTES (Auth required)
+  // ===============================
+
+  // Middleware to require portal user authentication and approved access
+  async function requirePortalUser(req: Request, res: Response, next: () => void) {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Authentication required. Please sign in." });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
+      
+      if (!isPortalUser) {
+        return res.status(403).json({ error: "Portal user access required" });
+      }
+      
+      // Verify user has approved location access
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, user.id))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(403).json({ 
+          error: "Access denied. Your application is pending approval by the location manager." 
+        });
+      }
+      
+      // Attach user to request
+      req.user = user as any;
+      console.log(`✅ Portal user authenticated: ${user.username} (ID: ${user.id})`);
+      return next();
+    } catch (error) {
+      console.error('Error in requirePortalUser middleware:', error);
+      return res.status(401).json({ error: "Authentication failed" });
+    }
+  }
+
+  // Get portal user's assigned location
+  app.get("/api/portal/my-location", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      
+      const { portalUserLocationAccess, locations } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      // Get user's location access
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const locationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, locationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      const location = locationRecords[0];
+      const slug = (location as any).name
           .toLowerCase()
           .trim()
           .replace(/[^\w\s-]/g, '')
           .replace(/[\s_-]+/g, '-')
           .replace(/^-+|-+$/g, '');
         
-        return {
-          id: loc.id,
-          name: loc.name,
-          address: loc.address,
-          logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
-          slug: slug,
-        };
-      });
-      
-      res.json(publicLocations);
-    } catch (error: any) {
-      console.error("Error fetching public locations:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch locations" });
-    }
-  });
-
-  // Get public location info for booking portal (by name slug)
-  app.get("/api/public/locations/:locationSlug", async (req: Request, res: Response) => {
-    try {
-      const locationSlug = req.params.locationSlug;
-      
-      // Try to find location by name (slugified)
-      const allLocations = await firebaseStorage.getAllLocations();
-      const location = allLocations.find((loc: any) => {
-        const slug = loc.name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        return slug === locationSlug;
-      });
-
-      if (!location) {
-        return res.status(404).json({ error: "Location not found" });
-      }
-
-      // Return public location info (no sensitive data)
       res.json({
         id: location.id,
-        name: location.name,
-        address: location.address,
+        name: (location as any).name,
+        address: (location as any).address,
         logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+          slug: slug,
       });
     } catch (error: any) {
-      console.error("Error fetching public location:", error);
+      console.error("Error fetching portal user location:", error);
       res.status(500).json({ error: error.message || "Failed to fetch location" });
     }
   });
 
-  // Get public kitchens for a location (by name slug)
-  app.get("/api/public/locations/:locationSlug/kitchens", async (req: Request, res: Response) => {
+  // ===============================
+  // PORTAL USER BOOKING ROUTES (Auth required - filtered by user's location)
+  // ===============================
+
+  // Get portal user's assigned location (for authenticated portal users)
+  app.get("/api/portal/locations", requirePortalUser, async (req: Request, res: Response) => {
     try {
-      const locationSlug = req.params.locationSlug;
+      const userId = (req.user as any).id;
       
-      // Find location by name (slugified)
-      const allLocations = await firebaseStorage.getAllLocations();
-      const location = allLocations.find((loc: any) => {
-        const slug = loc.name
+      const { portalUserLocationAccess, locations } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      // Get user's location access
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const locationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, locationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      const location = locationRecords[0];
+      const slug = (location as any).name
           .toLowerCase()
           .trim()
           .replace(/[^\w\s-]/g, '')
           .replace(/[\s_-]+/g, '-')
           .replace(/^-+|-+$/g, '');
-        return slug === locationSlug;
-      });
+      
+      res.json([{
+        id: location.id,
+        name: (location as any).name,
+        address: (location as any).address,
+        logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+        slug: slug,
+      }]);
+    } catch (error: any) {
+      console.error("Error fetching portal user location:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location" });
+    }
+  });
 
-      if (!location) {
+  // Get portal user's location info (by name slug) - requires auth and verifies ownership
+  app.get("/api/portal/locations/:locationSlug", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const locationSlug = req.params.locationSlug;
+      
+      // Get user's assigned location
+      const { portalUserLocationAccess, locations } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, userLocationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
 
-      const kitchens = await firebaseStorage.getKitchensByLocation(location.id);
+      const location = locationRecords[0];
+      const slug = (location as any).name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
       
-      // Filter only active kitchens and return public info
+      // Verify the slug matches the user's location
+      if (slug !== locationSlug) {
+        return res.status(403).json({ error: "Access denied. You can only access your assigned location." });
+      }
+
+      // Return location info
+      res.json({
+        id: location.id,
+        name: (location as any).name,
+        address: (location as any).address,
+        logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+      });
+    } catch (error: any) {
+      console.error("Error fetching portal location:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location" });
+    }
+  });
+
+  // Get kitchens for portal user's location (by name slug) - requires auth and verifies ownership
+  app.get("/api/portal/locations/:locationSlug/kitchens", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const locationSlug = req.params.locationSlug;
+      
+      // Get user's assigned location
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, userLocationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      const location = locationRecords[0];
+      const slug = (location as any).name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+
+      // Verify the slug matches the user's location
+      if (slug !== locationSlug) {
+        return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
+      }
+
+      const kitchens = await firebaseStorage.getKitchensByLocation(userLocationId);
+      
+      // Filter only active kitchens and return info
       const publicKitchens = kitchens
         .filter((kitchen: any) => kitchen.isActive !== false)
         .map((kitchen: any) => ({
@@ -6242,14 +6840,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(publicKitchens);
     } catch (error: any) {
-      console.error("Error fetching public kitchens:", error);
+      console.error("Error fetching portal kitchens:", error);
       res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
     }
   });
 
-  // Get available slots for a kitchen (public)
-  app.get("/api/public/kitchens/:kitchenId/availability", async (req: Request, res: Response) => {
+  // Get available slots for a kitchen - requires auth and verifies kitchen belongs to user's location
+  app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async (req: Request, res: Response) => {
     try {
+      const userId = (req.user as any).id;
       const kitchenId = parseInt(req.params.kitchenId);
       const date = req.query.date as string;
 
@@ -6261,12 +6860,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Date parameter is required" });
       }
 
+      // Get user's assigned location
+      const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Verify kitchen belongs to user's location
+      const kitchenRecords = await db.select()
+        .from(kitchens)
+        .where(eq(kitchens.id, kitchenId))
+        .limit(1);
+      
+      if (kitchenRecords.length === 0) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      const kitchen = kitchenRecords[0];
+      const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+      
+      if (kitchenLocationId !== userLocationId) {
+        return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
+      }
+
       // Get available slots using the same logic as chef bookings
       const slots = await firebaseStorage.getAvailableSlots(kitchenId, date);
       
       res.json({ slots });
     } catch (error: any) {
-      console.error("Error fetching public availability:", error);
+      console.error("Error fetching portal availability:", error);
       res.status(500).json({ error: error.message || "Failed to fetch availability" });
     }
   });
@@ -6401,6 +7032,179 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Error creating public booking:", error);
+      res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
+  });
+
+  // Submit portal booking (authenticated portal user) - requires auth and verifies location access
+  app.post("/api/portal/bookings", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const {
+        locationId,
+        kitchenId,
+        bookingDate,
+        startTime,
+        endTime,
+        bookingName,
+        bookingEmail,
+        bookingPhone,
+        bookingCompany,
+        specialNotes,
+      } = req.body;
+
+      if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Get user's assigned location
+      const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Verify location matches user's assigned location
+      if (parseInt(locationId) !== userLocationId) {
+        return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
+      }
+      
+      // Verify kitchen belongs to user's location
+      const kitchenRecords = await db.select()
+        .from(kitchens)
+        .where(eq(kitchens.id, parseInt(kitchenId)))
+        .limit(1);
+      
+      if (kitchenRecords.length === 0) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      const kitchen = kitchenRecords[0];
+      const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+      
+      if (kitchenLocationId !== userLocationId) {
+        return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
+      }
+
+      // Validate booking date/time
+      const bookingDateObj = new Date(bookingDate);
+      const now = new Date();
+      
+      if (bookingDateObj < now) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+
+      // Check availability
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        parseInt(kitchenId),
+        bookingDateObj,
+        startTime,
+        endTime
+      );
+
+      if (!availabilityCheck.valid) {
+        return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
+      }
+
+      // Get location to check minimum booking window
+      const location = await firebaseStorage.getLocationById(userLocationId);
+      const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
+
+      // Check minimum booking window if booking is today
+      const isToday = bookingDateObj.toDateString() === now.toDateString();
+      if (isToday) {
+        const [startHours, startMins] = startTime.split(':').map(Number);
+        const slotTime = new Date(bookingDateObj);
+        slotTime.setHours(startHours, startMins, 0, 0);
+        const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursUntilBooking < minimumBookingWindowHours) {
+          return res.status(400).json({ 
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          });
+        }
+      }
+
+      // Create booking as external/third-party booking (using portal user info)
+      const booking = await firebaseStorage.createBooking({
+        kitchenId: parseInt(kitchenId),
+        chefId: userId, // Portal user ID
+        bookingDate: bookingDateObj,
+        startTime,
+        endTime,
+        specialNotes: specialNotes || `Portal user booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}. Email: ${bookingEmail}${bookingPhone ? `, Phone: ${bookingPhone}` : ''}`,
+        bookingType: 'external',
+        createdBy: userId, // Portal user who created the booking
+        externalContact: {
+          name: bookingName,
+          email: bookingEmail,
+          phone: bookingPhone || null,
+          company: bookingCompany || null,
+        },
+      });
+
+      // Send notification to manager
+      try {
+        const { sendEmail } = await import('./email');
+        if ((location as any)?.notificationEmail) {
+          // Create simple email notification for portal user booking
+          const emailContent = {
+            to: (location as any).notificationEmail,
+            subject: `New Portal User Booking Request - ${(location as any).name}`,
+            text: `A new booking request has been submitted by a portal user:\n\n` +
+                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+                  `Date: ${bookingDate}\n` +
+                  `Time: ${startTime} - ${endTime}\n\n` +
+                  `Contact Information:\n` +
+                  `Name: ${bookingName}\n` +
+                  `Email: ${bookingEmail}\n` +
+                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+            html: `<h2>New Portal User Booking Request</h2>` +
+                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
+                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+                  `<h3>Contact Information:</h3>` +
+                  `<ul>` +
+                  `<li><strong>Name:</strong> ${bookingName}</li>` +
+                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+                  `</ul>` +
+                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+          };
+          await sendEmail(emailContent);
+        }
+      } catch (emailError) {
+        console.error("Error sending booking notification email:", emailError);
+        // Don't fail the booking if email fails
+      }
+
+      res.status(201).json({
+        success: true,
+        booking: {
+          id: booking.id,
+          bookingDate,
+          startTime,
+          endTime,
+          status: 'pending',
+        },
+        message: "Booking request submitted successfully. The kitchen manager will contact you shortly.",
+      });
+    } catch (error: any) {
+      console.error("Error creating portal booking:", error);
       res.status(500).json({ error: error.message || "Failed to create booking" });
     }
   });

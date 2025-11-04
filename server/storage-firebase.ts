@@ -114,7 +114,7 @@ export class FirebaseStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
           [
             insertUser.username,
             insertUser.password || '', // Empty password for Firebase users
@@ -123,7 +123,9 @@ export class FirebaseStorage {
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
             insertUser.isChef !== undefined ? insertUser.isChef : false,
-            insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false
+            insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
+            insertUser.isManager !== undefined ? insertUser.isManager : false,
+            (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false
           ]
         );
         return result.rows[0];
@@ -144,6 +146,8 @@ export class FirebaseStorage {
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
         isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,
         isDeliveryPartner: insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
+        isManager: insertUser.isManager !== undefined ? insertUser.isManager : false,
+        isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
       })
       .returning();
 

@@ -15,6 +15,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminLoginTest from "@/pages/AdminLoginTest";
 import ManagerLogin from "@/pages/ManagerLogin";
+import PortalLogin from "@/pages/PortalLogin";
 import AuthTest from "@/pages/AuthTest";
 import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import ForgotPasswordPage from "@/pages/ForgotPassword";
@@ -52,6 +53,8 @@ const ManagerBookingPortal = lazy(() => import("@/pages/ManagerBookingPortal"));
 const PortalLanding = lazy(() => import("@/pages/PortalLanding"));
 const PortalBookingPage = lazy(() => import("@/pages/PortalBookingPage"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
+const ManagerPortalApplications = lazy(() => import("@/pages/ManagerPortalApplications"));
+const PortalRegister = lazy(() => import("@/pages/PortalRegister"));
 
 
 // Loading component
@@ -188,7 +191,14 @@ function Router() {
             <ManagerBookingDashboard />
           </ManagerProtectedRoute>
         </Route>
-        {/* Public Manager Booking Portal - No auth required */}
+        <Route path="/manager/portal-applications">
+          <ManagerProtectedRoute>
+            <ManagerPortalApplications />
+          </ManagerProtectedRoute>
+        </Route>
+        {/* Portal User Routes */}
+        <Route path="/portal/register" component={PortalRegister} />
+        <Route path="/portal/login" component={PortalLogin} />
         <Route path="/portal/book" component={PortalBookingPage} />
         <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
         <Route path="/portal" component={PortalLanding} />
