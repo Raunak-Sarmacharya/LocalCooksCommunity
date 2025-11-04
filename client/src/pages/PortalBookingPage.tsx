@@ -120,11 +120,11 @@ export default function PortalBookingPage() {
           )}
 
           {locations && locations.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-wrap justify-center gap-6">
               {locations.map((location) => (
                 <Card
                   key={location.id}
-                  className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-blue-300 border-2"
+                  className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-blue-300 border-2 w-full max-w-sm md:max-w-xs lg:max-w-sm"
                   onClick={() => handleLocationClick(location.slug)}
                 >
                   <CardHeader>
