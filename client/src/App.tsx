@@ -50,6 +50,7 @@ const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerBookingPortal = lazy(() => import("@/pages/ManagerBookingPortal"));
 const PortalLanding = lazy(() => import("@/pages/PortalLanding"));
+const PortalBookingPage = lazy(() => import("@/pages/PortalBookingPage"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 
 
@@ -189,6 +190,7 @@ function Router() {
         </Route>
         {/* Public Manager Booking Portal - No auth required */}
         <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
+        <Route path="/portal/book" component={PortalBookingPage} />
         <Route path="/portal" component={PortalLanding} />
         
         <Route component={NotFound} />
