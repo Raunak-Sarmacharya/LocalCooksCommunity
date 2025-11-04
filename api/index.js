@@ -11523,6 +11523,269 @@ app.put("/api/manager/chef-profiles/:id/status", async (req, res) => {
   }
 });
 
+// Manager: Get portal user applications for review
+app.get("/api/manager/portal-applications", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
+
+    if (!pool) {
+      return res.json([]);
+    }
+
+    // Check if tables exist
+    const tableCheck = await pool.query(`
+      SELECT to_regclass('public.portal_user_applications') as applications_exists,
+             to_regclass('public.locations') as locations_exists;
+    `);
+
+    if (!tableCheck.rows[0].applications_exists || !tableCheck.rows[0].locations_exists) {
+      console.log(`[Manager Portal Applications] Tables don't exist yet`);
+      return res.json([]);
+    }
+
+    // Get all locations managed by this manager
+    const locationsResult = await pool.query(`
+      SELECT id, name, address 
+      FROM locations 
+      WHERE manager_id = $1
+    `, [user.id]);
+
+    console.log(`[Manager Portal Applications] Found ${locationsResult.rows.length} managed locations`);
+
+    if (locationsResult.rows.length === 0) {
+      console.log(`[Manager Portal Applications] No locations found for manager ${user.id}`);
+      return res.json([]);
+    }
+
+    const locationIds = locationsResult.rows.map(loc => loc.id);
+    console.log(`[Manager Portal Applications] Location IDs: ${locationIds.join(', ')}`);
+
+    // Get ALL portal user applications for these locations (not just inReview)
+    const applicationsResult = await pool.query(`
+      SELECT 
+        pua.id,
+        pua.user_id as "userId",
+        pua.location_id as "locationId",
+        pua.full_name as "fullName",
+        pua.email,
+        pua.phone,
+        pua.company,
+        pua.status,
+        pua.feedback,
+        pua.reviewed_by as "reviewedBy",
+        pua.reviewed_at as "reviewedAt",
+        pua.created_at as "createdAt",
+        l.id as location_id,
+        l.name as location_name,
+        l.address as location_address,
+        u.id as user_id,
+        u.username as user_username
+      FROM portal_user_applications pua
+      INNER JOIN locations l ON l.id = pua.location_id
+      INNER JOIN users u ON u.id = pua.user_id
+      WHERE pua.location_id = ANY($1::int[])
+      ORDER BY pua.created_at DESC
+    `, [locationIds]);
+
+    console.log(`[Manager Portal Applications] Found ${applicationsResult.rows.length} total applications`);
+
+    // Format response
+    const formatted = applicationsResult.rows.map(app => ({
+      id: app.id,
+      userId: app.userId,
+      locationId: app.locationId,
+      fullName: app.fullName,
+      email: app.email,
+      phone: app.phone,
+      company: app.company,
+      status: app.status,
+      feedback: app.feedback,
+      reviewedBy: app.reviewedBy,
+      reviewedAt: app.reviewedAt,
+      createdAt: app.createdAt,
+      location: {
+        id: app.location_id,
+        name: app.location_name,
+        address: app.location_address,
+      },
+      user: {
+        id: app.user_id,
+        username: app.user_username,
+      },
+    }));
+
+    console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
+
+    res.json(formatted);
+  } catch (error) {
+    console.error("Error getting portal applications for manager:", error);
+    res.status(500).json({ error: error.message || "Failed to get applications" });
+  }
+});
+
+// Manager: Approve or reject portal user application
+app.put("/api/manager/portal-applications/:id/status", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const applicationId = parseInt(req.params.id);
+    const { status, feedback } = req.body;
+
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Check if tables exist
+    const tableCheck = await pool.query(`
+      SELECT to_regclass('public.portal_user_applications') as applications_exists,
+             to_regclass('public.portal_user_location_access') as access_exists;
+    `);
+
+    if (!tableCheck.rows[0].applications_exists) {
+      return res.status(404).json({ 
+        error: "Database migration required",
+        details: "Run: migrations/0005_add_portal_user_tables.sql"
+      });
+    }
+
+    // Verify this application belongs to a location managed by this manager
+    const applicationCheck = await pool.query(`
+      SELECT pua.*, l.manager_id, l.name as location_name, l.notification_email
+      FROM portal_user_applications pua
+      INNER JOIN locations l ON l.id = pua.location_id
+      WHERE pua.id = $1
+    `, [applicationId]);
+
+    if (applicationCheck.rows.length === 0) {
+      return res.status(404).json({ error: "Application not found" });
+    }
+
+    const application = applicationCheck.rows[0];
+    if (application.manager_id !== user.id) {
+      return res.status(403).json({ error: "You don't have permission to manage this application" });
+    }
+
+    // Update application status
+    const updateResult = await pool.query(`
+      UPDATE portal_user_applications
+      SET status = $1,
+          reviewed_by = $2,
+          reviewed_at = NOW(),
+          feedback = $3
+      WHERE id = $4
+      RETURNING *
+    `, [status, user.id, feedback || null, applicationId]);
+
+    const updated = updateResult.rows[0];
+
+    // If approved, create access record
+    if (status === 'approved') {
+      // Check if access record already exists
+      const existingAccess = await pool.query(`
+        SELECT * FROM portal_user_location_access
+        WHERE portal_user_id = $1 AND location_id = $2
+      `, [application.user_id, application.location_id]);
+
+      if (existingAccess.rows.length === 0) {
+        // Create access record
+        if (tableCheck.rows[0].access_exists) {
+          await pool.query(`
+            INSERT INTO portal_user_location_access (portal_user_id, location_id, granted_by, application_id)
+            VALUES ($1, $2, $3, $4)
+          `, [application.user_id, application.location_id, user.id, applicationId]);
+        }
+      }
+    }
+
+    // Get user details for email
+    const userResult = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [application.user_id]);
+
+    const portalUser = userResult.rows[0];
+
+    // Send email notification
+    try {
+      const { sendEmail } = await import('../server/email.js');
+      
+      const managerEmail = application.notification_email || application.manager_id;
+      const portalUserEmail = application.email || portalUser.username;
+
+      if (status === 'approved') {
+        const approvalEmail = {
+          to: portalUserEmail,
+          subject: `Portal Access Approved - ${application.location_name}`,
+          text: `Your portal user application for ${application.location_name} has been approved!\n\n` +
+                `You can now access the location and book kitchens.\n\n` +
+                (feedback ? `Manager Feedback: ${feedback}\n\n` : '') +
+                `Login at: ${process.env.BASE_URL || 'http://localhost:5000'}/portal/login`,
+          html: `<h2>Portal Access Approved</h2>` +
+                `<p>Your portal user application for <strong>${application.location_name}</strong> has been approved!</p>` +
+                `<p>You can now access the location and book kitchens.</p>` +
+                (feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : '') +
+                `<p><a href="${process.env.BASE_URL || 'http://localhost:5000'}/portal/login">Login to Portal</a></p>`
+        };
+        await sendEmail(approvalEmail);
+        console.log(`✅ Portal access approval email sent to: ${portalUserEmail}`);
+      } else {
+        const rejectionEmail = {
+          to: portalUserEmail,
+          subject: `Portal Access Application - ${application.location_name}`,
+          text: `Your portal user application for ${application.location_name} has been reviewed.\n\n` +
+                `Unfortunately, your application was not approved at this time.\n\n` +
+                (feedback ? `Manager Feedback: ${feedback}\n\n` : '') +
+                `If you have questions, please contact the location manager.`,
+          html: `<h2>Portal Access Application</h2>` +
+                `<p>Your portal user application for <strong>${application.location_name}</strong> has been reviewed.</p>` +
+                `<p>Unfortunately, your application was not approved at this time.</p>` +
+                (feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : '') +
+                `<p>If you have questions, please contact the location manager.</p>`
+        };
+        await sendEmail(rejectionEmail);
+        console.log(`✅ Portal access rejection email sent to: ${portalUserEmail}`);
+      }
+    } catch (emailError) {
+      console.error("Error sending portal application status email:", emailError);
+      // Don't fail the status update if emails fail
+    }
+
+    res.json({
+      id: updated.id,
+      userId: updated.user_id,
+      locationId: updated.location_id,
+      status: updated.status,
+      feedback: updated.feedback,
+      reviewedBy: updated.reviewed_by,
+      reviewedAt: updated.reviewed_at,
+    });
+  } catch (error) {
+    console.error("Error updating portal application status:", error);
+    res.status(500).json({ error: error.message || "Failed to update application status" });
+  }
+});
+
 app.get("/api/manager/bookings", async (req, res) => {
   try {
     const rawUserId = req.session.userId || req.headers['x-user-id'];
@@ -14649,6 +14912,86 @@ app.post("/api/portal-register", async (req, res) => {
   } catch (error) {
     console.error("Portal registration error:", error);
     res.status(500).json({ error: error.message || "Portal registration failed" });
+  }
+});
+
+// Get portal user application status (for authenticated portal users without approved access)
+app.get("/api/portal/application-status", async (req, res) => {
+  try {
+    const sessionUserId = req.session?.userId;
+    
+    if (!sessionUserId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+
+    // Get user from session
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: "User not found" });
+    }
+    
+    const user = userResult.rows[0];
+    const isPortalUser = user.is_portal_user || user.isPortalUser;
+    
+    if (!isPortalUser) {
+      return res.status(403).json({ error: "Portal user access required" });
+    }
+
+    // Check for approved access first
+    const accessResult = await pool.query(
+      'SELECT * FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [user.id]
+    );
+    
+    if (accessResult.rows.length > 0) {
+      return res.json({ 
+        hasAccess: true,
+        status: 'approved'
+      });
+    }
+
+    // Check application status
+    const applicationResult = await pool.query(
+      `SELECT * FROM portal_user_applications 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [user.id]
+    );
+    
+    if (applicationResult.rows.length > 0) {
+      const app = applicationResult.rows[0];
+      return res.json({
+        hasAccess: false,
+        status: app.status,
+        applicationId: app.id,
+        locationId: app.location_id,
+        awaitingApproval: app.status === 'inReview'
+      });
+    }
+
+    return res.json({
+      hasAccess: false,
+      status: 'no_application',
+      awaitingApproval: false
+    });
+  } catch (error) {
+    console.error("Error getting portal application status:", error);
+    
+    // If table doesn't exist, return awaiting approval status
+    if (error.message && error.message.includes('does not exist')) {
+      return res.json({
+        hasAccess: false,
+        status: 'no_application',
+        awaitingApproval: false
+      });
+    }
+    
+    res.status(500).json({ error: error.message || "Failed to get application status" });
   }
 });
 

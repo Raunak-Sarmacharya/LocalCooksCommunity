@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2, Loader2, Lock, User, Mail, Phone, MapPin } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, Redirect as RouterRedirect } from "wouter";
 import { z } from "zod";
@@ -62,6 +62,35 @@ export default function PortalRegister() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Check if user is already logged in as portal user
+  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
+    queryKey: ["/api/user-session"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user-session", {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          return null;
+        }
+        return response.json();
+      } catch (error) {
+        return null;
+      }
+    },
+    retry: false,
+    staleTime: 30 * 1000,
+  });
+
+  const isPortalUser = sessionUser?.isPortalUser || sessionUser?.is_portal_user;
+
+  // Redirect if already logged in as portal user
+  useEffect(() => {
+    if (!sessionLoading && isPortalUser) {
+      setLocation("/portal/book");
+    }
+  }, [sessionLoading, isPortalUser, setLocation]);
+
   // Fetch all public locations for selection
   const { data: locations, isLoading: locationsLoading } = useQuery<PublicLocation[]>({
     queryKey: ["/api/public/locations"],
@@ -84,6 +113,20 @@ export default function PortalRegister() {
       company: "",
     },
   });
+
+  // Show loading while checking session
+  if (sessionLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  // Redirect if already logged in
+  if (isPortalUser) {
+    return <RouterRedirect to="/portal/book" />;
+  }
 
   const onSubmit = async (data: RegisterFormData) => {
     setIsSubmitting(true);
