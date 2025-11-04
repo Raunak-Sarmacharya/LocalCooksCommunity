@@ -15389,13 +15389,22 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
     }
 
     // Get availability for this date (similar to existing availability endpoint)
-    const dateObj = new Date(date);
+    // Parse date string directly (YYYY-MM-DD) to avoid timezone issues
+    const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dateMatch) {
+      return res.status(400).json({ error: "Invalid date format. Expected YYYY-MM-DD" });
+    }
+    
+    const [, year, month, day] = dateMatch;
+    const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     if (isNaN(dateObj.getTime())) {
-      return res.status(400).json({ error: "Invalid date format" });
+      return res.status(400).json({ error: "Invalid date" });
     }
 
-    const dateStr = dateObj.toISOString().split('T')[0];
+    const dateStr = `${year}-${month}-${day}`;
     const dayOfWeek = dateObj.getDay(); // 0-6, Sunday is 0
+    
+    console.log(`[Portal Availability] Parsed date: ${dateStr}, day of week: ${dayOfWeek} (0=Sunday, 1=Monday, etc.)`);
 
     let startHour, endHour;
 
@@ -15420,23 +15429,53 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
         endHour = parseInt(override.end_time.split(':')[0]);
       } else {
         // No override, use weekly schedule
+        console.log(`[Portal Availability] Checking availability for kitchen ${kitchenId}, day of week ${dayOfWeek}, date ${dateStr}`);
+        
         const availabilityResult = await pool.query(`
           SELECT day_of_week, start_time, end_time, is_available
           FROM kitchen_availability
           WHERE kitchen_id = $1 AND day_of_week = $2
         `, [kitchenId, dayOfWeek]);
 
+        console.log(`[Portal Availability] Found ${availabilityResult.rows.length} availability records for kitchen ${kitchenId}, day ${dayOfWeek}`);
+
         if (availabilityResult.rows.length === 0) {
-          return res.json({ slots: [] });
+          // Check if kitchen has any availability set up at all
+          const allAvailabilityResult = await pool.query(`
+            SELECT day_of_week, start_time, end_time, is_available
+            FROM kitchen_availability
+            WHERE kitchen_id = $1
+          `, [kitchenId]);
+          console.log(`[Portal Availability] Kitchen ${kitchenId} has ${allAvailabilityResult.rows.length} total availability records`);
+          console.log(`[Portal Availability] Available days:`, allAvailabilityResult.rows.map(r => ({ day: r.day_of_week, start: r.start_time, end: r.end_time, available: r.is_available })));
+          return res.json({ 
+            slots: [],
+            debug: {
+              message: "No availability set for this day",
+              kitchenId,
+              requestedDay: dayOfWeek,
+              date: dateStr,
+              totalAvailabilityRecords: allAvailabilityResult.rows.length,
+              availableDays: allAvailabilityResult.rows.map(r => r.day_of_week)
+            }
+          });
         }
 
         const dayAvailability = availabilityResult.rows[0];
+        console.log(`[Portal Availability] Day availability:`, dayAvailability);
+        
         if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
+          console.log(`[Portal Availability] Kitchen not available or missing times:`, {
+            is_available: dayAvailability.is_available,
+            start_time: dayAvailability.start_time,
+            end_time: dayAvailability.end_time
+          });
           return res.json({ slots: [] });
         }
 
         startHour = parseInt(dayAvailability.start_time.split(':')[0]);
         endHour = parseInt(dayAvailability.end_time.split(':')[0]);
+        console.log(`[Portal Availability] Parsed hours: startHour=${startHour}, endHour=${endHour}`);
       }
 
       // Validate hours

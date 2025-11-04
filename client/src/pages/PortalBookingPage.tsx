@@ -210,79 +210,79 @@ export default function PortalBookingPage() {
 
           {/* Featured Locations Section */}
           {applicationStatus?.hasAccess && (
-            <div className="mb-16">
-              <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
+          <div className="mb-16">
+            <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
                 Your Location
-              </h3>
+            </h3>
 
-            {/* Locations List */}
-            {isLoading && (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-              </div>
-            )}
-
-            {error && (
-              <div className="text-center py-20">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
-                  <p className="text-red-800 font-medium">Failed to load locations</p>
-                  <p className="text-red-600 text-sm mt-2">
-                    Please try refreshing the page or contact support.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {locations && locations.length === 0 && (
-              <div className="text-center py-20">
-                <Building2 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No Locations Available</h3>
-                <p className="text-gray-600">There are currently no locations available for booking.</p>
-              </div>
-            )}
-
-            {locations && locations.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-6">
-                {locations.map((location) => (
-                  <Card
-                    key={location.id}
-                    className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-blue-300 border-2 w-full max-w-sm md:max-w-xs lg:max-w-sm"
-                    onClick={() => handleLocationClick(location.slug)}
-                  >
-                    <CardHeader>
-                      <div className="flex items-start justify-between mb-2">
-                        {location.logoUrl && (
-                          <img
-                            src={location.logoUrl}
-                            alt={`${location.name} logo`}
-                            className="h-12 w-auto object-contain"
-                          />
-                        )}
-                        <Building2 className={`h-6 w-6 text-blue-600 ${location.logoUrl ? 'ml-auto' : ''}`} />
-                      </div>
-                      <CardTitle className="text-xl">{location.name}</CardTitle>
-                      <CardDescription className="flex items-start gap-2 mt-2">
-                        <MapPin className="h-4 w-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                        <span className="text-sm">{location.address}</span>
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Button
-                        className="w-full group"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleLocationClick(location.slug);
-                        }}
-                      >
-                        View Kitchens
-                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
+          {/* Locations List */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
             </div>
+          )}
+
+          {error && (
+            <div className="text-center py-20">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+                <p className="text-red-800 font-medium">Failed to load locations</p>
+                <p className="text-red-600 text-sm mt-2">
+                  Please try refreshing the page or contact support.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {locations && locations.length === 0 && (
+            <div className="text-center py-20">
+              <Building2 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Locations Available</h3>
+              <p className="text-gray-600">There are currently no locations available for booking.</p>
+            </div>
+          )}
+
+          {locations && locations.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-6">
+              {locations.map((location) => (
+                <Card
+                  key={location.id}
+                  className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-blue-300 border-2 w-full max-w-sm md:max-w-xs lg:max-w-sm"
+                  onClick={() => handleLocationClick(location.slug)}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-2">
+                      {location.logoUrl && (
+                        <img
+                          src={location.logoUrl}
+                          alt={`${location.name} logo`}
+                          className="h-12 w-auto object-contain"
+                        />
+                      )}
+                      <Building2 className={`h-6 w-6 text-blue-600 ${location.logoUrl ? 'ml-auto' : ''}`} />
+                    </div>
+                    <CardTitle className="text-xl">{location.name}</CardTitle>
+                    <CardDescription className="flex items-start gap-2 mt-2">
+                      <MapPin className="h-4 w-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                      <span className="text-sm">{location.address}</span>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full group"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLocationClick(location.slug);
+                      }}
+                    >
+                      View Kitchens
+                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+          </div>
           )}
 
           {/* Info Section */}
