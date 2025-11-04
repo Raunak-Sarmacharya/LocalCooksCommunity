@@ -14741,6 +14741,94 @@ app.post("/api/public/bookings", async (req, res) => {
 });
 
 // ===============================
+// PORTAL USER LOGIN ROUTE
+app.post("/api/portal-login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    console.log('Portal user login attempt for:', username);
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get portal user
+    const userResult = await pool.query(
+      'SELECT * FROM users WHERE username = $1',
+      [username]
+    );
+
+    if (userResult.rows.length === 0) {
+      console.log('Portal user not found:', username);
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    const portalUser = userResult.rows[0];
+
+    // Verify user is portal user
+    const isPortalUser = portalUser.is_portal_user || portalUser.isPortalUser;
+    if (!isPortalUser) {
+      console.log('User is not a portal user:', username);
+      return res.status(403).json({ error: 'Not authorized - portal user access required' });
+    }
+
+    // Check password
+    const passwordMatches = await comparePasswords(password, portalUser.password);
+
+    if (!passwordMatches) {
+      console.log('Password mismatch for portal user:', username);
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    // Log in the user using session
+    req.session.userId = portalUser.id;
+    req.session.user = { ...portalUser, password: undefined };
+    
+    // Wait for session to be saved
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    // Get user's assigned location
+    let locationId = null;
+    try {
+      const locationResult = await pool.query(
+        'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+        [portalUser.id]
+      );
+      
+      if (locationResult.rows.length > 0) {
+        locationId = locationResult.rows[0].location_id;
+      }
+    } catch (error) {
+      console.error('Error fetching portal user location:', error);
+      // Don't fail login if location fetch fails
+    }
+
+    res.json({
+      id: portalUser.id,
+      username: portalUser.username,
+      role: portalUser.role,
+      isPortalUser: true,
+      locationId: locationId,
+    });
+  } catch (error) {
+    console.error("Portal login error:", error);
+    res.status(500).json({ error: error.message || "Portal login failed" });
+  }
+});
+
 // PORTAL USER REGISTRATION ROUTE
 // ===============================
 
