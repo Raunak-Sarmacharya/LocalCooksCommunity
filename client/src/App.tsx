@@ -189,8 +189,8 @@ function Router() {
           </ManagerProtectedRoute>
         </Route>
         {/* Public Manager Booking Portal - No auth required */}
-        <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
         <Route path="/portal/book" component={PortalBookingPage} />
+        <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
         <Route path="/portal" component={PortalLanding} />
         
         <Route component={NotFound} />
