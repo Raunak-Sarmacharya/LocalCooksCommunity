@@ -15380,6 +15380,317 @@ app.get("/api/portal/locations/:locationSlug/kitchens", requirePortalUser, async
   }
 });
 
+// Get ALL time slots with booking info (capacity aware) - portal version matching chef endpoint
+app.get("/api/portal/kitchens/:kitchenId/slots", requirePortalUser, async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('Vary', 'Authorization');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+    const userId = req.user.id;
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ error: "Date parameter is required" });
+    }
+    
+    const bookingDate = new Date(date);
+    if (isNaN(bookingDate.getTime())) {
+      return res.status(400).json({ error: "Invalid date format" });
+    }
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user's assigned location and verify kitchen access
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    const kitchenResult = await pool.query(
+      'SELECT id, location_id FROM kitchens WHERE id = $1 LIMIT 1',
+      [kitchenId]
+    );
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+    
+    if (kitchenResult.rows[0].location_id !== userLocationId) {
+      return res.status(403).json({ error: "Access denied. You can only view slots for kitchens at your assigned location." });
+    }
+
+    let startHour;
+    let endHour;
+
+    // 1) Fetch ALL overrides for this date (both available and blocked)
+    let overridesResult;
+    try {
+      overridesResult = await pool.query(`
+        SELECT start_time, end_time, is_available
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1
+          AND DATE(specific_date) = $2::date
+        ORDER BY created_at ASC
+      `, [kitchenId, bookingDate.toISOString()]);
+    } catch (_e) {
+      overridesResult = { rows: [] };
+    }
+
+    if (overridesResult.rows.length > 0) {
+      // Find the base available override
+      const baseOverride = overridesResult.rows.find(o => o.is_available === true);
+      if (!baseOverride || !baseOverride.start_time || !baseOverride.end_time) {
+        // No valid base availability
+        return res.json([]);
+      }
+
+      [startHour] = baseOverride.start_time.split(":").map(Number);
+      [endHour] = baseOverride.end_time.split(":").map(Number);
+
+      // Collect blocked ranges
+      const blockedRanges = overridesResult.rows
+        .filter(o => o.is_available === false && o.start_time && o.end_time)
+        .map(o => {
+          const [sh] = o.start_time.split(":").map(Number);
+          const [eh] = o.end_time.split(":").map(Number);
+          return { startHour: sh, endHour: eh };
+        });
+
+      // Generate all 1-hour slots in the base range, excluding blocked ranges
+      const allSlots = [];
+      for (let hour = startHour; hour < endHour; hour++) {
+        // Check if this hour overlaps any blocked range
+        const isBlocked = blockedRanges.some(range => {
+          return hour >= range.startHour && hour < range.endHour;
+        });
+        if (!isBlocked) {
+          allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+        }
+      }
+
+      // Fetch only confirmed bookings to block capacity
+      const bookingsResult = await pool.query(`
+        SELECT start_time, end_time 
+        FROM kitchen_bookings
+        WHERE kitchen_id = $1 
+          AND DATE(booking_date) = $2::date
+          AND status = 'confirmed'
+      `, [kitchenId, bookingDate.toISOString()]);
+
+      const capacity = 1;
+      const slotBookingCounts = new Map();
+      allSlots.forEach(s => slotBookingCounts.set(s, 0));
+
+      for (const booking of bookingsResult.rows) {
+        const [startH, startM] = booking.start_time.split(':').map(Number);
+        const [endH, endM] = booking.end_time.split(':').map(Number);
+        const startTotal = startH * 60 + startM;
+        const endTotal = endH * 60 + endM;
+
+        for (const slot of allSlots) {
+          const [slotH] = slot.split(':').map(Number);
+          const slotStart = slotH * 60;
+          const slotEnd = slotStart + 60;
+          if (slotStart < endTotal && slotEnd > startTotal) {
+            slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+          }
+        }
+      }
+
+      const result = allSlots.map(time => {
+        const booked = slotBookingCounts.get(time) || 0;
+        return {
+          time,
+          available: Math.max(0, capacity - booked),
+          capacity,
+          isFullyBooked: booked >= capacity,
+        };
+      });
+
+      return res.json(result);
+    } else {
+      // 2) No overrides, fall back to weekly availability
+      const dayOfWeek = bookingDate.getDay();
+      let availabilityResult;
+      try {
+        availabilityResult = await pool.query(`
+          SELECT start_time, end_time, is_available
+          FROM kitchen_availability 
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, dayOfWeek]);
+      } catch (_e) {
+        availabilityResult = { rows: [] };
+      }
+
+      if (availabilityResult.rows.length === 0 || availabilityResult.rows[0].is_available === false) {
+        return res.json([]);
+      }
+
+      const availability = availabilityResult.rows[0];
+      [startHour] = availability.start_time.split(":").map(Number);
+      [endHour] = availability.end_time.split(":").map(Number);
+
+      // Generate 1-hour slots
+      const allSlots = [];
+      for (let hour = startHour; hour < endHour; hour++) {
+        allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+      }
+
+      // Fetch confirmed bookings
+      const bookingsResult = await pool.query(`
+        SELECT start_time, end_time 
+        FROM kitchen_bookings
+        WHERE kitchen_id = $1 
+          AND DATE(booking_date) = $2::date
+          AND status = 'confirmed'
+      `, [kitchenId, bookingDate.toISOString()]);
+
+      const capacity = 1;
+      const slotBookingCounts = new Map();
+      allSlots.forEach(s => slotBookingCounts.set(s, 0));
+
+      for (const booking of bookingsResult.rows) {
+        const [startH, startM] = booking.start_time.split(':').map(Number);
+        const [endH, endM] = booking.end_time.split(':').map(Number);
+        const startTotal = startH * 60 + startM;
+        const endTotal = endH * 60 + endM;
+
+        for (const slot of allSlots) {
+          const [slotH] = slot.split(':').map(Number);
+          const slotStart = slotH * 60;
+          const slotEnd = slotStart + 60;
+          if (slotStart < endTotal && slotEnd > startTotal) {
+            slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+          }
+        }
+      }
+
+      const result = allSlots.map(time => {
+        const booked = slotBookingCounts.get(time) || 0;
+        return {
+          time,
+          available: Math.max(0, capacity - booked),
+          capacity,
+          isFullyBooked: booked >= capacity,
+        };
+      });
+
+      return res.json(result);
+    }
+  } catch (error) {
+    console.error("Error fetching portal time slots:", error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to fetch time slots", message: error.message });
+    }
+  }
+});
+
+// Per-kitchen policy: max slots per portal user per day
+app.get("/api/portal/kitchens/:kitchenId/policy", requirePortalUser, async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('Vary', 'Authorization');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+    const userId = req.user.id;
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { date } = req.query;
+    const bookingDate = date ? new Date(String(date)) : new Date();
+
+    // Verify kitchen access
+    if (!pool) return res.json({ maxSlotsPerChef: 2 });
+
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    const kitchenResult = await pool.query(
+      'SELECT id, location_id FROM kitchens WHERE id = $1 LIMIT 1',
+      [kitchenId]
+    );
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+    
+    if (kitchenResult.rows[0].location_id !== userLocationId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Priority order: 1) Date override, 2) Weekly schedule, 3) Location default, 4) Hardcoded 2
+    let maxSlotsPerChef = 2;
+    try {
+      // 1. Try date-specific override first
+      const over = await pool.query(`
+        SELECT max_slots_per_chef
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [kitchenId, bookingDate.toISOString()]);
+      if (over.rows.length > 0) {
+        const val = Number(over.rows[0].max_slots_per_chef);
+        if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+      } else {
+        // 2. Try weekly schedule for this day of week
+        const avail = await pool.query(`
+          SELECT max_slots_per_chef
+          FROM kitchen_availability
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, bookingDate.getDay()]);
+        if (avail.rows.length > 0) {
+          const v = Number(avail.rows[0].max_slots_per_chef);
+          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+        } else {
+          // 3. Fall back to location default
+          const loc = await pool.query(`
+            SELECT l.default_daily_booking_limit
+            FROM locations l
+            INNER JOIN kitchens k ON k.location_id = l.id
+            WHERE k.id = $1
+          `, [kitchenId]);
+          if (loc.rows.length > 0) {
+            const locVal = Number(loc.rows[0].default_daily_booking_limit);
+            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+          }
+        }
+      }
+    } catch (_e) {
+      // Columns might not exist yet; fallback
+      maxSlotsPerChef = 2;
+    }
+
+    res.json({ maxSlotsPerChef });
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to fetch policy" });
+    }
+  }
+});
+
 // Get available slots for a kitchen - requires auth and verifies kitchen belongs to user's location
 app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
   try {
@@ -15445,9 +15756,9 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
     
     console.log(`[Portal Availability] Parsed date: ${dateStr}, day of week: ${dayOfWeek} (0=Sunday, 1=Monday, etc.)`);
 
+    // Check for date-specific override first (same logic as public endpoint)
     let startHour, endHour;
-
-    // Check for date-specific override (only source of availability)
+    
     try {
       console.log(`[Portal Availability] Checking for date override for kitchen ${kitchenId}, date ${dateStr}`);
       
@@ -15460,30 +15771,51 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
 
       console.log(`[Portal Availability] Found ${dateOverrideResult.rows.length} date override(s) for kitchen ${kitchenId}, date ${dateStr}`);
 
-      if (dateOverrideResult.rows.length === 0) {
-        console.log(`[Portal Availability] No date override found for kitchen ${kitchenId} on ${dateStr}`);
-        return res.json({ slots: [] });
-      }
+      if (dateOverrideResult.rows.length > 0) {
+        const override = dateOverrideResult.rows[0];
+        console.log(`[Portal Availability] Date override found:`, {
+          is_available: override.is_available,
+          start_time: override.start_time,
+          end_time: override.end_time,
+          reason: override.reason
+        });
+        
+        if (!override.is_available) {
+          console.log(`[Portal Availability] Kitchen is closed on this date (override)`);
+          return res.json({ slots: [] });
+        }
+        if (!override.start_time || !override.end_time) {
+          console.log(`[Portal Availability] Override has no start/end time`);
+          return res.json({ slots: [] });
+        }
+        startHour = parseInt(override.start_time.split(':')[0]);
+        endHour = parseInt(override.end_time.split(':')[0]);
+        console.log(`[Portal Availability] Using override hours: startHour=${startHour}, endHour=${endHour}`);
+      } else {
+        // No override, use weekly schedule (same as public endpoint)
+        console.log(`[Portal Availability] No date override found, checking weekly schedule for day ${dayOfWeek}`);
+        
+        const availabilityResult = await pool.query(`
+          SELECT day_of_week, start_time, end_time, is_available
+          FROM kitchen_availability
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, dayOfWeek]);
 
-      const override = dateOverrideResult.rows[0];
-      console.log(`[Portal Availability] Date override found:`, {
-        is_available: override.is_available,
-        start_time: override.start_time,
-        end_time: override.end_time,
-        reason: override.reason
-      });
-      
-      if (!override.is_available) {
-        console.log(`[Portal Availability] Kitchen is closed on this date (override)`);
-        return res.json({ slots: [] });
+        if (availabilityResult.rows.length === 0) {
+          console.log(`[Portal Availability] No weekly schedule found for day ${dayOfWeek}`);
+          return res.json({ slots: [] });
+        }
+
+        const dayAvailability = availabilityResult.rows[0];
+        if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
+          console.log(`[Portal Availability] Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
+          return res.json({ slots: [] });
+        }
+
+        startHour = parseInt(dayAvailability.start_time.split(':')[0]);
+        endHour = parseInt(dayAvailability.end_time.split(':')[0]);
+        console.log(`[Portal Availability] Using weekly schedule hours: startHour=${startHour}, endHour=${endHour}`);
       }
-      if (!override.start_time || !override.end_time) {
-        console.log(`[Portal Availability] Override has no start/end time`);
-        return res.json({ slots: [] });
-      }
-      startHour = parseInt(override.start_time.split(':')[0]);
-      endHour = parseInt(override.end_time.split(':')[0]);
-      console.log(`[Portal Availability] Using override hours: startHour=${startHour}, endHour=${endHour}`);
       
       // Validate hours
       if (isNaN(startHour) || isNaN(endHour) || startHour >= endHour) {
@@ -15747,6 +16079,7 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     );
     
     const portalUser = userResult.rows[0];
+    const username = portalUser?.username || `User ${userId}`;
 
     // Create booking (same table as chef bookings)
     const bookingResult = await pool.query(`
@@ -15759,7 +16092,7 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
       bookingDate,
       startTime,
       endTime,
-      specialNotes || `Portal user booking from ${portalUser.username}`
+      specialNotes || `Portal user booking from ${username}`
     ]);
 
     const booking = bookingResult.rows[0];
@@ -15785,7 +16118,7 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
                   `Kitchen: ${kitchen.name}\n` +
                   `Date: ${bookingDate}\n` +
                   `Time: ${startTime} - ${endTime}\n` +
-                  `Portal User: ${portalUser.username}\n` +
+                  `Portal User: ${username}\n` +
                   `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
                   `Please log in to your manager dashboard to confirm or manage this booking.`,
             html: `<h2>New Portal User Booking</h2>` +
@@ -15793,7 +16126,7 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
                   `<p><strong>Kitchen:</strong> ${kitchen.name}</p>` +
                   `<p><strong>Date:</strong> ${bookingDate}</p>` +
                   `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
-                  `<p><strong>Portal User:</strong> ${portalUser.username}</p>` +
+                  `<p><strong>Portal User:</strong> ${username}</p>` +
                   `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
                   `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
           };
@@ -15820,7 +16153,9 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating portal booking:", error);
-    res.status(500).json({ error: error.message || "Failed to create booking" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
   }
 });
 
