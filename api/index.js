@@ -1743,35 +1743,58 @@ app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
 // ===================================
 
 app.get('/api/user-session', async (req, res) => {
-  // Debug session info
-  console.log('GET /api/user - Request details:', {
-    sessionId: req.session.id,
-    userId: req.session.userId || null,
-    sessionUser: req.session.user ? { id: req.session.user.id, username: req.session.user.username, role: req.session.user.role } : null,
-    cookies: req.headers.cookie || 'No cookies',
-    headers: {
-      'x-user-id': req.headers['x-user-id'] || null,
-      'user-agent': req.headers['user-agent'] || null
-    }
-  });
-
-  // Get user ID from session or header
-  const rawUserId = req.session.userId || req.headers['x-user-id'];
-
-  if (!rawUserId) {
-    console.log('No userId in session or header, returning 401');
-    console.log('Session object:', JSON.stringify(req.session, null, 2));
-    return res.status(401).json({ error: 'Not authenticated', debug: { sessionId: req.session.id, hasCookies: !!req.headers.cookie } });
-  }
-
-  // Store user ID in session if it's not there
-  if (!req.session.userId && rawUserId) {
-    console.log('Storing userId in session from header:', rawUserId);
-    req.session.userId = rawUserId;
-    await new Promise(resolve => req.session.save(resolve));
-  }
-
   try {
+    // Debug session info
+    const sessionId = req.session?.id || null;
+    const sessionUserId = req.session?.userId || null;
+    const sessionUser = req.session?.user ? { 
+      id: req.session.user.id, 
+      username: req.session.user.username, 
+      role: req.session.user.role 
+    } : null;
+    
+    console.log('GET /api/user - Request details:', {
+      sessionId: sessionId,
+      userId: sessionUserId,
+      sessionUser: sessionUser,
+      cookies: req.headers.cookie || 'No cookies',
+      headers: {
+        'x-user-id': req.headers['x-user-id'] || null,
+        'user-agent': req.headers['user-agent'] || null
+      }
+    });
+
+    // Get user ID from session or header
+    const rawUserId = (req.session?.userId) || req.headers['x-user-id'];
+
+    if (!rawUserId) {
+      console.log('No userId in session or header, returning 401');
+      console.log('Session object:', req.session ? JSON.stringify(req.session, null, 2) : 'No session');
+      return res.status(401).json({ 
+        error: 'Not authenticated', 
+        debug: { 
+          sessionId: sessionId, 
+          hasCookies: !!req.headers.cookie,
+          hasSession: !!req.session
+        } 
+      });
+    }
+
+    // Store user ID in session if it's not there and session exists
+    if (req.session && !req.session.userId && rawUserId) {
+      console.log('Storing userId in session from header:', rawUserId);
+      req.session.userId = rawUserId;
+      await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) {
+            console.error('Error saving session:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
     console.log('Fetching user with ID:', rawUserId);
 
     // Always fetch fresh data from database to ensure has_seen_welcome is up to date
@@ -1787,11 +1810,22 @@ app.get('/api/user-session', async (req, res) => {
     // Remove password before sending to client
     const { password: _, ...userWithoutPassword } = user;
 
-    // Cache user in session for future requests
-    req.session.user = userWithoutPassword;
+    // Cache user in session for future requests (if session exists)
+    if (req.session) {
+      req.session.user = userWithoutPassword;
 
-    // Save session to ensure user data is cached
-    await new Promise(resolve => req.session.save(resolve));
+      // Save session to ensure user data is cached
+      await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) {
+            console.error('Error saving session:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
 
     res.status(200).json(userWithoutPassword);
   } catch (error) {
