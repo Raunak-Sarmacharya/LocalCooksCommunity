@@ -96,11 +96,11 @@ export default function ManagerHeader() {
       });
       
       console.log('Manager logout successful, redirecting...');
-      window.location.href = '/';
+      window.location.href = '/portal';
     } catch (error) {
       console.error('Manager logout failed:', error);
       // Still redirect even if logout fails
-      window.location.href = '/';
+      window.location.href = '/portal';
     }
   };
 
