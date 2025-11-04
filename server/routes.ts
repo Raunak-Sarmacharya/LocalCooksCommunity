@@ -6557,33 +6557,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Send notification to manager
-    try {
+      try {
         const { sendEmail } = await import('./email');
-        const managerId = (location as any).managerId || (location as any).manager_id;
-        if (managerId) {
-          const manager = await firebaseStorage.getUser(managerId);
-          if (manager && (manager as any).username) {
-            const managerEmail = (manager as any).username;
-            const emailContent = {
-              to: managerEmail,
-              subject: `New Portal User Application - ${(location as any).name}`,
-              text: `A new portal user has applied for access to your location:\n\n` +
-                    `Location: ${(location as any).name}\n` +
-                    `Applicant Name: ${fullName}\n` +
-                    `Email: ${email}\n` +
-                    `Phone: ${phone}\n` +
-                    `${company ? `Company: ${company}\n` : ''}` +
-                    `\nPlease log in to your manager dashboard to review and approve this application.`,
-              html: `<h2>New Portal User Application</h2>` +
-                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                    `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
-                    `<p><strong>Email:</strong> ${email}</p>` +
-                    `<p><strong>Phone:</strong> ${phone}</p>` +
-                    `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
-                    `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
-            };
-            await sendEmail(emailContent);
+        
+        // First, try to get notification_email from location (preferred)
+        let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
+        
+        // If no notification_email, get manager's email from manager_id
+        if (!managerEmail) {
+          const managerId = (location as any).managerId || (location as any).manager_id;
+          if (managerId) {
+            const manager = await firebaseStorage.getUser(managerId);
+            if (manager && (manager as any).username) {
+              managerEmail = (manager as any).username;
+            }
           }
+        }
+        
+        // Send email if we have a manager email
+        if (managerEmail) {
+          const emailContent = {
+            to: managerEmail,
+            subject: `New Portal User Application - ${(location as any).name}`,
+            text: `A new portal user has applied for access to your location:\n\n` +
+                  `Location: ${(location as any).name}\n` +
+                  `Applicant Name: ${fullName}\n` +
+                  `Email: ${email}\n` +
+                  `Phone: ${phone}\n` +
+                  `${company ? `Company: ${company}\n` : ''}` +
+                  `\nPlease log in to your manager dashboard to review and approve this application.`,
+            html: `<h2>New Portal User Application</h2>` +
+                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                  `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                  `<p><strong>Email:</strong> ${email}</p>` +
+                  `<p><strong>Phone:</strong> ${phone}</p>` +
+                  `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+          };
+          await sendEmail(emailContent);
+          console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
+        } else {
+          console.log("⚠️ No manager email found for location - skipping email notification");
         }
       } catch (emailError) {
         console.error("Error sending application notification email:", emailError);
