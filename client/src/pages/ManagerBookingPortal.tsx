@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar as CalendarIcon, Clock, MapPin, Building2, CheckCircle, AlertCircle, Loader2, ChevronLeft, ChevronRight, Check, Info, X } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, Building2, AlertCircle, Loader2, ChevronLeft, ChevronRight, Check, Info, X } from "lucide-react";
 import { useLocation } from "wouter";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,9 +22,11 @@ interface Kitchen {
   locationId: number;
 }
 
-interface AvailableSlot {
+interface Slot {
   time: string;
-  available: boolean;
+  available: number;
+  capacity: number;
+  isFullyBooked: boolean;
 }
 
 // Helper functions for calendar
@@ -75,18 +76,15 @@ export default function ManagerBookingPortal() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
-  // Step 3: Time Slot Selection
-  const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  // Step 3: Time Slot Selection (multiple slots like chef bookings)
+  const [allSlots, setAllSlots] = useState<Slot[]>([]);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number>(2);
   
   // Step 4: Booking Details
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingName, setBookingName] = useState("");
-  const [bookingEmail, setBookingEmail] = useState("");
-  const [bookingPhone, setBookingPhone] = useState("");
-  const [bookingCompany, setBookingCompany] = useState("");
-  const [specialNotes, setSpecialNotes] = useState("");
+  const [notes, setNotes] = useState("");
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   // Extract location slug from URL (e.g., /portal/:locationSlug)
@@ -142,18 +140,47 @@ export default function ManagerBookingPortal() {
     }
   }, [selectedKitchen, selectedDate]);
 
+  const toLocalDateString = (d: Date) => {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const loadAvailableSlots = async () => {
     if (!selectedKitchen || !selectedDate) return;
     
     setIsLoadingSlots(true);
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    setSelectedSlots([]);
+    const date = toLocalDateString(selectedDate);
+    
     try {
-      const response = await fetch(
-        `/api/portal/kitchens/${selectedKitchen.id}/availability?date=${dateStr}`,
-        {
+      // Fetch policy (max slots per chef)
+      try {
+        const policyRes = await fetch(`/api/portal/kitchens/${selectedKitchen.id}/policy?date=${date}`, {
           credentials: "include",
+          cache: 'no-store',
+        });
+        if (policyRes.ok) {
+          const policy = await policyRes.json();
+          if (policy && typeof policy.maxSlotsPerChef === 'number' && policy.maxSlotsPerChef > 0) {
+            setMaxSlotsPerChef(policy.maxSlotsPerChef);
+          } else {
+            setMaxSlotsPerChef(2);
+          }
+        } else {
+          setMaxSlotsPerChef(2);
         }
-      );
+      } catch {
+        setMaxSlotsPerChef(2);
+      }
+
+      // Fetch slots
+      const response = await fetch(`/api/portal/kitchens/${selectedKitchen.id}/slots?date=${date}`, {
+        credentials: "include",
+        cache: 'no-store',
+      });
+      
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Authentication required');
@@ -161,13 +188,34 @@ export default function ManagerBookingPortal() {
         if (response.status === 403) {
           throw new Error('Access denied. You can only access kitchens at your assigned location.');
         }
-        throw new Error('Failed to load availability');
+        throw new Error('Failed to load slots');
       }
-      const data = await response.json();
-      setAvailableSlots(data.slots || []);
+      
+      const slots = await response.json();
+      
+      // Filter out past times and times within minimum booking window
+      const now = new Date();
+      const [year, month, day] = date.split('-').map(Number);
+      const selectedDateObj = new Date(year, month - 1, day);
+      
+      const filteredSlots = slots.filter((slot: Slot) => {
+        const [hours, mins] = slot.time.split(':').map(Number);
+        const slotTime = new Date(selectedDateObj);
+        slotTime.setHours(hours, mins || 0, 0, 0);
+        
+        // If booking for today, check minimum booking window (1 hour default)
+        if (selectedDateObj.toDateString() === now.toDateString()) {
+          const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+          return hoursUntilBooking >= 1; // Minimum 1 hour in advance
+        }
+        
+        return slotTime >= now;
+      });
+      
+      setAllSlots(filteredSlots);
     } catch (error) {
       console.error('Error loading slots:', error);
-      setAvailableSlots([]);
+      setAllSlots([]);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to load available time slots. Please try again.",
@@ -181,8 +229,8 @@ export default function ManagerBookingPortal() {
   const handleKitchenSelect = (kitchen: Kitchen | null) => {
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
-    setSelectedSlot(null);
-    setAvailableSlots([]);
+    setSelectedSlots([]);
+    setAllSlots([]);
     setShowBookingModal(false);
   };
 
@@ -191,7 +239,7 @@ export default function ManagerBookingPortal() {
     if (date.getMonth() !== currentMonth) return; // Only current month
     
     setSelectedDate(date);
-    setSelectedSlot(null);
+    setSelectedSlots([]);
     setShowBookingModal(false);
   };
 
@@ -212,7 +260,100 @@ export default function ManagerBookingPortal() {
       }
     }
     setSelectedDate(null);
-    setSelectedSlot(null);
+    setSelectedSlots([]);
+  };
+
+  const handleSlotClick = (slot: Slot) => {
+    // Don't allow selecting fully booked slots
+    if (slot.isFullyBooked) {
+      toast({
+        title: "Slot Fully Booked",
+        description: "This time slot is already at maximum capacity.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setSelectedSlots(prev => {
+      if (prev.includes(slot.time)) {
+        // Deselect if already selected
+        return prev.filter(s => s !== slot.time);
+      } else if (prev.length < maxSlotsPerChef) {
+        // Select if below policy limit
+        return [...prev, slot.time].sort();
+      } else {
+        toast({
+          title: "Limit reached",
+          description: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.`,
+          variant: "destructive",
+        });
+        return prev;
+      }
+    });
+  };
+
+  const handleBookingSubmit = async () => {
+    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+
+    // Calculate start and end time from selected 1-hour slots
+    const sortedSlots = [...selectedSlots].sort();
+    const startTime = sortedSlots[0];
+
+    // Each slot represents 1 hour now
+    const [startHours, startMins] = startTime.split(':').map(Number);
+    const totalDurationMins = sortedSlots.length * 60;
+    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+    const endHours = Math.floor(endTotalMins / 60);
+    const endMins = endTotalMins % 60;
+    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+
+    const bookingDate = new Date(selectedDate);
+    bookingDate.setHours(0, 0, 0, 0);
+    
+    setIsSubmitting(true);
+    
+    try {
+      const response = await fetch('/api/portal/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          kitchenId: selectedKitchen.id,
+          bookingDate: bookingDate.toISOString(),
+          startTime,
+          endTime,
+          specialNotes: notes,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to submit booking');
+      }
+
+      toast({
+        title: "Booking Created!",
+        description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking has been submitted successfully.`,
+      });
+      
+      setShowBookingModal(false);
+      setSelectedSlots([]);
+      setNotes("");
+      
+      // Reload slots to reflect the booking
+      if (selectedDate) {
+        loadAvailableSlots();
+      }
+      
+    } catch (error: any) {
+      toast({
+        title: "Booking Failed",
+        description: error.message || "Failed to create booking. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const formatTime = (timeString: string) => {
@@ -220,7 +361,7 @@ export default function ManagerBookingPortal() {
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
+    return `${displayHour}:${minutes || '00'} ${ampm}`;
   };
 
   const formatDate = (date: Date) => {
@@ -232,99 +373,8 @@ export default function ManagerBookingPortal() {
     });
   };
 
-  const handleSubmitBooking = async () => {
-    if (!selectedKitchen || !selectedSlot || !selectedDate) {
-      toast({
-        title: "Missing Information",
-        description: "Please select a kitchen, date, and time slot.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!bookingName || !bookingEmail) {
-      toast({
-        title: "Missing Information",
-        description: "Please provide your name and email.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    try {
-      // Calculate end time (30 minutes after start time)
-      const [startHours, startMins] = selectedSlot.split(':').map(Number);
-      const startTime = selectedSlot;
-      const endTimeDate = new Date(selectedDate);
-      endTimeDate.setHours(startHours, startMins + 30, 0, 0);
-      const endTime = `${endTimeDate.getHours().toString().padStart(2, '0')}:${endTimeDate.getMinutes().toString().padStart(2, '0')}`;
-      
-      const bookingDate = selectedDate.toISOString().split('T')[0];
-      
-      const response = await fetch('/api/portal/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          locationId: locationData?.id,
-          kitchenId: selectedKitchen.id,
-          bookingDate,
-          startTime,
-          endTime,
-          bookingName,
-          bookingEmail,
-          bookingPhone,
-          bookingCompany,
-          specialNotes,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to submit booking');
-      }
-
-      toast({
-        title: "Booking Submitted!",
-        description: "Your booking request has been submitted. The kitchen manager will contact you shortly.",
-      });
-
-      // Reset form
-      setShowBookingModal(false);
-      setSelectedSlot(null);
-      setBookingName("");
-      setBookingEmail("");
-      setBookingPhone("");
-      setBookingCompany("");
-      setSpecialNotes("");
-      
-      // Reload slots to reflect the booking
-      if (selectedDate) {
-        loadAvailableSlots();
-      }
-      
-    } catch (error: any) {
-      toast({
-        title: "Booking Failed",
-        description: error.message || "Failed to submit booking. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
-
-  const toLocalDateString = (d: Date) => {
-    const y = d.getFullYear();
-    const m = (d.getMonth() + 1).toString().padStart(2, '0');
-    const day = d.getDate().toString().padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
 
   const calendarDays = selectedKitchen ? getCalendarDays(currentYear, currentMonth) : [];
   const isCurrentMonth = (date: Date) => date.getMonth() === currentMonth;
@@ -613,17 +663,31 @@ export default function ManagerBookingPortal() {
                 {selectedDate && (
                   <Card className="border-2 shadow-lg">
                     <CardHeader>
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-bold text-lg">3</div>
-                        <CardTitle className="text-2xl">Select Time Slot</CardTitle>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-bold text-lg">3</div>
+                          <CardTitle className="text-2xl">Select Time Slots</CardTitle>
+                        </div>
+                        {selectedSlots.length > 0 && (
+                          <Button
+                            onClick={() => setShowBookingModal(true)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            Continue
+                            <Check className="h-4 w-4 ml-2" />
+                          </Button>
+                        )}
                       </div>
-                      <CardDescription>Choose your preferred 30-minute time slot</CardDescription>
+                      <CardDescription>Choose your preferred time slots (1 hour each)</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                        <p className="text-sm text-gray-700 mb-1">
+                        <p className="text-sm text-gray-700 mb-2">
                           <CalendarIcon className="inline h-4 w-4 mr-1 text-blue-600" />
                           <span className="font-semibold">{formatDate(selectedDate)}</span>
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          💡 Daily booking limit: {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} per user
                         </p>
                       </div>
 
@@ -632,7 +696,7 @@ export default function ManagerBookingPortal() {
                           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
                           <p className="text-gray-600">Loading time slots...</p>
                         </div>
-                      ) : availableSlots.length === 0 ? (
+                      ) : allSlots.length === 0 ? (
                         <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
                           <Info className="h-8 w-8 text-yellow-600 mx-auto mb-3" />
                           <p className="text-gray-800 font-medium mb-2">Kitchen Closed</p>
@@ -641,31 +705,48 @@ export default function ManagerBookingPortal() {
                           </p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                          {availableSlots
-                            .filter(slot => slot.available)
-                            .map((slot) => {
-                              const isSelected = selectedSlot === slot.time;
-                              const [hours, mins] = slot.time.split(':').map(Number);
-                              const endTime = new Date();
-                              endTime.setHours(hours, mins + 30, 0, 0);
-                              const endTimeStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
+                        <>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            {allSlots.map((slot) => {
+                              const isSelected = selectedSlots.includes(slot.time);
+                              const isFullyBooked = slot.isFullyBooked;
+                              const availability = slot.available;
+                              const capacity = slot.capacity;
+                              
+                              // Determine styling based on availability
+                              let statusColor = 'border-gray-200 hover:border-blue-400 hover:bg-blue-50';
+                              let statusBg = 'bg-white';
+                              let statusText = 'text-gray-700';
+                              let cursorStyle = 'cursor-pointer';
+                              
+                              if (isSelected) {
+                                statusColor = 'border-blue-600';
+                                statusBg = 'bg-blue-600';
+                                statusText = 'text-white';
+                              } else if (isFullyBooked) {
+                                statusColor = 'border-red-200';
+                                statusBg = 'bg-red-50';
+                                statusText = 'text-red-500';
+                                cursorStyle = 'cursor-not-allowed';
+                              } else if (availability === 1 && capacity > 1) {
+                                statusColor = 'border-orange-300';
+                                statusBg = 'bg-orange-50';
+                                statusText = 'text-orange-700';
+                              } else if (availability < capacity) {
+                                statusColor = 'border-yellow-300';
+                                statusBg = 'bg-yellow-50';
+                                statusText = 'text-yellow-700';
+                              }
                               
                               return (
                                 <button
                                   key={slot.time}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedSlot(slot.time);
-                                    setShowBookingModal(true);
-                                  }}
+                                  onClick={() => handleSlotClick(slot)}
+                                  disabled={isFullyBooked}
                                   className={`
                                     relative p-4 border-2 rounded-xl transition-all font-medium text-center
-                                    ${isSelected 
-                                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' 
-                                      : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700 hover:scale-102'
-                                    }
-                                    cursor-pointer
+                                    ${statusBg} ${statusColor} ${statusText} ${cursorStyle}
+                                    ${isSelected ? 'shadow-lg scale-105' : !isFullyBooked && 'hover:scale-102'}
                                   `}
                                 >
                                   <div className="flex flex-col items-center gap-1">
@@ -673,25 +754,75 @@ export default function ManagerBookingPortal() {
                                       <Clock className="h-4 w-4" />
                                       <span className="text-lg font-semibold">{formatTime(slot.time)}</span>
                                     </div>
-                                    <span className="text-xs opacity-80">
-                                      - {formatTime(endTimeStr)}
-                                    </span>
+                                    
+                                    {/* Capacity indicator */}
+                                    {capacity > 1 && (
+                                      <div className={`text-xs font-medium ${
+                                        isSelected ? 'text-white' : 
+                                        isFullyBooked ? 'text-red-600' : 
+                                        availability === 1 ? 'text-orange-600' :
+                                        availability < capacity ? 'text-yellow-600' :
+                                        'text-green-600'
+                                      }`}>
+                                        {isFullyBooked ? 'Fully Booked' : `${availability}/${capacity} spots`}
+                                      </div>
+                                    )}
+                                    
                                     {isSelected && (
-                                      <div className="absolute top-1 right-1">
-                                        <Check className="h-4 w-4" />
+                                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                        <Check className="h-4 w-4 text-white" />
                                       </div>
                                     )}
                                   </div>
                                 </button>
                               );
                             })}
-                        </div>
-                      )}
-                      {availableSlots.filter(slot => slot.available).length === 0 && availableSlots.length > 0 && (
-                        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
-                          <AlertCircle className="h-6 w-6 text-red-600 mx-auto mb-2" />
-                          <p className="text-sm text-red-800 font-medium">All slots are fully booked for this date</p>
-                        </div>
+                          </div>
+                          
+                          {/* Legend */}
+                          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                            <p className="text-xs font-semibold text-gray-700 mb-3">Availability Legend:</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-white border-2 border-gray-200 rounded"></div>
+                                <span className="text-gray-600">Available</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-yellow-50 border-2 border-yellow-300 rounded"></div>
+                                <span className="text-gray-600">Limited</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-orange-50 border-2 border-orange-300 rounded"></div>
+                                <span className="text-gray-600">1 Spot Left</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 bg-red-50 border-2 border-red-200 rounded"></div>
+                                <span className="text-gray-600">Fully Booked</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {selectedSlots.length > 0 && (
+                            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-medium text-green-900">
+                                    {selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''} selected
+                                  </p>
+                                  <p className="text-xs text-green-700 mt-1">
+                                    Duration: {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => setSelectedSlots([])}
+                                  className="text-sm text-green-700 hover:text-green-900 font-medium underline"
+                                >
+                                  Clear Selection
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
                     </CardContent>
                   </Card>
@@ -701,8 +832,8 @@ export default function ManagerBookingPortal() {
             )}
           </div>
 
-          {/* Right Column - Booking Summary */}
-          {selectedKitchen && selectedDate && selectedSlot && (
+          {/* Right Column - Booking Summary (if slots selected) */}
+          {selectedKitchen && selectedDate && selectedSlots.length > 0 && (
             <div className="lg:col-span-1">
               <Card className="border-2 shadow-lg sticky top-24">
                 <CardHeader>
@@ -720,20 +851,15 @@ export default function ManagerBookingPortal() {
                   </div>
                   
                   <div>
-                    <p className="text-sm font-medium text-gray-600 mb-1">Time</p>
+                    <p className="text-sm font-medium text-gray-600 mb-1">Duration</p>
                     <p className="text-base font-semibold text-gray-900">
-                      {formatTime(selectedSlot)} - {(() => {
-                        const [hours, mins] = selectedSlot.split(':').map(Number);
-                        const endTime = new Date();
-                        endTime.setHours(hours, mins + 30, 0, 0);
-                        return formatTime(`${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`);
-                      })()}
+                      {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
                     </p>
                   </div>
 
                   <div className="pt-4 border-t">
                     <p className="text-xs text-gray-500">
-                      Your booking request will be reviewed by the kitchen manager. You will receive a confirmation email shortly.
+                      Your booking request will be reviewed by the kitchen manager.
                     </p>
                   </div>
                 </CardContent>
@@ -742,8 +868,8 @@ export default function ManagerBookingPortal() {
           )}
         </div>
 
-        {/* Booking Modal */}
-        {showBookingModal && selectedKitchen && selectedDate && selectedSlot && (
+        {/* Booking Modal - matches chef booking modal */}
+        {showBookingModal && selectedKitchen && selectedDate && selectedSlots.length > 0 && (
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
             onClick={(e) => {
@@ -752,26 +878,23 @@ export default function ManagerBookingPortal() {
               }
             }}
           >
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">Confirm Your Booking</h2>
                 <button
                   onClick={() => setShowBookingModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-gray-400 hover:text-gray-600"
                   aria-label="Close modal"
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {/* Kitchen */}
                 <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                   <p className="text-xs text-gray-600 mb-1">Kitchen</p>
                   <p className="font-semibold text-gray-900 text-lg">{selectedKitchen.name}</p>
-                  {selectedKitchen.description && (
-                    <p className="text-xs text-gray-600 mt-1">{selectedKitchen.description}</p>
-                  )}
                 </div>
 
                 {/* Date & Time */}
@@ -784,99 +907,45 @@ export default function ManagerBookingPortal() {
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs text-gray-600 mb-1">Duration</p>
-                    <p className="font-medium text-gray-900">30 minutes</p>
+                    <p className="font-medium text-gray-900">
+                      {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
+                    </p>
                   </div>
                 </div>
 
                 {/* Time Range */}
                 <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-xs text-gray-600 mb-2">Selected Time Slot</p>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="px-4 py-2 bg-white border border-green-300 rounded-lg font-semibold text-green-800 text-lg">
-                      {formatTime(selectedSlot)} - {(() => {
-                        const [hours, mins] = selectedSlot.split(':').map(Number);
-                        const endTime = new Date();
-                        endTime.setHours(hours, mins + 30, 0, 0);
-                        return formatTime(`${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`);
-                      })()}
-                    </span>
+                  <p className="text-xs text-gray-600 mb-2">Selected Time Slots</p>
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    {selectedSlots.map((slot, idx) => (
+                      <div key={slot} className="flex items-center gap-2">
+                        <span className="px-3 py-1.5 bg-white border border-green-300 rounded-lg font-semibold text-green-800">
+                          {formatTime(slot)}
+                        </span>
+                        {idx < selectedSlots.length - 1 && (
+                          <span className="text-green-600">→</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Booking Details Form */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Booking Details</h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-900 mb-2">
-                        Full Name <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        value={bookingName}
-                        onChange={(e) => setBookingName(e.target.value)}
-                        placeholder="John Doe"
-                        required
-                        className="h-11"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-900 mb-2">
-                        Email <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        type="email"
-                        value={bookingEmail}
-                        onChange={(e) => setBookingEmail(e.target.value)}
-                        placeholder="john@example.com"
-                        required
-                        className="h-11"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-900 mb-2">
-                        Phone
-                      </label>
-                      <Input
-                        type="tel"
-                        value={bookingPhone}
-                        onChange={(e) => setBookingPhone(e.target.value)}
-                        placeholder="+1 (555) 123-4567"
-                        className="h-11"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-900 mb-2">
-                        Company/Organization
-                      </label>
-                      <Input
-                        value={bookingCompany}
-                        onChange={(e) => setBookingCompany(e.target.value)}
-                        placeholder="ABC Catering"
-                        className="h-11"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Special Notes (Optional)
-                    </label>
-                    <Textarea
-                      value={specialNotes}
-                      onChange={(e) => setSpecialNotes(e.target.value)}
-                      placeholder="Any special requirements or notes..."
-                      rows={4}
-                      maxLength={500}
-                      className="w-full"
-                    />
-                    {specialNotes && (
-                      <p className="text-xs text-gray-500 mt-1">{specialNotes.length}/500 characters</p>
-                    )}
-                  </div>
+                {/* Special Notes */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Special Notes (Optional)
+                  </label>
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Any special requirements or notes..."
+                    rows={4}
+                    maxLength={500}
+                    className="w-full"
+                  />
+                  {notes && (
+                    <p className="text-xs text-gray-500 mt-1">{notes.length}/500 characters</p>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
@@ -889,8 +958,8 @@ export default function ManagerBookingPortal() {
                     Back
                   </Button>
                   <Button
-                    onClick={handleSubmitBooking}
-                    disabled={isSubmitting || !bookingName || !bookingEmail}
+                    onClick={handleBookingSubmit}
+                    disabled={isSubmitting}
                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {isSubmitting ? (
@@ -900,7 +969,7 @@ export default function ManagerBookingPortal() {
                       </>
                     ) : (
                       <>
-                        <CheckCircle className="h-4 w-4 mr-2" />
+                        <Check className="h-4 w-4 mr-2" />
                         Confirm Booking
                       </>
                     )}
