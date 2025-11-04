@@ -15651,18 +15651,93 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
       }
     }
 
-    // Check if slot is available
-    const dateStr = bookingDateObj.toISOString().split('T')[0];
-    const bookingCheck = await pool.query(`
-      SELECT id FROM bookings
-      WHERE kitchen_id = $1
-        AND booking_date = $2
-        AND start_time = $3
-        AND status != 'cancelled'
-    `, [kitchenId, dateStr, startTime]);
+    // Determine slots requested (1-hour slots)
+    const [sH, sM] = String(startTime).split(':').map(Number);
+    const [eH, eM] = String(endTime).split(':').map(Number);
+    const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
 
-    if (bookingCheck.rows.length > 0) {
-      return res.status(400).json({ error: "Time slot is already booked" });
+    const dateStr = bookingDateObj.toISOString().split('T')[0];
+
+    // Find maxSlotsPerChef for this kitchen/date (same logic as chef bookings)
+    let maxSlotsPerChef = 2;
+    try {
+      // 1. Try date-specific override first
+      const overrideResult = await pool.query(`
+        SELECT max_slots_per_chef
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `, [kitchenId, dateStr]);
+      
+      if (overrideResult.rows.length > 0) {
+        const val = Number(overrideResult.rows[0].max_slots_per_chef);
+        if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+      } else {
+        // 2. Try weekly schedule for this day of week
+        const availabilityResult = await pool.query(`
+          SELECT max_slots_per_chef
+          FROM kitchen_availability
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, bookingDateObj.getDay()]);
+        
+        if (availabilityResult.rows.length > 0) {
+          const v = Number(availabilityResult.rows[0].max_slots_per_chef);
+          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+        } else {
+          // 3. Fall back to location default
+          const locationLimitResult = await pool.query(`
+            SELECT l.default_daily_booking_limit
+            FROM locations l
+            INNER JOIN kitchens k ON k.location_id = l.id
+            WHERE k.id = $1
+          `, [kitchenId]);
+          
+          if (locationLimitResult.rows.length > 0) {
+            const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
+            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+          }
+        }
+      }
+    } catch (error) {
+      // Columns might not exist yet; use default
+      maxSlotsPerChef = 2;
+    }
+
+    // Check existing bookings for this portal user on this date
+    const existingBookingsResult = await pool.query(`
+      SELECT start_time, end_time
+      FROM kitchen_bookings
+      WHERE chef_id = $1
+        AND DATE(booking_date) = $2
+        AND status IN ('pending','confirmed')
+    `, [userId, dateStr]);
+
+    let existingSlots = 0;
+    existingBookingsResult.rows.forEach(booking => {
+      const [bSH, bSM] = String(booking.start_time).split(':').map(Number);
+      const [bEH, bEM] = String(booking.end_time).split(':').map(Number);
+      const slots = Math.max(1, Math.ceil(((bEH * 60 + bEM) - (bSH * 60 + bSM)) / 60));
+      existingSlots += slots;
+    });
+
+    // Check if booking would exceed daily limit
+    if (existingSlots + requestedSlots > maxSlotsPerChef) {
+      return res.status(400).json({ 
+        error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
+      });
+    }
+
+    // Check for conflicts (exclusive per slot)
+    const conflictCheck = await pool.query(`
+      SELECT id FROM kitchen_bookings
+      WHERE kitchen_id = $1 AND DATE(booking_date) = $2::date
+      AND start_time < $4 AND end_time > $3
+      AND status != 'cancelled'
+    `, [kitchenId, dateStr, startTime, endTime]);
+    
+    if (conflictCheck.rows.length > 0) {
+      return res.status(409).json({ error: "Time slot is not available" });
     }
 
     // Get user details for booking
@@ -15673,20 +15748,18 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     
     const portalUser = userResult.rows[0];
 
-    // Create booking
+    // Create booking (same table as chef bookings)
     const bookingResult = await pool.query(`
-      INSERT INTO bookings (kitchen_id, chef_id, booking_date, start_time, end_time, special_notes, status, booking_type, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      INSERT INTO kitchen_bookings (chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status)
+      VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending')
       RETURNING id, kitchen_id, booking_date, start_time, end_time, status
     `, [
+      userId,
       kitchenId,
-      userId, // Portal user ID as chef_id
-      dateStr,
+      bookingDate,
       startTime,
       endTime,
-      specialNotes || `Portal user booking from ${portalUser.username}`,
-      'pending',
-      'portal'
+      specialNotes || `Portal user booking from ${portalUser.username}`
     ]);
 
     const booking = bookingResult.rows[0];
