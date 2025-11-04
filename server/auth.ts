@@ -236,8 +236,21 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/logout", (req, res) => {
+    // Clear passport session if it exists
     req.logout((err) => {
       if (err) {
+        console.error('Passport logout error:', err);
+      }
+    });
+    
+    // Clear session data (for both passport and direct session auth)
+    (req.session as any).userId = undefined;
+    (req.session as any).user = undefined;
+    
+    // Destroy the session
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Session destroy error:', err);
         return res.status(500).json({ error: "Logout failed" });
       }
       

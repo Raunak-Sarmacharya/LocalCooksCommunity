@@ -1168,9 +1168,23 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
+  // Clear passport session if it exists
+  if (req.logout) {
+    req.logout((err) => {
+      if (err) {
+        console.error('Passport logout error:', err);
+      }
+    });
+  }
+  
+  // Clear session data
+  req.session.userId = undefined;
+  req.session.user = undefined;
+  
+  // Destroy the session
   req.session.destroy((err) => {
     if (err) {
-      console.error('Logout error:', err);
+      console.error('Session destroy error:', err);
       return res.status(500).json({ error: 'Logout failed' });
     }
     res.status(200).json({ message: 'Logged out successfully' });

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, Redirect } from "wouter";
 import { Building2, MapPin, Loader2, ArrowRight, Calendar, Lock, LogOut, Clock, AlertCircle } from "lucide-react";
 import Logo from "@/components/ui/logo";
@@ -16,6 +16,7 @@ interface PublicLocation {
 
 export default function PortalBookingPage() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // Check authentication
@@ -82,13 +83,25 @@ export default function PortalBookingPage() {
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/logout", {
+      const response = await fetch("/api/logout", {
         method: "POST",
         credentials: "include",
       });
-      setLocation("/portal/login");
+      
+      if (response.ok) {
+        // Clear any cached queries
+        queryClient.clear();
+        // Redirect to login page
+        window.location.href = "/portal/login";
+      } else {
+        console.error("Logout failed:", response.status);
+        // Still redirect even if logout endpoint fails
+        window.location.href = "/portal/login";
+      }
     } catch (error) {
       console.error("Logout error:", error);
+      // Still redirect even if logout fails
+      window.location.href = "/portal/login";
     }
   };
 
