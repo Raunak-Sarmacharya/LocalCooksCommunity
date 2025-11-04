@@ -161,16 +161,16 @@ export default function PortalRegister() {
       // Show success message
       setSuccessMessage(
         result.application?.message || 
-        "Your application has been submitted! The location manager will review it and you'll receive an email when approved."
+        "Your application has been submitted! You are now logged in. The location manager will review your application and you'll receive an email when approved."
       );
 
       // Invalidate queries to refresh user data
       await queryClient.invalidateQueries({ queryKey: ["/api/user-session"] });
       
-      // Redirect to login after a short delay
+      // User is already logged in after registration, redirect to portal booking page
       setTimeout(() => {
-        setLocation("/portal/login");
-      }, 3000);
+        setLocation("/portal/book");
+      }, 2000);
     } catch (error: any) {
       console.error("Portal registration error:", error);
       setErrorMessage("An error occurred. Please try again.");
@@ -188,12 +188,12 @@ export default function PortalRegister() {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Application Submitted!</h2>
           <p className="text-gray-600 mb-6">{successMessage}</p>
-          <p className="text-sm text-gray-500 mb-4">Redirecting to login...</p>
+          <p className="text-sm text-gray-500 mb-4">Redirecting to your portal...</p>
           <Button
-            onClick={() => setLocation("/portal/login")}
+            onClick={() => setLocation("/portal/book")}
             className="w-full"
           >
-            Go to Login
+            Go to Portal
           </Button>
         </div>
       </div>

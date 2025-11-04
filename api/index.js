@@ -14834,16 +14834,21 @@ app.post("/api/portal-register", async (req, res) => {
       throw dbError;
     }
 
-    // Log the user in
-    if (isNewUser) {
-      req.session.userId = user.id;
-      req.session.user = { ...user, password: undefined };
+    // Log the user in immediately after registration (for both new and existing users)
+    req.session.userId = user.id;
+    req.session.user = { ...user, password: undefined };
+    
+    // Wait for session to be saved before continuing
+    await new Promise((resolve, reject) => {
       req.session.save((err) => {
         if (err) {
           console.error('Session save error:', err);
+          reject(err);
+        } else {
+          resolve();
         }
       });
-    }
+    });
 
     // Send notification to manager
     try {
@@ -14898,17 +14903,17 @@ app.post("/api/portal-register", async (req, res) => {
       // Don't fail registration if email fails
     }
 
-    return res.status(201).json({
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      isPortalUser: true,
-      application: {
-        id: application.id,
-        status: application.status,
-        message: "Your application has been submitted. The location manager will review it shortly."
-      }
-    });
+      return res.status(201).json({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        isPortalUser: true,
+        application: {
+          id: application.id,
+          status: application.status,
+          message: "Your application has been submitted. You are now logged in. The location manager will review it shortly."
+        }
+      });
   } catch (error) {
     console.error("Portal registration error:", error);
     res.status(500).json({ error: error.message || "Portal registration failed" });
