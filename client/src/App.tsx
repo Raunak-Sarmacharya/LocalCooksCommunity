@@ -48,6 +48,7 @@ const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboa
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
 const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
+const ManagerBookingPortal = lazy(() => import("@/pages/ManagerBookingPortal"));
 
 
 // Loading component
@@ -183,6 +184,9 @@ function Router() {
             <ManagerBookingDashboard />
           </ManagerProtectedRoute>
         </Route>
+        {/* Public Manager Booking Portal - No auth required */}
+        <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
+        <Route path="/portal" component={ManagerBookingPortal} />
         
         <Route component={NotFound} />
       </Switch>
