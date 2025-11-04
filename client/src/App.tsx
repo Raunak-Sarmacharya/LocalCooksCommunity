@@ -55,6 +55,7 @@ const PortalBookingPage = lazy(() => import("@/pages/PortalBookingPage"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerPortalApplications = lazy(() => import("@/pages/ManagerPortalApplications"));
 const PortalRegister = lazy(() => import("@/pages/PortalRegister"));
+const PortalBookingsPage = lazy(() => import("@/pages/PortalBookingsPage"));
 
 
 // Loading component
@@ -199,6 +200,7 @@ function Router() {
         {/* Portal User Routes */}
         <Route path="/portal/register" component={PortalRegister} />
         <Route path="/portal/login" component={PortalLogin} />
+        <Route path="/portal/my-bookings" component={PortalBookingsPage} />
         <Route path="/portal/book" component={PortalBookingPage} />
         <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
         <Route path="/portal" component={PortalLanding} />

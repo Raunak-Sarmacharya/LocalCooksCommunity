@@ -137,6 +137,14 @@ export default function PortalBookingPage() {
               </Button>
               <Button
                 variant="ghost"
+                onClick={() => setLocation("/portal/my-bookings")}
+                className="flex items-center gap-2"
+              >
+                <Calendar className="h-4 w-4" />
+                My Bookings
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={() => setLocation("/portal/book")}
                 className="flex items-center gap-2"
               >
