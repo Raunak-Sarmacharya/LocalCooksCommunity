@@ -3260,18 +3260,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const oldNotificationEmail = (location as any).notificationEmail || (location as any).notification_email || null;
 
       // Update location settings
-      const updates: any = { updatedAt: new Date() };
+      // Build updates object with proper field names matching the schema
+      const updates: Partial<typeof locations.$inferInsert> = { 
+        updatedAt: new Date() 
+      };
+      
       if (cancellationPolicyHours !== undefined) {
-        updates.cancellationPolicyHours = cancellationPolicyHours;
+        (updates as any).cancellationPolicyHours = cancellationPolicyHours;
       }
       if (cancellationPolicyMessage !== undefined) {
-        updates.cancellationPolicyMessage = cancellationPolicyMessage;
+        (updates as any).cancellationPolicyMessage = cancellationPolicyMessage;
       }
       if (defaultDailyBookingLimit !== undefined) {
-        updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
+        (updates as any).defaultDailyBookingLimit = defaultDailyBookingLimit;
       }
       if (minimumBookingWindowHours !== undefined) {
-        updates.minimumBookingWindowHours = minimumBookingWindowHours;
+        (updates as any).minimumBookingWindowHours = minimumBookingWindowHours;
       }
       if (notificationEmail !== undefined) {
         // Validate email format if provided and not empty
@@ -3279,24 +3283,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Invalid email format" });
         }
         // Set to null if empty string, otherwise use the value
-        updates.notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
+        (updates as any).notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
         console.log('[PUT] Setting notificationEmail:', { 
           raw: notificationEmail, 
-          processed: updates.notificationEmail,
+          processed: (updates as any).notificationEmail,
           oldEmail: oldNotificationEmail
         });
       }
       if (logoUrl !== undefined) {
         // Set to null if empty string, otherwise use the value
-        updates.logoUrl = logoUrl && logoUrl.trim() !== '' ? logoUrl.trim() : null;
-        console.log('[PUT] Setting logoUrl:', logoUrl);
+        // Use the schema field name (logoUrl) - Drizzle will map it to logo_url column
+        const processedLogoUrl = logoUrl && logoUrl.trim() !== '' ? logoUrl.trim() : null;
+        (updates as any).logoUrl = processedLogoUrl;
+        console.log('[PUT] Setting logoUrl:', {
+          raw: logoUrl,
+          processed: processedLogoUrl,
+          type: typeof processedLogoUrl,
+          inUpdates: (updates as any).logoUrl
+        });
       }
+
+      console.log('[PUT] Final updates object before DB update:', JSON.stringify(updates, null, 2));
+      console.log('[PUT] Updates keys:', Object.keys(updates));
+      console.log('[PUT] Updates object has logoUrl?', 'logoUrl' in updates);
+      console.log('[PUT] Updates object logoUrl value:', (updates as any).logoUrl);
 
       const updatedResults = await db
         .update(locations)
         .set(updates)
         .where(eq(locations.id, locationIdNum))
         .returning();
+      
+      console.log('[PUT] Updated location from DB (full object):', JSON.stringify(updatedResults[0], null, 2));
+      console.log('[PUT] Updated location logoUrl (camelCase):', (updatedResults[0] as any).logoUrl);
+      console.log('[PUT] Updated location logo_url (snake_case):', (updatedResults[0] as any).logo_url);
+      console.log('[PUT] Updated location all keys:', Object.keys(updatedResults[0] || {}));
 
       if (!updatedResults || updatedResults.length === 0) {
         console.error('[PUT] Cancellation policy update failed: No location returned from DB', {
@@ -3366,6 +3387,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
       
+      console.log('[GET] /api/manager/locations - Raw locations from DB:', locations.map(loc => ({
+        id: loc.id,
+        name: loc.name,
+        logoUrl: (loc as any).logoUrl,
+        logo_url: (loc as any).logo_url,
+        allKeys: Object.keys(loc)
+      })));
+      
       // Map snake_case fields to camelCase for the frontend
       const mappedLocations = locations.map(loc => ({
         ...loc,
@@ -3377,11 +3406,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
       }));
       
-      // Log to verify notificationEmail is included in response
-      console.log('[GET] /api/manager/locations - Returning locations:', 
+      // Log to verify logoUrl is included in response
+      console.log('[GET] /api/manager/locations - Mapped locations:', 
         mappedLocations.map(loc => ({
           id: loc.id,
           name: loc.name,
+          logoUrl: (loc as any).logoUrl,
           notificationEmail: loc.notificationEmail || 'not set'
         }))
       );

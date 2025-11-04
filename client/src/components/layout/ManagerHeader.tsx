@@ -57,6 +57,9 @@ export default function ManagerHeader() {
         }
         const data = await response.json();
         console.log('ManagerHeader - Fetched locations:', data);
+        console.log('ManagerHeader - First location fields:', data[0] ? Object.keys(data[0]) : 'no locations');
+        console.log('ManagerHeader - First location logoUrl:', data[0] ? (data[0] as any).logoUrl : 'no locations');
+        console.log('ManagerHeader - First location logo_url:', data[0] ? (data[0] as any).logo_url : 'no locations');
         return data;
       } catch (error) {
         console.error('Error fetching locations:', error);
@@ -71,9 +74,12 @@ export default function ManagerHeader() {
   });
 
   // Get the first location's logo (managers typically have one location)
-  const locationLogoUrl = locations && locations.length > 0 ? (locations[0] as any).logoUrl : null;
+  const locationLogoUrl = locations && locations.length > 0 
+    ? ((locations[0] as any).logoUrl || (locations[0] as any).logo_url || null)
+    : null;
   
-  console.log('ManagerHeader - locationLogoUrl:', locationLogoUrl, 'locations:', locations);
+  console.log('ManagerHeader - locationLogoUrl:', locationLogoUrl);
+  console.log('ManagerHeader - Full location object:', locations && locations.length > 0 ? locations[0] : 'no locations');
   
   const handleLogout = async () => {
     try {
