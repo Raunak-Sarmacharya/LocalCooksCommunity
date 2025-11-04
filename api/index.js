@@ -14055,6 +14055,36 @@ app.get("/api/admin/chef-location-access", async (req, res) => {
 // PUBLIC MANAGER BOOKING PORTAL ROUTES (No auth required)
 // ===============================
 
+// Get all public locations for portal landing page
+app.get("/api/public/locations", async (req, res) => {
+  try {
+    const allLocations = await getAllLocations();
+    
+    // Return only public info (no sensitive data)
+    const publicLocations = allLocations.map((loc) => {
+      const slug = loc.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      return {
+        id: loc.id,
+        name: loc.name,
+        address: loc.address,
+        logoUrl: loc.logoUrl || loc.logo_url || null,
+        slug: slug,
+      };
+    });
+    
+    res.json(publicLocations);
+  } catch (error) {
+    console.error("Error fetching public locations:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch locations" });
+  }
+});
+
 // Get public location info for booking portal (by name slug)
 app.get("/api/public/locations/:locationSlug", async (req, res) => {
   try {

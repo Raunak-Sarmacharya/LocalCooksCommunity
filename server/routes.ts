@@ -6143,6 +6143,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PUBLIC MANAGER BOOKING PORTAL ROUTES (No auth required)
   // ===============================
 
+  // Get all public locations for portal landing page
+  app.get("/api/public/locations", async (req: Request, res: Response) => {
+    try {
+      const allLocations = await firebaseStorage.getAllLocations();
+      
+      // Return only public info (no sensitive data)
+      const publicLocations = allLocations.map((loc: any) => {
+        const slug = loc.name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        
+        return {
+          id: loc.id,
+          name: loc.name,
+          address: loc.address,
+          logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
+          slug: slug,
+        };
+      });
+      
+      res.json(publicLocations);
+    } catch (error: any) {
+      console.error("Error fetching public locations:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch locations" });
+    }
+  });
+
   // Get public location info for booking portal (by name slug)
   app.get("/api/public/locations/:locationSlug", async (req: Request, res: Response) => {
     try {
