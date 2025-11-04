@@ -244,7 +244,9 @@ export default function KitchenBookingCalendar() {
       
       // Filter out past times and times within minimum booking window
       const now = new Date();
-      const selectedDateObj = new Date(date + 'T00:00:00');
+      // Parse date in local timezone to avoid timezone issues
+      const [year, month, day] = date.split('-').map(Number);
+      const selectedDateObj = new Date(year, month - 1, day);
       const isToday = selectedDateObj.toDateString() === now.toDateString();
       
       // Get minimum booking window from location (default 2 hours)
@@ -255,21 +257,30 @@ export default function KitchenBookingCalendar() {
         const slotTime = new Date(selectedDateObj);
         slotTime.setHours(slotHours, slotMins, 0, 0);
         
-        // Filter out past times
-        if (isToday && slotTime <= now) {
-          return false;
+        // Only apply filtering rules if the date is today
+        if (isToday) {
+          // Filter out past times
+          if (slotTime <= now) {
+            console.log(`   ⏰ Filtered out ${slot.time} - past time (slotTime: ${slotTime.toISOString()}, now: ${now.toISOString()})`);
+            return false;
+          }
+          
+          // Filter out times within minimum booking window (only for today)
+          const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+          if (hoursUntilSlot < minimumBookingWindowHours) {
+            console.log(`   ⏰ Filtered out ${slot.time} - within ${minimumBookingWindowHours}h window (${hoursUntilSlot.toFixed(2)} hours until slot)`);
+            return false;
+          }
+          
+          console.log(`   ✅ Keeping ${slot.time} - ${hoursUntilSlot.toFixed(2)} hours until slot`);
         }
         
-        // Filter out times within minimum booking window
-        const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        if (hoursUntilSlot < minimumBookingWindowHours) {
-          return false;
-        }
-        
+        // For future dates, all slots are available (no time-based filtering needed)
         return true;
       });
       
       console.log(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past times and times within ${minimumBookingWindowHours}h window)`);
+      console.log(`   Current time: ${now.toLocaleTimeString()}, Selected date is today: ${isToday}, Minimum booking window: ${minimumBookingWindowHours}h`);
       setAllSlots(filteredSlots);
       
       if (slots.length === 0) {
