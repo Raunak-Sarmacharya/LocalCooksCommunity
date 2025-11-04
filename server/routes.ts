@@ -6554,74 +6554,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw dbError;
       }
 
-      // Log the user in
-      if (isNewUser) {
+      // Log the user in immediately after registration (for both new and existing users)
+      return new Promise<void>((resolve, reject) => {
         req.login(user, (err: Error | null) => {
           if (err) {
+            console.error("Login error after registration:", err);
             return res.status(500).json({ error: "Login failed after registration" });
           }
-        });
-      }
-
-      // Send notification to manager
-      try {
-        const { sendEmail } = await import('./email');
-        
-        // First, try to get notification_email from location (preferred)
-        let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
-        
-        // If no notification_email, get manager's email from manager_id
-        if (!managerEmail) {
-          const managerId = (location as any).managerId || (location as any).manager_id;
-          if (managerId) {
-            const manager = await firebaseStorage.getUser(managerId);
-            if (manager && (manager as any).username) {
-              managerEmail = (manager as any).username;
+          
+          // Send notification to manager
+          (async () => {
+            try {
+              const { sendEmail } = await import('./email');
+              
+              // First, try to get notification_email from location (preferred)
+              let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
+              
+              // If no notification_email, get manager's email from manager_id
+              if (!managerEmail) {
+                const managerId = (location as any).managerId || (location as any).manager_id;
+                if (managerId) {
+                  const manager = await firebaseStorage.getUser(managerId);
+                  if (manager && (manager as any).username) {
+                    managerEmail = (manager as any).username;
+                  }
+                }
+              }
+              
+              // Send email if we have a manager email
+              if (managerEmail) {
+                const emailContent = {
+                  to: managerEmail,
+                  subject: `New Portal User Application - ${(location as any).name}`,
+                  text: `A new portal user has applied for access to your location:\n\n` +
+                        `Location: ${(location as any).name}\n` +
+                        `Applicant Name: ${fullName}\n` +
+                        `Email: ${email}\n` +
+                        `Phone: ${phone}\n` +
+                        `${company ? `Company: ${company}\n` : ''}` +
+                        `\nPlease log in to your manager dashboard to review and approve this application.`,
+                  html: `<h2>New Portal User Application</h2>` +
+                        `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                        `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                        `<p><strong>Email:</strong> ${email}</p>` +
+                        `<p><strong>Phone:</strong> ${phone}</p>` +
+                        `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                        `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+                };
+                await sendEmail(emailContent);
+                console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
+              } else {
+                console.log("⚠️ No manager email found for location - skipping email notification");
+              }
+            } catch (emailError) {
+              console.error("Error sending application notification email:", emailError);
+              // Don't fail registration if email fails
             }
-          }
-        }
-        
-        // Send email if we have a manager email
-        if (managerEmail) {
-          const emailContent = {
-            to: managerEmail,
-            subject: `New Portal User Application - ${(location as any).name}`,
-            text: `A new portal user has applied for access to your location:\n\n` +
-                  `Location: ${(location as any).name}\n` +
-                  `Applicant Name: ${fullName}\n` +
-                  `Email: ${email}\n` +
-                  `Phone: ${phone}\n` +
-                  `${company ? `Company: ${company}\n` : ''}` +
-                  `\nPlease log in to your manager dashboard to review and approve this application.`,
-            html: `<h2>New Portal User Application</h2>` +
-                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                  `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
-                  `<p><strong>Email:</strong> ${email}</p>` +
-                  `<p><strong>Phone:</strong> ${phone}</p>` +
-                  `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
-                  `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
-          };
-          await sendEmail(emailContent);
-          console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
-        } else {
-          console.log("⚠️ No manager email found for location - skipping email notification");
-        }
-      } catch (emailError) {
-        console.error("Error sending application notification email:", emailError);
-        // Don't fail registration if email fails
-      }
 
-      return res.status(201).json({
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        isPortalUser: true,
-        application: {
-          id: application[0].id,
-          status: application[0].status,
-          message: "Your application has been submitted. The location manager will review it shortly."
-        }
+            // Return success response
+            res.status(201).json({
+              id: user.id,
+              username: user.username,
+              role: user.role,
+              isPortalUser: true,
+              application: {
+                id: application[0].id,
+                status: application[0].status,
+                message: "Your application has been submitted. You are now logged in. The location manager will review it shortly."
+              }
+            });
+          })();
+        });
       });
+
     } catch (error: any) {
       console.error("Portal registration error:", error);
       res.status(500).json({ error: error.message || "Portal registration failed" });

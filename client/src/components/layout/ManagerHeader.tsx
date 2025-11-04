@@ -148,12 +148,6 @@ export default function ManagerHeader() {
               >
                 Booking Dashboard
               </Link>
-              <Link 
-                href="/manager/portal-applications"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
-              >
-                Portal Applications
-              </Link>
               
               <Button
                 variant="outline"
