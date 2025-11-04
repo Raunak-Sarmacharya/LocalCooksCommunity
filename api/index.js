@@ -1796,7 +1796,15 @@ app.get('/api/user-session', async (req, res) => {
     res.status(200).json(userWithoutPassword);
   } catch (error) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Failed to get user data', message: error.message });
+    console.error('Error stack:', error.stack);
+    // Ensure we always send a JSON response
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to get user data', 
+        message: error.message || 'Unknown error',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
   }
 });
 
@@ -14777,7 +14785,13 @@ app.post("/api/portal-login", async (req, res) => {
     }
 
     // Check password
-    const passwordMatches = await comparePasswords(password, portalUser.password);
+    let passwordMatches = false;
+    try {
+      passwordMatches = await comparePasswords(password, portalUser.password);
+    } catch (passwordError) {
+      console.error('Error comparing passwords:', passwordError);
+      return res.status(500).json({ error: 'Authentication error. Please try again.' });
+    }
 
     if (!passwordMatches) {
       console.log('Password mismatch for portal user:', username);
@@ -14785,20 +14799,25 @@ app.post("/api/portal-login", async (req, res) => {
     }
 
     // Log in the user using session
-    req.session.userId = portalUser.id;
-    req.session.user = { ...portalUser, password: undefined };
-    
-    // Wait for session to be saved
-    await new Promise((resolve, reject) => {
-      req.session.save((err) => {
-        if (err) {
-          console.error('Session save error:', err);
-          reject(err);
-        } else {
-          resolve();
-        }
+    try {
+      req.session.userId = portalUser.id;
+      req.session.user = { ...portalUser, password: undefined };
+      
+      // Wait for session to be saved
+      await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) {
+            console.error('Session save error:', err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
       });
-    });
+    } catch (sessionError) {
+      console.error('Session error:', sessionError);
+      return res.status(500).json({ error: 'Session error. Please try again.' });
+    }
 
     // Get user's assigned location
     let locationId = null;
@@ -14825,7 +14844,14 @@ app.post("/api/portal-login", async (req, res) => {
     });
   } catch (error) {
     console.error("Portal login error:", error);
-    res.status(500).json({ error: error.message || "Portal login failed" });
+    console.error("Error stack:", error.stack);
+    // Ensure we always send a JSON response
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: error.message || "Portal login failed",
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
   }
 });
 
