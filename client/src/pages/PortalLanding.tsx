@@ -105,12 +105,12 @@ export default function PortalLanding() {
                 </>
               )}
               {isPortalUserForDisplay && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setLocation("/portal/book")}
-                  className="flex items-center gap-2"
-                >
-                  <Calendar className="h-4 w-4" />
+              <Button
+                variant="ghost"
+                onClick={() => setLocation("/portal/book")}
+                className="flex items-center gap-2"
+              >
+                <Calendar className="h-4 w-4" />
                   My Bookings
                 </Button>
               )}
@@ -122,7 +122,7 @@ export default function PortalLanding() {
                 >
                   <LogOut className="h-4 w-4" />
                   Logout
-                </Button>
+              </Button>
               )}
               <Button
                 onClick={() => setLocation("/manager/login")}
