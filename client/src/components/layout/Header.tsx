@@ -3,7 +3,7 @@ import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { GraduationCap, LogOut, Menu, User, X } from "lucide-react";
+import { Building2, GraduationCap, LogOut, Menu, User, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Link, useLocation } from "wouter";
 
@@ -248,15 +248,26 @@ export default function Header() {
               </li>
             )}
             {!user && (
-              <li>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="border-primary text-primary hover:bg-primary hover:text-white hover-standard"
-                >
-                  <Link href="/auth">Login / Register</Link>
-                </Button>
-              </li>
+              <>
+                <li>
+                  <Link 
+                    href="/manager/login"
+                    className="text-gray-700 hover:text-primary transition-colors text-sm flex items-center gap-1 px-3 py-2 rounded-md hover:bg-gray-50"
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Partner Login
+                  </Link>
+                </li>
+                <li>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="border-primary text-primary hover:bg-primary hover:text-white hover-standard"
+                  >
+                    <Link href="/auth">Login / Register</Link>
+                  </Button>
+                </li>
+              </>
             )}
 
             {user && (
@@ -404,14 +415,26 @@ export default function Header() {
               </>
             )}
             {!user && (
-              <li className="pt-2">
-                <Button
-                  asChild
-                  className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
-                >
-                  <Link href="/auth" onClick={closeMenu}>Login / Register</Link>
-                </Button>
-              </li>
+              <>
+                <li>
+                  <Link 
+                    href="/manager/login"
+                    className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                    onClick={closeMenu}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Partner Login
+                  </Link>
+                </li>
+                <li className="pt-2">
+                  <Button
+                    asChild
+                    className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
+                  >
+                    <Link href="/auth" onClick={closeMenu}>Login / Register</Link>
+                  </Button>
+                </li>
+              </>
             )}
             </ul>
           </div>

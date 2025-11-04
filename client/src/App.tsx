@@ -14,6 +14,7 @@ import ManagerProtectedRoute from "@/components/manager/ManagerProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminLoginTest from "@/pages/AdminLoginTest";
+import ManagerLogin from "@/pages/ManagerLogin";
 import AuthTest from "@/pages/AuthTest";
 import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import ForgotPasswordPage from "@/pages/ForgotPassword";
@@ -160,6 +161,7 @@ function Router() {
         </Route>
         
         {/* Manager Routes */}
+        <Route path="/manager/login" component={ManagerLogin} />
         <Route path="/manager/change-password" component={ManagerChangePassword} />
         <Route path="/manager/dashboard">
           <ManagerProtectedRoute>

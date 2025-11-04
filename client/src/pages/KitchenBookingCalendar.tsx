@@ -238,7 +238,36 @@ export default function KitchenBookingCalendar() {
       
       const slots = await response.json();
       console.log('📅 All slots for', date, ':', slots);
-      setAllSlots(slots);
+      
+      // Filter out past times and times within minimum booking window
+      const now = new Date();
+      const selectedDateObj = new Date(date + 'T00:00:00');
+      const isToday = selectedDateObj.toDateString() === now.toDateString();
+      
+      // Get minimum booking window from location (default 2 hours)
+      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 2;
+      
+      const filteredSlots = slots.filter((slot: any) => {
+        const [slotHours, slotMins] = slot.time.split(':').map(Number);
+        const slotTime = new Date(selectedDateObj);
+        slotTime.setHours(slotHours, slotMins, 0, 0);
+        
+        // Filter out past times
+        if (isToday && slotTime <= now) {
+          return false;
+        }
+        
+        // Filter out times within minimum booking window
+        const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        if (hoursUntilSlot < minimumBookingWindowHours) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      console.log(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past times and times within ${minimumBookingWindowHours}h window)`);
+      setAllSlots(filteredSlots);
       
       if (slots.length === 0) {
         toast({

@@ -108,14 +108,15 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
       defaultDailyBookingLimit?: number;
+      minimumBookingWindowHours?: number;
       notificationEmail?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail };
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
       
@@ -764,6 +765,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
   );
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
+  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 2);
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
 
   // Update state when location prop changes (e.g., after saving or switching tabs)
@@ -773,6 +775,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
     );
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
@@ -792,6 +795,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       cancellationPolicyHours: cancellationHours,
       cancellationPolicyMessage: cancellationMessage,
       defaultDailyBookingLimit: dailyBookingLimit,
+      minimumBookingWindowHours: minimumBookingWindowHours,
       notificationEmail: notificationEmail || undefined,
     };
     
@@ -853,6 +857,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -922,6 +927,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -979,6 +985,65 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Reset All
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Minimum Booking Window Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <Clock className="h-5 w-5 text-orange-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Minimum Booking Window</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Set the minimum advance notice required for bookings. Chefs cannot book a kitchen within this time window. This prevents last-minute bookings and gives managers time to prepare.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Minimum Hours in Advance
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="168"
+                  value={minimumBookingWindowHours}
+                  onChange={(e) => setMinimumBookingWindowHours(parseInt(e.target.value) || 2)}
+                  className="w-full max-w-xs border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  Chefs must book at least this many hours before the booking time (0 = no restrictions, default: 2 hours)
+                </p>
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                  <Info className="h-3 w-3 inline mr-1" />
+                  <strong>Example:</strong> With 2 hours, if it's 1:00 PM, chefs can only book times starting from 3:00 PM onwards.
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSave}
+                  disabled={isUpdating}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Save className="h-4 w-4" />
+                  Save All Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setCancellationHours(location.cancellationPolicyHours || 24);
+                    setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
+                    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 2);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >

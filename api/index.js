@@ -841,10 +841,10 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
 
-    // Verify user is admin or manager (both use session-based auth)
-    if (admin.role !== 'admin' && admin.role !== 'manager') {
-      console.log('User is not an admin or manager:', username, 'role:', admin.role);
-      return res.status(403).json({ error: 'Not authorized - admin or manager access required' });
+    // Verify user is admin (only admins can use this endpoint)
+    if (admin.role !== 'admin') {
+      console.log('User is not an admin:', username, 'role:', admin.role);
+      return res.status(403).json({ error: 'Not authorized - admin access required. Managers should use /api/manager-login' });
     }
 
     // Check password - first try exact match for 'localcooks' (legacy admin password)
@@ -875,7 +875,7 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
 
-    console.log(`${admin.role} login successful for:`, username);
+    console.log('Admin login successful for:', username);
 
     // Remove sensitive info
     const { password: _, ...adminWithoutPassword } = admin;
@@ -922,6 +922,103 @@ app.post('/api/admin-login', async (req, res) => {
   } catch (error) {
     console.error('Admin login error:', error);
     res.status(500).json({ error: 'Admin login failed', message: error.message });
+  }
+});
+
+// Manager login endpoint (for commercial kitchen managers)
+app.post('/api/manager-login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    console.log('Manager login attempt for:', username);
+
+    // Get manager user
+    const manager = await getUserByUsername(username);
+
+    if (!manager) {
+      console.log('Manager user not found:', username);
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    // Verify user is manager (only managers can use this endpoint)
+    if (manager.role !== 'manager') {
+      console.log('User is not a manager:', username, 'role:', manager.role);
+      return res.status(403).json({ error: 'Not authorized - manager access required. Admins should use /api/admin-login' });
+    }
+
+    // Check password - compare with database password hash
+    let passwordMatches = false;
+    
+    console.log('User found:', {
+      id: manager.id,
+      username: manager.username,
+      role: manager.role,
+      passwordLength: manager.password ? manager.password.length : 0
+    });
+    console.log('Provided password:', password);
+
+    try {
+      passwordMatches = await comparePasswords(password, manager.password);
+      console.log('Password compared with database:', passwordMatches);
+    } catch (error) {
+      console.error('Error comparing passwords:', error);
+    }
+
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    console.log('Manager login successful for:', username);
+
+    // Remove sensitive info
+    const { password: _, ...managerWithoutPassword } = manager;
+
+    // Set session with full user data
+    req.session.userId = manager.id;
+    req.session.user = managerWithoutPassword; // Store full user object (without password)
+
+    console.log('Setting session data:', {
+      sessionId: req.session.id,
+      userId: manager.id,
+      userData: { id: managerWithoutPassword.id, username: managerWithoutPassword.username, role: managerWithoutPassword.role }
+    });
+
+    // Force session regeneration to ensure fresh session
+    req.session.regenerate((err) => {
+      if (err) {
+        console.error('Session regeneration error:', err);
+        return res.status(500).json({ error: 'Session creation failed' });
+      }
+      
+      // Set session data again after regeneration
+      req.session.userId = manager.id;
+      req.session.user = managerWithoutPassword;
+      
+      // Save session explicitly
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error('Error saving session:', saveErr);
+          return res.status(500).json({ error: 'Session save failed' });
+        } else {
+          console.log('Session saved successfully with userId:', manager.id);
+          console.log('Final session ID:', req.session.id);
+          console.log('Session user data cached:', { id: managerWithoutPassword.id, username: managerWithoutPassword.username, role: managerWithoutPassword.role });
+        }
+        
+        // Return user data with session info
+        return res.status(200).json({
+          ...managerWithoutPassword,
+          sessionId: req.session.id // Include session ID for debugging
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Manager login error:', error);
+    res.status(500).json({ error: 'Manager login failed', message: error.message });
   }
 });
 
