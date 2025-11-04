@@ -22,7 +22,7 @@ import { eq, inArray, and, desc } from "drizzle-orm";
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  console.log("[Routes] Registering all routes including chef-kitchen-access...");
+  console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   // Set up authentication routes and middleware
   setupAuth(app);
 
@@ -6447,7 +6447,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Portal user registration endpoint - creates application instead of direct access
+  console.log("[Routes] Registering /api/portal-register route");
   app.post("/api/portal-register", async (req, res) => {
+    console.log("[Routes] /api/portal-register called");
     try {
       const { username, password, locationId, fullName, email, phone, company } = req.body;
 
@@ -6488,14 +6490,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user already has an application for this location
-      const existingApplications = await db.select()
-        .from(portalUserApplications)
-        .where(
-          and(
-            eq(portalUserApplications.userId, user.id),
-            eq(portalUserApplications.locationId, parseInt(locationId))
-          )
-        );
+      let existingApplications: any[] = [];
+      try {
+        existingApplications = await db.select()
+          .from(portalUserApplications)
+          .where(
+            and(
+              eq(portalUserApplications.userId, user.id),
+              eq(portalUserApplications.locationId, parseInt(locationId))
+            )
+          );
+      } catch (dbError: any) {
+        console.error("Error checking existing applications:", dbError);
+        // If table doesn't exist, provide helpful error message
+        if (dbError.message && dbError.message.includes('does not exist')) {
+          return res.status(500).json({ 
+            error: "Database migration required. Please run the migration to create portal_user_applications table.",
+            details: "Run: migrations/0005_add_portal_user_tables.sql"
+          });
+        }
+        throw dbError;
+      }
       
       if (existingApplications.length > 0) {
         const existingApp = existingApplications[0];
@@ -6509,15 +6524,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create application
-      const application = await db.insert(portalUserApplications).values({
-        userId: user.id,
-        locationId: parseInt(locationId),
-        fullName: fullName,
-        email: email,
-        phone: phone,
-        company: company || null,
-        status: 'inReview',
-      }).returning();
+      let application: any[];
+      try {
+        application = await db.insert(portalUserApplications).values({
+          userId: user.id,
+          locationId: parseInt(locationId),
+          fullName: fullName,
+          email: email,
+          phone: phone,
+          company: company || null,
+          status: 'inReview',
+        }).returning();
+      } catch (dbError: any) {
+        console.error("Error creating application:", dbError);
+        // If table doesn't exist, provide helpful error message
+        if (dbError.message && dbError.message.includes('does not exist')) {
+          return res.status(500).json({ 
+            error: "Database migration required. Please run the migration to create portal_user_applications table.",
+            details: "Run: migrations/0005_add_portal_user_tables.sql"
+          });
+        }
+        throw dbError;
+      }
 
       // Log the user in
       if (isNewUser) {
