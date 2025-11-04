@@ -14463,4 +14463,193 @@ app.post("/api/public/bookings", async (req, res) => {
   }
 });
 
+// ===============================
+// PORTAL USER REGISTRATION ROUTE
+// ===============================
+
+// Portal user registration endpoint - creates application instead of direct access
+app.post("/api/portal-register", async (req, res) => {
+  console.log("[Routes] /api/portal-register called");
+  try {
+    const { username, password, locationId, fullName, email, phone, company } = req.body;
+
+    if (!username || !password || !locationId || !fullName || !email || !phone) {
+      return res.status(400).json({ error: 'Username, password, locationId, fullName, email, and phone are required' });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+
+    // Validate location exists (include notification_email)
+    const locationResult = await pool.query(
+      `SELECT id, name, address, manager_id, notification_email 
+       FROM locations WHERE id = $1`, 
+      [parseInt(locationId)]
+    );
+    if (locationResult.rows.length === 0) {
+      return res.status(400).json({ error: "Location not found" });
+    }
+    const location = locationResult.rows[0];
+
+    // Check if user already exists
+    let user = await getUserByUsername(username);
+    let isNewUser = false;
+    
+    if (!user) {
+      // Hash password and create user
+      const hashedPassword = await hashPassword(password);
+
+      // Create user with is_portal_user flag
+      const createUserResult = await pool.query(
+        `INSERT INTO users (username, password, role, is_chef, is_delivery_partner, is_manager, is_portal_user) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
+         RETURNING *`,
+        [username, hashedPassword, 'chef', false, false, false, true]
+      );
+      user = createUserResult.rows[0];
+      isNewUser = true;
+    } else {
+      // Check if user is already a portal user
+      const isPortalUser = user.is_portal_user || user.isPortalUser;
+      if (!isPortalUser) {
+        return res.status(400).json({ error: "Username already exists with different account type" });
+      }
+    }
+
+    // Check if user already has an application for this location
+    let existingApplications = [];
+    try {
+      const existingResult = await pool.query(
+        `SELECT * FROM portal_user_applications 
+         WHERE user_id = $1 AND location_id = $2`,
+        [user.id, parseInt(locationId)]
+      );
+      existingApplications = existingResult.rows;
+    } catch (dbError) {
+      console.error("Error checking existing applications:", dbError);
+      // If table doesn't exist, provide helpful error message
+      if (dbError.message && dbError.message.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: "Database migration required. Please run the migration to create portal_user_applications table.",
+          details: "Run: migrations/0005_add_portal_user_tables.sql"
+        });
+      }
+      throw dbError;
+    }
+    
+    if (existingApplications.length > 0) {
+      const existingApp = existingApplications[0];
+      if (existingApp.status === 'inReview' || existingApp.status === 'approved') {
+        return res.status(400).json({ 
+          error: "You already have an application for this location",
+          applicationId: existingApp.id,
+          status: existingApp.status
+        });
+      }
+    }
+
+    // Create application
+    let application;
+    try {
+      const applicationResult = await pool.query(
+        `INSERT INTO portal_user_applications (user_id, location_id, full_name, email, phone, company, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
+         RETURNING *`,
+        [user.id, parseInt(locationId), fullName, email, phone, company || null, 'inReview']
+      );
+      application = applicationResult.rows[0];
+    } catch (dbError) {
+      console.error("Error creating application:", dbError);
+      // If table doesn't exist, provide helpful error message
+      if (dbError.message && dbError.message.includes('does not exist')) {
+        return res.status(500).json({ 
+          error: "Database migration required. Please run the migration to create portal_user_applications table.",
+          details: "Run: migrations/0005_add_portal_user_tables.sql"
+        });
+      }
+      throw dbError;
+    }
+
+    // Log the user in
+    if (isNewUser) {
+      req.session.userId = user.id;
+      req.session.user = { ...user, password: undefined };
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+        }
+      });
+    }
+
+    // Send notification to manager
+    try {
+      // First, try to get notification_email from location (preferred)
+      let managerEmail = location.notification_email || location.notificationEmail;
+      
+      // If no notification_email, get manager's email from manager_id
+      if (!managerEmail) {
+        const managerId = location.manager_id || location.managerId;
+        if (managerId) {
+          const managerResult = await pool.query('SELECT * FROM users WHERE id = $1', [managerId]);
+          if (managerResult.rows.length > 0) {
+            const manager = managerResult.rows[0];
+            managerEmail = manager.username;
+          }
+        }
+      }
+      
+      // Send email if we have a manager email
+      if (managerEmail) {
+        try {
+          const { sendEmail } = await import('../server/email.js');
+          const emailContent = {
+            to: managerEmail,
+            subject: `New Portal User Application - ${location.name}`,
+            text: `A new portal user has applied for access to your location:\n\n` +
+                  `Location: ${location.name}\n` +
+                  `Applicant Name: ${fullName}\n` +
+                  `Email: ${email}\n` +
+                  `Phone: ${phone}\n` +
+                  `${company ? `Company: ${company}\n` : ''}` +
+                  `\nPlease log in to your manager dashboard to review and approve this application.`,
+            html: `<h2>New Portal User Application</h2>` +
+                  `<p><strong>Location:</strong> ${location.name}</p>` +
+                  `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                  `<p><strong>Email:</strong> ${email}</p>` +
+                  `<p><strong>Phone:</strong> ${phone}</p>` +
+                  `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+          };
+          await sendEmail(emailContent);
+          console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
+        } catch (emailImportError) {
+          console.error("Error importing email module:", emailImportError);
+          // Don't fail registration if email fails
+        }
+      } else {
+        console.log("⚠️ No manager email found for location - skipping email notification");
+      }
+    } catch (emailError) {
+      console.error("Error sending application notification email:", emailError);
+      // Don't fail registration if email fails
+    }
+
+    return res.status(201).json({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      isPortalUser: true,
+      application: {
+        id: application.id,
+        status: application.status,
+        message: "Your application has been submitted. The location manager will review it shortly."
+      }
+    });
+  } catch (error) {
+    console.error("Portal registration error:", error);
+    res.status(500).json({ error: error.message || "Portal registration failed" });
+  }
+});
+
 export default app;
