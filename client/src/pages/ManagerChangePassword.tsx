@@ -115,7 +115,7 @@ export default function ManagerChangePassword() {
   }
 
   if (!user || user.role !== 'manager') {
-    return <Redirect to="/admin/login" />;
+    return <Redirect to="/manager/login" />;
   }
 
   // If password already changed, redirect to dashboard

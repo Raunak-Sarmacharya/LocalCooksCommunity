@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useApplicationStatus } from "@/hooks/use-application-status";
-import { ChefHat, Heart, Mail, MapPin, Phone, Truck } from "lucide-react";
+import { Building2, ChefHat, Heart, Mail, MapPin, Phone, Truck } from "lucide-react";
 import { FaFacebook, FaLinkedin } from "react-icons/fa";
 import { Link, useLocation } from "wouter";
 
@@ -110,6 +110,15 @@ export default function Footer() {
                   >
                     Apply as Delivery Partner
                   </button>
+                </li>
+                <li>
+                  <Link 
+                    href="/manager/login"
+                    className="text-gray-300 hover:text-white hover-text flex items-center gap-2"
+                  >
+                    <Building2 className="h-4 w-4 text-primary" />
+                    Partner Login
+                  </Link>
                 </li>
               </ul>
             </div>

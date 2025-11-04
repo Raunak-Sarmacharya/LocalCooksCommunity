@@ -2802,7 +2802,9 @@ Visit: ${getWebsiteUrl()}
 
 export const generateManagerMagicLinkEmail = (userData: { email: string; name: string; resetToken: string }): EmailContent => {
   const subject = 'Set Up Your Manager Account - Local Cooks';
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${userData.resetToken}`;
+  // Use password reset with manager redirect parameter
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const resetUrl = `${baseUrl}/password-reset?token=${userData.resetToken}&role=manager`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${userData.name},</h2><p class="message">Your manager account has been created for the Local Cooks commercial kitchen booking system!</p><p class="message">Click the button below to set up your password and access your manager dashboard:</p><a href="${resetUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Set Up Password</a><div class="info-box"><strong>🔐 Account Access:</strong><br>You'll be able to manage kitchen schedules, view bookings, and set up availability for your location.</div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: userData.email, subject, text: `Hello ${userData.name}, Your manager account has been created. Click here to set up your password: ${resetUrl}`, html };
 };
@@ -2810,9 +2812,9 @@ export const generateManagerMagicLinkEmail = (userData: { email: string; name: s
 // Manager credentials email with username and password
 export const generateManagerCredentialsEmail = (userData: { email: string; name: string; username: string; password: string }): EmailContent => {
   const subject = 'Your Manager Account - Local Cooks Community';
-  // Use admin login page URL for managers
+  // Use manager login page URL for managers
   const baseUrl = getWebsiteUrl();
-  const loginUrl = `${baseUrl}/admin/`;
+  const loginUrl = `${baseUrl}/manager/login`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${userData.name || 'Manager'},</h2><p class="message">Your manager account has been created for the Local Cooks kitchen booking system!</p><div class="info-box"><strong>🔐 Your Login Credentials:</strong><table class="credentials-table"><tr><td>Username:</td><td><code>${userData.username}</code></td></tr><tr><td>Password:</td><td><code>${userData.password}</code></td></tr></table></div><div class="warning-box"><p class="warning-text"><strong>⚠️ Important:</strong> Please change your password after your first login for security.</p></div><p class="message">You'll be able to manage kitchen schedules, view bookings, and set up availability for your locations.</p><a href="${loginUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Login Now</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: userData.email, subject, text: `Hello ${userData.name || 'Manager'}, Your manager account has been created! Username: ${userData.username}, Password: ${userData.password}. Login at: ${loginUrl}`, html };
 };

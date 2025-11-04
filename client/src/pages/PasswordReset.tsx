@@ -10,6 +10,7 @@ export default function PasswordReset() {
   const [token, setToken] = useState<string | null>(null);
   const [mode, setMode] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     // Get reset parameters from URL
@@ -18,30 +19,35 @@ export default function PasswordReset() {
     const tokenParam = urlParams.get('token');
     const modeParam = urlParams.get('mode');
     const emailParam = urlParams.get('email');
+    const roleParam = urlParams.get('role');
     
     setOobCode(codeParam);
     setToken(tokenParam);
     setMode(modeParam);
     setEmail(emailParam);
+    setRole(roleParam);
 
     // Check if this is a valid password reset request
     if (modeParam && modeParam !== 'resetPassword') {
       console.log('Invalid reset mode:', modeParam);
-      setLocation('/auth');
+      const redirectPath = roleParam === 'manager' ? '/manager/login' : '/auth';
+      setLocation(redirectPath);
     }
   }, [setLocation]);
 
   const handleSuccess = () => {
     console.log('✅ Password reset completed successfully');
     setIsSuccess(true);
-    // Redirect to login after showing success message
+    // Redirect to appropriate login page based on role
+    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
     setTimeout(() => {
-      setLocation('/auth');
+      setLocation(redirectPath);
     }, 3000);
   };
 
   const handleGoBack = () => {
-    setLocation('/auth');
+    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
+    setLocation(redirectPath);
   };
 
   // Show success state instead of redirecting immediately
@@ -76,7 +82,7 @@ export default function PasswordReset() {
             onClick={handleGoBack}
             className="w-full bg-blue-600 text-white py-3 px-4 rounded-xl hover:bg-blue-700 transition-colors font-medium"
           >
-            Continue to Login
+            Continue to {role === 'manager' ? 'Manager' : ''} Login
           </button>
         </motion.div>
       </div>

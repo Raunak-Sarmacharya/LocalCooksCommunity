@@ -821,10 +821,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log('User found:', { id: admin.id, username: admin.username, role: admin.role });
 
-      // Verify user is admin or manager (both use session-based auth)
-      if (admin.role !== 'admin' && admin.role !== 'manager') {
-        console.log('User is not an admin or manager:', username, 'role:', admin.role);
-        return res.status(403).json({ error: 'Not authorized - admin or manager access required' });
+      // Verify user is admin (only admins can use this endpoint)
+      if (admin.role !== 'admin') {
+        console.log('User is not an admin:', username, 'role:', admin.role);
+        return res.status(403).json({ error: 'Not authorized - admin access required. Managers should use /api/manager-login' });
       }
 
       // Check password - first try exact match for 'localcooks' (legacy admin password)
@@ -847,7 +847,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
 
-      console.log(`${admin.role} login successful for:`, username);
+      console.log('Admin login successful for:', username);
 
       // Store session data for admin (both Passport and direct session)
       (req.session as any).userId = admin.id;
@@ -879,6 +879,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('Error details:', error instanceof Error ? error.stack : error);
       res.status(500).json({ 
         error: 'Admin login failed', 
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: process.env.NODE_ENV === 'development' ? error : undefined
+      });
+    }
+  });
+
+  // Manager login endpoint (for commercial kitchen managers)
+  app.post("/api/manager-login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      console.log('Manager login attempt for:', username);
+      console.log('Storage type:', storage.constructor.name);
+      console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+
+      // Get manager user
+      let manager;
+      try {
+        console.log('Calling storage.getUserByUsername...');
+        manager = await storage.getUserByUsername(username);
+        console.log('Storage call completed, user:', manager ? 'found' : 'not found');
+      } catch (dbError: any) {
+        console.error('Database error fetching user:', dbError);
+        console.error('Error stack:', dbError?.stack);
+        console.error('Error code:', dbError?.code);
+        console.error('Error detail:', dbError?.detail);
+        return res.status(500).json({ 
+          error: 'Database connection failed',
+          message: dbError instanceof Error ? dbError.message : 'Unknown database error',
+          code: dbError?.code
+        });
+      }
+
+      if (!manager) {
+        console.log('Manager user not found:', username);
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+      
+      console.log('User found:', { id: manager.id, username: manager.username, role: manager.role });
+
+      // Verify user is manager (only managers can use this endpoint)
+      if (manager.role !== 'manager') {
+        console.log('User is not a manager:', username, 'role:', manager.role);
+        return res.status(403).json({ error: 'Not authorized - manager access required. Admins should use /api/admin-login' });
+      }
+
+      // Check password - compare with database password hash
+      let passwordMatches = false;
+
+      try {
+        passwordMatches = await comparePasswords(password, manager.password);
+        console.log('Password compared with stored hash:', passwordMatches);
+      } catch (error) {
+        console.error('Error comparing passwords:', error);
+      }
+
+      if (!passwordMatches) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      console.log('Manager login successful for:', username);
+
+      // Store session data for manager (both Passport and direct session)
+      (req.session as any).userId = manager.id;
+      (req.session as any).user = { ...manager, password: undefined };
+
+      // Use Passport.js login to set session
+      req.login(manager, (err) => {
+        if (err) {
+          console.error('Error setting session:', err);
+          return res.status(500).json({ error: 'Session creation failed' });
+        }
+
+        // Ensure session data is persisted
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Error saving session:', saveErr);
+            return res.status(500).json({ error: 'Session save failed' });
+          }
+
+          // Remove sensitive info
+          const { password: _, ...managerWithoutPassword } = manager;
+
+          // Return user data
+          return res.status(200).json(managerWithoutPassword);
+        });
+      });
+    } catch (error) {
+      console.error('Manager login error:', error);
+      console.error('Error details:', error instanceof Error ? error.stack : error);
+      res.status(500).json({ 
+        error: 'Manager login failed', 
         message: error instanceof Error ? error.message : 'Unknown error',
         details: process.env.NODE_ENV === 'development' ? error : undefined
       });
@@ -3107,12 +3203,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid location ID" });
       }
       
-      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail } = req.body;
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail } = req.body;
       
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
+        minimumBookingWindowHours,
         notificationEmail,
         locationId: locationIdNum
       });
@@ -3123,6 +3220,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (defaultDailyBookingLimit !== undefined && (typeof defaultDailyBookingLimit !== 'number' || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
         return res.status(400).json({ error: "Daily booking limit must be between 1 and 24 hours" });
+      }
+
+      if (minimumBookingWindowHours !== undefined && (typeof minimumBookingWindowHours !== 'number' || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
+        return res.status(400).json({ error: "Minimum booking window hours must be between 0 and 168 hours" });
       }
 
       // Import db dynamically
@@ -3167,6 +3268,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (defaultDailyBookingLimit !== undefined) {
         updates.defaultDailyBookingLimit = defaultDailyBookingLimit;
       }
+      if (minimumBookingWindowHours !== undefined) {
+        updates.minimumBookingWindowHours = minimumBookingWindowHours;
+      }
       if (notificationEmail !== undefined) {
         // Validate email format if provided and not empty
         if (notificationEmail && notificationEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
@@ -3210,6 +3314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours,
         cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
         defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
+        minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 2,
       };
       
       // Send email to new notification email if it was changed
@@ -4264,6 +4369,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!availabilityCheck.valid) {
         return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
+      }
+      
+      // Validate booking time (past times and minimum booking window)
+      const now = new Date();
+      const [startHours, startMins] = startTime.split(':').map(Number);
+      const bookingStartTime = new Date(bookingDateObj);
+      bookingStartTime.setHours(startHours, startMins, 0, 0);
+      
+      // Check if booking time is in the past
+      if (bookingStartTime <= now) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+      
+      // Get minimum booking window from location
+      const kitchenLocationId = await firebaseStorage.getKitchenLocation(kitchenId);
+      let minimumBookingWindowHours = 2; // Default
+      
+      if (kitchenLocationId) {
+        const location = await firebaseStorage.getLocationById(kitchenLocationId);
+        if (location && (location as any).minimumBookingWindowHours) {
+          minimumBookingWindowHours = (location as any).minimumBookingWindowHours;
+        }
+      }
+      
+      // Check if booking is within minimum booking window
+      const hoursUntilBooking = (bookingStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+      if (hoursUntilBooking < minimumBookingWindowHours) {
+        return res.status(400).json({ 
+          error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+        });
       }
       
       // Check for conflicts with existing bookings

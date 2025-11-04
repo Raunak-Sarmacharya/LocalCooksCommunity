@@ -88,7 +88,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   }
 
   if (!user) {
-    return <Redirect to="/admin/login" />;
+    return <Redirect to="/manager/login" />;
   }
 
   if (!isManager) {
