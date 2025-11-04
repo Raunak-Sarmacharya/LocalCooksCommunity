@@ -44,25 +44,36 @@ export default function ManagerHeader() {
   const user = sessionUser;
 
   // Fetch manager's location(s) to get logo
-  const { data: locations } = useQuery({
+  const { data: locations, isLoading: loadingLocations } = useQuery({
     queryKey: ["/api/manager/locations"],
     queryFn: async () => {
       try {
         const response = await fetch("/api/manager/locations", {
           credentials: "include",
         });
-        if (!response.ok) return [];
-        return await response.json();
+        if (!response.ok) {
+          console.error('Failed to fetch locations:', response.status);
+          return [];
+        }
+        const data = await response.json();
+        console.log('ManagerHeader - Fetched locations:', data);
+        return data;
       } catch (error) {
+        console.error('Error fetching locations:', error);
         return [];
       }
     },
     enabled: !!user && user.role === 'manager',
     retry: false,
+    staleTime: 0, // Always refetch to get latest logo
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   // Get the first location's logo (managers typically have one location)
   const locationLogoUrl = locations && locations.length > 0 ? (locations[0] as any).logoUrl : null;
+  
+  console.log('ManagerHeader - locationLogoUrl:', locationLogoUrl, 'locations:', locations);
   
   const handleLogout = async () => {
     try {
@@ -91,12 +102,19 @@ export default function ManagerHeader() {
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
       <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-3">
-          {locationLogoUrl ? (
+          {locationLogoUrl && locationLogoUrl.trim() !== '' ? (
             <div className="flex items-center gap-2 sm:gap-3">
               <img 
                 src={locationLogoUrl} 
                 alt="Location logo" 
-                className="h-8 sm:h-10 lg:h-12 w-auto object-contain"
+                className="h-8 sm:h-10 lg:h-12 w-auto object-contain max-h-12"
+                onError={(e) => {
+                  console.error('Failed to load location logo:', locationLogoUrl);
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+                onLoad={() => {
+                  console.log('Location logo loaded successfully:', locationLogoUrl);
+                }}
               />
               <div className="flex items-center gap-1 sm:gap-2 text-gray-400">
                 <span className="text-xs sm:text-sm">×</span>
