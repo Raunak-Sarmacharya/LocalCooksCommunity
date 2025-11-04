@@ -14467,7 +14467,7 @@ app.get("/api/public/kitchens/:kitchenId/availability", async (req, res) => {
       SELECT is_available, start_time, end_time, reason
       FROM kitchen_date_overrides
       WHERE kitchen_id = $1
-        AND DATE(override_date) = $2
+        AND DATE(specific_date) = $2
     `, [kitchenId, dateStr]);
 
     let startHour, endHour;
@@ -15408,75 +15408,44 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
 
     let startHour, endHour;
 
-    // Check for date-specific override first
+    // Check for date-specific override (only source of availability)
     try {
+      console.log(`[Portal Availability] Checking for date override for kitchen ${kitchenId}, date ${dateStr}`);
+      
       const dateOverrideResult = await pool.query(`
         SELECT is_available, start_time, end_time, reason
         FROM kitchen_date_overrides
         WHERE kitchen_id = $1
-          AND DATE(override_date) = $2
+          AND DATE(specific_date) = $2
       `, [kitchenId, dateStr]);
 
-      if (dateOverrideResult.rows.length > 0) {
-        const override = dateOverrideResult.rows[0];
-        if (!override.is_available) {
-          return res.json({ slots: [] });
-        }
-        if (!override.start_time || !override.end_time) {
-          return res.json({ slots: [] });
-        }
-        startHour = parseInt(override.start_time.split(':')[0]);
-        endHour = parseInt(override.end_time.split(':')[0]);
-      } else {
-        // No override, use weekly schedule
-        console.log(`[Portal Availability] Checking availability for kitchen ${kitchenId}, day of week ${dayOfWeek}, date ${dateStr}`);
-        
-        const availabilityResult = await pool.query(`
-          SELECT day_of_week, start_time, end_time, is_available
-          FROM kitchen_availability
-          WHERE kitchen_id = $1 AND day_of_week = $2
-        `, [kitchenId, dayOfWeek]);
+      console.log(`[Portal Availability] Found ${dateOverrideResult.rows.length} date override(s) for kitchen ${kitchenId}, date ${dateStr}`);
 
-        console.log(`[Portal Availability] Found ${availabilityResult.rows.length} availability records for kitchen ${kitchenId}, day ${dayOfWeek}`);
-
-        if (availabilityResult.rows.length === 0) {
-          // Check if kitchen has any availability set up at all
-          const allAvailabilityResult = await pool.query(`
-            SELECT day_of_week, start_time, end_time, is_available
-            FROM kitchen_availability
-            WHERE kitchen_id = $1
-          `, [kitchenId]);
-          console.log(`[Portal Availability] Kitchen ${kitchenId} has ${allAvailabilityResult.rows.length} total availability records`);
-          console.log(`[Portal Availability] Available days:`, allAvailabilityResult.rows.map(r => ({ day: r.day_of_week, start: r.start_time, end: r.end_time, available: r.is_available })));
-          return res.json({ 
-            slots: [],
-            debug: {
-              message: "No availability set for this day",
-              kitchenId,
-              requestedDay: dayOfWeek,
-              date: dateStr,
-              totalAvailabilityRecords: allAvailabilityResult.rows.length,
-              availableDays: allAvailabilityResult.rows.map(r => r.day_of_week)
-            }
-          });
-        }
-
-        const dayAvailability = availabilityResult.rows[0];
-        console.log(`[Portal Availability] Day availability:`, dayAvailability);
-        
-        if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
-          console.log(`[Portal Availability] Kitchen not available or missing times:`, {
-            is_available: dayAvailability.is_available,
-            start_time: dayAvailability.start_time,
-            end_time: dayAvailability.end_time
-          });
-          return res.json({ slots: [] });
-        }
-
-        startHour = parseInt(dayAvailability.start_time.split(':')[0]);
-        endHour = parseInt(dayAvailability.end_time.split(':')[0]);
-        console.log(`[Portal Availability] Parsed hours: startHour=${startHour}, endHour=${endHour}`);
+      if (dateOverrideResult.rows.length === 0) {
+        console.log(`[Portal Availability] No date override found for kitchen ${kitchenId} on ${dateStr}`);
+        return res.json({ slots: [] });
       }
+
+      const override = dateOverrideResult.rows[0];
+      console.log(`[Portal Availability] Date override found:`, {
+        is_available: override.is_available,
+        start_time: override.start_time,
+        end_time: override.end_time,
+        reason: override.reason
+      });
+      
+      if (!override.is_available) {
+        console.log(`[Portal Availability] Kitchen is closed on this date (override)`);
+        return res.json({ slots: [] });
+      }
+      if (!override.start_time || !override.end_time) {
+        console.log(`[Portal Availability] Override has no start/end time`);
+        return res.json({ slots: [] });
+      }
+      startHour = parseInt(override.start_time.split(':')[0]);
+      endHour = parseInt(override.end_time.split(':')[0]);
+      console.log(`[Portal Availability] Using override hours: startHour=${startHour}, endHour=${endHour}`);
+    }
 
       // Validate hours
       if (isNaN(startHour) || isNaN(endHour) || startHour >= endHour) {
