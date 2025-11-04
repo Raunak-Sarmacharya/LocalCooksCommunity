@@ -14814,7 +14814,17 @@ app.post("/api/portal-login", async (req, res) => {
       return res.status(403).json({ error: 'Not authorized - portal user access required' });
     }
 
-    const passwordMatches = await comparePasswords(password, portalUser.password);
+    if (!portalUser.password) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    let passwordMatches = false;
+    try {
+      passwordMatches = await comparePasswords(password, portalUser.password);
+    } catch (error) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
     if (!passwordMatches) {
       return res.status(401).json({ error: 'Incorrect username or password' });
     }
@@ -14822,9 +14832,13 @@ app.post("/api/portal-login", async (req, res) => {
     if (req.session) {
       req.session.userId = portalUser.id;
       req.session.user = { ...portalUser, password: undefined };
-      await new Promise((resolve, reject) => {
-        req.session.save((err) => err ? reject(err) : resolve());
-      });
+      try {
+        await new Promise((resolve, reject) => {
+          req.session.save((err) => err ? reject(err) : resolve());
+        });
+      } catch (sessionError) {
+        // Session save failed, but continue with login
+      }
     }
 
     let locationId = null;
@@ -15470,8 +15484,7 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
       startHour = parseInt(override.start_time.split(':')[0]);
       endHour = parseInt(override.end_time.split(':')[0]);
       console.log(`[Portal Availability] Using override hours: startHour=${startHour}, endHour=${endHour}`);
-    }
-
+      
       // Validate hours
       if (isNaN(startHour) || isNaN(endHour) || startHour >= endHour) {
         console.error(`Invalid hours for kitchen ${kitchenId}: startHour=${startHour}, endHour=${endHour}`);
