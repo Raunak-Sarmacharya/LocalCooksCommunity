@@ -228,15 +228,17 @@ export default function PortalLogin() {
             </Form>
 
             <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">
-                Don't have an account?{" "}
-                <a
-                  href="/portal"
-                  className="text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Contact your location manager
-                </a>
+              <p className="text-sm text-gray-600 mb-3">
+                Don't have an account?
               </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLocation("/portal/register")}
+                className="w-full"
+              >
+                Register
+              </Button>
             </div>
 
             <div className="mt-6 pt-6 border-t border-gray-200">

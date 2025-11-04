@@ -15102,4 +15102,549 @@ app.get("/api/portal/application-status", async (req, res) => {
   }
 });
 
+// Helper function to check portal user authentication and approved access
+async function requirePortalUser(req, res, next) {
+  try {
+    const sessionUserId = req.session?.userId;
+    
+    if (!sessionUserId) {
+      return res.status(401).json({ error: "Authentication required. Please sign in." });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user from session
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: "User not found" });
+    }
+    
+    const user = userResult.rows[0];
+    const isPortalUser = user.is_portal_user || user.isPortalUser;
+    
+    if (!isPortalUser) {
+      return res.status(403).json({ error: "Portal user access required" });
+    }
+
+    // Verify user has approved location access
+    const accessResult = await pool.query(
+      'SELECT * FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [user.id]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      // Check if user has a pending application
+      const applicationResult = await pool.query(
+        'SELECT * FROM portal_user_applications WHERE user_id = $1 LIMIT 1',
+        [user.id]
+      );
+      
+      if (applicationResult.rows.length > 0) {
+        const app = applicationResult.rows[0];
+        return res.status(403).json({ 
+          error: "Access denied. Your application is pending approval by the location manager.",
+          applicationStatus: app.status,
+          awaitingApproval: true
+        });
+      }
+      
+      return res.status(403).json({ 
+        error: "Access denied. Your application is pending approval by the location manager.",
+        awaitingApproval: true
+      });
+    }
+    
+    // Attach user to request
+    req.user = user;
+    console.log(`✅ Portal user authenticated: ${user.username} (ID: ${user.id})`);
+    return next();
+  } catch (error) {
+    console.error('Error in requirePortalUser middleware:', error);
+    return res.status(401).json({ error: "Authentication failed" });
+  }
+}
+
+// Get portal user's assigned location
+app.get("/api/portal/locations", requirePortalUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user's location access
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const locationId = accessResult.rows[0].location_id;
+    
+    // Get location details
+    const locationResult = await pool.query(
+      'SELECT id, name, address, logo_url FROM locations WHERE id = $1 LIMIT 1',
+      [locationId]
+    );
+    
+    if (locationResult.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+    
+    const location = locationResult.rows[0];
+    const slug = location.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    
+    res.json([{
+      id: location.id,
+      name: location.name,
+      address: location.address,
+      logoUrl: location.logo_url || null,
+      slug: slug,
+    }]);
+  } catch (error) {
+    console.error("Error fetching portal user location:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch location" });
+  }
+});
+
+// Get portal user's location info (by name slug)
+app.get("/api/portal/locations/:locationSlug", requirePortalUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const locationSlug = req.params.locationSlug;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user's assigned location
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    // Get location details
+    const locationResult = await pool.query(
+      'SELECT id, name, address, logo_url FROM locations WHERE id = $1 LIMIT 1',
+      [userLocationId]
+    );
+    
+    if (locationResult.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const location = locationResult.rows[0];
+    const slug = location.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    
+    // Verify the slug matches the user's location
+    if (slug !== locationSlug) {
+      return res.status(403).json({ error: "Access denied. You can only access your assigned location." });
+    }
+
+    // Return location info
+    res.json({
+      id: location.id,
+      name: location.name,
+      address: location.address,
+      logoUrl: location.logo_url || null,
+    });
+  } catch (error) {
+    console.error("Error fetching portal location:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch location" });
+  }
+});
+
+// Get kitchens for portal user's location (by name slug)
+app.get("/api/portal/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const locationSlug = req.params.locationSlug;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user's assigned location
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    // Get location details
+    const locationResult = await pool.query(
+      'SELECT id, name FROM locations WHERE id = $1 LIMIT 1',
+      [userLocationId]
+    );
+    
+    if (locationResult.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+    
+    const location = locationResult.rows[0];
+    const slug = location.name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    // Verify the slug matches the user's location
+    if (slug !== locationSlug) {
+      return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
+    }
+
+    // Get kitchens for this location
+    const kitchensResult = await pool.query(
+      'SELECT id, name, description, location_id FROM kitchens WHERE location_id = $1 AND is_active != false',
+      [userLocationId]
+    );
+
+    const publicKitchens = kitchensResult.rows.map((kitchen) => ({
+      id: kitchen.id,
+      name: kitchen.name,
+      description: kitchen.description,
+      locationId: kitchen.location_id,
+    }));
+
+    res.json(publicKitchens);
+  } catch (error) {
+    console.error("Error fetching portal kitchens:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+  }
+});
+
+// Get available slots for a kitchen - requires auth and verifies kitchen belongs to user's location
+app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const kitchenId = parseInt(req.params.kitchenId);
+    const date = req.query.date;
+
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!date) {
+      return res.status(400).json({ error: "Date parameter is required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user's assigned location
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    // Verify kitchen belongs to user's location
+    const kitchenResult = await pool.query(
+      'SELECT id, location_id FROM kitchens WHERE id = $1 LIMIT 1',
+      [kitchenId]
+    );
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+    
+    const kitchen = kitchenResult.rows[0];
+    
+    if (kitchen.location_id !== userLocationId) {
+      return res.status(403).json({ error: "Access denied. You can only view availability for kitchens at your assigned location." });
+    }
+
+    // Get availability for this date (similar to existing availability endpoint)
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      return res.status(400).json({ error: "Invalid date format" });
+    }
+
+    const dateStr = dateObj.toISOString().split('T')[0];
+    const dayOfWeek = dateObj.getDay(); // 0-6, Sunday is 0
+
+    // Check for date-specific override first
+    const dateOverrideResult = await pool.query(`
+      SELECT is_available, start_time, end_time, reason
+      FROM kitchen_date_overrides
+      WHERE kitchen_id = $1
+        AND DATE(override_date) = $2
+    `, [kitchenId, dateStr]);
+
+    let startHour, endHour;
+
+    if (dateOverrideResult.rows.length > 0) {
+      const override = dateOverrideResult.rows[0];
+      if (!override.is_available) {
+        return res.json({ slots: [] });
+      }
+      if (!override.start_time || !override.end_time) {
+        return res.json({ slots: [] });
+      }
+      startHour = parseInt(override.start_time.split(':')[0]);
+      endHour = parseInt(override.end_time.split(':')[0]);
+    } else {
+      // No override, use weekly schedule
+      const availabilityResult = await pool.query(`
+        SELECT day_of_week, start_time, end_time, is_available
+        FROM kitchen_availability
+        WHERE kitchen_id = $1 AND day_of_week = $2
+      `, [kitchenId, dayOfWeek]);
+
+      if (availabilityResult.rows.length === 0) {
+        return res.json({ slots: [] });
+      }
+
+      const dayAvailability = availabilityResult.rows[0];
+      if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
+        return res.json({ slots: [] });
+      }
+
+      startHour = parseInt(dayAvailability.start_time.split(':')[0]);
+      endHour = parseInt(dayAvailability.end_time.split(':')[0]);
+    }
+
+    // Generate time slots
+    const slots = [];
+    for (let hour = startHour; hour < endHour; hour++) {
+      const startTime = `${hour.toString().padStart(2, '0')}:00`;
+      const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
+
+      // Check if this slot is already booked
+      const bookingResult = await pool.query(`
+        SELECT id FROM bookings
+        WHERE kitchen_id = $1
+          AND booking_date = $2
+          AND start_time = $3
+          AND status != 'cancelled'
+      `, [kitchenId, dateStr, startTime]);
+
+      slots.push({
+        startTime: startTime,
+        endTime: endTime,
+        available: bookingResult.rows.length === 0,
+      });
+    }
+
+    res.json({ slots });
+  } catch (error) {
+    console.error("Error fetching portal kitchen availability:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch availability" });
+  }
+});
+
+// Create booking for portal user
+app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      kitchenId,
+      bookingDate,
+      startTime,
+      endTime,
+      specialNotes,
+    } = req.body;
+
+    if (!kitchenId || !bookingDate || !startTime || !endTime) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get user's assigned location
+    const accessResult = await pool.query(
+      'SELECT location_id FROM portal_user_location_access WHERE portal_user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ error: "No location assigned to this portal user" });
+    }
+    
+    const userLocationId = accessResult.rows[0].location_id;
+    
+    // Verify kitchen belongs to user's location
+    const kitchenResult = await pool.query(
+      'SELECT id, location_id, name FROM kitchens WHERE id = $1 LIMIT 1',
+      [kitchenId]
+    );
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+    
+    const kitchen = kitchenResult.rows[0];
+    
+    if (kitchen.location_id !== userLocationId) {
+      return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
+    }
+
+    // Validate booking date/time
+    const bookingDateObj = new Date(bookingDate);
+    const now = new Date();
+    
+    if (bookingDateObj < now) {
+      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+    }
+
+    // Get location to check minimum booking window
+    const locationResult = await pool.query(
+      'SELECT minimum_booking_window_hours FROM locations WHERE id = $1',
+      [userLocationId]
+    );
+    
+    const location = locationResult.rows[0];
+    const minimumBookingWindowHours = location?.minimum_booking_window_hours ?? 1;
+
+    // Check minimum booking window if booking is today
+    const isToday = bookingDateObj.toDateString() === now.toDateString();
+    if (isToday) {
+      const [startHours, startMins] = startTime.split(':').map(Number);
+      const slotTime = new Date(bookingDateObj);
+      slotTime.setHours(startHours, startMins, 0, 0);
+      const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursUntilBooking < minimumBookingWindowHours) {
+        return res.status(400).json({ 
+          error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+        });
+      }
+    }
+
+    // Check if slot is available
+    const dateStr = bookingDateObj.toISOString().split('T')[0];
+    const bookingCheck = await pool.query(`
+      SELECT id FROM bookings
+      WHERE kitchen_id = $1
+        AND booking_date = $2
+        AND start_time = $3
+        AND status != 'cancelled'
+    `, [kitchenId, dateStr, startTime]);
+
+    if (bookingCheck.rows.length > 0) {
+      return res.status(400).json({ error: "Time slot is already booked" });
+    }
+
+    // Get user details for booking
+    const userResult = await pool.query(
+      'SELECT username FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    const portalUser = userResult.rows[0];
+
+    // Create booking
+    const bookingResult = await pool.query(`
+      INSERT INTO bookings (kitchen_id, chef_id, booking_date, start_time, end_time, special_notes, status, booking_type, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING id, kitchen_id, booking_date, start_time, end_time, status
+    `, [
+      kitchenId,
+      userId, // Portal user ID as chef_id
+      dateStr,
+      startTime,
+      endTime,
+      specialNotes || `Portal user booking from ${portalUser.username}`,
+      'pending',
+      'portal'
+    ]);
+
+    const booking = bookingResult.rows[0];
+
+    // Send notification to manager
+    try {
+      const { sendEmail } = await import('../server/email.js');
+      
+      const locationDetailsResult = await pool.query(
+        'SELECT name, notification_email FROM locations WHERE id = $1',
+        [userLocationId]
+      );
+      
+      if (locationDetailsResult.rows.length > 0) {
+        const locationDetails = locationDetailsResult.rows[0];
+        const managerEmail = locationDetails.notification_email;
+        
+        if (managerEmail) {
+          const emailContent = {
+            to: managerEmail,
+            subject: `New Portal User Booking - ${locationDetails.name}`,
+            text: `A new booking request has been submitted by a portal user:\n\n` +
+                  `Kitchen: ${kitchen.name}\n` +
+                  `Date: ${bookingDate}\n` +
+                  `Time: ${startTime} - ${endTime}\n` +
+                  `Portal User: ${portalUser.username}\n` +
+                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+            html: `<h2>New Portal User Booking</h2>` +
+                  `<p><strong>Location:</strong> ${locationDetails.name}</p>` +
+                  `<p><strong>Kitchen:</strong> ${kitchen.name}</p>` +
+                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
+                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+                  `<p><strong>Portal User:</strong> ${portalUser.username}</p>` +
+                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+          };
+          await sendEmail(emailContent);
+          console.log(`✅ Portal booking notification sent to manager: ${managerEmail}`);
+        }
+      }
+    } catch (emailError) {
+      console.error("Error sending booking notification email:", emailError);
+      // Don't fail the booking if email fails
+    }
+
+    res.status(201).json({
+      success: true,
+      booking: {
+        id: booking.id,
+        kitchenId: booking.kitchen_id,
+        bookingDate: booking.booking_date,
+        startTime: booking.start_time,
+        endTime: booking.end_time,
+        status: booking.status,
+      },
+      message: "Booking request submitted successfully. The kitchen manager will contact you shortly.",
+    });
+  } catch (error) {
+    console.error("Error creating portal booking:", error);
+    res.status(500).json({ error: error.message || "Failed to create booking" });
+  }
+});
+
 export default app;
