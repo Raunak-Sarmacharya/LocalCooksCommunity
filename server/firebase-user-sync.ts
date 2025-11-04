@@ -12,9 +12,10 @@ export interface FirebaseUserData {
 interface CreateUserData {
   username: string;
   password: string;
-  role: 'admin' | 'chef' | 'delivery_partner';
+  role: 'admin' | 'chef' | 'delivery_partner' | 'manager';
   isChef: boolean;
   isDeliveryPartner: boolean;
+  isManager: boolean;
   firebaseUid: string;
   isVerified: boolean;
 }
@@ -75,6 +76,7 @@ export async function syncFirebaseUserToNeon(params: {
       role: finalRole,
       isChef: isChef, // Auto-set based on role
       isDeliveryPartner: isDeliveryPartner, // Auto-set based on role
+      isManager: false,
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
     };

@@ -24,6 +24,7 @@ interface Location {
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
   notificationEmail?: string;
+  minimumBookingWindowHours?: number;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -56,9 +57,9 @@ export default function ManagerBookingDashboard() {
   }, [locations, isLoadingLocations, selectedLocation]);
 
   // Fetch location details with cancellation policy
-  const { data: locationDetails } = useQuery<Location>({
+  const { data: locationDetails } = useQuery<Location | null>({
     queryKey: ['locationDetails', selectedLocation?.id],
-    queryFn: async () => {
+    queryFn: async (): Promise<Location | null> => {
       if (!selectedLocation?.id) return null;
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/locations`, {
@@ -320,7 +321,7 @@ export default function ManagerBookingDashboard() {
               
               {activeView === 'settings' && selectedLocation && (
                 <SettingsView 
-                  location={locationDetails || selectedLocation}
+                  location={(locationDetails || selectedLocation) as Location}
                   onUpdateSettings={updateLocationSettings}
                   isUpdating={updateLocationSettings.isPending}
                 />
@@ -570,7 +571,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
             </div>
           ) : (
             <CalendarComponent
-              onChange={setSelectedDate}
+              onChange={(value: any) => setSelectedDate(value)}
               value={selectedDate}
               tileContent={tileContent}
               tileClassName={tileClassName}

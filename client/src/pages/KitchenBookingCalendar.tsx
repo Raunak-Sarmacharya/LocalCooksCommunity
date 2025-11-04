@@ -53,7 +53,7 @@ export default function KitchenBookingCalendar() {
     
     // If kitchens not loaded yet, return bookings with location data if available
     if (!kitchens || !Array.isArray(kitchens)) {
-      return bookings.map((b) => ({
+      return bookings.map((b: any) => ({
         ...b,
         // Preserve location data if it came from backend join
         location: b.location ? {
@@ -66,7 +66,7 @@ export default function KitchenBookingCalendar() {
     }
     
     // Enrich with kitchen information while preserving location data
-    return bookings.map((booking) => {
+    return bookings.map((booking: any) => {
       if (!booking || typeof booking.kitchenId !== 'number') {
         return {
           ...booking,
@@ -79,7 +79,7 @@ export default function KitchenBookingCalendar() {
         };
       }
       
-      const kitchen = kitchens.find((k) => k && k.id === booking.kitchenId);
+      const kitchen = kitchens.find((k) => k && k.id === booking.kitchenId) as any;
       return {
         ...booking,
         kitchenName: kitchen?.name,
@@ -106,14 +106,17 @@ export default function KitchenBookingCalendar() {
     if (!kitchens || !Array.isArray(kitchens)) return [];
     if (kitchens.length === 0) return [];
     
-    return kitchens.map((k) => {
-      if (!k) return null;
-      return {
-        id: k.id,
-        name: k.name,
-        locationName: k.locationName || k.location?.name,
-      };
-    }).filter((k): k is { id: number; name: string; locationName?: string } => k !== null);
+    return kitchens
+      .map((k) => {
+        if (!k) return null;
+        const kitchen = k as any;
+        return {
+          id: kitchen.id,
+          name: kitchen.name,
+          locationName: kitchen.locationName || kitchen.location?.name,
+        } as { id: number; name: string; locationName?: string };
+      })
+      .filter((k): k is { id: number; name: string; locationName?: string } => k !== null);
   }, [kitchens]);
   
   // Memoize cancel handler to prevent re-renders
