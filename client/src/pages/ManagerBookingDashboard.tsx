@@ -10,6 +10,7 @@ import CalendarComponent from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
@@ -764,6 +765,7 @@ interface SettingsViewProps {
 }
 
 function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
+  const { toast } = useToast();
   const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
   const [cancellationMessage, setCancellationMessage] = useState(
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
@@ -906,6 +908,53 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 >
                   Reset
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Booking Portal Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <Building2 className="h-5 w-5 text-indigo-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Public Booking Portal</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Share this link with third parties to allow them to book kitchens directly. They can submit booking requests without needing an account.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Booking Portal URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}/portal/${location.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')}`}
+                    className="flex-1 border border-gray-300 rounded-lg px-4 py-2 bg-white text-gray-900 font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const locationSlug = location.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+                      const url = `${window.location.origin}/portal/${locationSlug}`;
+                      navigator.clipboard.writeText(url);
+                      toast({
+                        title: "Copied!",
+                        description: "Booking portal URL copied to clipboard",
+                      });
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  >
+                    Copy Link
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-600 mt-2">
+                  Share this link with third-party customers. They can book kitchens without needing to create an account.
+                </p>
               </div>
             </div>
           </div>

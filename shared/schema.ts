@@ -368,13 +368,19 @@ export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
-  chefId: integer("chef_id").references(() => users.id).notNull(), // MUST match actual DB - NOT NULL
+  chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
   status: bookingStatusEnum("status").default("pending").notNull(),
   specialNotes: text("special_notes"),
+  bookingType: text("booking_type").default("chef").notNull(), // 'chef', 'external', 'manager_blocked'
+  createdBy: integer("created_by").references(() => users.id), // Manager who created the booking (for external/manual bookings)
+  externalContactName: text("external_contact_name"), // For third-party bookings
+  externalContactEmail: text("external_contact_email"), // For third-party bookings
+  externalContactPhone: text("external_contact_phone"), // For third-party bookings
+  externalContactCompany: text("external_contact_company"), // For third-party bookings
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

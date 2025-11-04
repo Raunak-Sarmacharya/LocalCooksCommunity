@@ -485,6 +485,25 @@ export class FirebaseStorage {
     }
   }
 
+  async getAllLocations(): Promise<any[]> {
+    try {
+      const allLocations = await db.select().from(locations);
+      return allLocations.map((location: any) => ({
+        ...location,
+        managerId: location.managerId || location.manager_id || null,
+        notificationEmail: location.notificationEmail || location.notification_email || null,
+        cancellationPolicyHours: location.cancellationPolicyHours || location.cancellation_policy_hours,
+        cancellationPolicyMessage: location.cancellationPolicyMessage || location.cancellation_policy_message,
+        defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit,
+        minimumBookingWindowHours: location.minimumBookingWindowHours || location.minimum_booking_window_hours,
+        logoUrl: location.logoUrl || location.logo_url || null,
+      }));
+    } catch (error) {
+      console.error('Error getting all locations:', error);
+      return [];
+    }
+  }
+
   async getLocationById(id: number): Promise<any | undefined> {
     try {
       const [location] = await db.select().from(locations).where(eq(locations.id, id));
@@ -516,14 +535,6 @@ export class FirebaseStorage {
     }
   }
 
-  async getAllLocations(): Promise<any[]> {
-    try {
-      return await db.select().from(locations);
-    } catch (error) {
-      console.error('Error getting all locations:', error);
-      throw error;
-    }
-  }
 
   async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number; notificationEmail?: string | null }): Promise<any> {
     try {
@@ -1029,6 +1040,68 @@ export class FirebaseStorage {
     }
   }
 
+  // Create booking with support for external/third-party bookings
+  async createBooking(bookingData: {
+    kitchenId: number;
+    bookingDate: Date;
+    startTime: string;
+    endTime: string;
+    specialNotes?: string;
+    bookingType?: 'chef' | 'external' | 'manager_blocked';
+    createdBy?: number | null;
+    chefId?: number | null;
+    externalContact?: {
+      name: string;
+      email: string;
+      phone?: string | null;
+      company?: string | null;
+    };
+  }): Promise<any> {
+    try {
+      console.log('Creating booking (with external support):', bookingData);
+      
+      const insertData: any = {
+        kitchenId: bookingData.kitchenId,
+        bookingDate: bookingData.bookingDate,
+        startTime: bookingData.startTime,
+        endTime: bookingData.endTime,
+        bookingType: bookingData.bookingType || 'chef',
+        chefId: bookingData.chefId || bookingData.createdBy || null,
+        createdBy: bookingData.createdBy || null,
+      };
+      
+      if (bookingData.specialNotes) {
+        insertData.specialNotes = bookingData.specialNotes;
+      }
+      
+      if (bookingData.externalContact) {
+        insertData.externalContactName = bookingData.externalContact.name;
+        insertData.externalContactEmail = bookingData.externalContact.email;
+        insertData.externalContactPhone = bookingData.externalContact.phone || null;
+        insertData.externalContactCompany = bookingData.externalContact.company || null;
+      }
+      
+      // Get kitchen name for response
+      const kitchen = await this.getKitchenById(bookingData.kitchenId);
+      const kitchenName = kitchen?.name || 'Kitchen';
+      
+      const [booking] = await db
+        .insert(kitchenBookings)
+        .values(insertData)
+        .returning();
+      
+      console.log('Booking created successfully:', booking);
+      
+      return {
+        ...booking,
+        kitchenName,
+      };
+    } catch (error: any) {
+      console.error('Error creating booking:', error);
+      throw error;
+    }
+  }
+
   async getKitchenBookingById(id: number): Promise<any | undefined> {
     try {
       const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, id));
@@ -1451,6 +1524,30 @@ export class FirebaseStorage {
     } catch (error) {
       console.error('Error getting available time slots:', error);
       throw error;
+    }
+  }
+
+  // Get available slots in format expected by public API
+  async getAvailableSlots(kitchenId: number, dateStr: string): Promise<{ time: string; available: boolean }[]> {
+    try {
+      const date = new Date(dateStr);
+      const slots = await this.getAvailableTimeSlots(kitchenId, date);
+      return slots.map(time => ({ time, available: true }));
+    } catch (error) {
+      console.error('Error getting available slots:', error);
+      return [];
+    }
+  }
+
+  // Get location manager
+  async getLocationManager(locationId: number): Promise<any | undefined> {
+    try {
+      const location = await this.getLocationById(locationId);
+      if (!location || !location.managerId) return undefined;
+      return await this.getUser(location.managerId);
+    } catch (error) {
+      console.error('Error getting location manager:', error);
+      return undefined;
     }
   }
 

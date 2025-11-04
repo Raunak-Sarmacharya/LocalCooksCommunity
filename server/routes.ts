@@ -6139,6 +6139,242 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===============================
+  // PUBLIC MANAGER BOOKING PORTAL ROUTES (No auth required)
+  // ===============================
+
+  // Get public location info for booking portal (by name slug)
+  app.get("/api/public/locations/:locationSlug", async (req: Request, res: Response) => {
+    try {
+      const locationSlug = req.params.locationSlug;
+      
+      // Try to find location by name (slugified)
+      const allLocations = await firebaseStorage.getAllLocations();
+      const location = allLocations.find((loc: any) => {
+        const slug = loc.name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        return slug === locationSlug;
+      });
+
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Return public location info (no sensitive data)
+      res.json({
+        id: location.id,
+        name: location.name,
+        address: location.address,
+        logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+      });
+    } catch (error: any) {
+      console.error("Error fetching public location:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location" });
+    }
+  });
+
+  // Get public kitchens for a location (by name slug)
+  app.get("/api/public/locations/:locationSlug/kitchens", async (req: Request, res: Response) => {
+    try {
+      const locationSlug = req.params.locationSlug;
+      
+      // Find location by name (slugified)
+      const allLocations = await firebaseStorage.getAllLocations();
+      const location = allLocations.find((loc: any) => {
+        const slug = loc.name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        return slug === locationSlug;
+      });
+
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      const kitchens = await firebaseStorage.getKitchensByLocation(location.id);
+      
+      // Filter only active kitchens and return public info
+      const publicKitchens = kitchens
+        .filter((kitchen: any) => kitchen.isActive !== false)
+        .map((kitchen: any) => ({
+          id: kitchen.id,
+          name: kitchen.name,
+          description: kitchen.description,
+          locationId: kitchen.locationId || kitchen.location_id,
+        }));
+
+      res.json(publicKitchens);
+    } catch (error: any) {
+      console.error("Error fetching public kitchens:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+    }
+  });
+
+  // Get available slots for a kitchen (public)
+  app.get("/api/public/kitchens/:kitchenId/availability", async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const date = req.query.date as string;
+
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+
+      // Get available slots using the same logic as chef bookings
+      const slots = await firebaseStorage.getAvailableSlots(kitchenId, date);
+      
+      res.json({ slots });
+    } catch (error: any) {
+      console.error("Error fetching public availability:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch availability" });
+    }
+  });
+
+  // Submit public booking (third-party booking)
+  app.post("/api/public/bookings", async (req: Request, res: Response) => {
+    try {
+      const {
+        locationId,
+        kitchenId,
+        bookingDate,
+        startTime,
+        endTime,
+        bookingName,
+        bookingEmail,
+        bookingPhone,
+        bookingCompany,
+        specialNotes,
+      } = req.body;
+
+      if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Validate booking date/time
+      const bookingDateObj = new Date(bookingDate);
+      const now = new Date();
+      
+      if (bookingDateObj < now) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+
+      // Check availability
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        kitchenId,
+        bookingDateObj,
+        startTime,
+        endTime
+      );
+
+      if (!availabilityCheck.valid) {
+        return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
+      }
+
+      // Get location to check minimum booking window
+      const location = await firebaseStorage.getLocationById(locationId);
+      const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
+
+      // Check minimum booking window if booking is today
+      const isToday = bookingDateObj.toDateString() === now.toDateString();
+      if (isToday) {
+        const [startHours, startMins] = startTime.split(':').map(Number);
+        const slotTime = new Date(bookingDateObj);
+        slotTime.setHours(startHours, startMins, 0, 0);
+        const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursUntilBooking < minimumBookingWindowHours) {
+          return res.status(400).json({ 
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          });
+        }
+      }
+
+      // Create booking as external/third-party booking
+      const booking = await firebaseStorage.createBooking({
+        kitchenId,
+        bookingDate: bookingDateObj,
+        startTime,
+        endTime,
+        specialNotes: specialNotes || `Third-party booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}. Email: ${bookingEmail}${bookingPhone ? `, Phone: ${bookingPhone}` : ''}`,
+        bookingType: 'external',
+        createdBy: null, // No authenticated user
+        externalContact: {
+          name: bookingName,
+          email: bookingEmail,
+          phone: bookingPhone || null,
+          company: bookingCompany || null,
+        },
+      });
+
+      // Send notification to manager
+      try {
+        const { sendEmail } = await import('./email');
+        if ((location as any)?.notificationEmail) {
+          // Create simple email notification for third-party booking
+          const emailContent = {
+            to: (location as any).notificationEmail,
+            subject: `New Third-Party Booking Request - ${(location as any).name}`,
+            text: `A new booking request has been submitted:\n\n` +
+                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+                  `Date: ${bookingDate}\n` +
+                  `Time: ${startTime} - ${endTime}\n\n` +
+                  `Contact Information:\n` +
+                  `Name: ${bookingName}\n` +
+                  `Email: ${bookingEmail}\n` +
+                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+            html: `<h2>New Third-Party Booking Request</h2>` +
+                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
+                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+                  `<h3>Contact Information:</h3>` +
+                  `<ul>` +
+                  `<li><strong>Name:</strong> ${bookingName}</li>` +
+                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+                  `</ul>` +
+                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+          };
+          await sendEmail(emailContent);
+        }
+      } catch (emailError) {
+        console.error("Error sending booking notification email:", emailError);
+        // Don't fail the booking if email fails
+      }
+
+      res.status(201).json({
+        success: true,
+        booking: {
+          id: booking.id,
+          bookingDate,
+          startTime,
+          endTime,
+          status: 'pending',
+        },
+        message: "Booking request submitted successfully. The kitchen manager will contact you shortly.",
+      });
+    } catch (error: any) {
+      console.error("Error creating public booking:", error);
+      res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
