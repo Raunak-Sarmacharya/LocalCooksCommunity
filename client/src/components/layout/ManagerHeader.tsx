@@ -42,6 +42,27 @@ export default function ManagerHeader() {
   });
 
   const user = sessionUser;
+
+  // Fetch manager's location(s) to get logo
+  const { data: locations } = useQuery({
+    queryKey: ["/api/manager/locations"],
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/manager/locations", {
+          credentials: "include",
+        });
+        if (!response.ok) return [];
+        return await response.json();
+      } catch (error) {
+        return [];
+      }
+    },
+    enabled: !!user && user.role === 'manager',
+    retry: false,
+  });
+
+  // Get the first location's logo (managers typically have one location)
+  const locationLogoUrl = locations && locations.length > 0 ? (locations[0] as any).logoUrl : null;
   
   const handleLogout = async () => {
     try {
@@ -69,8 +90,22 @@ export default function ManagerHeader() {
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
       <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
-        <Link href="/" className="flex items-center">
-          <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
+        <Link href="/" className="flex items-center gap-3">
+          {locationLogoUrl ? (
+            <div className="flex items-center gap-2 sm:gap-3">
+              <img 
+                src={locationLogoUrl} 
+                alt="Location logo" 
+                className="h-8 sm:h-10 lg:h-12 w-auto object-contain"
+              />
+              <div className="flex items-center gap-1 sm:gap-2 text-gray-400">
+                <span className="text-xs sm:text-sm">×</span>
+              </div>
+              <Logo className="h-10 sm:h-12 lg:h-14 w-auto" />
+            </div>
+          ) : (
+            <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
+          )}
         </Link>
 
         <nav className="flex items-center space-x-4">

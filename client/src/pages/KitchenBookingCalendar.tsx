@@ -249,8 +249,8 @@ export default function KitchenBookingCalendar() {
       const selectedDateObj = new Date(year, month - 1, day);
       const isToday = selectedDateObj.toDateString() === now.toDateString();
       
-      // Get minimum booking window from location (default 2 hours)
-      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 2;
+      // Get minimum booking window from location (default 1 hour)
+      const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 1;
       
       const filteredSlots = slots.filter((slot: any) => {
         const [slotHours, slotMins] = slot.time.split(':').map(Number);
