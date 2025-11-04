@@ -15397,72 +15397,130 @@ app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async
     const dateStr = dateObj.toISOString().split('T')[0];
     const dayOfWeek = dateObj.getDay(); // 0-6, Sunday is 0
 
-    // Check for date-specific override first
-    const dateOverrideResult = await pool.query(`
-      SELECT is_available, start_time, end_time, reason
-      FROM kitchen_date_overrides
-      WHERE kitchen_id = $1
-        AND DATE(override_date) = $2
-    `, [kitchenId, dateStr]);
-
     let startHour, endHour;
 
-    if (dateOverrideResult.rows.length > 0) {
-      const override = dateOverrideResult.rows[0];
-      if (!override.is_available) {
-        return res.json({ slots: [] });
-      }
-      if (!override.start_time || !override.end_time) {
-        return res.json({ slots: [] });
-      }
-      startHour = parseInt(override.start_time.split(':')[0]);
-      endHour = parseInt(override.end_time.split(':')[0]);
-    } else {
-      // No override, use weekly schedule
-      const availabilityResult = await pool.query(`
-        SELECT day_of_week, start_time, end_time, is_available
-        FROM kitchen_availability
-        WHERE kitchen_id = $1 AND day_of_week = $2
-      `, [kitchenId, dayOfWeek]);
+    // Check for date-specific override first
+    try {
+      const dateOverrideResult = await pool.query(`
+        SELECT is_available, start_time, end_time, reason
+        FROM kitchen_date_overrides
+        WHERE kitchen_id = $1
+          AND DATE(override_date) = $2
+      `, [kitchenId, dateStr]);
 
-      if (availabilityResult.rows.length === 0) {
-        return res.json({ slots: [] });
+      if (dateOverrideResult.rows.length > 0) {
+        const override = dateOverrideResult.rows[0];
+        if (!override.is_available) {
+          return res.json({ slots: [] });
+        }
+        if (!override.start_time || !override.end_time) {
+          return res.json({ slots: [] });
+        }
+        startHour = parseInt(override.start_time.split(':')[0]);
+        endHour = parseInt(override.end_time.split(':')[0]);
+      } else {
+        // No override, use weekly schedule
+        const availabilityResult = await pool.query(`
+          SELECT day_of_week, start_time, end_time, is_available
+          FROM kitchen_availability
+          WHERE kitchen_id = $1 AND day_of_week = $2
+        `, [kitchenId, dayOfWeek]);
+
+        if (availabilityResult.rows.length === 0) {
+          return res.json({ slots: [] });
+        }
+
+        const dayAvailability = availabilityResult.rows[0];
+        if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
+          return res.json({ slots: [] });
+        }
+
+        startHour = parseInt(dayAvailability.start_time.split(':')[0]);
+        endHour = parseInt(dayAvailability.end_time.split(':')[0]);
       }
 
-      const dayAvailability = availabilityResult.rows[0];
-      if (!dayAvailability.is_available || !dayAvailability.start_time || !dayAvailability.end_time) {
+      // Validate hours
+      if (isNaN(startHour) || isNaN(endHour) || startHour >= endHour) {
+        console.error(`Invalid hours for kitchen ${kitchenId}: startHour=${startHour}, endHour=${endHour}`);
         return res.json({ slots: [] });
       }
-
-      startHour = parseInt(dayAvailability.start_time.split(':')[0]);
-      endHour = parseInt(dayAvailability.end_time.split(':')[0]);
+    } catch (queryError) {
+      console.error("Error querying kitchen availability:", queryError);
+      console.error("Query error stack:", queryError.stack);
+      console.error("Kitchen ID:", kitchenId, "Date:", dateStr, "Day of week:", dayOfWeek);
+      // If tables don't exist or query fails, return empty slots
+      return res.json({ slots: [] });
     }
 
-    // Generate time slots
+    // Generate 30-minute interval slots (matching public endpoint format)
     const slots = [];
     for (let hour = startHour; hour < endHour; hour++) {
-      const startTime = `${hour.toString().padStart(2, '0')}:00`;
-      const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+      slots.push(`${hour.toString().padStart(2, '0')}:30`);
+    }
 
-      // Check if this slot is already booked
-      const bookingResult = await pool.query(`
-        SELECT id FROM bookings
+    // Filter out booked slots
+    let bookingsResult;
+    try {
+      bookingsResult = await pool.query(`
+        SELECT start_time, end_time
+        FROM kitchen_bookings
         WHERE kitchen_id = $1
-          AND booking_date = $2
-          AND start_time = $3
+          AND DATE(booking_date) = $2
           AND status != 'cancelled'
-      `, [kitchenId, dateStr, startTime]);
+      `, [kitchenId, dateStr]);
+    } catch (bookingsError) {
+      // If kitchen_bookings table doesn't exist, try bookings table
+      console.error("Error fetching bookings from kitchen_bookings:", bookingsError);
+      try {
+        bookingsResult = await pool.query(`
+          SELECT start_time, end_time
+          FROM bookings
+          WHERE kitchen_id = $1
+            AND DATE(booking_date) = $2
+            AND status != 'cancelled'
+        `, [kitchenId, dateStr]);
+        console.log("Successfully fetched from bookings table");
+      } catch (error) {
+        console.error("Error fetching bookings from bookings table:", error);
+        bookingsResult = { rows: [] };
+      }
+    }
 
-      slots.push({
-        startTime: startTime,
-        endTime: endTime,
-        available: bookingResult.rows.length === 0,
+    const bookedSlots = new Set();
+    if (bookingsResult && bookingsResult.rows) {
+      bookingsResult.rows.forEach(booking => {
+        if (!booking.start_time || !booking.end_time) return;
+        
+        const [startHours, startMins] = booking.start_time.split(':').map(Number);
+        const [endHours, endMins] = booking.end_time.split(':').map(Number);
+        
+        if (isNaN(startHours) || isNaN(startMins) || isNaN(endHours) || isNaN(endMins)) return;
+        
+        const startTotalMins = startHours * 60 + startMins;
+        const endTotalMins = endHours * 60 + endMins;
+        
+        slots.forEach(slot => {
+          const [slotHours, slotMins] = slot.split(':').map(Number);
+          const slotTotalMins = slotHours * 60 + slotMins;
+          if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+            bookedSlots.add(slot);
+          }
+        });
       });
     }
 
-    res.json({ slots });
+    const availableSlots = slots
+      .filter(slot => !bookedSlots.has(slot))
+      .map(time => ({ 
+        time, 
+        available: true 
+      }));
+    
+    res.json({ slots: availableSlots });
   } catch (error) {
     console.error("Error fetching portal kitchen availability:", error);
+    console.error("Error stack:", error.stack);
     res.status(500).json({ error: error.message || "Failed to fetch availability" });
   }
 });
