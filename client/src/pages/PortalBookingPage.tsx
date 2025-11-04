@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Building2, MapPin, Loader2, ArrowRight, Calendar } from "lucide-react";
+import { Building2, MapPin, Loader2, ArrowRight, Calendar, Lock } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,9 +60,10 @@ export default function PortalBookingPage() {
                 Book a Kitchen
               </Button>
               <Button
-                onClick={() => setLocation("/manager")}
+                onClick={() => setLocation("/manager/login")}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
               >
+                <Lock className="h-4 w-4" />
                 Manager Login
               </Button>
             </div>
@@ -76,15 +77,21 @@ export default function PortalBookingPage() {
           {/* Hero Section */}
           <div className="text-center mb-12">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-6">
-              <Calendar className="h-8 w-8 text-blue-600" />
+              <Building2 className="h-8 w-8 text-blue-600" />
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-              Book a Kitchen
+              Commercial Kitchen Booking
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
               Select a location below to browse available kitchens and book your time slot.
             </p>
           </div>
+
+          {/* Featured Locations Section */}
+          <div className="mb-16">
+            <h3 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
+              Featured Locations
+            </h3>
 
           {/* Locations List */}
           {isLoading && (
@@ -153,6 +160,7 @@ export default function PortalBookingPage() {
               ))}
             </div>
           )}
+          </div>
 
           {/* Info Section */}
           <div className="mt-16">
