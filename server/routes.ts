@@ -3231,7 +3231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Import db dynamically
       const { db } = await import('./db');
       const { locations } = await import('@shared/schema');
-      const { eq, and } = await import('drizzle-orm');
+      const { eq, and, sql } = await import('drizzle-orm');
 
       // Verify manager owns this location
       const locationResults = await db
@@ -3294,12 +3294,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Set to null if empty string, otherwise use the value
         // Use the schema field name (logoUrl) - Drizzle will map it to logo_url column
         const processedLogoUrl = logoUrl && logoUrl.trim() !== '' ? logoUrl.trim() : null;
+        // Try both camelCase (schema field name) and snake_case (database column name)
         (updates as any).logoUrl = processedLogoUrl;
+        // Also set it using the database column name directly as a fallback
+        (updates as any).logo_url = processedLogoUrl;
         console.log('[PUT] Setting logoUrl:', {
           raw: logoUrl,
           processed: processedLogoUrl,
           type: typeof processedLogoUrl,
-          inUpdates: (updates as any).logoUrl
+          inUpdates: (updates as any).logoUrl,
+          alsoSetAsLogo_url: (updates as any).logo_url
         });
       }
 
@@ -3307,6 +3311,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[PUT] Updates keys:', Object.keys(updates));
       console.log('[PUT] Updates object has logoUrl?', 'logoUrl' in updates);
       console.log('[PUT] Updates object logoUrl value:', (updates as any).logoUrl);
+      console.log('[PUT] Updates object has logo_url?', 'logo_url' in updates);
+      console.log('[PUT] Updates object logo_url value:', (updates as any).logo_url);
 
       const updatedResults = await db
         .update(locations)
@@ -3332,7 +3338,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         locationId: updated.id,
         cancellationPolicyHours: updated.cancellationPolicyHours,
         defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
-        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || 'not set'
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || 'not set',
+        logoUrl: (updated as any).logoUrl || (updated as any).logo_url || 'NOT SET'
       });
       
       // Map snake_case fields to camelCase for the frontend

@@ -10993,19 +10993,22 @@ app.get("/api/manager/locations", async (req, res) => {
              cancellation_policy_hours as "cancellationPolicyHours",
              cancellation_policy_message as "cancellationPolicyMessage",
              default_daily_booking_limit as "defaultDailyBookingLimit",
+             minimum_booking_window_hours as "minimumBookingWindowHours",
              notification_email as "notificationEmail",
+             logo_url as "logoUrl",
              created_at, updated_at 
       FROM locations 
       WHERE manager_id = $1
       ORDER BY created_at DESC
     `, [user.id]);
     
-    // Log to verify notificationEmail is included in response
+    // Log to verify logoUrl is included in response
     console.log('[GET] /api/manager/locations - Returning locations:', 
       result.rows.map(loc => ({
         id: loc.id,
         name: loc.name,
-        notificationEmail: loc.notificationEmail || 'not set'
+        notificationEmail: loc.notificationEmail || 'not set',
+        logoUrl: loc.logoUrl || 'not set'
       }))
     );
     
@@ -11041,13 +11044,15 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       return res.status(400).json({ error: "Invalid location ID" });
     }
     
-    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, notificationEmail } = req.body;
+    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl } = req.body;
     
     console.log('[PUT] Request body:', {
       cancellationPolicyHours,
       cancellationPolicyMessage,
       defaultDailyBookingLimit,
+      minimumBookingWindowHours,
       notificationEmail,
+      logoUrl,
       locationId: locationIdNum
     });
 
@@ -11057,6 +11062,10 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
 
     if (defaultDailyBookingLimit !== undefined && (typeof defaultDailyBookingLimit !== 'number' || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
       return res.status(400).json({ error: "Daily booking limit must be between 1 and 24 hours" });
+    }
+
+    if (minimumBookingWindowHours !== undefined && (typeof minimumBookingWindowHours !== 'number' || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
+      return res.status(400).json({ error: "Minimum booking window hours must be between 0 and 168 hours" });
     }
 
     if (!pool) {
@@ -11107,6 +11116,20 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       updates.push(`default_daily_booking_limit = $${paramCount++}`);
       values.push(defaultDailyBookingLimit);
     }
+    if (minimumBookingWindowHours !== undefined) {
+      updates.push(`minimum_booking_window_hours = $${paramCount++}`);
+      values.push(minimumBookingWindowHours);
+    }
+    if (logoUrl !== undefined) {
+      // Set to null if empty string, otherwise use the value
+      const processedLogoUrl = logoUrl && logoUrl.trim() !== '' ? logoUrl.trim() : null;
+      updates.push(`logo_url = $${paramCount++}`);
+      values.push(processedLogoUrl);
+      console.log('[PUT] Setting logoUrl:', {
+        raw: logoUrl,
+        processed: processedLogoUrl
+      });
+    }
     if (notificationEmail !== undefined) {
       // Validate email format if provided and not empty
       if (notificationEmail && notificationEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
@@ -11136,7 +11159,9 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
                 cancellation_policy_hours as "cancellationPolicyHours",
                 cancellation_policy_message as "cancellationPolicyMessage",
                 default_daily_booking_limit as "defaultDailyBookingLimit",
+                minimum_booking_window_hours as "minimumBookingWindowHours",
                 notification_email as "notificationEmail",
+                logo_url as "logoUrl",
                 created_at, updated_at
     `;
 
@@ -11155,7 +11180,9 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       locationId: updated.id,
       cancellationPolicyHours: updated.cancellationPolicyHours,
       defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
-      notificationEmail: updated.notificationEmail || 'not set'
+      minimumBookingWindowHours: updated.minimumBookingWindowHours,
+      notificationEmail: updated.notificationEmail || 'not set',
+      logoUrl: updated.logoUrl || 'not set'
     });
     
     // Send email to new notification email if it was changed
