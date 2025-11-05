@@ -1161,137 +1161,130 @@ export class FirebaseStorage {
 
   async getBookingsByManager(managerId: number): Promise<any[]> {
     try {
-      // Get all locations for this manager
-      const managerLocations = await db
-        .select()
-        .from(locations)
-        .where(eq(locations.managerId, managerId));
+      if (!pool) {
+        return [];
+      }
+
+      // Get all locations for this manager (using raw SQL like chef profiles)
+      const locationsResult = await pool.query(
+        'SELECT id FROM locations WHERE manager_id = $1',
+        [managerId]
+      );
       
-      const locationIds = managerLocations.map(loc => loc.id);
+      const locationIds = locationsResult.rows.map(row => row.id);
       
       if (locationIds.length === 0) {
         return [];
       }
 
       // Get all kitchens for these locations
-      const managerKitchens = await db
-        .select()
-        .from(kitchens)
-        .where(inArray(kitchens.locationId, locationIds));
+      const kitchensResult = await pool.query(
+        'SELECT id FROM kitchens WHERE location_id = ANY($1::int[])',
+        [locationIds]
+      );
       
-      const kitchenIds = managerKitchens.map(k => k.id);
+      const kitchenIds = kitchensResult.rows.map(row => row.id);
       
       if (kitchenIds.length === 0) {
         return [];
       }
 
-      // Get all bookings for these kitchens with joins to get chef, kitchen, and location info
-      const bookingsWithDetails = await db
-        .select({
-          // Booking fields
-          id: kitchenBookings.id,
-          chefId: kitchenBookings.chefId,
-          kitchenId: kitchenBookings.kitchenId,
-          bookingDate: kitchenBookings.bookingDate,
-          startTime: kitchenBookings.startTime,
-          endTime: kitchenBookings.endTime,
-          status: kitchenBookings.status,
-          specialNotes: kitchenBookings.specialNotes,
-          createdAt: kitchenBookings.createdAt,
-          updatedAt: kitchenBookings.updatedAt,
-          // Chef fields - get username which is the email, we'll enhance with application full_name if available
-          chefUsername: users.username,
-          // Kitchen fields
-          kitchenName: kitchens.name,
-          // Location fields
-          locationName: locations.name,
-        })
-        .from(kitchenBookings)
-        .leftJoin(users, eq(kitchenBookings.chefId, users.id))
-        .leftJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-        .leftJoin(locations, eq(kitchens.locationId, locations.id))
-        .where(inArray(kitchenBookings.kitchenId, kitchenIds))
-        .orderBy(asc(kitchenBookings.bookingDate));
+      // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
+      const bookingsResult = await pool.query(
+        `SELECT 
+          id, chef_id, kitchen_id, booking_date, start_time, end_time, 
+          status, special_notes, created_at, updated_at
+        FROM kitchen_bookings 
+        WHERE kitchen_id = ANY($1::int[])
+        ORDER BY booking_date DESC, start_time ASC`,
+        [kitchenIds]
+      );
       
-      // Transform to match expected format and enhance chef names with application full_name if available
-      const enhancedBookings = await Promise.all(
-        bookingsWithDetails.map(async (booking) => {
-          let chefName = booking.chefUsername || `Chef #${booking.chefId}`;
-          
-          // Try to get chef's full name from their application for better display
-          if (booking.chefId && pool) {
+      // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
+      const enrichedBookings = await Promise.all(
+        bookingsResult.rows.map(async (booking) => {
+          // Get chef details
+          let chefName = `Chef #${booking.chef_id}`;
+          if (booking.chef_id) {
             try {
-              const appResult = await pool.query(
-                'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                [booking.chefId]
+              const chefResult = await pool.query(
+                'SELECT id, username FROM users WHERE id = $1',
+                [booking.chef_id]
               );
-              if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
-                chefName = appResult.rows[0].full_name;
-              }
-            } catch (error) {
-              // If we can't get application name, just use username/email
-              console.debug(`Could not get full name for chef ${booking.chefId}, using username`);
-            }
-          }
-          
-          // If locationName or kitchenName are missing from the join, fetch them separately
-          let locationName = booking.locationName;
-          let kitchenName = booking.kitchenName;
-          
-          if (!locationName || !kitchenName) {
-            try {
-              // Fetch kitchen details if missing
-              if (booking.kitchenId) {
-                const kitchen = await db
-                  .select({
-                    name: kitchens.name,
-                    locationId: kitchens.locationId,
-                  })
-                  .from(kitchens)
-                  .where(eq(kitchens.id, booking.kitchenId))
-                  .then(rows => rows[0]);
+              const chef = chefResult.rows[0];
+              
+              if (chef) {
+                chefName = chef.username || `Chef #${booking.chef_id}`;
                 
-                if (kitchen) {
-                  kitchenName = kitchenName || kitchen.name;
-                  
-                  // Fetch location if missing
-                  if (!locationName && kitchen.locationId) {
-                    const location = await db
-                      .select({ name: locations.name })
-                      .from(locations)
-                      .where(eq(locations.id, kitchen.locationId))
-                      .then(rows => rows[0]);
-                    
-                    if (location) {
-                      locationName = location.name;
-                    }
-                  }
+                // Try to get chef's full name from their application
+                const appResult = await pool.query(
+                  'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                  [booking.chef_id]
+                );
+                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                  chefName = appResult.rows[0].full_name;
                 }
               }
             } catch (error) {
-              console.debug(`Could not fetch missing kitchen/location data for booking ${booking.id}:`, error);
+              console.debug(`Could not get chef details for booking ${booking.id}:`, error);
+            }
+          }
+          
+          // Get kitchen details
+          let kitchenName = 'Kitchen';
+          let locationId = null;
+          if (booking.kitchen_id) {
+            try {
+              const kitchenResult = await pool.query(
+                'SELECT id, name, location_id FROM kitchens WHERE id = $1',
+                [booking.kitchen_id]
+              );
+              const kitchen = kitchenResult.rows[0];
+              if (kitchen) {
+                kitchenName = kitchen.name || 'Kitchen';
+                locationId = kitchen.location_id;
+              }
+            } catch (error) {
+              console.debug(`Could not get kitchen details for booking ${booking.id}:`, error);
+            }
+          }
+          
+          // Get location details
+          let locationName = null;
+          if (locationId) {
+            try {
+              const locationResult = await pool.query(
+                'SELECT id, name FROM locations WHERE id = $1',
+                [locationId]
+              );
+              const location = locationResult.rows[0];
+              if (location) {
+                locationName = location.name;
+              }
+            } catch (error) {
+              console.debug(`Could not get location details for booking ${booking.id}:`, error);
             }
           }
           
           return {
             id: booking.id,
-            chefId: booking.chefId,
-            kitchenId: booking.kitchenId,
-            bookingDate: booking.bookingDate,
-            startTime: booking.startTime,
-            endTime: booking.endTime,
+            chefId: booking.chef_id,
+            kitchenId: booking.kitchen_id,
+            bookingDate: booking.booking_date,
+            startTime: booking.start_time,
+            endTime: booking.end_time,
             status: booking.status,
-            specialNotes: booking.specialNotes,
-            createdAt: booking.createdAt,
-            updatedAt: booking.updatedAt,
+            specialNotes: booking.special_notes,
+            createdAt: booking.created_at,
+            updatedAt: booking.updated_at,
             chefName: chefName,
-            kitchenName: kitchenName || 'Kitchen',
-            locationName: locationName || null, // Explicitly set to null if not found, let UI handle fallback
+            kitchenName: kitchenName,
+            locationName: locationName,
           };
         })
       );
       
-      return enhancedBookings;
+      return enrichedBookings;
     } catch (error) {
       console.error('Error getting bookings by manager:', error);
       throw error;
