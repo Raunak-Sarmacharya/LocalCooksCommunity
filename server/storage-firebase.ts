@@ -1234,6 +1234,45 @@ export class FirebaseStorage {
             }
           }
           
+          // If locationName or kitchenName are missing from the join, fetch them separately
+          let locationName = booking.locationName;
+          let kitchenName = booking.kitchenName;
+          
+          if (!locationName || !kitchenName) {
+            try {
+              // Fetch kitchen details if missing
+              if (booking.kitchenId) {
+                const kitchen = await db
+                  .select({
+                    name: kitchens.name,
+                    locationId: kitchens.locationId,
+                  })
+                  .from(kitchens)
+                  .where(eq(kitchens.id, booking.kitchenId))
+                  .then(rows => rows[0]);
+                
+                if (kitchen) {
+                  kitchenName = kitchenName || kitchen.name;
+                  
+                  // Fetch location if missing
+                  if (!locationName && kitchen.locationId) {
+                    const location = await db
+                      .select({ name: locations.name })
+                      .from(locations)
+                      .where(eq(locations.id, kitchen.locationId))
+                      .then(rows => rows[0]);
+                    
+                    if (location) {
+                      locationName = location.name;
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.debug(`Could not fetch missing kitchen/location data for booking ${booking.id}:`, error);
+            }
+          }
+          
           return {
             id: booking.id,
             chefId: booking.chefId,
@@ -1246,8 +1285,8 @@ export class FirebaseStorage {
             createdAt: booking.createdAt,
             updatedAt: booking.updatedAt,
             chefName: chefName,
-            kitchenName: booking.kitchenName,
-            locationName: booking.locationName,
+            kitchenName: kitchenName || 'Kitchen',
+            locationName: locationName || null, // Explicitly set to null if not found, let UI handle fallback
           };
         })
       );

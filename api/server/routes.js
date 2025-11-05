@@ -3282,15 +3282,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all bookings for manager
   app.get("/api/manager/bookings", async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
+      // Check authentication - supports both Firebase and session-based auth
+      let user = null;
       
-      if (!sessionUser && !isFirebaseAuth) {
+      // First, try Firebase authentication if Bearer token is provided
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.substring(7);
+          const decodedToken = await verifyFirebaseToken(token);
+          
+          if (decodedToken) {
+            // Load Neon user from Firebase UID
+            const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
+            if (neonUser) {
+              req.neonUser = {
+                id: neonUser.id,
+                username: neonUser.username,
+                role: neonUser.role,
+                firebaseUid: neonUser.firebaseUid || undefined,
+              };
+              user = req.neonUser;
+            }
+          }
+        } catch (firebaseError) {
+          // Firebase auth failed, will try session auth below
+          console.debug('Firebase auth failed, trying session auth:', firebaseError);
+        }
+      }
+      
+      // Fallback to session authentication
+      if (!user) {
+        const sessionUser = await getAuthenticatedUser(req);
+        if (sessionUser) {
+          user = sessionUser;
+        }
+      }
+      
+      if (!user) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
       }
