@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, PlayCircle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DEFAULT_TIMEZONE, isBookingActive, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
+import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 
 interface Booking {
   id: number;
@@ -191,9 +191,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     setBookingToCancel(null);
   };
 
-  // Categorize bookings by timezone-aware timeline (Active, Upcoming, Past)
-  const { activeBookings, upcomingBookings, pastBookings } = useMemo(() => {
-    const active: Booking[] = [];
+  // Categorize bookings by timezone-aware timeline (Upcoming, Past)
+  // Confirmed bookings go into Upcoming category
+  const { upcomingBookings, pastBookings } = useMemo(() => {
     const upcoming: Booking[] = [];
     const past: Booking[] = [];
 
@@ -208,12 +208,18 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       const bookingDateStr = booking.bookingDate.split('T')[0];
 
       try {
-        if (isBookingActive(bookingDateStr, booking.startTime, booking.endTime, timezone)) {
-          active.push(booking);
-        } else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+        // Confirmed bookings are considered upcoming
+        if (booking.status === 'confirmed' || isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
           upcoming.push(booking);
-        } else {
+        } else if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
           past.push(booking);
+        } else {
+          // For pending bookings, check if they're in the future
+          if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+            upcoming.push(booking);
+          } else {
+            past.push(booking);
+          }
         }
       } catch (error) {
         // If timezone check fails, fall back to simple date comparison
@@ -224,13 +230,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           upcoming.push(booking);
         }
       }
-    });
-
-    // Sort active by start time (ascending)
-    active.sort((a, b) => {
-      const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
-      const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
-      return dateA.getTime() - dateB.getTime();
     });
 
     // Sort upcoming by start time (ascending)
@@ -247,7 +246,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       return dateB.getTime() - dateA.getTime();
     });
 
-    return { activeBookings: active, upcomingBookings: upcoming, pastBookings: past };
+    return { upcomingBookings: upcoming, pastBookings: past };
   }, [bookings]);
 
   // Filter bookings based on status filter and time category
@@ -255,24 +254,21 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     let filtered: Booking[] = [];
     
     if (statusFilter === 'all') {
-      // Show all non-cancelled bookings in timeline order: Active, Upcoming, Past
-      filtered = [...activeBookings, ...upcomingBookings, ...pastBookings];
-    } else if (statusFilter === 'active') {
-      // Show only active bookings
-      filtered = activeBookings.filter(b => b.status !== 'cancelled');
+      // Show all bookings in timeline order: Upcoming, Past
+      filtered = [...upcomingBookings, ...pastBookings];
     } else if (statusFilter === 'upcoming') {
-      // Show only upcoming bookings
-      filtered = upcomingBookings.filter(b => b.status !== 'cancelled');
+      // Show only upcoming bookings (includes confirmed bookings)
+      filtered = upcomingBookings;
     } else if (statusFilter === 'past') {
       // Show only past bookings
       filtered = pastBookings;
     } else {
-      // Filter by status (pending, confirmed, cancelled)
+      // Filter by status (pending, cancelled)
       filtered = bookings.filter((booking: Booking) => booking.status === statusFilter);
     }
     
     return filtered;
-  }, [bookings, statusFilter, activeBookings, upcomingBookings, pastBookings]);
+  }, [bookings, statusFilter, upcomingBookings, pastBookings]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -322,20 +318,16 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           <div className="flex gap-4 mb-6 border-b overflow-x-auto">
             {[
               { key: 'all', label: 'All Bookings' },
-              { key: 'active', label: 'Active Now' },
               { key: 'upcoming', label: 'Upcoming' },
               { key: 'past', label: 'Past' },
               { key: 'pending', label: 'Pending' },
-              { key: 'confirmed', label: 'Confirmed' },
               { key: 'cancelled', label: 'Cancelled' },
             ].map((filter) => {
               let count = 0;
               if (filter.key === 'all') {
                 count = bookings.length;
-              } else if (filter.key === 'active') {
-                count = activeBookings.filter(b => b.status !== 'cancelled').length;
               } else if (filter.key === 'upcoming') {
-                count = upcomingBookings.filter(b => b.status !== 'cancelled').length;
+                count = upcomingBookings.length;
               } else if (filter.key === 'past') {
                 count = pastBookings.length;
               } else {
@@ -379,24 +371,10 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           ) : (
             <div className="space-y-4">
               {filteredBookings.map((booking: Booking) => {
-                // Check if booking is currently active
-                const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
-                const bookingDateStr = booking.bookingDate.split('T')[0];
-                let isActive = false;
-                try {
-                  isActive = isBookingActive(bookingDateStr, booking.startTime, booking.endTime, timezone);
-                } catch (error) {
-                  // Fallback if timezone check fails
-                }
-
                 return (
                 <div
                   key={booking.id}
-                  className={`bg-white rounded-lg shadow-md border p-6 hover:shadow-lg transition-shadow ${
-                    isActive 
-                      ? 'border-blue-500 border-2 bg-blue-50' 
-                      : 'border-gray-200'
-                  }`}
+                  className="bg-white rounded-lg shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow"
                 >
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
@@ -404,12 +382,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         <h3 className="text-xl font-semibold text-gray-900">
                           {booking.kitchenName || 'Kitchen'}
                         </h3>
-                        {isActive && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded-full animate-pulse">
-                            <PlayCircle className="h-3 w-3" />
-                            Active Now
-                          </span>
-                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                         <div className="flex items-center gap-2 text-gray-600">

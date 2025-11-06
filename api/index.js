@@ -9,49 +9,9 @@ import createMemoryStore from 'memorystore';
 import multer from 'multer';
 import path from 'path';
 import { promisify } from 'util';
-// Default timezone constant
-const DEFAULT_TIMEZONE = 'America/St_Johns';
-
-// Simple timezone-aware date/time utilities (inline to avoid problematic imports)
-function createBookingDateTime(dateStr, timeStr, timezone = DEFAULT_TIMEZONE) {
-  // Parse date and time components
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  
-  // Create date string in ISO format for the timezone
-  const dateStrISO = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-  
-  // Create a date assuming it's in the specified timezone
-  const tempDate = new Date(dateStrISO);
-  const tzOffset = getTimezoneOffset(timezone, tempDate);
-  return new Date(tempDate.getTime() - tzOffset);
-}
-
-function getTimezoneOffset(timezone, date = new Date()) {
-  // Get timezone offset in milliseconds using Intl API
-  const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-  return tzDate.getTime() - utcDate.getTime();
-}
-
-function getNowInTimezone(timezone = DEFAULT_TIMEZONE) {
-  const now = new Date();
-  const offset = getTimezoneOffset(timezone, now);
-  return new Date(now.getTime() - offset);
-}
-
-function isBookingTimePast(bookingDate, bookingTime, timezone = DEFAULT_TIMEZONE) {
-  const bookingDateTime = createBookingDateTime(bookingDate, bookingTime, timezone);
-  const now = getNowInTimezone(timezone);
-  return bookingDateTime < now;
-}
-
-function getHoursUntilBooking(bookingDate, bookingTime, timezone = DEFAULT_TIMEZONE) {
-  const bookingDateTime = createBookingDateTime(bookingDate, bookingTime, timezone);
-  const now = getNowInTimezone(timezone);
-  const diffMs = bookingDateTime.getTime() - now.getTime();
-  return diffMs / (1000 * 60 * 60);
-}
+// Import proper timezone utilities using industry-standard @date-fns/tz
+// This uses the IANA timezone database for accurate DST handling and timezone conversions
+import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from './shared/timezone-utils.js';
 
 // Setup
 const app = express();
