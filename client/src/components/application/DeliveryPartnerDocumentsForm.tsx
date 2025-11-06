@@ -121,7 +121,8 @@ export default function DeliveryPartnerDocumentsForm() {
       if (response.ok) {
         toast({
           title: "Application submitted successfully!",
-          description: "We'll review your application and get back to you soon.",
+          description: "We'll review your application and get back to you soon. Please check your email (including spam folder) for confirmation.",
+          duration: 6000,
         });
         // Redirect to dashboard or success page
         window.location.href = '/dashboard';

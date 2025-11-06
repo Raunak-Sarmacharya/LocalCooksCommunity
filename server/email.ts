@@ -180,40 +180,22 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       subject: content.subject,
       text: content.text,
       html: content.html,
-      // Enhanced headers for better deliverability and MailChannels compatibility
+      // Optimized headers for better deliverability with Hostinger SMTP
       headers: {
         'Organization': organizationName,
-        'X-Mailer': 'Local Cooks Community v2.0',
-        'X-Priority': '3',
-        'X-MSMail-Priority': 'Normal',
-        'Importance': 'Normal',
-        // Enhanced MailChannels and DKIM-friendly sender identification
+        'X-Mailer': 'Local Cooks Community',
+        // Proper sender identification for DKIM/SPF alignment
         'Sender': config.auth.user,
         'Return-Path': config.auth.user,
         'Reply-To': config.auth.user,
-        // Enhanced MailChannels headers for better routing
-        'X-MC-PreserveRecipients': 'false',
-        'X-MC-Track': 'opens,clicks',
-        'X-MC-Tags': 'application,local-cooks',
-        'X-MC-Subaccount': process.env.EMAIL_SUBACCOUNT || 'main',
-        // Anti-spam and deliverability headers
-        'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        'List-Id': `<local-cooks.${domain}>`,
-        // Enhanced authentication and tracking headers
-        'X-Local-Cooks-Version': '2.0',
-        'X-Local-Cooks-Type': content.subject.includes('Application') ? 'application' : 'system',
-        'X-Local-Cooks-Tracking': options?.trackingId || `auto_${Date.now()}`,
-        // Add DMARC-friendly headers
-        'X-Vercel-Deployment': process.env.VERCEL_DEPLOYMENT_ID || 'local',
-        'X-Vercel-URL': process.env.VERCEL_URL || 'localhost',
-        'X-Vercel-Region': process.env.VERCEL_REGION || 'unknown',
+        // Standard priority headers (avoid high priority to reduce spam score)
+        'Importance': 'Normal',
         // Merge any additional headers from content
         ...(content.headers || {})
       },
-      // Proper encoding settings for DKIM and MailChannels
+      // Proper encoding settings for DKIM
       encoding: 'utf8' as const,
-      // Enhanced delivery options for MailChannels compatibility
+      // Enhanced delivery options for Hostinger SMTP
       envelope: {
         from: config.auth.user,
         to: content.to
@@ -221,7 +203,7 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       // DKIM-compatible message ID with proper domain
       messageId: `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@${domain}>`,
       date: new Date(),
-      // DKIM signing is handled by Hostinger SMTP server or MailChannels
+      // DKIM signing is handled by Hostinger SMTP server
     };
 
     // Send the email with enhanced timeout protection and retry logic (critical for serverless)
