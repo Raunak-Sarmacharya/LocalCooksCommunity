@@ -45,6 +45,7 @@
     "verify:production": "node scripts/verify-production.js"
   },
   "dependencies": {
+    "@date-fns/tz": "^1.4.1",
     "@fontsource/lobster": "^5.2.5",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",

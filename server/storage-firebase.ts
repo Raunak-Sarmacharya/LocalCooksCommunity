@@ -12,6 +12,7 @@ import type {
 import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
+import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
 /**
  * Firebase-only storage implementation without session management
@@ -519,6 +520,7 @@ export class FirebaseStorage {
         managerId: (location as any).managerId || (location as any).manager_id || null,
         notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
         cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+        timezone: (location as any).timezone || DEFAULT_TIMEZONE,
         cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
         defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
         createdAt: (location as any).createdAt || (location as any).created_at,
@@ -1249,17 +1251,19 @@ export class FirebaseStorage {
             }
           }
           
-          // Get location details
+          // Get location details including timezone
           let locationName = null;
+          let locationTimezone = DEFAULT_TIMEZONE;
           if (locationId) {
             try {
               const locationResult = await pool.query(
-                'SELECT id, name FROM locations WHERE id = $1',
+                'SELECT id, name, timezone FROM locations WHERE id = $1',
                 [locationId]
               );
               const location = locationResult.rows[0];
               if (location) {
                 locationName = location.name;
+                locationTimezone = location.timezone || DEFAULT_TIMEZONE;
               }
             } catch (error) {
               // Silently handle errors
@@ -1280,6 +1284,7 @@ export class FirebaseStorage {
             chefName: chefName,
             kitchenName: kitchenName,
             locationName: locationName,
+            locationTimezone: locationTimezone,
           };
         })
       );

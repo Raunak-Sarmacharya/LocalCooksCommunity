@@ -17,6 +17,7 @@ import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, users, locations, applications } from "@shared/schema";
 import { eq, inArray, and, desc } from "drizzle-orm";
+import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
 
 // Import portal user applications schema
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
@@ -3208,7 +3209,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid location ID" });
       }
       
-      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl } = req.body;
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl, timezone } = req.body;
       
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
@@ -3217,6 +3218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         minimumBookingWindowHours,
         notificationEmail,
         logoUrl,
+        timezone,
         locationId: locationIdNum
       });
 
@@ -3310,6 +3312,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           alsoSetAsLogo_url: (updates as any).logo_url
         });
       }
+      if (timezone !== undefined) {
+        // Validate timezone format (basic validation - should be a valid IANA timezone)
+        if (timezone && typeof timezone === 'string' && timezone.trim() !== '') {
+          (updates as any).timezone = timezone.trim();
+        } else if (timezone === null || timezone === '') {
+          // Use default if empty
+          (updates as any).timezone = DEFAULT_TIMEZONE;
+        }
+        console.log('[PUT] Setting timezone:', {
+          raw: timezone,
+          processed: (updates as any).timezone
+        });
+      }
 
       console.log('[PUT] Final updates object before DB update:', JSON.stringify(updates, null, 2));
       console.log('[PUT] Updates keys:', Object.keys(updates));
@@ -3355,6 +3370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
         defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
         minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 1,
+        timezone: (updated as any).timezone || DEFAULT_TIMEZONE,
       };
       
       // Send email to new notification email if it was changed
@@ -3415,6 +3431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         defaultDailyBookingLimit: (loc as any).defaultDailyBookingLimit || (loc as any).default_daily_booking_limit,
         minimumBookingWindowHours: (loc as any).minimumBookingWindowHours || (loc as any).minimum_booking_window_hours || 1,
         logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
+        timezone: (loc as any).timezone || DEFAULT_TIMEZONE,
       }));
       
       // Log to verify logoUrl is included in response
@@ -4650,30 +4667,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
       }
       
-      // Validate booking time (past times and minimum booking window)
-      const now = new Date();
-      const [startHours, startMins] = startTime.split(':').map(Number);
-      const bookingStartTime = new Date(bookingDateObj);
-      bookingStartTime.setHours(startHours, startMins, 0, 0);
-      
-      // Check if booking time is in the past
-      if (bookingStartTime <= now) {
-        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
-      }
-      
-      // Get minimum booking window from location
+      // Get location to get timezone and minimum booking window
       const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
+      let location = null;
+      let timezone = DEFAULT_TIMEZONE;
       let minimumBookingWindowHours = 1; // Default
       
       if (kitchenLocationId2) {
-        const location = await firebaseStorage.getLocationById(kitchenLocationId2);
-        if (location && (location as any).minimumBookingWindowHours) {
-          minimumBookingWindowHours = (location as any).minimumBookingWindowHours;
+        location = await firebaseStorage.getLocationById(kitchenLocationId2);
+        if (location) {
+          timezone = (location as any).timezone || DEFAULT_TIMEZONE;
+          minimumBookingWindowHours = (location as any).minimumBookingWindowHours || 1;
         }
       }
       
-      // Check if booking is within minimum booking window
-      const hoursUntilBooking = (bookingStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+      // Convert booking date to string format (YYYY-MM-DD)
+      const bookingDateStr = bookingDateObj.toISOString().split('T')[0];
+      
+      // Validate booking time using timezone-aware functions
+      if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+      
+      // Check if booking is within minimum booking window (timezone-aware)
+      const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
       if (hoursUntilBooking < minimumBookingWindowHours) {
         return res.status(400).json({ 
           error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
@@ -7341,3 +7358,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   return httpServer;
 }
+
