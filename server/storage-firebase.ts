@@ -1226,7 +1226,7 @@ export class FirebaseStorage {
                 }
               }
             } catch (error) {
-              console.debug(`Could not get chef details for booking ${booking.id}:`, error);
+              // Silently handle errors
             }
           }
           
@@ -1245,7 +1245,7 @@ export class FirebaseStorage {
                 locationId = kitchen.location_id;
               }
             } catch (error) {
-              console.debug(`Could not get kitchen details for booking ${booking.id}:`, error);
+              // Silently handle errors
             }
           }
           
@@ -1262,7 +1262,7 @@ export class FirebaseStorage {
                 locationName = location.name;
               }
             } catch (error) {
-              console.debug(`Could not get location details for booking ${booking.id}:`, error);
+              // Silently handle errors
             }
           }
           
