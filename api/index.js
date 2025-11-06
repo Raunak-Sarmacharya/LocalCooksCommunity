@@ -11877,17 +11877,100 @@ app.get("/api/manager/bookings", async (req, res) => {
       return res.json([]);
     }
 
-    // Get all bookings for these kitchens
+    // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
     const bookingsResult = await pool.query(`
-      SELECT id, chef_id as "chefId", kitchen_id as "kitchenId", booking_date as "bookingDate", 
-             start_time as "startTime", end_time as "endTime", status, special_notes as "specialNotes",
-             created_at as "createdAt", updated_at as "updatedAt"
+      SELECT id, chef_id, kitchen_id, booking_date, start_time, end_time, 
+             status, special_notes, created_at, updated_at
       FROM kitchen_bookings 
-      WHERE kitchen_id = ANY($1)
-      ORDER BY booking_date DESC, start_time DESC
+      WHERE kitchen_id = ANY($1::int[])
+      ORDER BY booking_date DESC, start_time ASC
     `, [kitchenIds]);
     
-    res.json(bookingsResult.rows);
+    // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
+    const enrichedBookings = await Promise.all(
+      bookingsResult.rows.map(async (booking) => {
+        // Get chef details
+        let chefName = `Chef #${booking.chef_id}`;
+        if (booking.chef_id) {
+          try {
+            const chefResult = await pool.query(
+              'SELECT id, username FROM users WHERE id = $1',
+              [booking.chef_id]
+            );
+            const chef = chefResult.rows[0];
+            
+            if (chef) {
+              chefName = chef.username || `Chef #${booking.chef_id}`;
+              
+              // Try to get chef's full name from their application
+              const appResult = await pool.query(
+                'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [booking.chef_id]
+              );
+              if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                chefName = appResult.rows[0].full_name;
+              }
+            }
+          } catch (error) {
+            // Silently handle errors
+          }
+        }
+        
+        // Get kitchen details
+        let kitchenName = 'Kitchen';
+        let locationId = null;
+        if (booking.kitchen_id) {
+          try {
+            const kitchenResult = await pool.query(
+              'SELECT id, name, location_id FROM kitchens WHERE id = $1',
+              [booking.kitchen_id]
+            );
+            const kitchen = kitchenResult.rows[0];
+            if (kitchen) {
+              kitchenName = kitchen.name || 'Kitchen';
+              locationId = kitchen.location_id;
+            }
+          } catch (error) {
+            // Silently handle errors
+          }
+        }
+        
+        // Get location details
+        let locationName = null;
+        if (locationId) {
+          try {
+            const locationResult = await pool.query(
+              'SELECT id, name FROM locations WHERE id = $1',
+              [locationId]
+            );
+            const location = locationResult.rows[0];
+            if (location) {
+              locationName = location.name;
+            }
+          } catch (error) {
+            // Silently handle errors
+          }
+        }
+        
+        return {
+          id: booking.id,
+          chefId: booking.chef_id,
+          kitchenId: booking.kitchen_id,
+          bookingDate: booking.booking_date,
+          startTime: booking.start_time,
+          endTime: booking.end_time,
+          status: booking.status,
+          specialNotes: booking.special_notes,
+          createdAt: booking.created_at,
+          updatedAt: booking.updated_at,
+          chefName: chefName,
+          kitchenName: kitchenName,
+          locationName: locationName,
+        };
+      })
+    );
+    
+    res.json(enrichedBookings);
   } catch (error) {
     console.error("Error fetching bookings:", error);
     res.status(500).json({ error: error.message || "Failed to fetch bookings" });
@@ -13766,18 +13849,124 @@ app.get("/api/manager/bookings", async (req, res) => {
       userId = user.id;
     }
 
-    // Get all bookings for kitchens managed by this user
-    const result = await pool.query(`
-      SELECT kb.*, k.name as "kitchenName", l.name as "locationName", u.username as "chefName"
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN users u ON kb.chef_id = u.id
-      WHERE l.manager_id = $1
-      ORDER BY kb.booking_date DESC, kb.start_time ASC
-    `, [userId]);
+    // Get all locations for this manager
+    const locationsResult = await pool.query(
+      'SELECT id FROM locations WHERE manager_id = $1',
+      [userId]
+    );
+    
+    const locationIds = locationsResult.rows.map(row => row.id);
+    
+    if (locationIds.length === 0) {
+      return res.json([]);
+    }
 
-    res.json(result.rows);
+    // Get all kitchens for these locations
+    const kitchensResult = await pool.query(
+      'SELECT id FROM kitchens WHERE location_id = ANY($1::int[])',
+      [locationIds]
+    );
+    
+    const kitchenIds = kitchensResult.rows.map(row => row.id);
+    
+    if (kitchenIds.length === 0) {
+      return res.json([]);
+    }
+
+    // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
+    const bookingsResult = await pool.query(`
+      SELECT id, chef_id, kitchen_id, booking_date, start_time, end_time, 
+             status, special_notes, created_at, updated_at
+      FROM kitchen_bookings 
+      WHERE kitchen_id = ANY($1::int[])
+      ORDER BY booking_date DESC, start_time ASC
+    `, [kitchenIds]);
+    
+    // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
+    const enrichedBookings = await Promise.all(
+      bookingsResult.rows.map(async (booking) => {
+        // Get chef details
+        let chefName = `Chef #${booking.chef_id}`;
+        if (booking.chef_id) {
+          try {
+            const chefResult = await pool.query(
+              'SELECT id, username FROM users WHERE id = $1',
+              [booking.chef_id]
+            );
+            const chef = chefResult.rows[0];
+            
+            if (chef) {
+              chefName = chef.username || `Chef #${booking.chef_id}`;
+              
+              // Try to get chef's full name from their application
+              const appResult = await pool.query(
+                'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [booking.chef_id]
+              );
+              if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                chefName = appResult.rows[0].full_name;
+              }
+            }
+          } catch (error) {
+            // Silently handle errors
+          }
+        }
+        
+        // Get kitchen details
+        let kitchenName = 'Kitchen';
+        let locationId = null;
+        if (booking.kitchen_id) {
+          try {
+            const kitchenResult = await pool.query(
+              'SELECT id, name, location_id FROM kitchens WHERE id = $1',
+              [booking.kitchen_id]
+            );
+            const kitchen = kitchenResult.rows[0];
+            if (kitchen) {
+              kitchenName = kitchen.name || 'Kitchen';
+              locationId = kitchen.location_id;
+            }
+          } catch (error) {
+            // Silently handle errors
+          }
+        }
+        
+        // Get location details
+        let locationName = null;
+        if (locationId) {
+          try {
+            const locationResult = await pool.query(
+              'SELECT id, name FROM locations WHERE id = $1',
+              [locationId]
+            );
+            const location = locationResult.rows[0];
+            if (location) {
+              locationName = location.name;
+            }
+          } catch (error) {
+            // Silently handle errors
+          }
+        }
+        
+        return {
+          id: booking.id,
+          chefId: booking.chef_id,
+          kitchenId: booking.kitchen_id,
+          bookingDate: booking.booking_date,
+          startTime: booking.start_time,
+          endTime: booking.end_time,
+          status: booking.status,
+          specialNotes: booking.special_notes,
+          createdAt: booking.created_at,
+          updatedAt: booking.updated_at,
+          chefName: chefName,
+          kitchenName: kitchenName,
+          locationName: locationName,
+        };
+      })
+    );
+    
+    res.json(enrichedBookings);
   } catch (error) {
     console.error("Error fetching manager bookings:", error);
     res.status(500).json({ error: "Failed to fetch bookings" });
