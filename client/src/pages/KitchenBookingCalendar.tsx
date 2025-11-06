@@ -364,8 +364,11 @@ export default function KitchenBookingCalendar() {
     const endMins = endTotalMins % 60;
     const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 
-    const bookingDate = new Date(selectedDate);
-    bookingDate.setHours(0, 0, 0, 0);
+    // Format date as YYYY-MM-DD to avoid timezone issues
+    // Then create Date object with noon UTC to prevent date shifts
+    const bookingDateStr = toLocalDateString(selectedDate);
+    const [year, month, day] = bookingDateStr.split('-').map(Number);
+    const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)); // Use noon UTC to avoid date shifts
     
     createBooking.mutate(
       {

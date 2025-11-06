@@ -4681,8 +4681,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Convert booking date to string format (YYYY-MM-DD)
-      const bookingDateStr = bookingDateObj.toISOString().split('T')[0];
+      // Extract date string from ISO string to avoid timezone shifts
+      // The frontend sends bookingDate as ISO string (e.g., "2025-01-15T00:00:00.000Z")
+      // We need to extract the date part (YYYY-MM-DD) before timezone conversion
+      const bookingDateStr = typeof bookingDate === 'string' 
+        ? bookingDate.split('T')[0] 
+        : bookingDateObj.toISOString().split('T')[0];
       
       // Validate booking time using timezone-aware functions
       if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
