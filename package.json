@@ -34,6 +34,7 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "db:add-feedback": "tsx scripts/add-feedback-field.ts",
+    "db:add-notification-phone": "tsx scripts/add-notification-phone.ts",
     "test:db": "node scripts/test-db-connection.js",
     "test:oauth": "node scripts/test-oauth.js",
     "test:certificate": "node scripts/test-certificate-generation.js",
