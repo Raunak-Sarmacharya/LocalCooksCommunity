@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
+import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 
 interface Booking {
   id: number;
@@ -208,26 +208,50 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       const bookingDateStr = booking.bookingDate.split('T')[0];
 
       try {
-        // Confirmed bookings are considered upcoming
-        if (booking.status === 'confirmed' || isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
-          upcoming.push(booking);
-        } else if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
+        // Timeline is the PRIMARY factor - status does NOT override timeline
+        // Check if booking end time has passed - if yes, it's past (regardless of status)
+        if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
           past.push(booking);
-        } else {
-          // For pending bookings, check if they're in the future
-          if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
-            upcoming.push(booking);
-          } else {
+        } 
+        // Check if booking start time is in the future - if yes, it's upcoming
+        else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+          upcoming.push(booking);
+        } 
+        // If booking is currently happening (between start and end), check more carefully
+        else {
+          // Booking start time has passed but end time hasn't - check if it's very recent
+          const bookingEndDateTime = createBookingDateTime(bookingDateStr, booking.endTime, timezone);
+          const now = getNowInTimezone(timezone);
+          
+          // If end time is very close (within 1 hour), it might have just ended - use end time to decide
+          const hoursSinceEnd = (now.getTime() - bookingEndDateTime.getTime()) / (1000 * 60 * 60);
+          
+          // If end time passed more than 1 hour ago, it's definitely past
+          if (hoursSinceEnd > 1) {
             past.push(booking);
+          } else {
+            // Very recent or currently happening - treat as upcoming
+            upcoming.push(booking);
           }
         }
       } catch (error) {
-        // If timezone check fails, fall back to simple date comparison
-        const bookingDate = new Date(booking.bookingDate);
-        if (bookingDate < new Date()) {
-          past.push(booking);
-        } else {
-          upcoming.push(booking);
+        // If timezone check fails, fall back to simple date comparison using end time
+        try {
+          const dateStr = booking.bookingDate.split('T')[0];
+          const bookingEndDateTime = new Date(`${dateStr}T${booking.endTime}`);
+          if (bookingEndDateTime < new Date()) {
+            past.push(booking);
+          } else {
+            upcoming.push(booking);
+          }
+        } catch (fallbackError) {
+          // Last resort: use booking date only
+          const bookingDate = new Date(booking.bookingDate);
+          if (bookingDate < new Date()) {
+            past.push(booking);
+          } else {
+            upcoming.push(booking);
+          }
         }
       }
     });

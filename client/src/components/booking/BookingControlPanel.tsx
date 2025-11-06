@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 
 interface Booking {
   id: number;
@@ -15,6 +16,7 @@ interface Booking {
   updatedAt: string;
   kitchenName?: string;
   locationName?: string;
+  locationTimezone?: string;
   location?: {
     id: number;
     name: string;
@@ -44,11 +46,9 @@ export default function BookingControlPanel({
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
 
-  // Separate bookings into past, upcoming, and all
-  // Memoize the categorization to prevent recalculation issues
-  // Calculate 'now' inside useMemo for accuracy, but only when bookings change
+  // Separate bookings into past, upcoming, and all using timezone-aware categorization
+  // Timeline is PRIMARY - status does NOT override timeline
   const { upcomingBookings, pastBookings, allBookings } = useMemo(() => {
-    const now = new Date();
     const upcoming: Booking[] = [];
     const past: Booking[] = [];
 
@@ -60,37 +60,46 @@ export default function BookingControlPanel({
       };
     }
 
-    console.log('📅 BookingControlPanel: Processing bookings', {
-      total: bookings.length,
-      bookings: bookings.map(b => ({
-        id: b.id,
-        date: b.bookingDate,
-        time: b.startTime,
-        status: b.status
-      }))
-    });
-
     bookings.forEach((booking) => {
-      if (!booking || !booking.bookingDate || !booking.startTime) return;
+      if (!booking || !booking.bookingDate || !booking.startTime || !booking.endTime) return;
+      
+      // Cancelled bookings always go to past
+      if (booking.status === 'cancelled') {
+        past.push(booking);
+        return;
+      }
       
       try {
-        // Handle both ISO date strings and date-only strings
-        const dateStr = booking.bookingDate.split('T')[0]; // Extract date part if ISO
-        const bookingDateTime = new Date(`${dateStr}T${booking.startTime}`);
+        // Get timezone from booking or use default
+        const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
+        const bookingDateStr = booking.bookingDate.split('T')[0];
         
-        // Validate the date
-        if (isNaN(bookingDateTime.getTime())) {
-          console.warn('Invalid booking date:', booking.bookingDate, booking.startTime);
-          return;
-        }
-        
-        if (bookingDateTime >= now) {
-          upcoming.push(booking);
-        } else {
+        // Timeline is PRIMARY factor - check if booking end time has passed
+        if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
           past.push(booking);
+        } 
+        // Check if booking start time is in the future
+        else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+          upcoming.push(booking);
+        } 
+        // Booking is currently happening or very recently ended
+        else {
+          // If end time hasn't passed but start time has, it's currently happening - treat as upcoming
+          upcoming.push(booking);
         }
       } catch (error) {
-        console.error('Error processing booking:', booking, error);
+        // If timezone check fails, fall back to simple date comparison using end time
+        try {
+          const dateStr = booking.bookingDate.split('T')[0];
+          const bookingEndDateTime = new Date(`${dateStr}T${booking.endTime}`);
+          if (bookingEndDateTime < new Date()) {
+            past.push(booking);
+          } else {
+            upcoming.push(booking);
+          }
+        } catch (fallbackError) {
+          console.error('Error processing booking:', booking, error);
+        }
       }
     });
 
