@@ -1177,6 +1177,60 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             </div>
           </div>
 
+          {/* Timezone Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <Globe className="h-5 w-5 text-cyan-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Timezone Settings</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Set the timezone for this location. All booking times will be interpreted according to this timezone.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Location Timezone
+                </label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                >
+                  {timezoneOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-600 mt-1">
+                  All booking times for this location will be interpreted in this timezone. This affects when bookings are considered "past", "upcoming", or "active".
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => handleSave()}
+                  disabled={isUpdating}
+                  className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => {
+                    setTimezone(location.timezone || DEFAULT_TIMEZONE);
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Minimum Booking Window Section */}
           <div className="space-y-4">
             <div className="flex items-start gap-3">
@@ -1227,6 +1281,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
                     setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
                     setLogoUrl(location.logoUrl || '');
+                    setTimezone(location.timezone || DEFAULT_TIMEZONE);
                   }}
                   className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
