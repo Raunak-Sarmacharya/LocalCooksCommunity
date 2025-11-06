@@ -11890,7 +11890,7 @@ app.get("/api/manager/bookings", async (req, res) => {
     const enrichedBookings = await Promise.all(
       bookingsResult.rows.map(async (booking) => {
         // Get chef details
-        let chefName = `Chef #${booking.chef_id}`;
+        let chefName = null;
         if (booking.chef_id) {
           try {
             const chefResult = await pool.query(
@@ -11900,7 +11900,7 @@ app.get("/api/manager/bookings", async (req, res) => {
             const chef = chefResult.rows[0];
             
             if (chef) {
-              chefName = chef.username || `Chef #${booking.chef_id}`;
+              chefName = chef.username;
               
               // Try to get chef's full name from their application
               const appResult = await pool.query(
@@ -13886,7 +13886,7 @@ app.get("/api/manager/bookings", async (req, res) => {
     const enrichedBookings = await Promise.all(
       bookingsResult.rows.map(async (booking) => {
         // Get chef details
-        let chefName = `Chef #${booking.chef_id}`;
+        let chefName = null;
         if (booking.chef_id) {
           try {
             const chefResult = await pool.query(
@@ -13896,7 +13896,7 @@ app.get("/api/manager/bookings", async (req, res) => {
             const chef = chefResult.rows[0];
             
             if (chef) {
-              chefName = chef.username || `Chef #${booking.chef_id}`;
+              chefName = chef.username;
               
               // Try to get chef's full name from their application
               const appResult = await pool.query(
