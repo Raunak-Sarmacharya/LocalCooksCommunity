@@ -9,6 +9,7 @@ import createMemoryStore from 'memorystore';
 import multer from 'multer';
 import path from 'path';
 import { promisify } from 'util';
+import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from './shared/timezone-utils.js';
 
 // Setup
 const app = express();
@@ -294,6 +295,7 @@ async function getAllLocations() {
              default_daily_booking_limit as "defaultDailyBookingLimit",
              minimum_booking_window_hours as "minimumBookingWindowHours",
              logo_url as "logoUrl",
+             timezone,
              created_at, updated_at 
       FROM locations 
       ORDER BY created_at DESC
@@ -346,10 +348,10 @@ async function createLocation({ name, address, managerId }) {
     console.log('Executing SQL query with params:', { name, address, managerId: managerIdParam });
     
     const result = await pool.query(`
-      INSERT INTO locations (name, address, manager_id)
-      VALUES ($1, $2, $3)
-      RETURNING id, name, address, manager_id as "managerId", created_at, updated_at
-    `, [name, address, managerIdParam]);
+      INSERT INTO locations (name, address, manager_id, timezone)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, name, address, manager_id as "managerId", timezone, created_at, updated_at
+    `, [name, address, managerIdParam, DEFAULT_TIMEZONE]);
     
     console.log('Location created successfully:', result.rows[0]);
     return result.rows[0];
@@ -11145,7 +11147,7 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       return res.status(400).json({ error: "Invalid location ID" });
     }
     
-    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl } = req.body;
+    const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl, timezone } = req.body;
     
     console.log('[PUT] Request body:', {
       cancellationPolicyHours,
@@ -11153,6 +11155,7 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       defaultDailyBookingLimit,
       minimumBookingWindowHours,
       notificationEmail,
+      timezone,
       logoUrl,
       locationId: locationIdNum
     });
@@ -11244,6 +11247,21 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
         processed: notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null
       });
     }
+    if (timezone !== undefined) {
+      // Validate timezone format (basic validation - should be a valid IANA timezone)
+      if (timezone && typeof timezone === 'string' && timezone.trim() !== '') {
+        updates.push(`timezone = $${paramCount++}`);
+        values.push(timezone.trim());
+      } else if (timezone === null || timezone === '') {
+        // Use default if empty
+        updates.push(`timezone = $${paramCount++}`);
+        values.push(DEFAULT_TIMEZONE);
+      }
+      console.log('[PUT] Setting timezone:', {
+        raw: timezone,
+        processed: timezone && timezone.trim() !== '' ? timezone.trim() : DEFAULT_TIMEZONE
+      });
+    }
     
     if (updates.length === 0) {
       return res.status(400).json({ error: "No updates provided" });
@@ -11263,6 +11281,7 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
                 minimum_booking_window_hours as "minimumBookingWindowHours",
                 notification_email as "notificationEmail",
                 logo_url as "logoUrl",
+                timezone,
                 created_at, updated_at
     `;
 
@@ -11283,11 +11302,18 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
       defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
       minimumBookingWindowHours: updated.minimumBookingWindowHours,
       notificationEmail: updated.notificationEmail || 'not set',
-      logoUrl: updated.logoUrl || 'not set'
+      logoUrl: updated.logoUrl || 'not set',
+      timezone: updated.timezone || DEFAULT_TIMEZONE
     });
     
+    // Return timezone in response
+    const response = {
+      ...updated,
+      timezone: updated.timezone || DEFAULT_TIMEZONE
+    };
+    
     // Send email to new notification email if it was changed
-    if (notificationEmail !== undefined && updated.notificationEmail && updated.notificationEmail !== oldNotificationEmail) {
+    if (notificationEmail !== undefined && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
       try {
         // Import email functions
         const { sendEmail, generateLocationEmailChangedEmail } = await import('../server/email.js');
@@ -11306,7 +11332,7 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
     }
     
     console.log('[PUT] Sending response with notificationEmail:', updated.notificationEmail);
-    res.status(200).json(updated);
+    res.status(200).json(response);
   } catch (error) {
     console.error("Error updating cancellation policy:", error);
     res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
@@ -11935,17 +11961,19 @@ app.get("/api/manager/bookings", async (req, res) => {
           }
         }
         
-        // Get location details
+        // Get location details including timezone
         let locationName = null;
+        let locationTimezone = DEFAULT_TIMEZONE;
         if (locationId) {
           try {
             const locationResult = await pool.query(
-              'SELECT id, name FROM locations WHERE id = $1',
+              'SELECT id, name, timezone FROM locations WHERE id = $1',
               [locationId]
             );
             const location = locationResult.rows[0];
             if (location) {
               locationName = location.name;
+              locationTimezone = location.timezone || DEFAULT_TIMEZONE;
             }
           } catch (error) {
             // Silently handle errors
@@ -11966,6 +11994,7 @@ app.get("/api/manager/bookings", async (req, res) => {
           chefName: chefName,
           kitchenName: kitchenName,
           locationName: locationName,
+          locationTimezone: locationTimezone,
         };
       })
     );
@@ -12959,6 +12988,39 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       return res.status(400).json({ error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` });
     }
 
+    // Get location to get timezone and minimum booking window
+    const locationData = await pool.query(`
+      SELECT l.id, l.timezone, l.minimum_booking_window_hours
+      FROM locations l
+      INNER JOIN kitchens k ON k.location_id = l.id
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    let timezone = DEFAULT_TIMEZONE;
+    let minimumBookingWindowHours = 1;
+    
+    if (locationData.rows.length > 0) {
+      const location = locationData.rows[0];
+      timezone = location.timezone || DEFAULT_TIMEZONE;
+      minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
+    }
+    
+    // Convert booking date to string format (YYYY-MM-DD)
+    const bookingDateStr = bookingDate.split('T')[0];
+    
+    // Validate booking time using timezone-aware functions
+    if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+    }
+    
+    // Check if booking is within minimum booking window (timezone-aware)
+    const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+    if (hoursUntilBooking < minimumBookingWindowHours) {
+      return res.status(400).json({ 
+        error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+      });
+    }
+
     // Check for conflicts (exclusive per slot)
     const conflictCheck = await pool.query(`
       SELECT id FROM kitchen_bookings
@@ -13931,17 +13993,19 @@ app.get("/api/manager/bookings", async (req, res) => {
           }
         }
         
-        // Get location details
+        // Get location details including timezone
         let locationName = null;
+        let locationTimezone = DEFAULT_TIMEZONE;
         if (locationId) {
           try {
             const locationResult = await pool.query(
-              'SELECT id, name FROM locations WHERE id = $1',
+              'SELECT id, name, timezone FROM locations WHERE id = $1',
               [locationId]
             );
             const location = locationResult.rows[0];
             if (location) {
               locationName = location.name;
+              locationTimezone = location.timezone || DEFAULT_TIMEZONE;
             }
           } catch (error) {
             // Silently handle errors
@@ -13962,6 +14026,7 @@ app.get("/api/manager/bookings", async (req, res) => {
           chefName: chefName,
           kitchenName: kitchenName,
           locationName: locationName,
+          locationTimezone: locationTimezone,
         };
       })
     );
@@ -14811,17 +14876,9 @@ app.post("/api/public/bookings", async (req, res) => {
       return res.status(500).json({ error: "Database not available" });
     }
 
-    // Validate booking date/time
-    const bookingDateObj = new Date(bookingDate);
-    const now = new Date();
-    
-    if (bookingDateObj < now) {
-      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
-    }
-
-    // Get location to check minimum booking window
+    // Get location to get timezone and minimum booking window
     const locationResult = await pool.query(`
-      SELECT id, name, address, minimum_booking_window_hours, notification_email
+      SELECT id, name, address, timezone, minimum_booking_window_hours, notification_email
       FROM locations
       WHERE id = $1
     `, [locationId]);
@@ -14831,21 +14888,23 @@ app.post("/api/public/bookings", async (req, res) => {
     }
 
     const location = locationResult.rows[0];
+    const timezone = location.timezone || DEFAULT_TIMEZONE;
     const minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
 
-    // Check minimum booking window if booking is today
-    const isToday = bookingDateObj.toDateString() === now.toDateString();
-    if (isToday) {
-      const [startHours, startMins] = startTime.split(':').map(Number);
-      const slotTime = new Date(bookingDateObj);
-      slotTime.setHours(startHours, startMins, 0, 0);
-      const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-      
-      if (hoursUntilBooking < minimumBookingWindowHours) {
-        return res.status(400).json({ 
-          error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
-        });
-      }
+    // Convert booking date to string format (YYYY-MM-DD)
+    const bookingDateStr = bookingDate.split('T')[0];
+    
+    // Validate booking time using timezone-aware functions
+    if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+    }
+    
+    // Check if booking is within minimum booking window (timezone-aware)
+    const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+    if (hoursUntilBooking < minimumBookingWindowHours) {
+      return res.status(400).json({ 
+        error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+      });
     }
 
     // Check availability
@@ -16140,46 +16199,40 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
       return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
     }
 
-    // Validate booking date/time
+    // Validate booking date format
     const bookingDateObj = new Date(bookingDate);
     if (isNaN(bookingDateObj.getTime())) {
       return res.status(400).json({ error: "Invalid booking date format" });
     }
-    
-    const now = new Date();
-    // Compare dates only (not time) to allow bookings for future dates
-    const bookingDateOnly = new Date(bookingDateObj.getFullYear(), bookingDateObj.getMonth(), bookingDateObj.getDate());
-    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    if (bookingDateOnly < todayOnly) {
-      return res.status(400).json({ error: "Cannot book a date that has already passed" });
-    }
 
-    // Get location to check minimum booking window
+    // Get location to get timezone and minimum booking window
     const locationResult = await pool.query(
-      'SELECT minimum_booking_window_hours FROM locations WHERE id = $1',
+      'SELECT timezone, minimum_booking_window_hours FROM locations WHERE id = $1',
       [userLocationId]
     );
     
+    if (locationResult.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+    
     const location = locationResult.rows[0];
-    const minimumBookingWindowHours = location?.minimum_booking_window_hours ?? 1;
+    const timezone = location.timezone || DEFAULT_TIMEZONE;
+    const minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
 
-    // Check minimum booking window if booking is today
-    const isToday = bookingDateOnly.getTime() === todayOnly.getTime();
-    if (isToday) {
-      const [startHours, startMins] = startTime.split(':').map(Number);
-      if (isNaN(startHours) || isNaN(startMins)) {
-        return res.status(400).json({ error: "Invalid start time format" });
-      }
-      const slotTime = new Date(bookingDateObj);
-      slotTime.setHours(startHours, startMins, 0, 0);
-      const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-      
-      if (hoursUntilBooking < minimumBookingWindowHours) {
-        return res.status(400).json({ 
-          error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
-        });
-      }
+    // Convert booking date to string format (YYYY-MM-DD)
+    const bookingDateStr = bookingDate.split('T')[0];
+    
+    // Validate booking time using timezone-aware functions
+    if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+      return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+    }
+    
+    // Check if booking is within minimum booking window (timezone-aware)
+    const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+    if (hoursUntilBooking < minimumBookingWindowHours) {
+      return res.status(400).json({ 
+        error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+      });
     }
 
     // Determine slots requested (1-hour slots)

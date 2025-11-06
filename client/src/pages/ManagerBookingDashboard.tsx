@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe
 } from "lucide-react";
+import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -28,6 +29,7 @@ interface Location {
   notificationEmail?: string;
   minimumBookingWindowHours?: number;
   logoUrl?: string;
+  timezone?: string;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -112,7 +114,7 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl, timezone }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
@@ -120,8 +122,9 @@ export default function ManagerBookingDashboard() {
       minimumBookingWindowHours?: number;
       notificationEmail?: string;
       logoUrl?: string;
+      timezone?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl };
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl, timezone };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
       console.log('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
@@ -780,7 +783,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
+  const [timezone, setTimezone] = useState(location.timezone || DEFAULT_TIMEZONE);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const timezoneOptions = getTimezoneOptions();
 
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
@@ -791,6 +796,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
     setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
     setLogoUrl(location.logoUrl || '');
+    setTimezone(location.timezone || DEFAULT_TIMEZONE);
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
@@ -813,6 +819,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       minimumBookingWindowHours: minimumBookingWindowHours,
       notificationEmail: notificationEmail || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
+      timezone: timezone || DEFAULT_TIMEZONE,
     };
     
     console.log('🚀 Saving location settings:', payload);

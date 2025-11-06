@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, PlayCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { DEFAULT_TIMEZONE, isBookingActive, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 
 interface Booking {
   id: number;
@@ -28,6 +29,7 @@ interface Booking {
   kitchenName?: string;
   chefName?: string;
   locationName?: string;
+  locationTimezone?: string;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -189,10 +191,88 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     setBookingToCancel(null);
   };
 
-  const filteredBookings = bookings.filter((booking: Booking) => {
-    if (statusFilter === 'all') return true;
-    return booking.status === statusFilter;
-  });
+  // Categorize bookings by timezone-aware timeline (Active, Upcoming, Past)
+  const { activeBookings, upcomingBookings, pastBookings } = useMemo(() => {
+    const active: Booking[] = [];
+    const upcoming: Booking[] = [];
+    const past: Booking[] = [];
+
+    bookings.forEach((booking: Booking) => {
+      if (!booking.bookingDate || !booking.startTime || !booking.endTime) return;
+      if (booking.status === 'cancelled') {
+        past.push(booking); // Cancelled bookings go to past
+        return;
+      }
+
+      const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
+      const bookingDateStr = booking.bookingDate.split('T')[0];
+
+      try {
+        if (isBookingActive(bookingDateStr, booking.startTime, booking.endTime, timezone)) {
+          active.push(booking);
+        } else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+          upcoming.push(booking);
+        } else {
+          past.push(booking);
+        }
+      } catch (error) {
+        // If timezone check fails, fall back to simple date comparison
+        const bookingDate = new Date(booking.bookingDate);
+        if (bookingDate < new Date()) {
+          past.push(booking);
+        } else {
+          upcoming.push(booking);
+        }
+      }
+    });
+
+    // Sort active by start time (ascending)
+    active.sort((a, b) => {
+      const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
+      const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    // Sort upcoming by start time (ascending)
+    upcoming.sort((a, b) => {
+      const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
+      const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    // Sort past by start time (descending - most recent first)
+    past.sort((a, b) => {
+      const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
+      const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    return { activeBookings: active, upcomingBookings: upcoming, pastBookings: past };
+  }, [bookings]);
+
+  // Filter bookings based on status filter and time category
+  const filteredBookings = useMemo(() => {
+    let filtered: Booking[] = [];
+    
+    if (statusFilter === 'all') {
+      // Show all non-cancelled bookings in timeline order: Active, Upcoming, Past
+      filtered = [...activeBookings, ...upcomingBookings, ...pastBookings];
+    } else if (statusFilter === 'active') {
+      // Show only active bookings
+      filtered = activeBookings.filter(b => b.status !== 'cancelled');
+    } else if (statusFilter === 'upcoming') {
+      // Show only upcoming bookings
+      filtered = upcomingBookings.filter(b => b.status !== 'cancelled');
+    } else if (statusFilter === 'past') {
+      // Show only past bookings
+      filtered = pastBookings;
+    } else {
+      // Filter by status (pending, confirmed, cancelled)
+      filtered = bookings.filter((booking: Booking) => booking.status === statusFilter);
+    }
+    
+    return filtered;
+  }, [bookings, statusFilter, activeBookings, upcomingBookings, pastBookings]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -239,23 +319,46 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           </div>
 
           {/* Filter Tabs */}
-          <div className="flex gap-4 mb-6 border-b">
-            {['all', 'pending', 'confirmed', 'cancelled'].map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setStatusFilter(filter)}
-                className={`px-4 py-2 font-medium capitalize transition-colors ${
-                  statusFilter === filter
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {filter}
-                <span className="ml-2 text-sm">
-                  ({filter === 'all' ? bookings.length : bookings.filter((b: Booking) => b.status === filter).length})
-                </span>
-              </button>
-            ))}
+          <div className="flex gap-4 mb-6 border-b overflow-x-auto">
+            {[
+              { key: 'all', label: 'All Bookings' },
+              { key: 'active', label: 'Active Now' },
+              { key: 'upcoming', label: 'Upcoming' },
+              { key: 'past', label: 'Past' },
+              { key: 'pending', label: 'Pending' },
+              { key: 'confirmed', label: 'Confirmed' },
+              { key: 'cancelled', label: 'Cancelled' },
+            ].map((filter) => {
+              let count = 0;
+              if (filter.key === 'all') {
+                count = bookings.length;
+              } else if (filter.key === 'active') {
+                count = activeBookings.filter(b => b.status !== 'cancelled').length;
+              } else if (filter.key === 'upcoming') {
+                count = upcomingBookings.filter(b => b.status !== 'cancelled').length;
+              } else if (filter.key === 'past') {
+                count = pastBookings.length;
+              } else {
+                count = bookings.filter((b: Booking) => b.status === filter.key).length;
+              }
+
+              return (
+                <button
+                  key={filter.key}
+                  onClick={() => setStatusFilter(filter.key)}
+                  className={`px-4 py-2 font-medium whitespace-nowrap transition-colors ${
+                    statusFilter === filter.key
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {filter.label}
+                  <span className="ml-2 text-sm">
+                    ({count})
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Bookings List */}
@@ -275,16 +378,39 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredBookings.map((booking: Booking) => (
+              {filteredBookings.map((booking: Booking) => {
+                // Check if booking is currently active
+                const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
+                const bookingDateStr = booking.bookingDate.split('T')[0];
+                let isActive = false;
+                try {
+                  isActive = isBookingActive(bookingDateStr, booking.startTime, booking.endTime, timezone);
+                } catch (error) {
+                  // Fallback if timezone check fails
+                }
+
+                return (
                 <div
                   key={booking.id}
-                  className="bg-white rounded-lg shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+                  className={`bg-white rounded-lg shadow-md border p-6 hover:shadow-lg transition-shadow ${
+                    isActive 
+                      ? 'border-blue-500 border-2 bg-blue-50' 
+                      : 'border-gray-200'
+                  }`}
                 >
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                        {booking.kitchenName || 'Kitchen'}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          {booking.kitchenName || 'Kitchen'}
+                        </h3>
+                        {isActive && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded-full animate-pulse">
+                            <PlayCircle className="h-3 w-3" />
+                            Active Now
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                         <div className="flex items-center gap-2 text-gray-600">
                           <MapPin className="h-4 w-4" />
@@ -352,7 +478,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
