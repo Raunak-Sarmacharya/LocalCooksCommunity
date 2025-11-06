@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone
 } from "lucide-react";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
@@ -27,6 +27,7 @@ interface Location {
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
   notificationEmail?: string;
+  notificationPhone?: string;
   minimumBookingWindowHours?: number;
   logoUrl?: string;
   timezone?: string;
@@ -114,17 +115,18 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl, timezone }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
       defaultDailyBookingLimit?: number;
       minimumBookingWindowHours?: number;
       notificationEmail?: string;
+      notificationPhone?: string;
       logoUrl?: string;
       timezone?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, logoUrl, timezone };
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
       console.log('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
@@ -782,6 +784,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
   const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
+  const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
   const [timezone, setTimezone] = useState(location.timezone || DEFAULT_TIMEZONE);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -800,12 +803,15 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
-    console.log('SettingsView: Loading notificationEmail from location:', {
+    const savedPhone = location.notificationPhone || '';
+    console.log('SettingsView: Loading notificationEmail and notificationPhone from location:', {
       locationId: location.id,
       notificationEmail: savedEmail,
+      notificationPhone: savedPhone,
       fullLocation: location
     });
     setNotificationEmail(savedEmail);
+    setNotificationPhone(savedPhone);
   }, [location]);
 
   const handleSave = (overrideLogoUrl?: string) => {
@@ -818,6 +824,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       defaultDailyBookingLimit: dailyBookingLimit,
       minimumBookingWindowHours: minimumBookingWindowHours,
       notificationEmail: notificationEmail || undefined,
+      notificationPhone: notificationPhone || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
       timezone: timezone || DEFAULT_TIMEZONE,
     };
@@ -899,6 +906,22 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 </p>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Phone Number (for SMS notifications)
+                </label>
+                <input
+                  type="tel"
+                  value={notificationPhone}
+                  onChange={(e) => setNotificationPhone(e.target.value)}
+                  placeholder="+1 (555) 123-4567"
+                  className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  SMS notifications for bookings and cancellations will be sent to this phone number. If left empty, SMS will not be sent.
+                </p>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => handleSave()}
@@ -911,6 +934,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <button
                   onClick={() => {
                     setNotificationEmail(location.notificationEmail || '');
+                    setNotificationPhone(location.notificationPhone || '');
                     setLogoUrl(location.logoUrl || '');
                     setCancellationHours(location.cancellationPolicyHours || 24);
                     setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");

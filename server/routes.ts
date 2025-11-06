@@ -3297,6 +3297,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           oldEmail: oldNotificationEmail
         });
       }
+      if (notificationPhone !== undefined) {
+        // Validate phone format if provided and not empty (basic validation)
+        if (notificationPhone && notificationPhone.trim() !== '') {
+          const phoneDigits = notificationPhone.replace(/\D/g, '');
+          // Basic validation: should have at least 10 digits (US/Canada format)
+          if (phoneDigits.length < 10) {
+            return res.status(400).json({ error: "Invalid phone number format. Please include area code." });
+          }
+        }
+        // Set to null if empty string, otherwise use the value
+        (updates as any).notificationPhone = notificationPhone && notificationPhone.trim() !== '' ? notificationPhone.trim() : null;
+        console.log('[PUT] Setting notificationPhone:', { 
+          raw: notificationPhone, 
+          processed: (updates as any).notificationPhone
+        });
+      }
       if (logoUrl !== undefined) {
         // Set to null if empty string, otherwise use the value
         // Use the schema field name (logoUrl) - Drizzle will map it to logo_url column
@@ -3367,6 +3383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...updated,
         logoUrl: (updated as any).logoUrl || (updated as any).logo_url || null,
         notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
+        notificationPhone: (updated as any).notificationPhone || (updated as any).notification_phone || null,
         cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours,
         cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
         defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
@@ -3427,6 +3444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const mappedLocations = locations.map(loc => ({
         ...loc,
         notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null,
+        notificationPhone: (loc as any).notificationPhone || (loc as any).notification_phone || null,
         cancellationPolicyHours: (loc as any).cancellationPolicyHours || (loc as any).cancellation_policy_hours,
         cancellationPolicyMessage: (loc as any).cancellationPolicyMessage || (loc as any).cancellation_policy_message,
         defaultDailyBookingLimit: (loc as any).defaultDailyBookingLimit || (loc as any).default_daily_booking_limit,
@@ -4119,18 +4137,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 // Check if this is a portal user booking and send SMS to portal user
                 try {
-                  // Check if booking has external contact (portal user booking)
+                  // Check if booking is a portal user booking (has external contact or bookingType is 'external')
                   const bookingData = await firebaseStorage.getBookingById(id);
-                  if (bookingData && (bookingData as any).externalContact && (bookingData as any).externalContact.phone) {
-                    const portalUserPhone = (bookingData as any).externalContact.phone;
-                    const smsMessage = generatePortalUserBookingConfirmationSMS({
-                      kitchenName: kitchen.name || 'Kitchen',
-                      bookingDate: booking.bookingDate,
-                      startTime: booking.startTime,
-                      endTime: booking.endTime
-                    });
-                    await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_confirmed` });
-                    console.log(`✅ Booking confirmation SMS sent to portal user: ${portalUserPhone}`);
+                  const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
+                  
+                  if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
+                    // Get portal user phone from portal_user_applications table
+                    try {
+                      const portalAppResult = await pool.query(
+                        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
+                        [booking.chefId, kitchenLocationId]
+                      );
+                      
+                      if (portalAppResult.rows.length > 0 && portalAppResult.rows[0].phone) {
+                        const portalUserPhone = portalAppResult.rows[0].phone;
+                        const smsMessage = generatePortalUserBookingConfirmationSMS({
+                          kitchenName: kitchen.name || 'Kitchen',
+                          bookingDate: booking.bookingDate,
+                          startTime: booking.startTime,
+                          endTime: booking.endTime
+                        });
+                        await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_confirmed` });
+                        console.log(`✅ Booking confirmation SMS sent to portal user: ${portalUserPhone}`);
+                      } else {
+                        console.log(`📱 No phone number found in portal_user_applications for user ${booking.chefId} and location ${kitchenLocationId}`);
+                      }
+                    } catch (portalAppError) {
+                      console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
+                    }
                   }
                 } catch (portalSmsError) {
                   console.error(`❌ Error sending booking confirmation SMS to portal user:`, portalSmsError);
@@ -4201,19 +4235,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 // Check if this is a portal user booking and send SMS to portal user
                 try {
-                  // Check if booking has external contact (portal user booking)
+                  // Check if booking is a portal user booking (has external contact or bookingType is 'external')
                   const bookingData = await firebaseStorage.getBookingById(id);
-                  if (bookingData && (bookingData as any).externalContact && (bookingData as any).externalContact.phone) {
-                    const portalUserPhone = (bookingData as any).externalContact.phone;
-                    const smsMessage = generatePortalUserBookingCancellationSMS({
-                      kitchenName: kitchen.name || 'Kitchen',
-                      bookingDate: booking.bookingDate,
-                      startTime: booking.startTime,
-                      endTime: booking.endTime,
-                      reason: 'The manager has cancelled this booking'
-                    });
-                    await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_cancelled` });
-                    console.log(`✅ Booking cancellation SMS sent to portal user: ${portalUserPhone}`);
+                  const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
+                  
+                  if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
+                    // Get portal user phone from portal_user_applications table
+                    try {
+                      const portalAppResult = await pool.query(
+                        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
+                        [booking.chefId, kitchenLocationId]
+                      );
+                      
+                      if (portalAppResult.rows.length > 0 && portalAppResult.rows[0].phone) {
+                        const portalUserPhone = portalAppResult.rows[0].phone;
+                        const smsMessage = generatePortalUserBookingCancellationSMS({
+                          kitchenName: kitchen.name || 'Kitchen',
+                          bookingDate: booking.bookingDate,
+                          startTime: booking.startTime,
+                          endTime: booking.endTime,
+                          reason: 'The manager has cancelled this booking'
+                        });
+                        await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_cancelled` });
+                        console.log(`✅ Booking cancellation SMS sent to portal user: ${portalUserPhone}`);
+                      } else {
+                        console.log(`📱 No phone number found in portal_user_applications for user ${booking.chefId} and location ${kitchenLocationId}`);
+                      }
+                    } catch (portalAppError) {
+                      console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
+                    }
                   }
                 } catch (portalSmsError) {
                   console.error(`❌ Error sending booking cancellation SMS to portal user:`, portalSmsError);
