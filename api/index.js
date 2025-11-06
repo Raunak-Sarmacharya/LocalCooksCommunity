@@ -13209,16 +13209,31 @@ app.get("/api/chef/bookings", requireChef, async (req, res) => {
       return res.json([]);
     }
     
+    // Get bookings with kitchen and location information
     const result = await pool.query(`
-      SELECT id, chef_id as "chefId", kitchen_id as "kitchenId", booking_date as "bookingDate",
-             start_time as "startTime", end_time as "endTime", status, special_notes as "specialNotes",
-             created_at as "createdAt", updated_at as "updatedAt"
-      FROM kitchen_bookings 
-      WHERE chef_id = $1
-      ORDER BY booking_date DESC, start_time DESC
+      SELECT 
+        kb.id, kb.chef_id as "chefId", kb.kitchen_id as "kitchenId", 
+        kb.booking_date as "bookingDate", kb.start_time as "startTime", 
+        kb.end_time as "endTime", kb.status, kb.special_notes as "specialNotes",
+        kb.created_at as "createdAt", kb.updated_at as "updatedAt",
+        k.name as "kitchenName", k.location_id as "locationId",
+        l.name as "locationName", l.timezone as "locationTimezone"
+      FROM kitchen_bookings kb
+      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+      LEFT JOIN locations l ON k.location_id = l.id
+      WHERE kb.chef_id = $1
+      ORDER BY kb.booking_date DESC, kb.start_time DESC
     `, [req.user.id]);
     
-    res.json(result.rows);
+    // Map the results to include locationTimezone with default fallback
+    const enrichedBookings = result.rows.map(booking => ({
+      ...booking,
+      locationTimezone: booking.locationTimezone || DEFAULT_TIMEZONE,
+      locationName: booking.locationName || null,
+      kitchenName: booking.kitchenName || null,
+    }));
+    
+    res.json(enrichedBookings);
   } catch (error) {
     console.error("Error fetching bookings:", error);
     res.status(500).json({ error: "Failed to fetch bookings" });
@@ -16476,7 +16491,7 @@ app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
     
     const userLocationId = accessResult.rows[0].location_id;
     
-    // Get bookings for this portal user with kitchen and location details
+    // Get bookings for this portal user with kitchen and location details including timezone
     const result = await pool.query(`
       SELECT 
         kb.id,
@@ -16490,7 +16505,8 @@ app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
         kb.created_at as "createdAt",
         kb.updated_at as "updatedAt",
         k.name as "kitchenName",
-        l.name as "locationName"
+        l.name as "locationName",
+        l.timezone as "locationTimezone"
       FROM kitchen_bookings kb
       INNER JOIN kitchens k ON k.id = kb.kitchen_id
       INNER JOIN locations l ON l.id = k.location_id
@@ -16499,7 +16515,13 @@ app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
       ORDER BY kb.booking_date DESC, kb.start_time DESC
     `, [userId, userLocationId]);
     
-    res.json(result.rows);
+    // Map the results to include locationTimezone with default fallback
+    const enrichedBookings = result.rows.map(booking => ({
+      ...booking,
+      locationTimezone: booking.locationTimezone || DEFAULT_TIMEZONE,
+    }));
+    
+    res.json(enrichedBookings);
   } catch (error) {
     console.error("Error fetching portal bookings:", error);
     if (!res.headersSent) {

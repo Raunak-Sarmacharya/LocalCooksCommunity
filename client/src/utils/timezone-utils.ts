@@ -7,46 +7,79 @@ export const DEFAULT_TIMEZONE = 'America/St_Johns';
 
 /**
  * Get timezone offset in milliseconds for a given timezone and date
+ * Uses Intl API to get the actual offset including DST
  */
 function getTimezoneOffsetMs(timezone: string, date: Date = new Date()): number {
-  // Create two dates: one in UTC, one in target timezone
-  // Format the same moment in both timezones
-  const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+  // Use the fact that Date objects are always UTC internally
+  // Format a known UTC time in both UTC and the target timezone
+  const testDate = date;
   
-  // The offset is the difference between UTC and timezone representations
-  return tzDate.getTime() - utcDate.getTime();
+  // Get what this UTC time looks like in UTC (should be the same)
+  const utcString = testDate.toLocaleString('en-US', { 
+    timeZone: 'UTC', 
+    hour: 'numeric', 
+    minute: 'numeric', 
+    hour12: false 
+  });
+  
+  // Get what this UTC time looks like in the target timezone
+  const tzString = testDate.toLocaleString('en-US', { 
+    timeZone: timezone, 
+    hour: 'numeric', 
+    minute: 'numeric', 
+    hour12: false 
+  });
+  
+  // Parse both times
+  const [utcHours, utcMinutes] = utcString.split(':').map(Number);
+  const [tzHours, tzMinutes] = tzString.split(':').map(Number);
+  
+  // Calculate offset: if UTC shows 12:00 and timezone shows 08:30, offset is -3:30
+  const utcTotalMinutes = utcHours * 60 + utcMinutes;
+  const tzTotalMinutes = tzHours * 60 + tzMinutes;
+  let offsetMinutes = tzTotalMinutes - utcTotalMinutes;
+  
+  // Handle day boundaries (timezone might be on different day)
+  if (offsetMinutes < -720) offsetMinutes += 1440; // Next day
+  if (offsetMinutes > 720) offsetMinutes -= 1440; // Previous day
+  
+  return offsetMinutes * 60 * 1000;
 }
 
 /**
  * Get current time in specified timezone as Date object
- * This returns a Date representing "now" adjusted for the timezone
+ * Returns a Date representing "now" in that timezone
  */
 export function getNowInTimezone(timezone: string = DEFAULT_TIMEZONE): Date {
   const now = new Date();
+  // Get the offset for "now" in the target timezone
   const offsetMs = getTimezoneOffsetMs(timezone, now);
-  // Adjust current time by the timezone offset
+  // If timezone is UTC-3:30, offset is -210 minutes
+  // To get "now" in timezone, we need to adjust: UTC time + offset = timezone time
+  // But we want a Date object that represents "now in timezone" as UTC
+  // So we subtract the offset: UTC - offset = timezone representation
   return new Date(now.getTime() - offsetMs);
 }
 
 /**
  * Create a date from date and time strings in the specified timezone
- * This creates a Date object representing that local time in the timezone
+ * This creates a Date object (UTC timestamp) for that local time in the timezone
  */
 export function createBookingDateTime(dateStr: string, timeStr: string, timezone: string = DEFAULT_TIMEZONE): Date {
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hours, minutes] = timeStr.split(':').map(Number);
   
-  // Create a date object assuming the date/time is in the target timezone
-  // We'll create it as if it's in UTC first, then adjust for timezone
-  const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+  // Create a date string in ISO format that we'll interpret as being in the timezone
+  // We'll use a trick: create the date as if it's UTC, then adjust for the timezone offset
+  const tempDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
   
-  // Get the timezone offset for this specific date/time
-  const offsetMs = getTimezoneOffsetMs(timezone, utcDate);
+  // Get the offset for this specific date/time in the timezone
+  const offsetMs = getTimezoneOffsetMs(timezone, tempDate);
   
-  // Adjust: if we want "2024-01-15 14:00" in America/St_Johns, we need to:
-  // Subtract the offset to get the correct UTC timestamp
-  return new Date(utcDate.getTime() - offsetMs);
+  // Convert from timezone local time to UTC:
+  // If we have "14:00 in America/St_Johns" (UTC-3:30), the UTC equivalent is 14:00 + 3:30 = 17:30
+  // Offset is negative (-210 minutes), so UTC = local - offset = local + |offset|
+  return new Date(tempDate.getTime() - offsetMs);
 }
 
 /**
