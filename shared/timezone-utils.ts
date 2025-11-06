@@ -105,7 +105,8 @@ export function isBookingPast(bookingDate: string, endTime: string, timezone: st
  */
 export function formatInTimezone(date: Date, formatStr: string = 'PPpp', timezone: string = DEFAULT_TIMEZONE): string {
   const tzDate = new TZDate(date, timezone);
-  return format(tzDate, formatStr, { timeZone: timezone });
+  // TZDate already handles timezone, so we don't need to pass timeZone option to format
+  return format(tzDate, formatStr);
 }
 
 /**

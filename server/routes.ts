@@ -9,6 +9,7 @@ import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
 import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
+import { sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS } from "./sms";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
@@ -4025,17 +4026,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
             
-            // Get chef's full name from application if available (better than just email)
+            // Get chef's full name and phone from application if available (better than just email)
             let chefName = chef.username || 'Chef';
+            let chefPhone: string | null = null;
             if (pool && booking.chefId) {
               try {
                 const appResult = await pool.query(
-                  'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                  'SELECT full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
                   [booking.chefId]
                 );
-                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
-                  chefName = appResult.rows[0].full_name;
-                  console.log(`📋 Using application full name "${chefName}" for chef ${booking.chefId} in confirmation email`);
+                if (appResult.rows.length > 0) {
+                  if (appResult.rows[0].full_name) {
+                    chefName = appResult.rows[0].full_name;
+                  }
+                  if (appResult.rows[0].phone) {
+                    chefPhone = appResult.rows[0].phone;
+                  }
+                  console.log(`📋 Using application full name "${chefName}" for chef ${booking.chefId} in confirmation email${chefPhone ? `, phone: ${chefPhone}` : ''}`);
                 }
               } catch (error) {
                 console.debug(`Could not get full name for chef ${booking.chefId} from applications, using username`);
@@ -4069,6 +4076,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error(`❌ Error sending booking confirmation email to chef ${chefEmailAddress}:`, confirmationEmailError);
                   console.error("Confirmation email error details:", confirmationEmailError instanceof Error ? confirmationEmailError.message : String(confirmationEmailError));
                 }
+
+                // Send confirmation SMS to chef
+                if (chefPhone) {
+                  try {
+                    const smsMessage = generateChefBookingConfirmationSMS({
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_confirmed` });
+                    console.log(`✅ Booking confirmation SMS sent to chef: ${chefPhone}`);
+                  } catch (smsError) {
+                    console.error(`❌ Error sending booking confirmation SMS to chef:`, smsError);
+                  }
+                }
                 
                 // Send notification email to manager
                 const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
@@ -4093,6 +4116,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error(`❌ Error sending manager confirmation email:`, managerEmailError);
                   }
                 }
+
+                // Check if this is a portal user booking and send SMS to portal user
+                try {
+                  // Check if booking has external contact (portal user booking)
+                  const bookingData = await firebaseStorage.getBookingById(id);
+                  if (bookingData && (bookingData as any).externalContact && (bookingData as any).externalContact.phone) {
+                    const portalUserPhone = (bookingData as any).externalContact.phone;
+                    const smsMessage = generatePortalUserBookingConfirmationSMS({
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_confirmed` });
+                    console.log(`✅ Booking confirmation SMS sent to portal user: ${portalUserPhone}`);
+                  }
+                } catch (portalSmsError) {
+                  console.error(`❌ Error sending booking confirmation SMS to portal user:`, portalSmsError);
+                }
               } else if (status === 'cancelled') {
                 // Send cancellation email to chef
                 try {
@@ -4114,6 +4156,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 } catch (cancellationEmailError) {
                   console.error(`❌ Error sending booking cancellation email to chef ${chefEmailAddress}:`, cancellationEmailError);
                   console.error("Cancellation email error details:", cancellationEmailError instanceof Error ? cancellationEmailError.message : String(cancellationEmailError));
+                }
+
+                // Send cancellation SMS to chef
+                if (chefPhone) {
+                  try {
+                    const smsMessage = generateChefBookingCancellationSMS({
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      reason: 'The manager has cancelled this booking'
+                    });
+                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to chef: ${chefPhone}`);
+                  } catch (smsError) {
+                    console.error(`❌ Error sending booking cancellation SMS to chef:`, smsError);
+                  }
                 }
                 
                 // Send notification email to manager
@@ -4138,6 +4197,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   } catch (managerEmailError) {
                     console.error(`❌ Error sending manager cancellation email:`, managerEmailError);
                   }
+                }
+
+                // Check if this is a portal user booking and send SMS to portal user
+                try {
+                  // Check if booking has external contact (portal user booking)
+                  const bookingData = await firebaseStorage.getBookingById(id);
+                  if (bookingData && (bookingData as any).externalContact && (bookingData as any).externalContact.phone) {
+                    const portalUserPhone = (bookingData as any).externalContact.phone;
+                    const smsMessage = generatePortalUserBookingCancellationSMS({
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      reason: 'The manager has cancelled this booking'
+                    });
+                    await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to portal user: ${portalUserPhone}`);
+                  }
+                } catch (portalSmsError) {
+                  console.error(`❌ Error sending booking cancellation SMS to portal user:`, portalSmsError);
                 }
               }
             }
@@ -4785,20 +4864,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`✅ STEP 2.4 COMPLETE: No manager ID set, will rely on location notification email`);
         }
 
-        // Step 2.5: Get chef's full name from application (optional enhancement)
-        console.log(`📧 STEP 2.5: Enriching chef name from application...`);
+        // Step 2.5: Get chef's full name and phone from application (optional enhancement)
+        console.log(`📧 STEP 2.5: Enriching chef name and phone from application...`);
         let chefName = chef.username || 'Chef';
+        let chefPhone: string | null = null;
         if (pool && req.user!.id) {
           try {
             const appResult = await pool.query(
-              'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+              'SELECT full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
               [req.user!.id]
             );
-            if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
-              chefName = appResult.rows[0].full_name;
-              console.log(`✅ STEP 2.5 COMPLETE: Using application full name "${chefName}"`);
+            if (appResult.rows.length > 0) {
+              if (appResult.rows[0].full_name) {
+                chefName = appResult.rows[0].full_name;
+              }
+              if (appResult.rows[0].phone) {
+                chefPhone = appResult.rows[0].phone;
+              }
+              console.log(`✅ STEP 2.5 COMPLETE: Using application full name "${chefName}"${chefPhone ? `, phone: ${chefPhone}` : ''}`);
             } else {
-              console.log(`✅ STEP 2.5 COMPLETE: No application name found, using username`);
+              console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
             }
           } catch (error) {
             console.log(`✅ STEP 2.5 COMPLETE: Could not query application, using username (non-critical)`);
@@ -4887,6 +4972,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
             emailResults.errors.push(errorMsg);
           }
         }
+
+        // Step 2.8: Send manager SMS notification
+        console.log(`📱 STEP 2.8: Sending booking notification SMS to manager...`);
+        try {
+          // Get manager phone number - check location notificationPhone first, then manager's application
+          let managerPhone: string | null = (location as any).notificationPhone || (location as any).notification_phone || null;
+          
+          if (!managerPhone && managerId && pool) {
+            // Try to get phone from manager's application (if they have one)
+            try {
+              const managerAppResult = await pool.query(
+                'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [managerId]
+              );
+              if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
+                managerPhone = managerAppResult.rows[0].phone;
+                console.log(`📱 STEP 2.8 PROGRESS: Found manager phone from application: ${managerPhone}`);
+              }
+            } catch (error) {
+              console.log(`📱 STEP 2.8 PROGRESS: Could not get manager phone from application (non-critical)`);
+            }
+          }
+
+          if (managerPhone) {
+            const smsMessage = generateManagerBookingSMS({
+              chefName: chefName,
+              kitchenName: kitchen.name || 'Kitchen',
+              bookingDate: bookingDate,
+              startTime,
+              endTime
+            });
+            const smsSent = await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${booking.id}_manager` });
+            if (smsSent) {
+              console.log(`✅ STEP 2.8 COMPLETE: Booking notification SMS sent successfully to manager: ${managerPhone}`);
+            } else {
+              console.warn(`⚠️ STEP 2.8 WARNING: SMS sending failed for manager: ${managerPhone}`);
+            }
+          } else {
+            console.log(`📱 STEP 2.8 SKIPPED: No manager phone number available`);
+          }
+        } catch (smsError) {
+          console.error(`❌ STEP 2.8 ERROR: Exception sending manager SMS:`, smsError);
+          // Don't fail the booking if SMS fails
+        }
         
         // Final summary
         console.log(`📧 STEP 2 COMPLETE: Email notification process finished for booking ${booking.id}`);
@@ -4973,6 +5102,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (managerId) {
                   manager = await storage.getUser(managerId);
                 }
+
+                // Get chef phone from application
+                let chefPhone: string | null = null;
+                if (pool && booking.chefId) {
+                  try {
+                    const appResult = await pool.query(
+                      'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                      [booking.chefId]
+                    );
+                    if (appResult.rows.length > 0 && appResult.rows[0].phone) {
+                      chefPhone = appResult.rows[0].phone;
+                    }
+                  } catch (error) {
+                    // Non-critical
+                  }
+                }
                 
                 // Import email functions
                 const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('./email.js');
@@ -4992,6 +5137,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
                 } catch (emailError) {
                   console.error("Error sending chef cancellation email:", emailError);
+                }
+
+                // Send SMS to chef
+                if (chefPhone) {
+                  try {
+                    const smsMessage = generateChefSelfCancellationSMS({
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_self_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to chef: ${chefPhone}`);
+                  } catch (smsError) {
+                    console.error("Error sending chef cancellation SMS:", smsError);
+                  }
                 }
                 
                 // Send email to manager
@@ -5016,6 +5177,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 } else {
                   console.warn(`⚠️ No notification email found for location ${kitchenLocationId}`);
+                }
+
+                // Send SMS to manager
+                try {
+                  // Get manager phone number - check location notificationPhone first, then manager's application
+                  let managerPhone: string | null = (location as any).notificationPhone || (location as any).notification_phone || null;
+                  
+                  if (!managerPhone && managerId && pool) {
+                    // Try to get phone from manager's application
+                    try {
+                      const managerAppResult = await pool.query(
+                        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                        [managerId]
+                      );
+                      if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
+                        managerPhone = managerAppResult.rows[0].phone;
+                      }
+                    } catch (error) {
+                      // Non-critical
+                    }
+                  }
+
+                  if (managerPhone) {
+                    const smsMessage = generateManagerBookingCancellationSMS({
+                      chefName: chef.username || 'Chef',
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${id}_manager_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to manager: ${managerPhone}`);
+                  }
+                } catch (smsError) {
+                  console.error("Error sending manager cancellation SMS:", smsError);
                 }
               }
             }
@@ -7336,6 +7532,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
           };
           await sendEmail(emailContent);
+        }
+
+        // Send SMS to manager
+        try {
+          const { db } = await import('./db');
+          const { locations } = await import('../shared/schema');
+          const { eq } = await import('drizzle-orm');
+          
+          const locationRecord = await db.select().from(locations).where(eq(locations.id, userLocationId)).limit(1);
+          const locationData = locationRecord[0];
+          
+          // Get manager phone number - check location notificationPhone first, then manager's application
+          let managerPhone: string | null = (locationData as any)?.notificationPhone || (locationData as any)?.notification_phone || null;
+          
+          if (!managerPhone && (locationData as any)?.managerId && pool) {
+            // Try to get phone from manager's application
+            try {
+              const managerAppResult = await pool.query(
+                'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [(locationData as any).managerId]
+              );
+              if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
+                managerPhone = managerAppResult.rows[0].phone;
+              }
+            } catch (error) {
+              // Non-critical
+            }
+          }
+
+          if (managerPhone) {
+            const smsMessage = generateManagerPortalBookingSMS({
+              portalUserName: bookingName,
+              kitchenName: booking.kitchenName || 'Kitchen',
+              bookingDate: bookingDate,
+              startTime,
+              endTime
+            });
+            await sendSMS(managerPhone, smsMessage, { trackingId: `portal_booking_${booking.id}_manager` });
+            console.log(`✅ Portal booking SMS sent to manager: ${managerPhone}`);
+          }
+        } catch (smsError) {
+          console.error("Error sending booking SMS to manager:", smsError);
+          // Don't fail the booking if SMS fails
         }
       } catch (emailError) {
         console.error("Error sending booking notification email:", emailError);
