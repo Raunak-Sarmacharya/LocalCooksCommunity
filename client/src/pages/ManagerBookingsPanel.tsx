@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, XCircle, Clock, Calendar, User, MapPin } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Booking {
   id: number;
@@ -41,6 +51,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
 
   // Fetch all bookings for this manager with real-time polling
   const { data: bookings = [], isLoading } = useQuery({
@@ -159,10 +171,22 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     }
   };
 
-  const handleReject = (bookingId: number) => {
-    if (window.confirm('Are you sure you want to cancel this booking?')) {
-      updateStatusMutation.mutate({ bookingId, status: 'cancelled' });
+  const handleCancelClick = (booking: Booking) => {
+    setBookingToCancel(booking);
+    setCancelDialogOpen(true);
+  };
+
+  const handleCancelConfirm = () => {
+    if (bookingToCancel) {
+      updateStatusMutation.mutate({ bookingId: bookingToCancel.id, status: 'cancelled' });
+      setCancelDialogOpen(false);
+      setBookingToCancel(null);
     }
+  };
+
+  const handleCancelDialogClose = () => {
+    setCancelDialogOpen(false);
+    setBookingToCancel(null);
   };
 
   const filteredBookings = bookings.filter((booking: Booking) => {
@@ -268,7 +292,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         </div>
                         <div className="flex items-center gap-2 text-gray-600">
                           <User className="h-4 w-4" />
-                          <span>Chef {booking.chefName || `#${booking.chefId}`}</span>
+                          <span>{booking.chefName || `Chef #${booking.chefId}`}</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-600">
                           <Calendar className="h-4 w-4" />
@@ -305,7 +329,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         Confirm Booking
                       </button>
                       <button
-                        onClick={() => handleReject(booking.id)}
+                        onClick={() => handleCancelClick(booking)}
                         disabled={updateStatusMutation.isPending}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
@@ -314,11 +338,76 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                       </button>
                     </div>
                   )}
+                  
+                  {booking.status === 'confirmed' && (
+                    <div className="flex gap-3 mt-4 pt-4 border-t">
+                      <button
+                        onClick={() => handleCancelClick(booking)}
+                        disabled={updateStatusMutation.isPending}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Cancel Booking
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
+        
+        {/* Cancellation Confirmation Dialog */}
+        <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="h-5 w-5" />
+                Cancel Booking Confirmation
+              </AlertDialogTitle>
+              <AlertDialogDescription className="pt-4">
+                <div className="space-y-3">
+                  <p className="font-medium">
+                    Are you sure you want to cancel this booking? This action cannot be undone.
+                  </p>
+                  {bookingToCancel && (
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Chef:</span>
+                        <span>{bookingToCancel.chefName || `Chef #${bookingToCancel.chefId}`}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Kitchen:</span>
+                        <span>{bookingToCancel.kitchenName || 'Kitchen'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Date:</span>
+                        <span>{formatDate(bookingToCancel.bookingDate)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Time:</span>
+                        <span>{formatTime(bookingToCancel.startTime)} - {formatTime(bookingToCancel.endTime)}</span>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-gray-600 mt-3">
+                    The chef will be notified via email that their booking has been cancelled.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={handleCancelDialogClose}>Keep Booking</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleCancelConfirm}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                disabled={updateStatusMutation.isPending}
+              >
+                {updateStatusMutation.isPending ? 'Cancelling...' : 'Yes, Cancel Booking'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
   );
 
