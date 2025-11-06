@@ -9,9 +9,51 @@ import createMemoryStore from 'memorystore';
 import multer from 'multer';
 import path from 'path';
 import { promisify } from 'util';
-// Import proper timezone utilities using industry-standard @date-fns/tz
-// This uses the IANA timezone database for accurate DST handling and timezone conversions
-import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from './shared/timezone-utils.js';
+// Default timezone constant (available immediately)
+const DEFAULT_TIMEZONE = 'America/St_Johns';
+
+// Lazy-load timezone utilities using dynamic import to avoid breaking module load
+// This ensures login works while still providing proper timezone handling
+let timezoneUtilsCache = null;
+
+async function getTimezoneUtils() {
+  if (!timezoneUtilsCache) {
+    try {
+      timezoneUtilsCache = await import('./shared/timezone-utils.js');
+    } catch (error) {
+      console.error('Failed to load timezone utilities, using fallback:', error);
+      // Fallback to simple implementation if import fails
+      timezoneUtilsCache = {
+        DEFAULT_TIMEZONE,
+        isBookingTimePast: (date, time, tz) => {
+          const [year, month, day] = date.split('-').map(Number);
+          const [hours, minutes] = time.split(':').map(Number);
+          const bookingDate = new Date(year, month - 1, day, hours, minutes);
+          return bookingDate < new Date();
+        },
+        getHoursUntilBooking: (date, time, tz) => {
+          const [year, month, day] = date.split('-').map(Number);
+          const [hours, minutes] = time.split(':').map(Number);
+          const bookingDate = new Date(year, month - 1, day, hours, minutes);
+          const diffMs = bookingDate.getTime() - new Date().getTime();
+          return diffMs / (1000 * 60 * 60);
+        }
+      };
+    }
+  }
+  return timezoneUtilsCache;
+}
+
+// Wrapper functions that use lazy-loaded utilities
+async function isBookingTimePast(bookingDate, bookingTime, timezone = DEFAULT_TIMEZONE) {
+  const utils = await getTimezoneUtils();
+  return utils.isBookingTimePast(bookingDate, bookingTime, timezone);
+}
+
+async function getHoursUntilBooking(bookingDate, bookingTime, timezone = DEFAULT_TIMEZONE) {
+  const utils = await getTimezoneUtils();
+  return utils.getHoursUntilBooking(bookingDate, bookingTime, timezone);
+}
 
 // Setup
 const app = express();
@@ -13010,13 +13052,13 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     // Convert booking date to string format (YYYY-MM-DD)
     const bookingDateStr = bookingDate.split('T')[0];
     
-    // Validate booking time using timezone-aware functions
-    if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+    // Validate booking time using timezone-aware functions (lazy-loaded)
+    if (await isBookingTimePast(bookingDateStr, startTime, timezone)) {
       return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
     }
     
     // Check if booking is within minimum booking window (timezone-aware)
-    const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+    const hoursUntilBooking = await getHoursUntilBooking(bookingDateStr, startTime, timezone);
     if (hoursUntilBooking < minimumBookingWindowHours) {
       return res.status(400).json({ 
         error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
@@ -14896,13 +14938,13 @@ app.post("/api/public/bookings", async (req, res) => {
     // Convert booking date to string format (YYYY-MM-DD)
     const bookingDateStr = bookingDate.split('T')[0];
     
-    // Validate booking time using timezone-aware functions
-    if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+    // Validate booking time using timezone-aware functions (lazy-loaded)
+    if (await isBookingTimePast(bookingDateStr, startTime, timezone)) {
       return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
     }
     
     // Check if booking is within minimum booking window (timezone-aware)
-    const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+    const hoursUntilBooking = await getHoursUntilBooking(bookingDateStr, startTime, timezone);
     if (hoursUntilBooking < minimumBookingWindowHours) {
       return res.status(400).json({ 
         error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
@@ -16224,13 +16266,13 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     // Convert booking date to string format (YYYY-MM-DD)
     const bookingDateStr = bookingDate.split('T')[0];
     
-    // Validate booking time using timezone-aware functions
-    if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+    // Validate booking time using timezone-aware functions (lazy-loaded)
+    if (await isBookingTimePast(bookingDateStr, startTime, timezone)) {
       return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
     }
     
     // Check if booking is within minimum booking window (timezone-aware)
-    const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+    const hoursUntilBooking = await getHoursUntilBooking(bookingDateStr, startTime, timezone);
     if (hoursUntilBooking < minimumBookingWindowHours) {
       return res.status(400).json({ 
         error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
