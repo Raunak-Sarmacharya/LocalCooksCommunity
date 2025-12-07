@@ -110,9 +110,6 @@ export const deliveryPartnerApplications = pgTable("delivery_partner_application
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Import phone validation utilities
-import { phoneNumberSchema } from './phone-validation';
-
 // Define the Zod schema for inserting an application
 export const insertApplicationSchema = createInsertSchema(applications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
