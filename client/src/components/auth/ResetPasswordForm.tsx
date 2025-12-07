@@ -112,11 +112,12 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
       // Determine endpoint based on reset type
       let endpoint: string;
       let body: any;
+      let emailToUse: string | undefined;
       
       if (isFirebaseReset) {
         // Firebase reset
         endpoint = '/api/firebase/reset-password';
-        const emailToUse = verifiedEmail || email;
+        emailToUse = verifiedEmail || email;
         body = { oobCode, newPassword: data.password, email: emailToUse };
       } else if (token) {
         // Check if this is a manager reset by checking URL params
