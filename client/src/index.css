@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Lobster&family=Nunito:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Lobster&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -42,13 +42,16 @@
   --auth-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   --auth-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
   
-  /* Brand colors from localcooks.ca */
+  /* Brand colors from localcooks.ca - matching exact landing page */
   --color-cream: #FFE8DD;
   --color-cream-dark: #FFD4C4;
   --color-gold: #FFD700;
   --color-charcoal: #2C2C2C;
   --color-charcoal-light: #6B6B6B;
-  --color-primary: #f51042;
+  --color-primary: #F51042;
+  --color-accent: #6B4A4F;
+  --color-text-primary: #333333;
+  --color-link: #6B4A4F;
 }
 
 .dark {
@@ -80,7 +83,7 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    font-family: 'Nunito', sans-serif;
+    font-family: 'Instrument Sans', system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent; /* Remove mobile tap highlight */
   }
 
@@ -349,9 +352,10 @@
     filter: blur(100px);
   }
 
-  /* Gradient Background Utilities */
+  /* Gradient Background Utilities - matching landing page */
   .gradient-hero-cream {
     background: linear-gradient(165deg, var(--color-cream) 0%, var(--color-cream-dark) 50%, #FFE8DD 100%);
+    clip-path: circle(150% at 50% 45%);
   }
 
   .gradient-hero-warm {
@@ -389,14 +393,50 @@
     transform: translateY(-4px);
   }
 
-  /* Button Glow Effects */
+  /* Button Glow Effects - Enhanced */
   .btn-glow {
-    box-shadow: 0 0 15px rgba(245, 16, 66, 0.3);
-    transition: box-shadow 0.3s ease-out;
+    box-shadow: 0 4px 20px rgba(245, 16, 66, 0.3), 0 0 15px rgba(245, 16, 66, 0.2);
+    transition: box-shadow 0.3s ease-out, transform 0.3s ease-out;
   }
 
   .btn-glow:hover {
-    box-shadow: 0 0 25px rgba(245, 16, 66, 0.5);
+    box-shadow: 0 8px 30px rgba(245, 16, 66, 0.5), 0 0 25px rgba(245, 16, 66, 0.4);
+    transform: translateY(-2px);
+  }
+  
+  /* Enhanced Card Shadows */
+  .card-shadow {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  .card-shadow-hover {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Modern Gradient Text */
+  .gradient-text {
+    background: linear-gradient(135deg, var(--color-primary) 0%, #FF5470 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Glassmorphism Effect */
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  
+  /* Enhanced Hover Effects */
+  .hover-lift {
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
   }
 
   /* Progress Indicator with Glow */
@@ -404,11 +444,18 @@
     box-shadow: 0 0 15px var(--color-primary);
   }
 
-  /* Display Font for Headings */
+  /* Progress bar gradient */
+  .progress-bar-gradient {
+    background: linear-gradient(90deg, var(--color-primary) 0%, #FF5470 100%);
+  }
+
+  /* Display Font for Headings - matching landing page */
   .font-display {
+    font-family: 'Lobster', cursive;
     font-size: 3.2rem;
     line-height: 1.1;
-    font-weight: 700;
+    font-weight: 400;
+    color: var(--color-primary);
   }
 
   @media (min-width: 768px) {
@@ -417,12 +464,13 @@
     }
   }
 
-  /* Tagline Style */
+  /* Tagline Style - matching landing page */
   .font-tagline {
-    font-family: 'Courier New', monospace;
+    font-family: 'Space Mono', monospace;
     font-size: 0.625rem;
     text-transform: uppercase;
     letter-spacing: 0.4em;
+    color: var(--color-charcoal-light);
   }
 
   @media (min-width: 768px) {
@@ -431,11 +479,80 @@
     }
   }
 
+  /* Brand typography matching landing page */
+  .font-display-brand {
+    font-family: 'Lobster', cursive;
+    font-size: 3.2rem;
+    line-height: 1.1;
+    color: var(--color-primary);
+  }
+
+  @media (min-width: 768px) {
+    .font-display-brand {
+      font-size: 4.5rem;
+    }
+  }
+
+  /* Body text matching landing page */
+  .font-body-brand {
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    color: var(--color-text-primary);
+  }
+
+  @media (min-width: 768px) {
+    .font-body-brand {
+      font-size: 0.75rem;
+    }
+  }
+
   /* Dot Pattern Overlay */
   .dot-pattern {
     background-image: radial-gradient(circle at 1px 1px, var(--color-charcoal) 1px, transparent 0);
     background-size: 28px 28px;
     opacity: 0.02;
+  }
+
+  /* Preloader Animations */
+  .logo-pulse {
+    animation: logo-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes logo-pulse {
+    0%, 100% {
+      transform: translate3d(0px, 0px, 0px) scale(1.0425, 1.0425);
+    }
+    50% {
+      transform: translate3d(0px, 0px, 0px) scale(1.05, 1.05);
+    }
+  }
+
+  .orbit-ring {
+    transition: transform 0.1s linear;
+  }
+
+  .orbit-food-item {
+    transition: transform 0.1s linear;
+  }
+
+  .fade-element {
+    animation: fade-in-up 0.8s ease-out;
+  }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .preloader-bg {
+    position: relative;
   }
 }
 

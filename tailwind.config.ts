@@ -21,6 +21,11 @@ export default {
         'mobile-md': {'min': '481px', 'max': '640px'},
         'mobile-lg': {'min': '641px', 'max': '768px'},
       },
+      fontFamily: {
+        sans: ["Instrument Sans", "system-ui", "sans-serif"],
+        display: ["Lobster", "cursive"],
+        mono: ["Space Mono", "monospace"],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
@@ -83,7 +88,7 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        // Brand colors from localcooks.ca
+        // Brand colors from localcooks.ca - matching exact landing page
         cream: {
           DEFAULT: "#FFE8DD",
           light: "#FFE8DD",
@@ -97,6 +102,12 @@ export default {
         charcoal: {
           DEFAULT: "#2C2C2C",
           light: "#6B6B6B",
+        },
+        brand: {
+          primary: "#F51042",
+          accent: "#6B4A4F",
+          text: "#333333",
+          link: "#6B4A4F",
         },
       },
       keyframes: {

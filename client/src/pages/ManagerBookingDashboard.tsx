@@ -234,7 +234,7 @@ export default function ManagerBookingDashboard() {
             {/* Left Sidebar - Navigation & Location Selection */}
             <aside className="lg:col-span-3 space-y-4">
               {/* Location Selection */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6 hover:shadow-xl transition-all duration-300">
                 <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
                   Select Location
                 </label>
@@ -266,7 +266,7 @@ export default function ManagerBookingDashboard() {
               </div>
 
               {/* Navigation */}
-              <nav className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+              <nav className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2 hover:shadow-xl transition-all duration-300">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -288,7 +288,7 @@ export default function ManagerBookingDashboard() {
 
               {/* Quick Stats (when location selected) */}
               {selectedLocation && activeView === 'overview' && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6 hover:shadow-xl transition-all duration-300">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
                     Quick Info
                   </h3>
@@ -517,7 +517,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8 hover:shadow-xl transition-all duration-300">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Pending Review</p>
@@ -529,7 +529,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8 hover:shadow-xl transition-all duration-300">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Confirmed</p>
@@ -541,7 +541,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8 hover:shadow-xl transition-all duration-300">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Bookings</p>
@@ -638,7 +638,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
 
       {/* Selected Date Details */}
       {selectedDate && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8 hover:shadow-xl transition-all duration-300">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">
               Bookings for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -746,7 +746,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => onNavigate('bookings')}
-            className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left w-full"
+            className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-300 text-left w-full shadow-sm hover:shadow-md"
           >
             <BookOpen className="h-5 w-5 text-blue-600" />
             <div>
@@ -756,7 +756,7 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
           </button>
           <button
             onClick={() => onNavigate('availability')}
-            className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left w-full"
+            className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-300 text-left w-full shadow-sm hover:shadow-md"
           >
             <Calendar className="h-5 w-5 text-blue-600" />
             <div>
@@ -891,7 +891,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               </div>
             </div>
 
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-4">
+            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Email Address
@@ -963,7 +963,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               </div>
             </div>
 
-            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 space-y-4">
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Booking Portal URL

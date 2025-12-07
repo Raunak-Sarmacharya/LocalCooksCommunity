@@ -2,13 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "lucide-react";
 import Logo from "@/components/ui/logo";
+import Preloader from "@/components/ui/Preloader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
+import { useState } from "react";
 
 export default function ManagerLanding() {
   const [, setLocation] = useLocation();
+  const [showPreloader, setShowPreloader] = useState(true);
 
   // Check if manager is logged in
   const { data: sessionUser, isLoading } = useQuery({
@@ -53,6 +56,12 @@ export default function ManagerLanding() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        {showPreloader && (
+          <Preloader
+            onComplete={() => setShowPreloader(false)}
+            duration={3000}
+          />
+        )}
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-2" />
           <p className="text-sm text-gray-600">Loading...</p>
@@ -64,7 +73,14 @@ export default function ManagerLanding() {
   // If not logged in, show welcome page with login option
   if (!isManager) {
     return (
-      <GradientHero variant="cool" className="min-h-screen">
+      <>
+        {showPreloader && (
+          <Preloader
+            onComplete={() => setShowPreloader(false)}
+            duration={3000}
+          />
+        )}
+        <GradientHero variant="cool" className="min-h-screen">
         {/* Header */}
         <header className="bg-white/10 backdrop-blur-sm border-b border-white/20">
           <div className="container mx-auto px-4 py-4">
@@ -87,10 +103,10 @@ export default function ManagerLanding() {
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-8 backdrop-blur-sm">
                 <Building2 className="h-10 w-10 text-white" />
               </div>
-              <h2 className="text-5xl md:text-6xl font-bold text-white mb-6">
+              <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 leading-tight">
                 Manage Your Commercial Kitchen
               </h2>
-            <p className="text-xl text-blue-100 max-w-2xl mx-auto mb-8">
+            <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto mb-10 leading-relaxed font-medium">
               Access your dashboard to manage bookings, availability, chef profiles, and location settings.
             </p>
               <Button
@@ -107,32 +123,44 @@ export default function ManagerLanding() {
 
           {/* Features */}
           <FadeInSection delay={1}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white card-hover">
-              <CardHeader>
-                <Calendar className="h-8 w-8 text-white mb-3" />
-                <CardTitle className="text-white">Manage Bookings</CardTitle>
-                <CardDescription className="text-blue-100">
-                  View and manage all kitchen bookings from third-party users and chefs.
-                </CardDescription>
-              </CardHeader>
-            </Card>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10 max-w-5xl mx-auto">
+              <Card className="bg-white/10 backdrop-blur-md border-white/30 text-white rounded-3xl shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.2)] transition-all duration-300 group relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <CardHeader className="relative z-10">
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <Calendar className="h-8 w-8 text-white" />
+                  </div>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">Manage Bookings</CardTitle>
+                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">
+                    View and manage all kitchen bookings from third-party users and chefs.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
 
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white card-hover">
-                <CardHeader>
-                  <Settings className="h-8 w-8 text-white mb-3" />
-                  <CardTitle className="text-white">Set Availability</CardTitle>
-                  <CardDescription className="text-blue-100">
+              <Card className="bg-white/10 backdrop-blur-md border-white/30 text-white rounded-3xl shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.2)] transition-all duration-300 group relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <CardHeader className="relative z-10">
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <Settings className="h-8 w-8 text-white" />
+                  </div>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">Set Availability</CardTitle>
+                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">
                     Configure kitchen availability, time slots, and booking policies.
                   </CardDescription>
                 </CardHeader>
               </Card>
 
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white card-hover">
-                <CardHeader>
-                  <Users className="h-8 w-8 text-white mb-3" />
-                  <CardTitle className="text-white">Chef Profiles</CardTitle>
-                  <CardDescription className="text-blue-100">
+              <Card className="bg-white/10 backdrop-blur-md border-white/30 text-white rounded-3xl shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.2)] transition-all duration-300 group relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <CardHeader className="relative z-10">
+                  <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <Users className="h-8 w-8 text-white" />
+                  </div>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">Chef Profiles</CardTitle>
+                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">
                     Review and manage chef profiles and access permissions.
                   </CardDescription>
                 </CardHeader>
@@ -141,6 +169,7 @@ export default function ManagerLanding() {
           </FadeInSection>
         </div>
       </GradientHero>
+      </>
     );
   }
 

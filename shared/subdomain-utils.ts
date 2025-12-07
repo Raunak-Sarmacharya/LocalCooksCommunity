@@ -15,15 +15,34 @@ export function getSubdomainFromHostname(hostname: string): SubdomainType {
   // Remove port if present
   const hostWithoutPort = hostname.split(':')[0];
 
-  // Handle localhost/development
-  if (hostWithoutPort === 'localhost' || hostWithoutPort === '127.0.0.1') {
-    // In development, check for subdomain in query params or headers
-    return null; // Default to main in development
-  }
-
   // Split by dots
   const parts = hostWithoutPort.split('.');
 
+  // Handle localhost subdomains (development)
+  // For 'chef.localhost', parts would be ['chef', 'localhost']
+  // For 'localhost', parts would be ['localhost']
+  if (hostWithoutPort === 'localhost' || hostWithoutPort === '127.0.0.1') {
+    return 'main'; // Default to main for plain localhost
+  }
+
+  // Check for localhost subdomains (e.g., chef.localhost, driver.localhost)
+  if (parts.length === 2 && parts[1] === 'localhost') {
+    const subdomain = parts[0].toLowerCase();
+    switch (subdomain) {
+      case 'chef':
+        return 'chef';
+      case 'driver':
+        return 'driver';
+      case 'kitchen':
+        return 'kitchen';
+      case 'admin':
+        return 'admin';
+      default:
+        return 'main'; // Unknown subdomain, treat as main
+    }
+  }
+
+  // Handle production subdomains
   // For 'chef.localcooks.ca', parts would be ['chef', 'localcooks', 'ca']
   // For 'localcooks.ca', parts would be ['localcooks', 'ca']
   if (parts.length >= 3) {

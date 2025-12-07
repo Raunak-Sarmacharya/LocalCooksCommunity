@@ -5,6 +5,7 @@ import HeroSection from "@/components/home/HeroSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import Preloader from "@/components/ui/Preloader";
 import StatusEmailTest from "@/components/test/StatusEmailTest";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
@@ -12,6 +13,7 @@ import { useEffect, useState } from "react";
 export default function Home() {
   const { user } = useFirebaseAuth();
   const [showTestTool, setShowTestTool] = useState(false);
+  const [showPreloader, setShowPreloader] = useState(true);
 
   // Add automatic scroll to sections when hash URL changes
   const handleHashChange = () => {
@@ -47,6 +49,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      {showPreloader && (
+        <Preloader
+          onComplete={() => setShowPreloader(false)}
+          duration={3000}
+        />
+      )}
       <Header />
       <main className="flex-grow">
         <HeroSection />

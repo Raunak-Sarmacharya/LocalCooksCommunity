@@ -1,6 +1,7 @@
 import { useLocation, Redirect } from "wouter";
 import { Building2, ArrowRight, Calendar, Lock, LogOut, Loader2 } from "lucide-react";
 import Logo from "@/components/ui/logo";
+import Preloader from "@/components/ui/Preloader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
@@ -11,6 +12,7 @@ import FadeInSection from "@/components/ui/FadeInSection";
 export default function PortalLanding() {
   const [, setLocation] = useLocation();
   const [isPortalUser, setIsPortalUser] = useState<boolean | null>(null);
+  const [showPreloader, setShowPreloader] = useState(true);
 
   // Check if user is already logged in as portal user
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
@@ -65,6 +67,12 @@ export default function PortalLanding() {
   if (sessionLoading || (sessionUser && isPortalUserForDisplay)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
+        {showPreloader && (
+          <Preloader
+            onComplete={() => setShowPreloader(false)}
+            duration={3000}
+          />
+        )}
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Redirecting...</p>
@@ -74,7 +82,14 @@ export default function PortalLanding() {
   }
 
   return (
-    <GradientHero variant="cool" className="min-h-screen">
+    <>
+      {showPreloader && (
+        <Preloader
+          onComplete={() => setShowPreloader(false)}
+          duration={3000}
+        />
+      )}
+      <GradientHero variant="cool" className="min-h-screen">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -146,10 +161,10 @@ export default function PortalLanding() {
               <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-6">
                 <Building2 className="h-10 w-10 text-blue-600" />
               </div>
-              <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+              <h2 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
                 Commercial Kitchen Booking
               </h2>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+              <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto mb-10 leading-relaxed font-medium">
                 Find and book commercial kitchens for your culinary business. Perfect for chefs, caterers, and food entrepreneurs.
               </p>
               <Button
@@ -165,65 +180,78 @@ export default function PortalLanding() {
           </FadeInSection>
 
           {/* Info Section */}
-          <div className="mt-16">
+          <div className="mt-20">
             <FadeInSection delay={1}>
-              <div className="bg-white rounded-lg shadow-md p-8 md:p-12 border border-gray-200 card-hover">
-                <h3 className="text-3xl font-semibold text-gray-900 mb-8 text-center">How It Works</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                    <span className="text-blue-600 font-bold text-xl">1</span>
+              <div className="bg-white rounded-3xl shadow-2xl p-10 md:p-16 border border-gray-100 card-hover relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <div className="relative z-10">
+                  <div className="text-center mb-12">
+                    <span className="inline-block text-blue-600 font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-blue-100 rounded-full">
+                      Simple Process
+                    </span>
+                    <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">How It Works</h3>
                   </div>
-                  <h4 className="font-semibold text-gray-900 mb-2 text-lg">Choose a Location</h4>
-                  <p className="text-sm text-gray-600">
-                    Browse available commercial kitchen locations in your area and find the perfect space for your needs.
-                  </p>
-                </div>
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                    <span className="text-blue-600 font-bold text-xl">2</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
+                    <div className="text-center group/item">
+                      <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-100 to-blue-50 rounded-2xl mb-6 shadow-lg group-hover/item:scale-110 transition-transform duration-300">
+                        <span className="text-blue-600 font-bold text-3xl">1</span>
+                      </div>
+                      <h4 className="font-bold text-gray-900 mb-3 text-xl md:text-2xl">Choose a Location</h4>
+                      <p className="text-base md:text-lg text-gray-600 leading-relaxed">
+                        Browse available commercial kitchen locations in your area and find the perfect space for your needs.
+                      </p>
+                    </div>
+                    <div className="text-center group/item">
+                      <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl mb-6 shadow-lg group-hover/item:scale-110 transition-transform duration-300">
+                        <span className="text-green-600 font-bold text-3xl">2</span>
+                      </div>
+                      <h4 className="font-bold text-gray-900 mb-3 text-xl md:text-2xl">Select Date & Time</h4>
+                      <p className="text-base md:text-lg text-gray-600 leading-relaxed">
+                        Choose a kitchen, date, and available time slot that works for your schedule.
+                      </p>
+                    </div>
+                    <div className="text-center group/item">
+                      <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl mb-6 shadow-lg group-hover/item:scale-110 transition-transform duration-300">
+                        <span className="text-purple-600 font-bold text-3xl">3</span>
+                      </div>
+                      <h4 className="font-bold text-gray-900 mb-3 text-xl md:text-2xl">Submit Booking</h4>
+                      <p className="text-base md:text-lg text-gray-600 leading-relaxed">
+                        Fill in your details and submit your booking request. The kitchen manager will confirm your booking.
+                      </p>
+                    </div>
                   </div>
-                  <h4 className="font-semibold text-gray-900 mb-2 text-lg">Select Date & Time</h4>
-                  <p className="text-sm text-gray-600">
-                    Choose a kitchen, date, and available time slot that works for your schedule.
-                  </p>
                 </div>
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                    <span className="text-blue-600 font-bold text-xl">3</span>
-                  </div>
-                  <h4 className="font-semibold text-gray-900 mb-2 text-lg">Submit Booking</h4>
-                  <p className="text-sm text-gray-600">
-                    Fill in your details and submit your booking request. The kitchen manager will confirm your booking.
-                  </p>
-                </div>
-              </div>
               </div>
             </FadeInSection>
           </div>
 
           {/* Features Section */}
           <FadeInSection delay={2}>
-            <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-8">
-              <Card className="border-2 card-hover">
-              <CardHeader>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                  <Calendar className="h-6 w-6 text-green-600" />
-                </div>
-                <CardTitle>Flexible Booking</CardTitle>
-                <CardDescription>
-                  Book commercial kitchens by the hour or day. Choose from multiple locations and time slots.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-              <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                    <Building2 className="h-6 w-6 text-purple-600" />
+            <div className="mt-20 grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10">
+              <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <CardHeader className="relative z-10">
+                  <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                    <Calendar className="h-8 w-8 text-green-600" />
                   </div>
-                  <CardTitle>Professional Kitchens</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 group-hover:text-green-600 transition-colors duration-300">Flexible Booking</CardTitle>
+                  <CardDescription className="text-base md:text-lg leading-relaxed mt-3">
+                    Book commercial kitchens by the hour or day. Choose from multiple locations and time slots.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <CardHeader className="relative z-10">
+                  <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                    <Building2 className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors duration-300">Professional Kitchens</CardTitle>
+                  <CardDescription className="text-base md:text-lg leading-relaxed mt-3">
                     Access fully equipped commercial kitchens with all the tools and space you need for your culinary business.
                   </CardDescription>
                 </CardHeader>
@@ -248,5 +276,6 @@ export default function PortalLanding() {
         </div>
       </footer>
     </GradientHero>
+    </>
   );
 }
