@@ -26,7 +26,7 @@ export default function AboutSection() {
   // Removed button functionality as requested
 
   return (
-    <section id="about" className="py-20 md:py-28 px-4 scroll-mt-24 bg-gradient-to-b from-white to-gray-50 relative overflow-hidden">
+    <section id="about" className="py-12 md:py-16 px-4 scroll-mt-24 bg-gradient-to-b from-white to-gray-50 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 opacity-5 pointer-events-none">
         <div className="absolute top-20 right-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -34,7 +34,7 @@ export default function AboutSection() {
       </div>
       
       <div className="container mx-auto max-w-6xl relative z-10">
-        <div className="text-center mb-20">
+        <div className="text-center mb-12">
           <motion.span
             className="inline-block text-[var(--color-primary)] font-semibold mb-3 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full"
             initial={{ opacity: 0, y: 20 }}
@@ -64,7 +64,7 @@ export default function AboutSection() {
           </motion.p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center mb-20">
+        <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center mb-12">
           <motion.div
             initial={{ opacity: 0, x: -30 }}
             whileInView={{ opacity: 1, x: 0 }}

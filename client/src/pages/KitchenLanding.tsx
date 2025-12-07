@@ -41,7 +41,7 @@ export default function KitchenLanding() {
       <Header />
       <main className="flex-grow">
         {/* Kitchen-Specific Hero Section */}
-        <GradientHero variant="cream" className="pt-28 pb-12 md:pt-36 md:pb-20 px-4 relative overflow-hidden">
+        <GradientHero variant="cream" className="pt-24 pb-12 md:pt-32 md:pb-16 px-4 relative overflow-hidden">
           {/* Enhanced background decorative elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -91,7 +91,7 @@ export default function KitchenLanding() {
         </GradientHero>
 
         {/* How It Works Section */}
-        <section id="how-it-works" className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+        <section id="how-it-works" className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -100,7 +100,7 @@ export default function KitchenLanding() {
           
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-20">
+              <div className="text-center mb-12">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Simple Process
                 </span>
@@ -161,7 +161,7 @@ export default function KitchenLanding() {
         </section>
 
         {/* Features Section */}
-        <section id="benefits" className="py-24 md:py-32 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 via-white to-[var(--color-cream)]/20 relative overflow-hidden">
+        <section id="benefits" className="py-16 md:py-20 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 via-white to-[var(--color-cream)]/20 relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -170,7 +170,7 @@ export default function KitchenLanding() {
           
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-20">
+              <div className="text-center mb-12">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Features
                 </span>
@@ -246,7 +246,7 @@ export default function KitchenLanding() {
         </section>
 
         {/* CTA Section */}
-        <section className="py-24 md:py-36 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
+        <section className="py-16 md:py-24 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-10 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>

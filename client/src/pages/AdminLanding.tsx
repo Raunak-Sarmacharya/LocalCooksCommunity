@@ -79,7 +79,7 @@ export default function AdminLanding() {
         </GradientHero>
 
         {/* Features Section */}
-        <section id="features" className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+        <section id="features" className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -88,7 +88,7 @@ export default function AdminLanding() {
           
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-20">
+              <div className="text-center mb-12">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Admin Features
                 </span>
@@ -194,7 +194,7 @@ export default function AdminLanding() {
         </section>
 
         {/* CTA Section */}
-        <section className="py-24 md:py-36 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
+        <section className="py-16 md:py-24 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-10 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>

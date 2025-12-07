@@ -177,16 +177,38 @@ export default function Header() {
 
     // If not on the homepage, navigate to homepage first with the hash
     if (location !== "/") {
+      // Navigate to homepage with hash - Home component will handle scrolling
       setLocation(`/#${sectionId}`);
+      // Also update the URL hash directly to ensure it's set
+      window.location.hash = sectionId;
       return;
     }
 
     // If already on homepage, scroll to the section smoothly
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-      closeMenu();
-    }
+    const scrollToElement = () => {
+      const element = document.getElementById(sectionId) || document.querySelector(`#${sectionId}`);
+      if (element) {
+        // Use scrollIntoView - sections have scroll-mt-24 class for header offset
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        closeMenu();
+        return true;
+      }
+      return false;
+    };
+
+    // Update URL hash
+    window.location.hash = sectionId;
+
+    // Try immediately
+    if (scrollToElement()) return;
+
+    // If not found, try with delays (for dynamic content or preloader)
+    const delays = [100, 300, 500, 1000, 2000, 3500];
+    delays.forEach((delay) => {
+      setTimeout(() => {
+        scrollToElement();
+      }, delay);
+    });
   }, [location, setLocation]);
 
   // Helper function to get dashboard link and text

@@ -7737,23 +7737,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const kitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
       
-      // Filter only active kitchens and return public-safe info
-      const publicKitchens = kitchens
-        .filter((kitchen: any) => kitchen.isActive !== false)
-        .map((kitchen: any) => ({
-          id: kitchen.id,
-          name: kitchen.name,
-          description: kitchen.description,
-          locationId: kitchen.locationId || kitchen.location_id,
-          locationName: kitchen.locationName,
-          locationAddress: kitchen.locationAddress,
-        }))
+      console.log(`[API] /api/public/kitchens - Found ${kitchens.length} total kitchens`);
+      
+      // Filter only active kitchens (handle both camelCase and snake_case)
+      const activeKitchens = kitchens.filter((kitchen: any) => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      console.log(`[API] /api/public/kitchens - ${activeKitchens.length} active kitchens after filtering`);
+      
+      // Return public-safe info with location data
+      const publicKitchens = activeKitchens
+        .map((kitchen: any) => {
+          const locationId = kitchen.locationId || kitchen.location_id;
+          const locationName = kitchen.locationName || kitchen.location_name;
+          const locationAddress = kitchen.locationAddress || kitchen.location_address;
+          
+          // Log for debugging
+          if (locationId && !locationName) {
+            console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
+          }
+          
+          return {
+            id: kitchen.id,
+            name: kitchen.name,
+            description: kitchen.description,
+            locationId: locationId || null,
+            locationName: locationName || null,
+            locationAddress: locationAddress || null,
+          };
+        })
         .slice(0, 6); // Limit to 6 for landing page display
+
+      console.log(`[API] /api/public/kitchens - Returning ${publicKitchens.length} kitchens`);
+      console.log(`[API] Sample kitchen data:`, publicKitchens[0] || "No kitchens");
 
       res.json(publicKitchens);
     } catch (error: any) {
       console.error("Error fetching public kitchens:", error);
-      res.status(500).json({ error: "Failed to fetch kitchens" });
+      console.error("Error stack:", error.stack);
+      res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
     }
   });
 
