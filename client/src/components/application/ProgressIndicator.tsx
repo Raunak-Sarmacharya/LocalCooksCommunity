@@ -7,8 +7,8 @@ export default function ProgressIndicator({ step }: ProgressIndicatorProps) {
     <div className="max-w-3xl mx-auto">
       <div className="flex justify-between items-center">
         <div className="w-1/3 relative">
-          <div className="h-2 bg-primary rounded-l-full"></div>
-          <div className="absolute -top-2 left-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white font-bold">
+          <div className="h-2 bg-primary rounded-l-full progress-glow"></div>
+          <div className="absolute -top-2 left-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white font-bold progress-glow">
             1
           </div>
           <p className="absolute -top-10 left-0 text-sm font-semibold text-primary">
@@ -17,10 +17,10 @@ export default function ProgressIndicator({ step }: ProgressIndicatorProps) {
         </div>
         
         <div className="w-1/3 relative">
-          <div className={`h-2 ${step >= 2 ? 'bg-primary' : 'bg-gray-300'}`}></div>
+          <div className={`h-2 ${step >= 2 ? 'bg-primary progress-glow' : 'bg-gray-300'}`}></div>
           <div 
             className={`absolute -top-2 left-1/2 transform -translate-x-1/2 w-6 h-6 rounded-full ${
-              step >= 2 ? 'bg-primary' : 'bg-gray-300'
+              step >= 2 ? 'bg-primary progress-glow' : 'bg-gray-300'
             } flex items-center justify-center text-white font-bold`}
           >
             2
@@ -33,10 +33,10 @@ export default function ProgressIndicator({ step }: ProgressIndicatorProps) {
         </div>
         
         <div className="w-1/3 relative">
-          <div className={`h-2 ${step >= 3 ? 'bg-primary' : 'bg-gray-300'} rounded-r-full`}></div>
+          <div className={`h-2 ${step >= 3 ? 'bg-primary progress-glow' : 'bg-gray-300'} rounded-r-full`}></div>
           <div 
             className={`absolute -top-2 right-0 w-6 h-6 rounded-full ${
-              step >= 3 ? 'bg-primary' : 'bg-gray-300'
+              step >= 3 ? 'bg-primary progress-glow' : 'bg-gray-300'
             } flex items-center justify-center text-white font-bold`}
           >
             3

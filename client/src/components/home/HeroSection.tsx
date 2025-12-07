@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import chefCookingImage from "../../assets/chef-cooking.png";
 import foodDeliveryImage from "../../assets/food-delivery.png";
+import GradientHero from "@/components/ui/GradientHero";
+import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function HeroSection() {
   const [, navigate] = useLocation();
@@ -80,7 +82,7 @@ export default function HeroSection() {
   };
   
   return (
-    <section className="pt-28 pb-8 md:pt-36 md:pb-16 px-4 bg-gradient-to-br from-white via-light-gray to-pink-50">
+    <GradientHero variant="warm" className="pt-28 pb-8 md:pt-36 md:pb-16 px-4">
       <div className="container mx-auto grid md:grid-cols-2 gap-6 md:gap-8 items-center">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -194,7 +196,7 @@ export default function HeroSection() {
               <Button 
                 onClick={handleChefClick}
                 size="lg"
-                className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial"
+                className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial btn-glow"
               >
                 Apply as Chef
               </Button>
@@ -205,7 +207,7 @@ export default function HeroSection() {
               onClick={handleChefClick}
               disabled={isLoading}
               size="lg"
-              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto"
+              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto btn-glow"
             >
               {isLoading ? "Loading..." : getPrimaryButtonText()}
             </Button>
@@ -248,6 +250,6 @@ export default function HeroSection() {
           </div>
         </motion.div>
       </div>
-    </section>
+    </GradientHero>
   );
 }

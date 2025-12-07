@@ -16,7 +16,7 @@ import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
-import { chefKitchenAccess, chefLocationAccess, users, locations, applications } from "@shared/schema";
+import { chefKitchenAccess, chefLocationAccess, users, locations, applications, kitchens } from "@shared/schema";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
 
@@ -7725,6 +7725,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error creating portal booking:", error);
       res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
+  });
+
+  // ===============================
+  // PUBLIC LANDING PAGE ENDPOINTS (No Authentication Required)
+  // ===============================
+
+  // Get public kitchen listings for landing pages
+  app.get("/api/public/kitchens", async (req: Request, res: Response) => {
+    try {
+      const kitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      
+      // Filter only active kitchens and return public-safe info
+      const publicKitchens = kitchens
+        .filter((kitchen: any) => kitchen.isActive !== false)
+        .map((kitchen: any) => ({
+          id: kitchen.id,
+          name: kitchen.name,
+          description: kitchen.description,
+          locationId: kitchen.locationId || kitchen.location_id,
+          locationName: kitchen.locationName,
+          locationAddress: kitchen.locationAddress,
+        }))
+        .slice(0, 6); // Limit to 6 for landing page display
+
+      res.json(publicKitchens);
+    } catch (error: any) {
+      console.error("Error fetching public kitchens:", error);
+      res.status(500).json({ error: "Failed to fetch kitchens" });
+    }
+  });
+
+  // Get public platform statistics for landing pages
+  app.get("/api/public/stats", async (req: Request, res: Response) => {
+    try {
+      if (!db) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      // Get counts from database
+      const [
+        chefCountResult,
+        applicationCountResult,
+        approvedApplicationCountResult,
+        deliveryPartnerCountResult,
+        locationCountResult,
+        kitchenCountResult,
+      ] = await Promise.all([
+        db.select().from(users).where(eq(users.isChef, true)),
+        db.select().from(applications),
+        db.select().from(applications).where(eq(applications.status, "approved")),
+        db.select().from(users).where(eq(users.isDeliveryPartner, true)),
+        db.select().from(locations),
+        db.select().from(kitchens).where(eq(kitchens.isActive, true)),
+      ]);
+
+      const stats = {
+        totalChefs: chefCountResult.length,
+        totalApplications: applicationCountResult.length,
+        approvedChefs: approvedApplicationCountResult.length,
+        totalDeliveryPartners: deliveryPartnerCountResult.length,
+        totalLocations: locationCountResult.length,
+        totalKitchens: kitchenCountResult.length,
+      };
+
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Error fetching public stats:", error);
+      res.status(500).json({ error: "Failed to fetch statistics" });
     }
   });
 

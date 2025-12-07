@@ -180,7 +180,7 @@ export default function BenefitsSection() {
           {mainBenefits.map((benefit, index) => (
             <motion.div 
               key={index}
-              className="bg-white p-4 md:p-6 rounded-xl shadow-lg hover:shadow-xl hover-shadow hover:-translate-y-1 hover-transform group"
+              className="bg-white p-4 md:p-6 rounded-xl shadow-lg hover:shadow-xl hover-shadow hover:-translate-y-1 hover-transform group card-hover"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}

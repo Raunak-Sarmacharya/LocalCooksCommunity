@@ -8,6 +8,8 @@ import Header from "@/components/layout/Header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import FadeInSection from "@/components/ui/FadeInSection";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import { auth } from "@/lib/firebase";
 import { DeliveryPartnerApplication } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
@@ -43,7 +45,7 @@ function ProgressIndicator({ step }: { step: number }) {
           <div key={stepInfo.number} className="flex items-center">
             <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
               stepInfo.number <= step 
-                ? 'bg-primary border-primary text-white' 
+                ? 'bg-primary border-primary text-white progress-glow' 
                 : 'border-gray-300 text-gray-500'
             }`}>
               {stepInfo.number < step ? (
@@ -89,10 +91,11 @@ function FormStep() {
       </div>
 
       <div className="container mx-auto px-3 sm:px-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">
-            Delivery Partner Application
-          </h1>
+        <FadeInSection>
+          <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">
+              Delivery Partner Application
+            </h1>
 
           <AnimatePresence mode="wait">
             {currentStep === 1 && (
@@ -155,7 +158,8 @@ function FormStep() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+          </div>
+        </FadeInSection>
       </div>
     </>
   );
@@ -276,9 +280,10 @@ export default function DeliveryPartnerApplicationForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-light-gray">
+    <div className="min-h-screen flex flex-col bg-light-gray relative">
+      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <Header />
-      <main className="flex-grow py-8">
+      <main className="flex-grow py-8 relative z-10">
         {activeApplication ? (
           <motion.div
             className="container mx-auto px-4 max-w-2xl"

@@ -4,6 +4,8 @@ import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from 
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import GradientHero from "@/components/ui/GradientHero";
+import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function ManagerLanding() {
   const [, setLocation] = useLocation();
@@ -62,7 +64,7 @@ export default function ManagerLanding() {
   // If not logged in, show welcome page with login option
   if (!isManager) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800">
+      <GradientHero variant="cool" className="min-h-screen">
         {/* Header */}
         <header className="bg-white/10 backdrop-blur-sm border-b border-white/20">
           <div className="container mx-auto px-4 py-4">
@@ -80,30 +82,33 @@ export default function ManagerLanding() {
 
         {/* Hero Section */}
         <div className="container mx-auto px-4 py-16">
-          <div className="max-w-4xl mx-auto text-center mb-16">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-8 backdrop-blur-sm">
-              <Building2 className="h-10 w-10 text-white" />
-            </div>
-            <h2 className="text-5xl md:text-6xl font-bold text-white mb-6">
-              Manage Your Commercial Kitchen
-            </h2>
+          <FadeInSection>
+            <div className="max-w-4xl mx-auto text-center mb-16">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-8 backdrop-blur-sm">
+                <Building2 className="h-10 w-10 text-white" />
+              </div>
+              <h2 className="text-5xl md:text-6xl font-bold text-white mb-6">
+                Manage Your Commercial Kitchen
+              </h2>
             <p className="text-xl text-blue-100 max-w-2xl mx-auto mb-8">
               Access your dashboard to manage bookings, availability, chef profiles, and location settings.
             </p>
-            <Button
-              size="lg"
-              className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-6 h-auto"
-              onClick={() => setLocation("/manager/login")}
-            >
-              <Lock className="mr-2 h-5 w-5" />
-              Sign In to Your Dashboard
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </div>
+              <Button
+                size="lg"
+                className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-6 h-auto btn-glow"
+                onClick={() => setLocation("/manager/login")}
+              >
+                <Lock className="mr-2 h-5 w-5" />
+                Sign In to Your Dashboard
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </div>
+          </FadeInSection>
 
           {/* Features */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
+          <FadeInSection delay={1}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white card-hover">
               <CardHeader>
                 <Calendar className="h-8 w-8 text-white mb-3" />
                 <CardTitle className="text-white">Manage Bookings</CardTitle>
@@ -113,28 +118,29 @@ export default function ManagerLanding() {
               </CardHeader>
             </Card>
 
-            <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
-              <CardHeader>
-                <Settings className="h-8 w-8 text-white mb-3" />
-                <CardTitle className="text-white">Set Availability</CardTitle>
-                <CardDescription className="text-blue-100">
-                  Configure kitchen availability, time slots, and booking policies.
-                </CardDescription>
-              </CardHeader>
-            </Card>
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white card-hover">
+                <CardHeader>
+                  <Settings className="h-8 w-8 text-white mb-3" />
+                  <CardTitle className="text-white">Set Availability</CardTitle>
+                  <CardDescription className="text-blue-100">
+                    Configure kitchen availability, time slots, and booking policies.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
 
-            <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white">
-              <CardHeader>
-                <Users className="h-8 w-8 text-white mb-3" />
-                <CardTitle className="text-white">Chef Profiles</CardTitle>
-                <CardDescription className="text-blue-100">
-                  Review and manage chef profiles and access permissions.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20 text-white card-hover">
+                <CardHeader>
+                  <Users className="h-8 w-8 text-white mb-3" />
+                  <CardTitle className="text-white">Chef Profiles</CardTitle>
+                  <CardDescription className="text-blue-100">
+                    Review and manage chef profiles and access permissions.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          </FadeInSection>
         </div>
-      </div>
+      </GradientHero>
     );
   }
 

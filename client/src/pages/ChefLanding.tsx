@@ -4,17 +4,42 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import GradientHero from "@/components/ui/GradientHero";
+import FadeInSection from "@/components/ui/FadeInSection";
 import { 
   ChefHat, Clock, DollarSign, Users, Target, Utensils, FileCheck, 
   Building2, Calendar, ArrowRight, CheckCircle2, X, TrendingUp,
   MessageSquare, Shield, Heart, Leaf, Globe, Quote, Mail
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 
 export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
+
+  // Fetch real kitchens data
+  const { data: kitchens = [], isLoading: kitchensLoading } = useQuery({
+    queryKey: ["/api/public/kitchens"],
+    queryFn: async () => {
+      const response = await fetch("/api/public/kitchens");
+      if (!response.ok) throw new Error("Failed to fetch kitchens");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Fetch real platform statistics
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["/api/public/stats"],
+    queryFn: async () => {
+      const response = await fetch("/api/public/stats");
+      if (!response.ok) throw new Error("Failed to fetch stats");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -53,15 +78,18 @@ export default function ChefLanding() {
       <Header />
       <main className="flex-grow">
         {/* PART 1: HERO SECTION */}
-        <section className="pt-28 pb-16 md:pt-36 md:pb-24 px-4 bg-gradient-to-br from-white via-orange-50 to-pink-50">
+        <GradientHero variant="warm" className="pt-28 pb-16 md:pt-36 md:pb-24 px-4">
           <div className="container mx-auto max-w-4xl text-center">
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 text-gray-900">
-              Your Cooking Speaks for Itself.
-              <br />
-              <span className="text-primary">Everything Else Shouldn't.</span>
-            </h1>
+            <FadeInSection>
+              <h1 className="text-4xl md:text-6xl font-bold mb-6 text-gray-900">
+                Your Cooking Speaks for Itself.
+                <br />
+                <span className="text-primary">Everything Else Shouldn't.</span>
+              </h1>
+            </FadeInSection>
             
-            <div className="text-left max-w-3xl mx-auto space-y-6 mb-8 text-lg text-gray-700">
+            <FadeInSection delay={1}>
+              <div className="text-left max-w-3xl mx-auto space-y-6 mb-8 text-lg text-gray-700">
               <p className="font-semibold">You might be:</p>
               <ul className="space-y-3 list-disc list-inside">
                 <li>A line cook in someone else's kitchen, 14 hours a day, watching the owner take credit for YOUR food</li>
@@ -75,10 +103,12 @@ export default function ChefLanding() {
               <p>But you're doing it the hard way—managing spreadsheets, chasing payments, answering the same questions 50 times a week, explaining your delivery zones to every single customer.</p>
               <p className="font-semibold text-primary">You're trading your passion for logistics management.</p>
               <p className="text-2xl font-bold text-primary">Local Cooks fixes that.</p>
-            </div>
+              </div>
+            </FadeInSection>
 
-            <div className="grid md:grid-cols-3 gap-6 mb-8 text-left max-w-4xl mx-auto">
-              <Card className="border-2">
+            <FadeInSection delay={2}>
+              <div className="grid md:grid-cols-3 gap-6 mb-8 text-left max-w-4xl mx-auto">
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <CardTitle className="text-lg">For the Restaurant Burnout Escape:</CardTitle>
                   <CardDescription className="text-base">
@@ -91,9 +121,9 @@ export default function ChefLanding() {
                 </CardHeader>
               </Card>
               
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle className="text-lg">For the Marketplace Seller Scaling Up:</CardTitle>
+                <Card className="border-2 card-hover">
+                  <CardHeader>
+                    <CardTitle className="text-lg">For the Marketplace Seller Scaling Up:</CardTitle>
                   <CardDescription className="text-base">
                     You're already winning. Your customers prove it.
                     <br /><br />
@@ -106,9 +136,9 @@ export default function ChefLanding() {
                 </CardHeader>
               </Card>
               
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle className="text-lg">For anyone caught between:</CardTitle>
+                <Card className="border-2 card-hover">
+                  <CardHeader>
+                    <CardTitle className="text-lg">For anyone caught between:</CardTitle>
                   <CardDescription className="text-base">
                     It's time to stop choosing between:
                     <br /><br />
@@ -122,18 +152,20 @@ export default function ChefLanding() {
                     <br /><br />
                     One platform. Professional operations. Your complete control. Your food. Your business.
                   </CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
+                  </CardHeader>
+                </Card>
+              </div>
+            </FadeInSection>
 
-            <div className="space-y-4 mb-8">
-              <Button
-                onClick={handleGetStarted}
-                size="lg"
-                className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg"
-              >
-                Start Your Application
-              </Button>
+            <FadeInSection delay={3}>
+              <div className="space-y-4 mb-8">
+                <Button
+                  onClick={handleGetStarted}
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg btn-glow"
+                >
+                  Start Your Application
+                </Button>
               <p className="text-sm text-gray-600">
                 Approved in 24 hours. Keep 100% during trial.
                 <br />
@@ -149,18 +181,22 @@ export default function ChefLanding() {
               >
                 See How Much Chefs Like You Earn
               </Button>
-            </div>
+              </div>
+            </FadeInSection>
           </div>
-        </section>
+        </GradientHero>
 
         {/* PART 2: BENEFITS GRID (6 BENEFITS) */}
         <section className="py-16 px-4 bg-white">
           <div className="container mx-auto max-w-6xl">
-            <h2 className="text-4xl font-bold text-center mb-12">Why Local Cooks Works</h2>
+            <FadeInSection>
+              <h2 className="text-4xl font-bold text-center mb-12">Why Local Cooks Works</h2>
+            </FadeInSection>
             
             <div className="grid md:grid-cols-2 gap-8">
               {/* Benefit 1 */}
-              <Card className="border-2">
+              <FadeInSection delay={1}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                     <Target className="h-6 w-6 text-blue-600" />
@@ -189,9 +225,11 @@ export default function ChefLanding() {
                   </div>
                 </CardContent>
               </Card>
+              </FadeInSection>
 
               {/* Benefit 2 */}
-              <Card className="border-2">
+              <FadeInSection delay={1}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
                     <DollarSign className="h-6 w-6 text-green-600" />
@@ -218,9 +256,11 @@ export default function ChefLanding() {
                   </div>
                 </CardContent>
               </Card>
+              </FadeInSection>
 
               {/* Benefit 3 */}
-              <Card className="border-2">
+              <FadeInSection delay={2}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
                     <Utensils className="h-6 w-6 text-orange-600" />
@@ -243,9 +283,11 @@ export default function ChefLanding() {
                   </div>
                 </CardContent>
               </Card>
+              </FadeInSection>
 
               {/* Benefit 4 */}
-              <Card className="border-2">
+              <FadeInSection delay={2}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
                     <FileCheck className="h-6 w-6 text-purple-600" />
@@ -266,9 +308,11 @@ export default function ChefLanding() {
                   </div>
                 </CardContent>
               </Card>
+              </FadeInSection>
 
               {/* Benefit 5 */}
-              <Card className="border-2">
+              <FadeInSection delay={3}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mb-4">
                     <Users className="h-6 w-6 text-pink-600" />
@@ -291,9 +335,11 @@ export default function ChefLanding() {
                   </div>
                 </CardContent>
               </Card>
+              </FadeInSection>
 
               {/* Benefit 6 */}
-              <Card className="border-2">
+              <FadeInSection delay={3}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
                     <Heart className="h-6 w-6 text-indigo-600" />
@@ -316,6 +362,7 @@ export default function ChefLanding() {
                   </div>
                 </CardContent>
               </Card>
+              </FadeInSection>
             </div>
           </div>
         </section>
@@ -323,14 +370,15 @@ export default function ChefLanding() {
         {/* PART 3: TRIAL PHASE HIGHLIGHT */}
         <section className="py-16 px-4 bg-gradient-to-r from-primary/10 to-orange-100">
           <div className="container mx-auto max-w-4xl text-center">
-            <h2 className="text-4xl font-bold mb-6">Trial Phase: Keep 100% to Prove We're Worth It</h2>
-            <p className="text-lg text-gray-700 mb-8">
+            <FadeInSection>
+              <h2 className="text-4xl font-bold mb-6">Trial Phase: Keep 100% to Prove We're Worth It</h2>
+              <p className="text-lg text-gray-700 mb-8">
               We're not asking you to trust us yet. During trial, you keep everything. Every dollar customers pay (minus Stripe's 2.9% + 30¢). We handle customer management, order coordination, payment processing, data tracking, delivery logistics, and customer support. You keep 100%.
             </p>
             <div className="bg-white p-6 rounded-lg shadow-lg text-left max-w-2xl mx-auto">
               <p className="font-semibold mb-4">Trial Phase Details:</p>
               <ul className="space-y-2">
-                <li>✓ Duration: [X months - set based on your trial strategy]</li>
+                <li>✓ Duration: Trial period as specified</li>
                 <li>✓ Commission: 0% (platform fee waived)</li>
                 <li>✓ Payment processing: 2.9% + 30¢ (Stripe standard)</li>
                 <li>✓ Minimum order volume: None</li>
@@ -338,15 +386,19 @@ export default function ChefLanding() {
               </ul>
               <p className="mt-4 font-semibold text-primary">What you pay: Only what Stripe charges. What you earn: Everything else.</p>
             </div>
+            </FadeInSection>
           </div>
         </section>
 
         {/* PART 4: HOW IT WORKS (3-STEP FLOW) */}
         <section className="py-16 px-4 bg-white">
           <div className="container mx-auto max-w-6xl">
-            <h2 className="text-4xl font-bold text-center mb-12">How It Works</h2>
+            <FadeInSection>
+              <h2 className="text-4xl font-bold text-center mb-12">How It Works</h2>
+            </FadeInSection>
             <div className="grid md:grid-cols-3 gap-8">
-              <Card className="border-2">
+              <FadeInSection delay={1}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 mx-auto">
                     <span className="text-2xl font-bold text-blue-600">1</span>
@@ -357,20 +409,24 @@ export default function ChefLanding() {
                   <p>We need to know you. Not a corporate bio. The real story. What cuisines do you cook? What's your background? Why do you cook? Upload a photo. Share 3-5 sentences about yourself. Once you submit, we review in 24 hours. Most chefs are approved and live on the same day.</p>
                 </CardContent>
               </Card>
+              </FadeInSection>
 
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-                    <span className="text-2xl font-bold text-green-600">2</span>
-                  </div>
-                  <CardTitle className="text-xl text-center">Make Your Food Impossible to Ignore</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p>Food is visual. Your food is beautiful. We guide you through uploading great menu items: Clear, well-lit photos of actual food you cook. Ingredient lists and dietary info. Price per serving or full order. Prep time. Your menu is your storefront. Make it count.</p>
-                </CardContent>
-              </Card>
+              <FadeInSection delay={2}>
+                <Card className="border-2 card-hover">
+                  <CardHeader>
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 mx-auto">
+                      <span className="text-2xl font-bold text-green-600">2</span>
+                    </div>
+                    <CardTitle className="text-xl text-center">Make Your Food Impossible to Ignore</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-gray-700">
+                    <p>Food is visual. Your food is beautiful. We guide you through uploading great menu items: Clear, well-lit photos of actual food you cook. Ingredient lists and dietary info. Price per serving or full order. Prep time. Your menu is your storefront. Make it count.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
 
-              <Card className="border-2">
+              <FadeInSection delay={3}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 mx-auto">
                     <span className="text-2xl font-bold text-purple-600">3</span>
@@ -381,6 +437,7 @@ export default function ChefLanding() {
                   <p>Customers browse menus. They order your food. The order flows into your app with all details. You cook. You keep 100% during trial. (Only Stripe charges apply: 2.9% + 30¢) Weekly payouts to your bank account. Transparent earnings dashboard shows exactly what you made.</p>
                 </CardContent>
               </Card>
+              </FadeInSection>
             </div>
           </div>
         </section>
@@ -563,55 +620,47 @@ export default function ChefLanding() {
               You don't need to commit to an expensive build or lease. Our Kitchen Marketplace solves this. Browse real commercial kitchens in your area. Book by the hour. Start small. Scale as you grow.
             </p>
 
-            <div className="grid md:grid-cols-3 gap-8 mb-12">
-              <Card className="border-2">
-                <CardHeader>
-                  <Building2 className="h-12 w-12 text-blue-600 mb-4" />
-                  <CardTitle>Avalon Peninsula Commercial Kitchen</CardTitle>
-                  <CardDescription>📍 Downtown St. John's</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <p><span className="font-semibold">Pricing:</span> $20/hour (shared) | $28/hour (private)</p>
-                  <p><span className="font-semibold">Rating:</span> ⭐ 4.9 / 5 (47 reviews)</p>
-                  <p><span className="font-semibold">Last Month:</span> 12 chef bookings | 328 meals prepared | $4,320 earned</p>
-                  <Button className="w-full mt-4" onClick={() => navigate('/book-kitchen')}>
-                    Book This Kitchen
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <Building2 className="h-12 w-12 text-green-600 mb-4" />
-                  <CardTitle>Rise & Shine Community Kitchen</CardTitle>
-                  <CardDescription>📍 Mount Pearl</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <p><span className="font-semibold">Pricing:</span> $15/hour (group) | $24/hour (private)</p>
-                  <p><span className="font-semibold">Rating:</span> ⭐ 4.7 / 5 (34 reviews)</p>
-                  <p><span className="font-semibold">Last Month:</span> 18 chef bookings | 412 meals prepared | $5,040 earned</p>
-                  <Button className="w-full mt-4" onClick={() => navigate('/book-kitchen')}>
-                    Book This Kitchen
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <Building2 className="h-12 w-12 text-purple-600 mb-4" />
-                  <CardTitle>Gourmet Hub Catering Kitchen</CardTitle>
-                  <CardDescription>📍 St. John's (Near Airport)</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <p><span className="font-semibold">Pricing:</span> $32/hour (private)</p>
-                  <p><span className="font-semibold">Rating:</span> ⭐ 4.95 / 5 (62 reviews)</p>
-                  <p><span className="font-semibold">Last Month:</span> 8 chef bookings | 156 meals prepared | $3,120 earned</p>
-                  <Button className="w-full mt-4" onClick={() => navigate('/book-kitchen')}>
-                    Book This Kitchen
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
+            {kitchensLoading ? (
+              <div className="text-center mb-12">
+                <p className="text-gray-600">Loading kitchens...</p>
+              </div>
+            ) : kitchens.length > 0 ? (
+              <div className="grid md:grid-cols-3 gap-8 mb-12">
+                {kitchens.slice(0, 3).map((kitchen: any) => (
+                  <Card key={kitchen.id} className="border-2">
+                    <CardHeader>
+                      <Building2 className="h-12 w-12 text-blue-600 mb-4" />
+                      <CardTitle>{kitchen.name}</CardTitle>
+                      <CardDescription>
+                        {kitchen.locationName ? `📍 ${kitchen.locationName}` : kitchen.locationAddress ? `📍 ${kitchen.locationAddress}` : ""}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-gray-700">
+                      {kitchen.description && (
+                        <p className="text-sm">{kitchen.description}</p>
+                      )}
+                      <Button 
+                        className="w-full mt-4" 
+                        onClick={() => navigate('/portal/book')}
+                      >
+                        Book This Kitchen
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center mb-12">
+                <Button 
+                  size="lg" 
+                  onClick={() => navigate('/portal/book')}
+                  className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg"
+                >
+                  <Building2 className="h-5 w-5 mr-2" />
+                  Browse Available Kitchens
+                </Button>
+              </div>
+            )}
 
             <Card className="border-2 bg-blue-50">
               <CardHeader>
@@ -619,7 +668,7 @@ export default function ChefLanding() {
               </CardHeader>
               <CardContent className="text-gray-700">
                 <p className="mb-4">
-                  Partner with Local Cooks and generate $2,000-5,000/month from empty kitchen hours that would otherwise be wasted.
+                  Partner with Local Cooks and monetize your empty kitchen hours.
                 </p>
                 <p className="mb-4 font-semibold">How it works:</p>
                 <ul className="space-y-2 mb-4">
@@ -628,7 +677,7 @@ export default function ChefLanding() {
                   <li>✓ You do facility checks (minimal effort)</li>
                   <li>✓ Get paid weekly to your account</li>
                 </ul>
-                <Button onClick={() => navigate('/book-kitchen')}>
+                <Button onClick={() => navigate('/portal/book')}>
                   List Your Kitchen
                 </Button>
               </CardContent>
@@ -639,105 +688,19 @@ export default function ChefLanding() {
         {/* PART 8: SOCIAL PROOF */}
         <section className="py-16 px-4 bg-white">
           <div className="container mx-auto max-w-6xl">
-            <h2 className="text-4xl font-bold text-center mb-12">Chefs Who Made the Jump</h2>
-            
-            <div className="grid md:grid-cols-2 gap-8">
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-                      <ChefHat className="h-8 w-8 text-orange-600" />
-                    </div>
-                    <div>
-                      <CardTitle>Maya</CardTitle>
-                      <CardDescription>St. John's, NL | 18 months on platform</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Quote className="h-6 w-6 text-gray-400 mb-2" />
-                  <p className="text-gray-700 italic mb-4">
-                    "I left a 50-hour-a-week restaurant job making $35,000/year. I was miserable. Six months on Local Cooks, I'm making more than I ever did in that kitchen, and I'm actually happy. The freedom is real."
-                  </p>
-                  <div className="flex gap-4 text-sm">
-                    <span>💰 $2,200/month</span>
-                    <span>⏰ 18 hours/week</span>
-                    <span>⭐ 4.9 rating</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                      <ChefHat className="h-8 w-8 text-blue-600" />
-                    </div>
-                    <div>
-                      <CardTitle>Raj</CardTitle>
-                      <CardDescription>Mount Pearl, NL | 10 months on platform</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Quote className="h-6 w-6 text-gray-400 mb-2" />
-                  <p className="text-gray-700 italic mb-4">
-                    "I was selling on Marketplace for 18 months. Making money. But exhausted managing everything. Local Cooks didn't change my customers—they still love my food. It changed how I operate."
-                  </p>
-                  <div className="flex gap-4 text-sm">
-                    <span>📊 $2,800+/month</span>
-                    <span>⭐ 4.87 rating</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                      <ChefHat className="h-8 w-8 text-green-600" />
-                    </div>
-                    <div>
-                      <CardTitle>Jazz</CardTitle>
-                      <CardDescription>Conception Bay South, NL | 8 months on platform</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Quote className="h-6 w-6 text-gray-400 mb-2" />
-                  <p className="text-gray-700 italic mb-4">
-                    "I worked in marketing. Hated it. Everyone said I was crazy for leaving to cook from my home kitchen. Eight months later, I'm making $1,600/month, cooking 15 hours/week. I have a life again."
-                  </p>
-                  <div className="flex gap-4 text-sm">
-                    <span>💰 $1,600/month</span>
-                    <span>⏰ 15 hours/week</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
-                      <ChefHat className="h-8 w-8 text-purple-600" />
-                    </div>
-                    <div>
-                      <CardTitle>Leah</CardTitle>
-                      <CardDescription>St. John's, NL | 20 months on platform</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Quote className="h-6 w-6 text-gray-400 mb-2" />
-                  <p className="text-gray-700 italic mb-4">
-                    "Started as side hustle while working my day job. Month 6: Making more than my salary. Month 12: I quit my job. Month 20: Doing $4,200+/month. This platform isn't just income. It's a launchpad."
-                  </p>
-                  <div className="flex gap-4 text-sm">
-                    <span>💰 $4,200/month</span>
-                    <span>📈 Growing 15% month-over-month</span>
-                  </div>
-                </CardContent>
-              </Card>
+            <h2 className="text-4xl font-bold text-center mb-12">Join Our Growing Community</h2>
+            <p className="text-center text-gray-600 mb-12 max-w-2xl mx-auto">
+              Chefs from across Newfoundland are building their culinary businesses on Local Cooks. 
+              Join a community of passionate cooks who are turning their skills into sustainable businesses.
+            </p>
+            <div className="text-center">
+              <Button
+                onClick={handleGetStarted}
+                size="lg"
+                className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg"
+              >
+                Start Your Journey Today
+              </Button>
             </div>
           </div>
         </section>
@@ -829,7 +792,15 @@ export default function ChefLanding() {
 
             <Card className="bg-white/10 backdrop-blur-sm border-white/20 mb-12">
               <CardHeader>
-                <CardTitle className="text-2xl text-white">Join 200+ Chefs Building the Future of Food in Newfoundland</CardTitle>
+                <CardTitle className="text-2xl text-white">
+                  {statsLoading ? (
+                    "Join Chefs Building the Future of Food in Newfoundland"
+                  ) : stats?.totalChefs ? (
+                    `Join ${stats.totalChefs}+ Chefs Building the Future of Food in Newfoundland`
+                  ) : (
+                    "Join Chefs Building the Future of Food in Newfoundland"
+                  )}
+                </CardTitle>
                 <CardDescription className="text-white/80">
                   Get weekly tips: menu pricing, customer communication, scaling strategies, and stories from chefs who made the jump. Real strategies. No fluff. Just what works.
                 </CardDescription>

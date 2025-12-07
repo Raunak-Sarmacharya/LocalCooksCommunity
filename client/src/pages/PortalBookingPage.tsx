@@ -5,6 +5,8 @@ import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
+import FadeInSection from "@/components/ui/FadeInSection";
 
 interface PublicLocation {
   id: number;
@@ -115,7 +117,8 @@ export default function PortalBookingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 relative">
+      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
