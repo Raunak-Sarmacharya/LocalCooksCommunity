@@ -249,12 +249,29 @@ app.use(session({
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     path: '/',
-    sameSite: isProduction ? 'strict' : 'lax', // Stricter in production
-    domain: undefined // Let the browser determine the domain
+    sameSite: isProduction ? 'lax' : 'lax', // Use 'lax' to allow cross-subdomain access
+    domain: isProduction ? '.localcooks.ca' : undefined // Use dot-prefixed domain for cross-subdomain cookies in production
   },
   name: 'connect.sid', // Explicit session name
   proxy: isProduction // Trust proxy in production (for Vercel)
 }));
+
+// Import subdomain utilities
+const { getSubdomainFromHeaders } = require('./shared/subdomain-utils.js');
+
+// Add subdomain detection middleware
+app.use((req, res, next) => {
+  // Detect subdomain from headers
+  const subdomain = getSubdomainFromHeaders(req.headers);
+  req.subdomain = subdomain;
+  
+  // Log subdomain info for debugging
+  if (req.path.startsWith('/api/')) {
+    console.log(`${req.method} ${req.path} - Subdomain: ${subdomain || 'main'} - Session ID: ${req.session.id}, User ID: ${req.session.userId || 'none'}`);
+  }
+  
+  next();
+});
 
 // Add middleware to log session info on each request
 app.use((req, res, next) => {
@@ -1386,7 +1403,24 @@ app.post('/api/firebase/forgot-password', async (req, res) => {
       }
 
               // Generate password reset link using Firebase Admin SDK with email parameter
-        const baseUrl = process.env.BASE_URL || 'https://local-cooks-community.vercel.app';
+        // Determine subdomain based on user type
+        let subdomain = 'chef'; // default
+        if (neonUser) {
+          if (neonUser.is_delivery_partner) {
+            subdomain = 'driver';
+          } else if (neonUser.is_portal_user) {
+            subdomain = 'kitchen';
+          } else if (neonUser.is_chef) {
+            subdomain = 'chef';
+          } else if (neonUser.role === 'admin') {
+            subdomain = 'admin';
+          }
+        }
+        
+        const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+        const baseUrl = process.env.NODE_ENV === 'production' 
+          ? `https://${subdomain}.${baseDomain}`
+          : (process.env.BASE_URL || 'http://localhost:5000');
         const resetUrl = `${baseUrl}/email-action?email=${encodeURIComponent(email)}`;
         const resetLink = await auth.generatePasswordResetLink(email, {
           url: resetUrl,
@@ -8735,7 +8769,12 @@ app.get("/api/auth/verify-email", async (req, res) => {
     
     // Redirect to auth page with verification success and login prompt
     // The frontend will show a success message and prompt the user to log in
-    return res.redirect(`${process.env.BASE_URL || 'https://your-app.vercel.app'}/auth?verified=true&message=verification-success`);
+    // Determine subdomain based on user type (default to chef)
+    const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? `https://chef.${baseDomain}`
+      : (process.env.BASE_URL || 'http://localhost:5000');
+    return res.redirect(`${baseUrl}/auth?verified=true&message=verification-success`);
 
   } catch (error) {
     console.error("❌ Error in email verification:", error);
@@ -11958,7 +11997,7 @@ app.put("/api/manager/portal-applications/:id/status", async (req, res) => {
                 `<p>Your portal user application for <strong>${application.location_name}</strong> has been approved!</p>` +
                 `<p>You can now access the location and book kitchens.</p>` +
                 (feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : '') +
-                `<p><a href="${process.env.BASE_URL || 'http://localhost:5000'}/portal/login">Login to Portal</a></p>`
+                `<p><a href="${process.env.NODE_ENV === 'production' ? `https://kitchen.${process.env.BASE_DOMAIN || 'localcooks.ca'}` : (process.env.BASE_URL || 'http://localhost:5000')}/portal/login">Login to Portal</a></p>`
         };
         await sendEmail(approvalEmail);
         console.log(`✅ Portal access approval email sent to: ${portalUserEmail}`);
