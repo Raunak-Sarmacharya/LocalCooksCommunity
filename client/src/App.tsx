@@ -28,6 +28,10 @@ import Privacy from "@/pages/Privacy";
 import Success from "@/pages/Success";
 import Terms from "@/pages/Terms";
 import WelcomeScreen from "@/pages/welcome-screen";
+import ChefLanding from "@/pages/ChefLanding";
+import DriverLanding from "@/pages/DriverLanding";
+import KitchenLanding from "@/pages/KitchenLanding";
+import AdminLanding from "@/pages/AdminLanding";
 
 // Lazy load larger components
 const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
@@ -179,10 +183,27 @@ function Router() {
     }
   }, [subdomain, location]);
   
+  // Determine which landing page to show based on subdomain
+  const getLandingPage = () => {
+    if (subdomain === 'chef') {
+      return ChefLanding;
+    } else if (subdomain === 'driver') {
+      return DriverLanding;
+    } else if (subdomain === 'kitchen') {
+      return KitchenLanding;
+    } else if (subdomain === 'admin') {
+      return AdminLanding;
+    }
+    // Default to regular Home for main domain or development
+    return Home;
+  };
+
+  const LandingPage = getLandingPage();
+
   return (
     <Suspense fallback={<LoadingSpinner />}>
       <Switch>
-        <Route path="/" component={Home} />
+        <Route path="/" component={LandingPage} />
         <SubdomainRoute path="/apply" component={ApplicationForm} subdomain={subdomain} />
         <SubdomainRoute path="/delivery-partner-apply" component={DeliveryPartnerApplicationForm} subdomain={subdomain} />
         <Route path="/success" component={Success} />
