@@ -8,7 +8,8 @@ import AnimatedButton from "./AnimatedButton";
 import AnimatedInput from "./AnimatedInput";
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().min(1, "Email or username is required"),
+  // For managers, username is accepted (which is typically their email)
 });
 
 type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
@@ -16,6 +17,7 @@ type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 interface ForgotPasswordFormProps {
   onSuccess?: () => void;
   onGoBack?: () => void;
+  role?: string; // 'manager' for manager password reset
 }
 
 const containerVariants = {
@@ -35,9 +37,10 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswordFormProps) {
+export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: ForgotPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isManager = role === 'manager';
 
   const form = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -49,14 +52,18 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
     setErrorMessage(null);
 
     try {
-      console.log('🔄 Submitting forgot password request for:', data.email);
+      console.log('🔄 Submitting forgot password request for:', data.email, 'role:', role);
       
-      const response = await fetch('/api/firebase/forgot-password', {
+      // Use manager endpoint for managers, Firebase endpoint for others
+      const endpoint = isManager ? '/api/manager/forgot-password' : '/api/firebase/forgot-password';
+      const body = isManager ? { username: data.email } : { email: data.email };
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       });
 
       console.log('📡 Forgot password response status:', response.status);
@@ -94,7 +101,9 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
           Reset your password
         </h2>
         <p className="text-gray-600">
-          Enter your email address and we'll send you a link to reset your password.
+          {isManager 
+            ? "Enter your username and we'll send you a link to reset your password."
+            : "Enter your email address and we'll send you a link to reset your password."}
         </p>
       </motion.div>
 
@@ -102,9 +111,9 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack }: ForgotPasswo
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
         <motion.div variants={itemVariants}>
           <AnimatedInput
-            type="email"
-            label="Email Address"
-            placeholder="Enter your email"
+            type={isManager ? "text" : "email"}
+            label={isManager ? "Username" : "Email Address"}
+            placeholder={isManager ? "Enter your username" : "Enter your email"}
             error={form.formState.errors.email?.message}
             {...form.register('email')}
           />

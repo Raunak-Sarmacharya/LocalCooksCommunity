@@ -109,15 +109,32 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
     setErrorMessage(null);
 
     try {
-      const endpoint = isFirebaseReset ? '/api/firebase/reset-password' : '/api/auth/reset-password';
+      // Determine endpoint based on reset type
+      let endpoint: string;
+      let body: any;
       
-      // For Firebase reset, use the verified email from the oobCode
-      // For legacy reset, use the email prop if available
-      const emailToUse = isFirebaseReset ? verifiedEmail : email;
-      
-      const body = isFirebaseReset 
-        ? { oobCode, newPassword: data.password, email: emailToUse }
-        : { token, newPassword: data.password };
+      if (isFirebaseReset) {
+        // Firebase reset
+        endpoint = '/api/firebase/reset-password';
+        const emailToUse = verifiedEmail || email;
+        body = { oobCode, newPassword: data.password, email: emailToUse };
+      } else if (token) {
+        // Check if this is a manager reset by checking URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const role = urlParams.get('role');
+        
+        if (role === 'manager') {
+          // Manager reset
+          endpoint = '/api/manager/reset-password';
+          body = { token, newPassword: data.password };
+        } else {
+          // Legacy reset
+          endpoint = '/api/auth/reset-password';
+          body = { token, newPassword: data.password };
+        }
+      } else {
+        throw new Error('No reset code or token provided');
+      }
 
       console.log('🔄 Password reset attempt:', { 
         endpoint, 
