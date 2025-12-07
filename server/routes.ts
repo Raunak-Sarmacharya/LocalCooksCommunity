@@ -4948,6 +4948,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "Time slot is already booked" });
       }
 
+      // Check daily booking limit
+      const { db } = await import('./db');
+      const { pool } = db;
+      
+      // Calculate requested slots
+      const [sH, sM] = String(startTime).split(':').map(Number);
+      const [eH, eM] = String(endTime).split(':').map(Number);
+      const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
+
+      // Find maxSlotsPerChef for this kitchen/date
+      let maxSlotsPerChef = 2;
+      if (pool) {
+        try {
+          // 1. Try date-specific override first
+          const overrideResult = await pool.query(`
+            SELECT max_slots_per_chef
+            FROM kitchen_date_overrides
+            WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
+            ORDER BY updated_at DESC
+            LIMIT 1
+          `, [kitchenId, bookingDateStr]);
+          
+          if (overrideResult.rows.length > 0) {
+            const val = Number(overrideResult.rows[0].max_slots_per_chef);
+            if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+          } else {
+            // 2. Try weekly schedule for this day of week
+            const dayOfWeek = bookingDateObj.getDay();
+            const availabilityResult = await pool.query(`
+              SELECT max_slots_per_chef
+              FROM kitchen_availability
+              WHERE kitchen_id = $1 AND day_of_week = $2
+            `, [kitchenId, dayOfWeek]);
+            
+            if (availabilityResult.rows.length > 0) {
+              const v = Number(availabilityResult.rows[0].max_slots_per_chef);
+              if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+            } else {
+              // 3. Fall back to location default
+              const locationLimitResult = await pool.query(`
+                SELECT l.default_daily_booking_limit
+                FROM locations l
+                INNER JOIN kitchens k ON k.location_id = l.id
+                WHERE k.id = $1
+              `, [kitchenId]);
+              
+              if (locationLimitResult.rows.length > 0) {
+                const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
+                if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching daily booking limit:', error);
+          // Use default if error occurs
+          maxSlotsPerChef = 2;
+        }
+
+        // Count already booked slots for this chef on this date (confirmed + pending)
+        const existingBookings = await pool.query(`
+          SELECT start_time, end_time
+          FROM kitchen_bookings
+          WHERE chef_id = $1
+            AND kitchen_id = $2
+            AND DATE(booking_date) = $3::date
+            AND status IN ('pending','confirmed')
+        `, [chefId, kitchenId, bookingDateStr]);
+
+        let existingSlots = 0;
+        for (const b of existingBookings.rows) {
+          const [bsH, bsM] = String(b.start_time).split(':').map(Number);
+          const [beH, beM] = String(b.end_time).split(':').map(Number);
+          const span = Math.max(1, Math.ceil(((beH * 60 + beM) - (bsH * 60 + bsM)) / 60));
+          existingSlots += span;
+        }
+
+        // Check if booking would exceed daily limit
+        if (existingSlots + requestedSlots > maxSlotsPerChef) {
+          return res.status(400).json({ 
+            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
+          });
+        }
+      }
+
       // Step 1: Create booking in database
       console.log(`📝 STEP 1: Creating booking in database...`);
       const booking = await firebaseStorage.createKitchenBooking({
@@ -7631,6 +7715,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (hoursUntilBooking < minimumBookingWindowHours) {
           return res.status(400).json({ 
             error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          });
+        }
+      }
+
+      // Check daily booking limit
+      const { db } = await import('./db');
+      const { pool } = db;
+      
+      if (pool) {
+        // Calculate requested slots
+        const [sH, sM] = startTime.split(':').map(Number);
+        const [eH, eM] = endTime.split(':').map(Number);
+        const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
+
+        // Find maxSlotsPerChef for this kitchen/date
+        let maxSlotsPerChef = 2;
+        const dateStr = bookingDateObj.toISOString().split('T')[0];
+        try {
+          // 1. Try date-specific override first
+          const overrideResult = await pool.query(`
+            SELECT max_slots_per_chef
+            FROM kitchen_date_overrides
+            WHERE kitchen_id = $1 AND DATE(specific_date) = $2::date
+            ORDER BY updated_at DESC
+            LIMIT 1
+          `, [kitchenId, dateStr]);
+          
+          if (overrideResult.rows.length > 0) {
+            const val = Number(overrideResult.rows[0].max_slots_per_chef);
+            if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+          } else {
+            // 2. Try weekly schedule for this day of week
+            const dayOfWeek = bookingDateObj.getDay();
+            const availabilityResult = await pool.query(`
+              SELECT max_slots_per_chef
+              FROM kitchen_availability
+              WHERE kitchen_id = $1 AND day_of_week = $2
+            `, [kitchenId, dayOfWeek]);
+            
+            if (availabilityResult.rows.length > 0) {
+              const v = Number(availabilityResult.rows[0].max_slots_per_chef);
+              if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+            } else {
+              // 3. Fall back to location default
+              const locationLimitResult = await pool.query(`
+                SELECT l.default_daily_booking_limit
+                FROM locations l
+                INNER JOIN kitchens k ON k.location_id = l.id
+                WHERE k.id = $1
+              `, [kitchenId]);
+              
+              if (locationLimitResult.rows.length > 0) {
+                const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
+                if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching daily booking limit:', error);
+          // Use default if error occurs
+          maxSlotsPerChef = 2;
+        }
+
+        // Count already booked slots for this portal user on this date (confirmed + pending)
+        const existingBookings = await pool.query(`
+          SELECT start_time, end_time
+          FROM kitchen_bookings
+          WHERE chef_id = $1
+            AND kitchen_id = $2
+            AND DATE(booking_date) = $3::date
+            AND status IN ('pending','confirmed')
+        `, [userId, kitchenId, dateStr]);
+
+        let existingSlots = 0;
+        for (const b of existingBookings.rows) {
+          const [bsH, bsM] = String(b.start_time).split(':').map(Number);
+          const [beH, beM] = String(b.end_time).split(':').map(Number);
+          const span = Math.max(1, Math.ceil(((beH * 60 + beM) - (bsH * 60 + bsM)) / 60));
+          existingSlots += span;
+        }
+
+        // Check if booking would exceed daily limit
+        if (existingSlots + requestedSlots > maxSlotsPerChef) {
+          return res.status(400).json({ 
+            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
           });
         }
       }
