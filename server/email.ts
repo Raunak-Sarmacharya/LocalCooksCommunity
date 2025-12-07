@@ -1611,28 +1611,60 @@ export const generateWelcomeEmail = (
   };
 };
 
-// Helper function to get the correct website URL based on environment
-const getWebsiteUrl = (): string => {
-  // Use environment variable if set, otherwise use the configured domain
-  if (process.env.BASE_URL) {
-    return process.env.BASE_URL;
+// Helper function to get the correct subdomain URL based on user type
+const getSubdomainUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' | 'main' = 'main'): string => {
+  const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+  
+  // In development, use localhost
+  if (process.env.NODE_ENV !== 'production' && !process.env.BASE_URL) {
+    return 'http://localhost:5000';
   }
-
-  // For production, use the actual domain
-  const domain = getDomainFromEmail(process.env.EMAIL_USER || '');
-  if (domain && domain !== 'auto-sync.local') {
-    return `https://${domain}`;
+  
+  // Use BASE_URL if explicitly set (for backward compatibility)
+  if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
+    // Extract subdomain from BASE_URL if it contains one
+    const url = new URL(process.env.BASE_URL);
+    const hostname = url.hostname;
+    const parts = hostname.split('.');
+    
+    // If BASE_URL already has a subdomain, use it
+    if (parts.length >= 3) {
+      return process.env.BASE_URL;
+    }
+    
+    // Otherwise, construct subdomain URL
+    if (userType === 'main') {
+      return process.env.BASE_URL;
+    }
+    return `https://${userType}.${baseDomain}`;
   }
-
-  // Fallback for development
-  return process.env.NODE_ENV === 'production'
-    ? 'https://local-cooks-community.vercel.app'
-    : 'http://localhost:5000';
+  
+  // Production: construct subdomain URL
+  if (userType === 'main') {
+    return `https://${baseDomain}`;
+  }
+  return `https://${userType}.${baseDomain}`;
 };
 
-// Helper function to get the correct dashboard URL
-const getDashboardUrl = (): string => {
-  const baseUrl = getWebsiteUrl();
+// Helper function to get the correct website URL based on environment
+const getWebsiteUrl = (): string => {
+  return getSubdomainUrl('main');
+};
+
+// Helper function to get the correct dashboard URL based on user type
+const getDashboardUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' = 'chef'): string => {
+  const baseUrl = getSubdomainUrl(userType);
+  
+  if (userType === 'chef') {
+    return `${baseUrl}/auth?redirect=/dashboard`;
+  } else if (userType === 'driver') {
+    return `${baseUrl}/auth?redirect=/dashboard`;
+  } else if (userType === 'kitchen') {
+    return `${baseUrl}/portal`;
+  } else if (userType === 'admin') {
+    return `${baseUrl}/admin`;
+  }
+  
   return `${baseUrl}/auth?redirect=/dashboard`;
 };
 

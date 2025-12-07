@@ -17,6 +17,96 @@
       "destination": "/index.html"
     }
   ],
+  "redirects": [
+    {
+      "source": "/admin/login",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!admin\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://admin.localcooks.ca/admin/login",
+      "permanent": false
+    },
+    {
+      "source": "/admin",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!admin\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://admin.localcooks.ca/admin",
+      "permanent": false
+    },
+    {
+      "source": "/apply",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!chef\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://chef.localcooks.ca/apply",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!chef\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://chef.localcooks.ca/dashboard",
+      "permanent": false
+    },
+    {
+      "source": "/book-kitchen",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!chef\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://chef.localcooks.ca/book-kitchen",
+      "permanent": false
+    },
+    {
+      "source": "/delivery-partner-apply",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!driver\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://driver.localcooks.ca/delivery-partner-apply",
+      "permanent": false
+    },
+    {
+      "source": "/portal",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!kitchen\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://kitchen.localcooks.ca/portal",
+      "permanent": false
+    },
+    {
+      "source": "/manager",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!kitchen\\.|admin\\.|localcooks\\.ca$).*"
+        }
+      ],
+      "destination": "https://kitchen.localcooks.ca/manager",
+      "permanent": false
+    }
+  ],
   "functions": {
     "api/index.js": {
       "memory": 1024,
