@@ -11,6 +11,8 @@ import { motion } from "framer-motion";
 import { LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
+import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function EnhancedAuthPage() {
   const [location, setLocation] = useLocation();
@@ -313,14 +315,15 @@ export default function EnhancedAuthPage() {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.5 }}
-        className="min-h-screen flex flex-col md:flex-row bg-gray-50"
+        className="min-h-screen flex flex-col md:flex-row bg-gray-50 relative"
       >
+        <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
         {/* Form Section */}
         <motion.div
           initial={{ opacity: 0, x: -50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="w-full md:w-1/2 p-8 flex flex-col justify-center bg-white"
+          className="w-full md:w-1/2 p-8 flex flex-col justify-center bg-white relative z-10"
         >
           <div className="max-w-md mx-auto w-full">
             {/* Header */}

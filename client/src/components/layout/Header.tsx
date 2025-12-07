@@ -201,9 +201,9 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
+    <header className="bg-white/95 backdrop-blur-sm shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300">
       <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
-        <Link href="/" className="flex items-center">
+        <Link href="/" className="flex items-center transition-transform duration-300 hover:scale-105">
           <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
         </Link>
 

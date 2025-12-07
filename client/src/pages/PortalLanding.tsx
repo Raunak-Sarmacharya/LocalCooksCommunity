@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
+import GradientHero from "@/components/ui/GradientHero";
+import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function PortalLanding() {
   const [, setLocation] = useLocation();
@@ -72,7 +74,7 @@ export default function PortalLanding() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <GradientHero variant="cool" className="min-h-screen">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -139,33 +141,36 @@ export default function PortalLanding() {
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
           {/* Hero Section */}
-          <div className="text-center mb-16 mt-12">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-6">
-              <Building2 className="h-10 w-10 text-blue-600" />
+          <FadeInSection>
+            <div className="text-center mb-16 mt-12">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-6">
+                <Building2 className="h-10 w-10 text-blue-600" />
+              </div>
+              <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+                Commercial Kitchen Booking
+              </h2>
+              <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+                Find and book commercial kitchens for your culinary business. Perfect for chefs, caterers, and food entrepreneurs.
+              </p>
+              <Button
+                size="lg"
+                onClick={() => setLocation("/portal/book")}
+                className="flex items-center gap-2 mx-auto btn-glow"
+              >
+                <Calendar className="h-5 w-5" />
+                Browse Available Kitchens
+                <ArrowRight className="h-5 w-5" />
+              </Button>
             </div>
-            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-              Commercial Kitchen Booking
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-              Find and book commercial kitchens for your culinary business. Perfect for chefs, caterers, and food entrepreneurs.
-            </p>
-            <Button
-              size="lg"
-              onClick={() => setLocation("/portal/book")}
-              className="flex items-center gap-2 mx-auto"
-            >
-              <Calendar className="h-5 w-5" />
-              Browse Available Kitchens
-              <ArrowRight className="h-5 w-5" />
-            </Button>
-          </div>
+          </FadeInSection>
 
           {/* Info Section */}
           <div className="mt-16">
-            <div className="bg-white rounded-lg shadow-md p-8 md:p-12 border border-gray-200">
-              <h3 className="text-3xl font-semibold text-gray-900 mb-8 text-center">How It Works</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="text-center">
+            <FadeInSection delay={1}>
+              <div className="bg-white rounded-lg shadow-md p-8 md:p-12 border border-gray-200 card-hover">
+                <h3 className="text-3xl font-semibold text-gray-900 mb-8 text-center">How It Works</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="text-center">
                   <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
                     <span className="text-blue-600 font-bold text-xl">1</span>
                   </div>
@@ -193,12 +198,14 @@ export default function PortalLanding() {
                   </p>
                 </div>
               </div>
-            </div>
+              </div>
+            </FadeInSection>
           </div>
 
           {/* Features Section */}
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Card className="border-2">
+          <FadeInSection delay={2}>
+            <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <Card className="border-2 card-hover">
               <CardHeader>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
                   <Calendar className="h-6 w-6 text-green-600" />
@@ -210,18 +217,19 @@ export default function PortalLanding() {
               </CardHeader>
             </Card>
 
-            <Card className="border-2">
-              <CardHeader>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                  <Building2 className="h-6 w-6 text-purple-600" />
-                </div>
-                <CardTitle>Professional Kitchens</CardTitle>
-                <CardDescription>
-                  Access fully equipped commercial kitchens with all the tools and space you need for your culinary business.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
+              <Card className="border-2 card-hover">
+                <CardHeader>
+                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                    <Building2 className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <CardTitle>Professional Kitchens</CardTitle>
+                  <CardDescription>
+                    Access fully equipped commercial kitchens with all the tools and space you need for your culinary business.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          </FadeInSection>
         </div>
       </div>
 
@@ -239,6 +247,6 @@ export default function PortalLanding() {
           </div>
         </div>
       </footer>
-    </div>
+    </GradientHero>
   );
 }

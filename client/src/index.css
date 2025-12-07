@@ -41,6 +41,14 @@
   --auth-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --auth-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   --auth-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  
+  /* Brand colors from localcooks.ca */
+  --color-cream: #FFE8DD;
+  --color-cream-dark: #FFD4C4;
+  --color-gold: #FFD700;
+  --color-charcoal: #2C2C2C;
+  --color-charcoal-light: #6B6B6B;
+  --color-primary: #f51042;
 }
 
 .dark {
@@ -321,6 +329,113 @@
     75% {
       transform: translateY(-5px) rotate(2deg);
     }
+  }
+
+  /* Animated Background Orbs */
+  .bg-orb {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .bg-orb-primary {
+    background: radial-gradient(circle, rgba(245, 16, 66, 0.12) 0%, transparent 70%);
+    filter: blur(100px);
+  }
+
+  .bg-orb-gold {
+    background: radial-gradient(circle, rgba(255, 215, 0, 0.15) 0%, transparent 70%);
+    filter: blur(100px);
+  }
+
+  /* Gradient Background Utilities */
+  .gradient-hero-cream {
+    background: linear-gradient(165deg, var(--color-cream) 0%, var(--color-cream-dark) 50%, #FFE8DD 100%);
+  }
+
+  .gradient-hero-warm {
+    background: linear-gradient(165deg, #ffffff 0%, #fff5f0 25%, #ffe8dd 50%, #ffd4c4 100%);
+  }
+
+  .gradient-hero-cool {
+    background: linear-gradient(165deg, #ffffff 0%, #f0f9ff 25%, #e0f2fe 50%, #dbeafe 100%);
+  }
+
+  /* Fade-in Section Wrapper */
+  .fade-in-section {
+    animation: fade-in 0.6s ease-out;
+  }
+
+  .fade-in-section-delay-1 {
+    animation: fade-in 0.6s ease-out 0.1s both;
+  }
+
+  .fade-in-section-delay-2 {
+    animation: fade-in 0.6s ease-out 0.2s both;
+  }
+
+  .fade-in-section-delay-3 {
+    animation: fade-in 0.6s ease-out 0.3s both;
+  }
+
+  /* Card Hover Effects */
+  .card-hover {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .card-hover:hover {
+    @apply -translate-y-1 shadow-lg;
+    transform: translateY(-4px);
+  }
+
+  /* Button Glow Effects */
+  .btn-glow {
+    box-shadow: 0 0 15px rgba(245, 16, 66, 0.3);
+    transition: box-shadow 0.3s ease-out;
+  }
+
+  .btn-glow:hover {
+    box-shadow: 0 0 25px rgba(245, 16, 66, 0.5);
+  }
+
+  /* Progress Indicator with Glow */
+  .progress-glow {
+    box-shadow: 0 0 15px var(--color-primary);
+  }
+
+  /* Display Font for Headings */
+  .font-display {
+    font-size: 3.2rem;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+
+  @media (min-width: 768px) {
+    .font-display {
+      font-size: 4.5rem;
+    }
+  }
+
+  /* Tagline Style */
+  .font-tagline {
+    font-family: 'Courier New', monospace;
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4em;
+  }
+
+  @media (min-width: 768px) {
+    .font-tagline {
+      font-size: 0.6875rem;
+    }
+  }
+
+  /* Dot Pattern Overlay */
+  .dot-pattern {
+    background-image: radial-gradient(circle at 1px 1px, var(--color-charcoal) 1px, transparent 0);
+    background-size: 28px 28px;
+    opacity: 0.02;
   }
 }
 

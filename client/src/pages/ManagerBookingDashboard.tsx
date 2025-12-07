@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
 import ManagerChefProfiles from "./ManagerChefProfiles";
@@ -218,9 +219,10 @@ export default function ManagerBookingDashboard() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 relative">
+      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <ManagerHeader />
-      <main className="flex-1 pt-24 pb-8">
+      <main className="flex-1 pt-24 pb-8 relative z-10">
         <div className="container mx-auto px-4 py-6 max-w-7xl">
           {/* Header */}
           <div className="mb-6">

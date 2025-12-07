@@ -26,7 +26,7 @@ export default function Footer() {
   };
 
   return (
-    <footer className="bg-gradient-to-t from-slate-900 to-slate-800 text-white pt-12 pb-6 px-4">
+    <footer className="bg-gradient-to-t from-slate-900 via-slate-800 to-slate-900 text-white pt-12 pb-6 px-4">
       <div className="container mx-auto">
         <div className="flex flex-col md:flex-row justify-between mb-8 pb-8 border-b border-white/10">
           <div className="mb-8 md:mb-0 md:w-1/3">
@@ -41,7 +41,7 @@ export default function Footer() {
                 onClick={handleCTAClick}
                 disabled={isLoading}
                 variant="outline"
-                className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white"
+                className="rounded-full border-white/20 bg-white/5 hover:bg-white/10 hover-standard text-white btn-glow"
               >
                 <ChefHat className="mr-2 h-4 w-4" />
                 {isLoading ? "Loading..." : getCTAButtonText()}
@@ -49,7 +49,7 @@ export default function Footer() {
               <Button
                 onClick={handleDriverClick}
                 variant="outline"
-                className="rounded-full border-blue-400/50 bg-blue-500/10 hover:bg-blue-500/20 hover-standard text-blue-300 hover:text-blue-100"
+                className="rounded-full border-blue-400/50 bg-blue-500/10 hover:bg-blue-500/20 hover-standard text-blue-300 hover:text-blue-100 btn-glow"
               >
                 <Truck className="mr-2 h-4 w-4" />
                 Join as Delivery Partner
@@ -128,7 +128,7 @@ export default function Footer() {
               <div className="flex space-x-4 mb-6">
                 <a
                   href="https://www.facebook.com/LocalCooks"
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
+                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard transition-transform duration-300 hover:scale-110"
                   aria-label="Facebook"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -137,7 +137,7 @@ export default function Footer() {
                 </a>
                 <a
                   href="https://www.linkedin.com/company/local-cooks/"
-                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard"
+                  className="bg-white/10 p-2 rounded-full hover:bg-primary/80 hover-standard transition-transform duration-300 hover:scale-110"
                   aria-label="LinkedIn"
                   target="_blank"
                   rel="noopener noreferrer"

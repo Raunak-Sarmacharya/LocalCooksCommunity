@@ -69,7 +69,7 @@ export default function AboutSection() {
               <div className="absolute -top-4 -left-4 w-24 h-24 bg-primary/10 rounded-full"></div>
               <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-primary/5 rounded-full"></div>
 
-              <div className="relative bg-white p-6 rounded-xl shadow-xl">
+              <div className="relative bg-white p-6 rounded-xl shadow-xl card-hover">
                 <div className="flex items-center gap-3 mb-4">
                   <Quote className="h-10 w-10 text-primary/30" />
                   <h3 className="text-xl font-semibold">Our Mission</h3>

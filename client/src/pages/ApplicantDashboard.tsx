@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import FadeInSection from "@/components/ui/FadeInSection";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import {
@@ -1091,7 +1093,8 @@ export default function ApplicantDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 relative">
+      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       {/* Vendor Portal Popup for Fully Verified Users */}
       <Dialog open={showVendorPortalPopup} onOpenChange={handleCloseVendorPopup}>
         <DialogContent className="sm:max-w-lg w-full mx-4 sm:mx-auto">

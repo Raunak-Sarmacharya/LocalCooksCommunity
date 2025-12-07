@@ -78,7 +78,7 @@ export default function CTASection() {
                   <p className="text-gray-600 text-sm mb-4">Share your culinary skills with the community</p>
                   <Button
                     onClick={handleChefClick}
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-full"
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-full btn-glow"
                   >
                     Apply as Chef
                   </Button>
@@ -94,7 +94,7 @@ export default function CTASection() {
             <Button
               onClick={handleChefClick}
               disabled={isLoading}
-              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow"
+              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:-translate-y-1 hover-transform hover-shadow btn-glow"
             >
               {isLoading ? "Loading..." : getPrimaryButtonText()}
             </Button>

@@ -63,6 +63,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
+import FadeInSection from "@/components/ui/FadeInSection";
 import {
     AlertCircle,
     AlertTriangle,
@@ -952,7 +954,8 @@ function AdminDashboard() {
         </div>
       </div>
     }>
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20">
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20 relative">
+      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       {/* Subtle background pattern */}
       <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
         <div 
@@ -1487,7 +1490,7 @@ function AdminDashboard() {
           
           return (
             <motion.div key={app.id} variants={itemVariants} className="w-full">
-              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm">
+              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm card-hover">
                 
                 {/* COMPACT VIEW - Always Visible */}
                 <CardContent className="p-0">
@@ -2155,7 +2158,7 @@ function AdminDashboard() {
           
           return (
             <motion.div key={app.id} variants={itemVariants} className="w-full">
-              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm">
+              <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm card-hover">
                 
                 {/* COMPACT VIEW - Always Visible */}
                 <CardContent className="p-0">

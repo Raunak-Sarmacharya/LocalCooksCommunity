@@ -86,7 +86,7 @@ export default function HowItWorksSection() {
           {steps.map((step, index) => (
             <motion.div
               key={index}
-              className="bg-white rounded-2xl shadow-lg overflow-hidden flex-1 hover:shadow-xl hover-standard hover:-translate-y-2 border border-gray-100 group"
+              className="bg-white rounded-2xl shadow-lg overflow-hidden flex-1 hover:shadow-xl hover-standard hover:-translate-y-2 border border-gray-100 group card-hover"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -144,16 +144,10 @@ export default function HowItWorksSection() {
               viewport={{ once: true }}
               transition={{ delay: 0.3 }}
             >
-              <img
-                src="https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80"
-                alt="Chef preparing meal"
-                className="rounded-xl shadow-lg object-cover h-full w-full"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/10 rounded-xl"></div>
-              <div className="absolute bottom-6 left-6 right-6 bg-white/95 backdrop-blur-sm p-5 rounded-xl shadow-lg">
-                <div className="flex items-center">
-                  <Utensils className="h-6 w-6 text-primary mr-3" />
-                  <p className="text-sm font-medium">Focus on cooking while we handle the business side</p>
+              <div className="bg-gradient-to-br from-primary/10 to-orange-50 rounded-xl shadow-lg p-12 h-full flex items-center justify-center">
+                <div className="text-center">
+                  <Utensils className="h-16 w-16 text-primary mx-auto mb-4" />
+                  <p className="text-lg font-semibold text-gray-700">Focus on cooking while we handle the business side</p>
                 </div>
               </div>
             </motion.div>

@@ -8,6 +8,8 @@ import Header from "@/components/layout/Header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import FadeInSection from "@/components/ui/FadeInSection";
+import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -43,8 +45,9 @@ function FormStep() {
       </div>
 
       <div className="container mx-auto px-3 sm:px-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">Cook Application</h1>
+        <FadeInSection>
+          <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">Cook Application</h1>
 
           {currentStep === 1 && (
             <div className="fade-in">
@@ -79,7 +82,8 @@ function FormStep() {
               </Button>
             </div>
           )}
-        </div>
+          </div>
+        </FadeInSection>
       </div>
     </>
   );
@@ -199,9 +203,10 @@ export default function ApplicationForm() {
 
   return (
     <ApplicationFormProvider>
-      <div className="min-h-screen flex flex-col bg-light-gray">
+      <div className="min-h-screen flex flex-col bg-light-gray relative">
+        <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
         <Header />
-        <main className="flex-grow pt-28 pb-16">
+        <main className="flex-grow pt-28 pb-16 relative z-10">
           {isLoading ? (
             <div className="container mx-auto px-4 flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />

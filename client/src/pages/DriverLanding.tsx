@@ -4,13 +4,27 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import GradientHero from "@/components/ui/GradientHero";
+import FadeInSection from "@/components/ui/FadeInSection";
 import { Truck, Clock, DollarSign, Route, MapPin, Shield } from "lucide-react";
 import { useLocation } from "wouter";
 import foodDeliveryImage from "@/assets/food-delivery.png";
+import { useQuery } from "@tanstack/react-query";
 
 export default function DriverLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
+
+  // Fetch real platform statistics
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["/api/public/stats"],
+    queryFn: async () => {
+      const response = await fetch("/api/public/stats");
+      if (!response.ok) throw new Error("Failed to fetch stats");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -42,12 +56,13 @@ export default function DriverLanding() {
       <Header />
       <main className="flex-grow">
         {/* Driver-Specific Hero Section */}
-        <section className="pt-28 pb-8 md:pt-36 md:pb-16 px-4 bg-gradient-to-br from-white via-blue-50 to-indigo-50">
+        <GradientHero variant="cool" className="pt-28 pb-8 md:pt-36 md:pb-16 px-4">
           <div className="container mx-auto grid md:grid-cols-2 gap-6 md:gap-8 items-center">
-            <div className="space-y-4 md:space-y-6">
-              <h1 className="text-3xl md:text-5xl font-bold mb-1 md:mb-2">
-                Become a <span className="font-logo text-primary">Delivery Partner</span>
-              </h1>
+            <FadeInSection>
+              <div className="space-y-4 md:space-y-6">
+                <h1 className="text-3xl md:text-5xl font-bold mb-1 md:mb-2">
+                  Become a <span className="font-logo text-primary">Delivery Partner</span>
+                </h1>
               <h2 className="text-lg md:text-2xl font-semibold mb-3 md:mb-4 text-gray-700">
                 Connecting Communities Through Fast Delivery
               </h2>
@@ -82,30 +97,36 @@ export default function DriverLanding() {
                 </div>
               </div>
 
-              <Button
-                onClick={handleGetStarted}
-                size="lg"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 px-8 text-lg"
-              >
-                {user ? 'Continue Application' : 'Apply as Delivery Partner'}
-              </Button>
-            </div>
-            <div className="hidden md:block">
-              <img
-                src={foodDeliveryImage}
-                alt="Food delivery"
-                className="w-full h-auto rounded-lg shadow-xl"
-              />
-            </div>
+                <Button
+                  onClick={handleGetStarted}
+                  size="lg"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 px-8 text-lg btn-glow"
+                >
+                  {user ? 'Continue Application' : 'Apply as Delivery Partner'}
+                </Button>
+              </div>
+            </FadeInSection>
+            <FadeInSection delay={1}>
+              <div className="hidden md:block">
+                <img
+                  src={foodDeliveryImage}
+                  alt="Food delivery"
+                  className="w-full h-auto rounded-lg shadow-xl"
+                />
+              </div>
+            </FadeInSection>
           </div>
-        </section>
+        </GradientHero>
 
         {/* How It Works Section */}
         <section id="how-it-works" className="py-12 md:py-16 px-4 bg-white">
           <div className="container mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">How It Works</h2>
+            <FadeInSection>
+              <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">How It Works</h2>
+            </FadeInSection>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <Card className="border-2">
+              <FadeInSection delay={1}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                     <span className="text-blue-600 font-bold text-xl">1</span>
@@ -116,18 +137,22 @@ export default function DriverLanding() {
                   </CardDescription>
                 </CardHeader>
               </Card>
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-green-600 font-bold text-xl">2</span>
-                  </div>
-                  <CardTitle>Accept Delivery Requests</CardTitle>
-                  <CardDescription>
-                    Receive delivery requests from chefs and accept the ones that fit your schedule.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              <Card className="border-2">
+              </FadeInSection>
+              <FadeInSection delay={2}>
+                <Card className="border-2 card-hover">
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                      <span className="text-green-600 font-bold text-xl">2</span>
+                    </div>
+                    <CardTitle>Accept Delivery Requests</CardTitle>
+                    <CardDescription>
+                      Receive delivery requests from chefs and accept the ones that fit your schedule.
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </FadeInSection>
+              <FadeInSection delay={3}>
+                <Card className="border-2 card-hover">
                 <CardHeader>
                   <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
                     <span className="text-purple-600 font-bold text-xl">3</span>
@@ -138,6 +163,7 @@ export default function DriverLanding() {
                   </CardDescription>
                 </CardHeader>
               </Card>
+              </FadeInSection>
             </div>
           </div>
         </section>
@@ -145,9 +171,12 @@ export default function DriverLanding() {
         {/* Benefits Section */}
         <section id="benefits" className="py-12 md:py-16 px-4 bg-light-gray">
           <div className="container mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">Why Become a Delivery Partner?</h2>
+            <FadeInSection>
+              <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">Why Become a Delivery Partner?</h2>
+            </FadeInSection>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <Card>
+              <FadeInSection delay={1}>
+                <Card className="card-hover">
                 <CardHeader>
                   <MapPin className="h-8 w-8 text-blue-600 mb-3" />
                   <CardTitle>Work in Your Area</CardTitle>
@@ -156,6 +185,7 @@ export default function DriverLanding() {
                   </CardDescription>
                 </CardHeader>
               </Card>
+              </FadeInSection>
               <Card>
                 <CardHeader>
                   <Clock className="h-8 w-8 text-green-600 mb-3" />
@@ -208,17 +238,25 @@ export default function DriverLanding() {
         {/* CTA Section */}
         <section className="py-12 md:py-16 px-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
           <div className="container mx-auto text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to Start Delivering?</h2>
+            <FadeInSection>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to Start Delivering?</h2>
             <p className="text-xl mb-8 max-w-2xl mx-auto">
-              Join hundreds of delivery partners connecting communities with fresh, homemade meals.
+              {statsLoading ? (
+                "Join our delivery partner network and connect communities with fresh, homemade meals."
+              ) : stats?.totalDeliveryPartners ? (
+                `Join ${stats.totalDeliveryPartners}+ delivery partners connecting communities with fresh, homemade meals.`
+              ) : (
+                "Join our delivery partner network and connect communities with fresh, homemade meals."
+              )}
             </p>
-            <Button
-              onClick={handleGetStarted}
-              size="lg"
-              className="bg-white text-blue-600 hover:bg-blue-50 font-semibold py-6 px-8 text-lg"
-            >
-              {user ? 'Continue Application' : 'Apply Now'}
-            </Button>
+              <Button
+                onClick={handleGetStarted}
+                size="lg"
+                className="bg-white text-blue-600 hover:bg-blue-50 font-semibold py-6 px-8 text-lg btn-glow"
+              >
+                {user ? 'Continue Application' : 'Apply Now'}
+              </Button>
+            </FadeInSection>
           </div>
         </section>
       </main>
