@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { createBookingDateTime } from '../shared/timezone-utils';
 
 // Email configuration
 interface EmailConfig {

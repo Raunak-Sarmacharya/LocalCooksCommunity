@@ -23,30 +23,100 @@ export default function ChefLanding() {
   const [showPreloader, setShowPreloader] = useState(true);
 
   // Fetch real kitchens data
-  const { data: kitchens = [], isLoading: kitchensLoading } = useQuery({
+  const { data: kitchens = [], isLoading: kitchensLoading, error: kitchensError } = useQuery({
     queryKey: ["/api/public/kitchens"],
     queryFn: async () => {
-      const response = await fetch("/api/public/kitchens");
-      if (!response.ok) throw new Error("Failed to fetch kitchens");
-      return response.json();
+      try {
+        const apiUrl = "/api/public/kitchens";
+        console.log(`[ChefLanding] Fetching kitchens from: ${apiUrl}`);
+        console.log(`[ChefLanding] Current hostname: ${window.location.hostname}`);
+        
+        const response = await fetch(apiUrl, {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        
+        console.log(`[ChefLanding] Response status: ${response.status} ${response.statusText}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("[ChefLanding] Failed to fetch kitchens:", response.status, errorText);
+          throw new Error(`Failed to fetch kitchens: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        console.log(`[ChefLanding] Kitchens data received:`, {
+          count: Array.isArray(data) ? data.length : 0,
+          data: data,
+          sample: Array.isArray(data) && data.length > 0 ? data[0] : null
+        });
+        
+        // Ensure we return an array
+        return Array.isArray(data) ? data : [];
+      } catch (error) {
+        console.error("[ChefLanding] Error fetching kitchens:", error);
+        // Return empty array on error to prevent UI breaking
+        return [];
+      }
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 2, // Retry twice on failure
+    refetchOnWindowFocus: true, // Refetch when window regains focus
   });
 
   // Extract unique locations from kitchens
   const uniqueLocations = useMemo(() => {
+    if (!kitchens || kitchens.length === 0) {
+      console.log("No kitchens data available");
+      return [];
+    }
+    
+    console.log("Processing kitchens for locations:", kitchens);
     const locationMap = new Map();
+    let kitchensWithoutLocation = 0;
+    
     kitchens.forEach((kitchen: any) => {
       const locationId = kitchen.locationId || kitchen.location_id;
-      if (locationId && !locationMap.has(locationId)) {
-        locationMap.set(locationId, {
-          id: locationId,
-          name: kitchen.locationName || "Unknown Location",
-          address: kitchen.locationAddress || "",
-        });
+      const locationName = kitchen.locationName || kitchen.location_name || null;
+      const locationAddress = kitchen.locationAddress || kitchen.location_address || null;
+      
+      console.log("Processing kitchen:", {
+        id: kitchen.id,
+        name: kitchen.name,
+        locationId,
+        locationName,
+        locationAddress
+      });
+      
+      // Only add locations that have both an ID and a name
+      if (locationId) {
+        if (!locationMap.has(locationId)) {
+          // Only add if we have at least a name
+          if (locationName) {
+            locationMap.set(locationId, {
+              id: locationId,
+              name: locationName,
+              address: locationAddress || "",
+            });
+          } else {
+            console.warn(`Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
+          }
+        }
+      } else {
+        kitchensWithoutLocation++;
       }
     });
-    return Array.from(locationMap.values());
+    
+    if (kitchensWithoutLocation > 0) {
+      console.warn(`${kitchensWithoutLocation} kitchens have no locationId assigned`);
+    }
+    
+    const locations = Array.from(locationMap.values());
+    console.log(`Extracted ${locations.length} unique locations from ${kitchens.length} kitchens`);
+    return locations;
   }, [kitchens]);
 
   // Fetch real platform statistics
@@ -103,7 +173,7 @@ export default function ChefLanding() {
       <Header />
       <main className="flex-grow">
         {/* HERO SECTION */}
-        <GradientHero variant="cream" className="pt-32 pb-20 md:pt-40 md:pb-32 px-4 relative overflow-hidden">
+        <GradientHero variant="cream" className="pt-24 pb-12 md:pt-32 md:pb-16 px-4 relative overflow-hidden">
           {/* Enhanced background decorative elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -160,7 +230,7 @@ export default function ChefLanding() {
         </GradientHero>
 
         {/* BENEFITS SECTION */}
-        <section id="benefits" className="py-20 md:py-28 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+        <section id="benefits" className="py-12 md:py-16 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -169,7 +239,7 @@ export default function ChefLanding() {
           
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-20">
+              <div className="text-center mb-12">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-3 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Why Choose Us
                 </span>
@@ -303,7 +373,7 @@ export default function ChefLanding() {
         </section>
 
         {/* TRIAL PHASE HIGHLIGHT */}
-        <section className="py-24 md:py-32 px-4 bg-gradient-to-br from-[var(--color-cream)]/50 via-white to-[var(--color-cream)]/30 relative overflow-hidden">
+        <section className="py-16 md:py-20 px-4 bg-gradient-to-br from-[var(--color-cream)]/50 via-white to-[var(--color-cream)]/30 relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -355,7 +425,7 @@ export default function ChefLanding() {
         </section>
 
         {/* HOW IT WORKS */}
-        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+        <section className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -364,7 +434,7 @@ export default function ChefLanding() {
           
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-20">
+              <div className="text-center mb-12">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Simple Process
                 </span>
@@ -428,7 +498,7 @@ export default function ChefLanding() {
         </section>
 
         {/* COMPARISON SECTION */}
-        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/20 to-white relative overflow-hidden">
+        <section className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/20 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -437,7 +507,7 @@ export default function ChefLanding() {
           
           <div className="container mx-auto max-w-5xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-16">
+              <div className="text-center mb-10">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Compare
                 </span>
@@ -523,7 +593,7 @@ export default function ChefLanding() {
         </section>
 
         {/* EARNINGS SECTION */}
-        <section id="earnings" className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+        <section id="earnings" className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -532,7 +602,7 @@ export default function ChefLanding() {
           
           <div className="container mx-auto max-w-5xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-20">
+              <div className="text-center mb-12">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Earnings Breakdown
                 </span>
@@ -601,7 +671,7 @@ export default function ChefLanding() {
         </section>
 
         {/* KITCHEN MARKETPLACE SECTION */}
-        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/20 to-white relative overflow-hidden">
+        <section className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/20 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -610,7 +680,7 @@ export default function ChefLanding() {
           
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-16">
+              <div className="text-center mb-10">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Kitchen Access
                 </span>
@@ -625,10 +695,33 @@ export default function ChefLanding() {
               <div className="text-center mb-12">
                 <p className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans">Loading locations...</p>
               </div>
+            ) : kitchensError ? (
+              <div className="text-center mb-12">
+                <p className="text-lg md:text-xl text-red-600 font-sans">
+                  Unable to load locations. Please try again later.
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {kitchensError instanceof Error ? kitchensError.message : "Unknown error"}
+                </p>
+              </div>
+            ) : kitchens.length > 0 && uniqueLocations.length === 0 ? (
+              <div className="text-center mb-10">
+                <p className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans mb-4">
+                  Kitchens are available, but location information is being loaded.
+                </p>
+                <Button 
+                  size="lg" 
+                  onClick={() => navigate('/portal/book')}
+                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-6 px-12 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform"
+                >
+                  <Building2 className="h-6 w-6 mr-2" />
+                  Browse Available Kitchens
+                </Button>
+              </div>
             ) : uniqueLocations.length > 0 ? (
               <div className={uniqueLocations.length < 3 
                 ? `flex flex-wrap justify-center gap-8 mb-16` 
-                : `grid md:grid-cols-3 gap-8 mb-16`}>
+                : `grid md:grid-cols-3 gap-8 mb-10`}>
                 {uniqueLocations.slice(0, 3).map((location: any) => (
                   <FadeInSection key={location.id} delay={1}>
                     <Card className={`border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden ${uniqueLocations.length < 3 ? 'w-full max-w-sm' : ''}`}>
@@ -659,7 +752,7 @@ export default function ChefLanding() {
                 ))}
               </div>
             ) : (
-              <div className="text-center mb-16">
+              <div className="text-center mb-10">
                 <Button 
                   size="lg" 
                   onClick={() => navigate('/portal/book')}
@@ -695,7 +788,7 @@ export default function ChefLanding() {
         </section>
 
         {/* CTA SECTION */}
-        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+        <section className="py-16 md:py-20 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -722,7 +815,7 @@ export default function ChefLanding() {
         </section>
 
         {/* FAQ SECTION */}
-        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 via-white to-[var(--color-cream)]/20 relative overflow-hidden">
+        <section className="py-16 md:py-20 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 via-white to-[var(--color-cream)]/20 relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -731,7 +824,7 @@ export default function ChefLanding() {
           
           <div className="container mx-auto max-w-4xl relative z-10">
             <FadeInSection>
-              <div className="text-center mb-16">
+              <div className="text-center mb-10">
                 <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
                   Questions
                 </span>
@@ -802,7 +895,7 @@ export default function ChefLanding() {
         </section>
 
         {/* FINAL CTA */}
-        <section className="py-24 md:py-36 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
+        <section className="py-16 md:py-24 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
           {/* Decorative background elements */}
           <div className="absolute inset-0 opacity-10 pointer-events-none">
             <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>

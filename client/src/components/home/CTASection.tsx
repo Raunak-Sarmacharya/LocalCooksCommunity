@@ -56,7 +56,7 @@ export default function CTASection() {
 
 
   return (
-    <section className="py-16 md:py-24 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/30 to-[var(--color-cream)]/50 relative overflow-hidden">
+    <section className="py-12 md:py-16 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/30 to-[var(--color-cream)]/50 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 opacity-5 pointer-events-none">
         <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>

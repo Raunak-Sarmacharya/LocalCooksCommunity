@@ -144,9 +144,9 @@ export default function BenefitsSection() {
   const mainBenefits = getBenefits();
   
   return (
-    <section id="benefits" className="py-16 md:py-24 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 to-white scroll-mt-24">
+    <section id="benefits" className="py-12 md:py-16 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 to-white scroll-mt-24">
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-12 md:mb-16">
+        <div className="text-center mb-10">
           <motion.span 
             className="inline-block text-[var(--color-primary)] font-medium mb-2 font-mono text-xs uppercase tracking-wider"
             initial={{ opacity: 0, y: 20 }}
@@ -176,7 +176,7 @@ export default function BenefitsSection() {
           </motion.p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 mb-10">
           {mainBenefits.map((benefit, index) => (
             <motion.div 
               key={index}
