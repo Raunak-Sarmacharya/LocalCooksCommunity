@@ -9,9 +9,10 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings } from "../shared/schema.js";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles } from "../shared/schema.js";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
+import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
 /**
  * Firebase-only storage implementation without session management
@@ -58,6 +59,53 @@ export class FirebaseStorage {
     }
   }
 
+  async updateUser(id: number, updates: { username?: string; role?: string; isManager?: boolean; isChef?: boolean; isDeliveryPartner?: boolean }): Promise<User | undefined> {
+    try {
+      const [updated] = await db
+        .update(users)
+        .set(updates as any)
+        .where(eq(users.id, id))
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error updating user:', error);
+      throw error;
+    }
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    try {
+      // Use transaction to ensure atomicity when updating locations and deleting user
+      await db.transaction(async (tx) => {
+        // Check if user is a manager with assigned locations
+        const managedLocations = await tx.select().from(locations).where(eq(locations.managerId, id));
+        if (managedLocations.length > 0) {
+          // Set manager_id to NULL for all locations managed by this user
+          // This prevents foreign key constraint violations (NO ACTION means we must handle it)
+          await tx.update(locations).set({ managerId: null }).where(eq(locations.managerId, id));
+          console.log(`⚠️ Removed manager ${id} from ${managedLocations.length} location(s)`);
+        }
+        
+        // Delete user (must be after updating locations to avoid foreign key constraint violation)
+        await tx.delete(users).where(eq(users.id, id));
+      });
+      
+      console.log(`✅ Deleted user ${id}`);
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
+
+  async getAllManagers(): Promise<User[]> {
+    try {
+      return await db.select().from(users).where(eq(users.role, 'manager'));
+    } catch (error) {
+      console.error('Error getting all managers:', error);
+      throw error;
+    }
+  }
+
   async createUser(insertUser: InsertUser & { firebaseUid?: string, isVerified?: boolean, has_seen_welcome?: boolean }): Promise<User> {
     if (!insertUser.username) {
       throw new Error("Username is required");
@@ -67,7 +115,7 @@ export class FirebaseStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
           [
             insertUser.username,
             insertUser.password || '', // Empty password for Firebase users
@@ -76,7 +124,9 @@ export class FirebaseStorage {
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
             insertUser.isChef !== undefined ? insertUser.isChef : false,
-            insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false
+            insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
+            insertUser.isManager !== undefined ? insertUser.isManager : false,
+            (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false
           ]
         );
         return result.rows[0];
@@ -97,6 +147,8 @@ export class FirebaseStorage {
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
         isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,
         isDeliveryPartner: insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
+        isManager: insertUser.isManager !== undefined ? insertUser.isManager : false,
+        isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
       })
       .returning();
 
@@ -390,7 +442,7 @@ export class FirebaseStorage {
 
   // ===== LOCATIONS MANAGEMENT =====
   
-  async createLocation(locationData: { name: string; address: string; managerId?: number }): Promise<any> {
+  async createLocation(locationData: { name: string; address: string; managerId?: number; notificationEmail?: string }): Promise<any> {
     try {
       console.log('Inserting location into database:', locationData);
       
@@ -403,6 +455,11 @@ export class FirebaseStorage {
       // Only include managerId if it's provided and valid
       if (locationData.managerId !== undefined && locationData.managerId !== null) {
         insertData.managerId = locationData.managerId;
+      }
+      
+      // Include notificationEmail if provided
+      if (locationData.notificationEmail !== undefined && locationData.notificationEmail !== null && locationData.notificationEmail !== '') {
+        insertData.notificationEmail = locationData.notificationEmail;
       }
       
       console.log('Insert data:', insertData);
@@ -433,10 +490,42 @@ export class FirebaseStorage {
     }
   }
 
+  async getAllLocations(): Promise<any[]> {
+    try {
+      const allLocations = await db.select().from(locations);
+      return allLocations.map((location: any) => ({
+        ...location,
+        managerId: location.managerId || location.manager_id || null,
+        notificationEmail: location.notificationEmail || location.notification_email || null,
+        cancellationPolicyHours: location.cancellationPolicyHours || location.cancellation_policy_hours,
+        cancellationPolicyMessage: location.cancellationPolicyMessage || location.cancellation_policy_message,
+        defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit,
+        minimumBookingWindowHours: location.minimumBookingWindowHours || location.minimum_booking_window_hours,
+        logoUrl: location.logoUrl || location.logo_url || null,
+      }));
+    } catch (error) {
+      console.error('Error getting all locations:', error);
+      return [];
+    }
+  }
+
   async getLocationById(id: number): Promise<any | undefined> {
     try {
       const [location] = await db.select().from(locations).where(eq(locations.id, id));
-      return location || undefined;
+      if (!location) return undefined;
+      
+      // Map snake_case to camelCase for consistent API (same pattern as getAllLocations)
+      return {
+        ...location,
+        managerId: (location as any).managerId || (location as any).manager_id || null,
+        notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
+        cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+        timezone: (location as any).timezone || DEFAULT_TIMEZONE,
+        cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
+        createdAt: (location as any).createdAt || (location as any).created_at,
+        updatedAt: (location as any).updatedAt || (location as any).updated_at,
+      };
     } catch (error) {
       console.error('Error getting location by ID:', error);
       throw error;
@@ -452,16 +541,8 @@ export class FirebaseStorage {
     }
   }
 
-  async getAllLocations(): Promise<any[]> {
-    try {
-      return await db.select().from(locations);
-    } catch (error) {
-      console.error('Error getting all locations:', error);
-      throw error;
-    }
-  }
 
-  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number }): Promise<any> {
+  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number; notificationEmail?: string | null }): Promise<any> {
     try {
       const [updated] = await db
         .update(locations)
@@ -471,6 +552,26 @@ export class FirebaseStorage {
       return updated;
     } catch (error) {
       console.error('Error updating location:', error);
+      throw error;
+    }
+  }
+
+  async deleteLocation(id: number): Promise<void> {
+    try {
+      // Check if location has kitchens first (foreign key constraint requires this)
+      const locationKitchens = await db.select().from(kitchens).where(eq(kitchens.locationId, id));
+      if (locationKitchens.length > 0) {
+        throw new Error(`Cannot delete location: It has ${locationKitchens.length} kitchen(s). Please delete or reassign kitchens first.`);
+      }
+      
+      // Use transaction for atomicity (best practice per Drizzle ORM)
+      await db.transaction(async (tx) => {
+        await tx.delete(locations).where(eq(locations.id, id));
+      });
+      
+      console.log(`✅ Deleted location ${id}`);
+    } catch (error: any) {
+      console.error('Error deleting location:', error);
       throw error;
     }
   }
@@ -618,7 +719,37 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean }): Promise<any> {
+  // Get kitchens that a chef has access to (admin must grant access first)
+  async getKitchensForChef(chefId: number): Promise<any[]> {
+    try {
+      // Get all locations chef has access to
+      const locationAccessRecords = await db
+        .select()
+        .from(chefLocationAccess)
+        .where(eq(chefLocationAccess.chefId, chefId));
+      
+      if (locationAccessRecords.length === 0) {
+        return []; // Chef has no access to any locations
+      }
+      
+      const locationIds = locationAccessRecords.map(access => access.locationId);
+      
+      // Get all kitchens with location and manager details
+      const allKitchensWithDetails = await this.getAllKitchensWithLocationAndManager();
+      
+      // Filter to only kitchens in locations chef has access to and that are active
+      return allKitchensWithDetails.filter(kitchen => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : (kitchen as any).is_active;
+        const kitchenLocationId = (kitchen as any).locationId ?? (kitchen as any).location?.id;
+        return locationIds.includes(kitchenLocationId) && isActive !== false && isActive !== null;
+      });
+    } catch (error) {
+      console.error('Error getting kitchens for chef:', error);
+      throw error;
+    }
+  }
+
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number }): Promise<any> {
     try {
       const [updated] = await db
         .update(kitchens)
@@ -628,6 +759,33 @@ export class FirebaseStorage {
       return updated;
     } catch (error) {
       console.error('Error updating kitchen:', error);
+      throw error;
+    }
+  }
+
+  async deleteKitchen(id: number): Promise<void> {
+    try {
+      // Check if kitchen has bookings first (foreign key constraint requires this)
+      const existingBookings = await db.select().from(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
+      if (existingBookings.length > 0) {
+        throw new Error(`Cannot delete kitchen: It has ${existingBookings.length} booking(s). Please cancel or reassign bookings first.`);
+      }
+      
+      // Use transaction to ensure atomicity - all related data deleted together (best practice per Drizzle ORM)
+      await db.transaction(async (tx) => {
+        // Delete availability records
+        await tx.delete(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, id));
+        
+        // Delete date overrides
+        await tx.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, id));
+        
+        // Delete kitchen (must be last due to foreign key constraints)
+        await tx.delete(kitchens).where(eq(kitchens.id, id));
+      });
+      
+      console.log(`✅ Deleted kitchen ${id} and all related records`);
+    } catch (error: any) {
+      console.error('Error deleting kitchen:', error);
       throw error;
     }
   }
@@ -888,6 +1046,68 @@ export class FirebaseStorage {
     }
   }
 
+  // Create booking with support for external/third-party bookings
+  async createBooking(bookingData: {
+    kitchenId: number;
+    bookingDate: Date;
+    startTime: string;
+    endTime: string;
+    specialNotes?: string;
+    bookingType?: 'chef' | 'external' | 'manager_blocked';
+    createdBy?: number | null;
+    chefId?: number | null;
+    externalContact?: {
+      name: string;
+      email: string;
+      phone?: string | null;
+      company?: string | null;
+    };
+  }): Promise<any> {
+    try {
+      console.log('Creating booking (with external support):', bookingData);
+      
+      const insertData: any = {
+        kitchenId: bookingData.kitchenId,
+        bookingDate: bookingData.bookingDate,
+        startTime: bookingData.startTime,
+        endTime: bookingData.endTime,
+        bookingType: bookingData.bookingType || 'chef',
+        chefId: bookingData.chefId || bookingData.createdBy || null,
+        createdBy: bookingData.createdBy || null,
+      };
+      
+      if (bookingData.specialNotes) {
+        insertData.specialNotes = bookingData.specialNotes;
+      }
+      
+      if (bookingData.externalContact) {
+        insertData.externalContactName = bookingData.externalContact.name;
+        insertData.externalContactEmail = bookingData.externalContact.email;
+        insertData.externalContactPhone = bookingData.externalContact.phone || null;
+        insertData.externalContactCompany = bookingData.externalContact.company || null;
+      }
+      
+      // Get kitchen name for response
+      const kitchen = await this.getKitchenById(bookingData.kitchenId);
+      const kitchenName = kitchen?.name || 'Kitchen';
+      
+      const [booking] = await db
+        .insert(kitchenBookings)
+        .values(insertData)
+        .returning();
+      
+      console.log('Booking created successfully:', booking);
+      
+      return {
+        ...booking,
+        kitchenName,
+      };
+    } catch (error: any) {
+      console.error('Error creating booking:', error);
+      throw error;
+    }
+  }
+
   async getKitchenBookingById(id: number): Promise<any | undefined> {
     try {
       const [booking] = await db.select().from(kitchenBookings).where(eq(kitchenBookings.id, id));
@@ -900,11 +1120,28 @@ export class FirebaseStorage {
 
   async getBookingsByChef(chefId: number): Promise<any[]> {
     try {
+      // Join with kitchens and locations to get cancellation policy
       return await db
-        .select()
+        .select({
+          booking: kitchenBookings,
+          kitchen: kitchens,
+          location: locations,
+        })
         .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
         .where(eq(kitchenBookings.chefId, chefId))
-        .orderBy(asc(kitchenBookings.bookingDate));
+        .orderBy(asc(kitchenBookings.bookingDate))
+        .then(results => results.map(r => ({
+          ...r.booking,
+          kitchen: r.kitchen,
+          location: {
+            id: r.location.id,
+            name: r.location.name,
+            cancellationPolicyHours: r.location.cancellationPolicyHours,
+            cancellationPolicyMessage: r.location.cancellationPolicyMessage,
+          },
+        })));
     } catch (error) {
       console.error('Error getting bookings by chef:', error);
       throw error;
@@ -926,36 +1163,133 @@ export class FirebaseStorage {
 
   async getBookingsByManager(managerId: number): Promise<any[]> {
     try {
-      // Get all locations for this manager
-      const managerLocations = await db
-        .select()
-        .from(locations)
-        .where(eq(locations.managerId, managerId));
+      if (!pool) {
+        return [];
+      }
+
+      // Get all locations for this manager (using raw SQL like chef profiles)
+      const locationsResult = await pool.query(
+        'SELECT id FROM locations WHERE manager_id = $1',
+        [managerId]
+      );
       
-      const locationIds = managerLocations.map(loc => loc.id);
+      const locationIds = locationsResult.rows.map(row => row.id);
       
       if (locationIds.length === 0) {
         return [];
       }
 
       // Get all kitchens for these locations
-      const managerKitchens = await db
-        .select()
-        .from(kitchens)
-        .where(inArray(kitchens.locationId, locationIds));
+      const kitchensResult = await pool.query(
+        'SELECT id FROM kitchens WHERE location_id = ANY($1::int[])',
+        [locationIds]
+      );
       
-      const kitchenIds = managerKitchens.map(k => k.id);
+      const kitchenIds = kitchensResult.rows.map(row => row.id);
       
       if (kitchenIds.length === 0) {
         return [];
       }
 
-      // Get all bookings for these kitchens
-      return await db
-        .select()
-        .from(kitchenBookings)
-        .where(inArray(kitchenBookings.kitchenId, kitchenIds))
-        .orderBy(asc(kitchenBookings.bookingDate));
+      // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
+      const bookingsResult = await pool.query(
+        `SELECT 
+          id, chef_id, kitchen_id, booking_date, start_time, end_time, 
+          status, special_notes, created_at, updated_at
+        FROM kitchen_bookings 
+        WHERE kitchen_id = ANY($1::int[])
+        ORDER BY booking_date DESC, start_time ASC`,
+        [kitchenIds]
+      );
+      
+      // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
+      const enrichedBookings = await Promise.all(
+        bookingsResult.rows.map(async (booking) => {
+          // Get chef details
+          let chefName = null;
+          if (booking.chef_id) {
+            try {
+              const chefResult = await pool.query(
+                'SELECT id, username FROM users WHERE id = $1',
+                [booking.chef_id]
+              );
+              const chef = chefResult.rows[0];
+              
+              if (chef) {
+                chefName = chef.username;
+                
+                // Try to get chef's full name from their application
+                const appResult = await pool.query(
+                  'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                  [booking.chef_id]
+                );
+                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                  chefName = appResult.rows[0].full_name;
+                }
+              }
+            } catch (error) {
+              // Silently handle errors
+            }
+          }
+          
+          // Get kitchen details
+          let kitchenName = 'Kitchen';
+          let locationId = null;
+          if (booking.kitchen_id) {
+            try {
+              const kitchenResult = await pool.query(
+                'SELECT id, name, location_id FROM kitchens WHERE id = $1',
+                [booking.kitchen_id]
+              );
+              const kitchen = kitchenResult.rows[0];
+              if (kitchen) {
+                kitchenName = kitchen.name || 'Kitchen';
+                locationId = kitchen.location_id;
+              }
+            } catch (error) {
+              // Silently handle errors
+            }
+          }
+          
+          // Get location details including timezone
+          let locationName = null;
+          let locationTimezone = DEFAULT_TIMEZONE;
+          if (locationId) {
+            try {
+              const locationResult = await pool.query(
+                'SELECT id, name, timezone FROM locations WHERE id = $1',
+                [locationId]
+              );
+              const location = locationResult.rows[0];
+              if (location) {
+                locationName = location.name;
+                locationTimezone = location.timezone || DEFAULT_TIMEZONE;
+              }
+            } catch (error) {
+              // Silently handle errors
+            }
+          }
+          
+          return {
+            id: booking.id,
+            chefId: booking.chef_id,
+            kitchenId: booking.kitchen_id,
+            bookingDate: booking.booking_date,
+            startTime: booking.start_time,
+            endTime: booking.end_time,
+            status: booking.status,
+            specialNotes: booking.special_notes,
+            createdAt: booking.created_at,
+            updatedAt: booking.updated_at,
+            chefName: chefName,
+            kitchenName: kitchenName,
+            locationName: locationName,
+            locationTimezone: locationTimezone,
+          };
+        })
+      );
+      
+      return enrichedBookings;
     } catch (error) {
       console.error('Error getting bookings by manager:', error);
       throw error;
@@ -1234,6 +1568,30 @@ export class FirebaseStorage {
     }
   }
 
+  // Get available slots in format expected by public API
+  async getAvailableSlots(kitchenId: number, dateStr: string): Promise<{ time: string; available: boolean }[]> {
+    try {
+      const date = new Date(dateStr);
+      const slots = await this.getAvailableTimeSlots(kitchenId, date);
+      return slots.map(time => ({ time, available: true }));
+    } catch (error) {
+      console.error('Error getting available slots:', error);
+      return [];
+    }
+  }
+
+  // Get location manager
+  async getLocationManager(locationId: number): Promise<any | undefined> {
+    try {
+      const location = await this.getLocationById(locationId);
+      if (!location || !location.managerId) return undefined;
+      return await this.getUser(location.managerId);
+    } catch (error) {
+      console.error('Error getting location manager:', error);
+      return undefined;
+    }
+  }
+
   // Validate that booking time is within manager-set availability
   async validateBookingAvailability(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<{ valid: boolean; error?: string }> {
     try {
@@ -1321,6 +1679,421 @@ export class FirebaseStorage {
     } catch (error) {
       console.error('Error checking booking conflict:', error);
       return true; // Return true on error to prevent double booking
+    }
+  }
+
+  // ===== CHEF KITCHEN ACCESS MANAGEMENT (Admin grants access) =====
+
+  // ===== CHEF LOCATION ACCESS MANAGEMENT (Admin grants access to locations) =====
+  // When a chef has access to a location, they can book any kitchen within that location
+  
+  async grantChefLocationAccess(chefId: number, locationId: number, grantedBy: number): Promise<any> {
+    try {
+      const [access] = await db
+        .insert(chefLocationAccess)
+        .values({
+          chefId,
+          locationId,
+          grantedBy,
+        })
+        .onConflictDoNothing()
+        .returning();
+      
+      return access;
+    } catch (error) {
+      console.error('Error granting chef location access:', error);
+      throw error;
+    }
+  }
+
+  async revokeChefLocationAccess(chefId: number, locationId: number): Promise<void> {
+    try {
+      await db
+        .delete(chefLocationAccess)
+        .where(
+          and(
+            eq(chefLocationAccess.chefId, chefId),
+            eq(chefLocationAccess.locationId, locationId)
+          )
+        );
+    } catch (error) {
+      console.error('Error revoking chef location access:', error);
+      throw error;
+    }
+  }
+
+  async getChefLocationAccess(chefId: number): Promise<any[]> {
+    try {
+      return await db
+        .select()
+        .from(chefLocationAccess)
+        .where(eq(chefLocationAccess.chefId, chefId));
+    } catch (error) {
+      console.error('Error getting chef location access:', error);
+      throw error;
+    }
+  }
+
+  // Helper: Check if chef has access to a location (used for booking validation)
+  async chefHasLocationAccess(chefId: number, locationId: number): Promise<boolean> {
+    try {
+      const access = await db
+        .select()
+        .from(chefLocationAccess)
+        .where(
+          and(
+            eq(chefLocationAccess.chefId, chefId),
+            eq(chefLocationAccess.locationId, locationId)
+          )
+        )
+        .limit(1);
+      
+      return access.length > 0;
+    } catch (error) {
+      console.error('Error checking chef location access:', error);
+      return false;
+    }
+  }
+
+  // Helper: Get location ID for a kitchen
+  async getKitchenLocation(kitchenId: number): Promise<number | null> {
+    try {
+      const [kitchen] = await db
+        .select({ locationId: kitchens.locationId })
+        .from(kitchens)
+        .where(eq(kitchens.id, kitchenId))
+        .limit(1);
+      
+      return kitchen?.locationId ?? null;
+    } catch (error) {
+      console.error('Error getting kitchen location:', error);
+      return null;
+    }
+  }
+
+  // Legacy methods - kept for backward compatibility
+  async grantChefKitchenAccess(chefId: number, kitchenId: number, grantedBy: number): Promise<any> {
+    try {
+      const [access] = await db
+        .insert(chefKitchenAccess)
+        .values({
+          chefId,
+          kitchenId,
+          grantedBy,
+        })
+        .onConflictDoNothing()
+        .returning();
+      
+      return access;
+    } catch (error) {
+      console.error('Error granting chef kitchen access:', error);
+      throw error;
+    }
+  }
+
+  async revokeChefKitchenAccess(chefId: number, kitchenId: number): Promise<void> {
+    try {
+      await db
+        .delete(chefKitchenAccess)
+        .where(
+          and(
+            eq(chefKitchenAccess.chefId, chefId),
+            eq(chefKitchenAccess.kitchenId, kitchenId)
+          )
+        );
+    } catch (error) {
+      console.error('Error revoking chef kitchen access:', error);
+      throw error;
+    }
+  }
+
+  async getChefKitchenAccess(chefId: number): Promise<any[]> {
+    try {
+      return await db
+        .select()
+        .from(chefKitchenAccess)
+        .where(eq(chefKitchenAccess.chefId, chefId));
+    } catch (error) {
+      console.error('Error getting chef kitchen access:', error);
+      throw error;
+    }
+  }
+
+  // ===== CHEF KITCHEN PROFILE MANAGEMENT (Chef shares, Manager approves) =====
+
+  async shareChefProfileWithKitchen(chefId: number, kitchenId: number): Promise<any> {
+    try {
+      // Check if profile already shared
+      const existing = await db
+        .select()
+        .from(chefKitchenProfiles)
+        .where(
+          and(
+            eq(chefKitchenProfiles.chefId, chefId),
+            eq(chefKitchenProfiles.kitchenId, kitchenId)
+          )
+        );
+      
+      if (existing.length > 0) {
+        // Update status back to pending if it was rejected
+        if (existing[0].status === 'rejected') {
+          const [updated] = await db
+            .update(chefKitchenProfiles)
+            .set({
+              status: 'pending',
+              sharedAt: new Date(),
+              reviewedBy: null,
+              reviewedAt: null,
+              reviewFeedback: null,
+            })
+            .where(eq(chefKitchenProfiles.id, existing[0].id))
+            .returning();
+          return updated;
+        }
+        return existing[0]; // Already shared
+      }
+      
+      // Create new profile sharing
+      const [profile] = await db
+        .insert(chefKitchenProfiles)
+        .values({
+          chefId,
+          kitchenId,
+          status: 'pending',
+        })
+        .returning();
+      
+      return profile;
+    } catch (error) {
+      console.error('Error sharing chef profile with kitchen:', error);
+      throw error;
+    }
+  }
+
+  async updateChefKitchenProfileStatus(
+    profileId: number,
+    status: 'approved' | 'rejected',
+    reviewedBy: number,
+    reviewFeedback?: string
+  ): Promise<any> {
+    try {
+      const [updated] = await db
+        .update(chefKitchenProfiles)
+        .set({
+          status,
+          reviewedBy,
+          reviewedAt: new Date(),
+          reviewFeedback: reviewFeedback || null,
+        })
+        .where(eq(chefKitchenProfiles.id, profileId))
+        .returning();
+      
+      return updated;
+    } catch (error) {
+      console.error('Error updating chef kitchen profile status:', error);
+      throw error;
+    }
+  }
+
+  async getChefKitchenProfile(chefId: number, kitchenId: number): Promise<any | undefined> {
+    try {
+      const [profile] = await db
+        .select()
+        .from(chefKitchenProfiles)
+        .where(
+          and(
+            eq(chefKitchenProfiles.chefId, chefId),
+            eq(chefKitchenProfiles.kitchenId, kitchenId)
+          )
+        );
+      
+      return profile || undefined;
+    } catch (error) {
+      console.error('Error getting chef kitchen profile:', error);
+      throw error;
+    }
+  }
+
+  async getChefProfilesForManager(managerId: number): Promise<any[]> {
+    try {
+      // Get all locations managed by this manager
+      const managerLocations = await db
+        .select()
+        .from(locations)
+        .where(eq(locations.managerId, managerId));
+      
+      if (managerLocations.length === 0) {
+        return [];
+      }
+      
+      const locationIds = managerLocations.map(loc => (loc as any).id);
+      
+      // Get all chef profiles for these locations (NEW - location-based)
+      const profiles = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(inArray(chefLocationProfiles.locationId, locationIds));
+      
+      // Enrich with chef, location, and application details
+      const enrichedProfiles = await Promise.all(
+        profiles.map(async (profile) => {
+          const chef = await this.getUser(profile.chefId);
+          const location = await db
+            .select()
+            .from(locations)
+            .where(eq(locations.id, profile.locationId))
+            .then(rows => rows[0]);
+          
+          // Get chef's latest approved application
+          const chefApplications = await db
+            .select()
+            .from(applications)
+            .where(
+              and(
+                eq(applications.userId, profile.chefId),
+                eq(applications.status, 'approved')
+              )
+            )
+            .orderBy(asc(applications.createdAt));
+          
+          const latestApp = chefApplications.length > 0 ? chefApplications[chefApplications.length - 1] : null;
+          
+          return {
+            ...profile,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username,
+            } : null,
+            location: location ? {
+              id: (location as any).id,
+              name: (location as any).name,
+              address: (location as any).address,
+            } : null,
+            application: latestApp ? {
+              id: (latestApp as any).id,
+              fullName: (latestApp as any).fullName,
+              email: (latestApp as any).email,
+              phone: (latestApp as any).phone,
+              foodSafetyLicenseUrl: (latestApp as any).foodSafetyLicenseUrl,
+              foodEstablishmentCertUrl: (latestApp as any).foodEstablishmentCertUrl,
+            } : null,
+          };
+        })
+      );
+      
+      return enrichedProfiles;
+    } catch (error) {
+      console.error('Error getting chef profiles for manager:', error);
+      throw error;
+    }
+  }
+
+  // ===== CHEF LOCATION PROFILE MANAGEMENT (NEW - Location-based profile sharing) =====
+
+  async shareChefProfileWithLocation(chefId: number, locationId: number): Promise<any> {
+    try {
+      // Check if profile already shared
+      const existing = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(
+          and(
+            eq(chefLocationProfiles.chefId, chefId),
+            eq(chefLocationProfiles.locationId, locationId)
+          )
+        );
+      
+      if (existing.length > 0) {
+        // Update status back to pending if it was rejected
+        if (existing[0].status === 'rejected') {
+          const [updated] = await db
+            .update(chefLocationProfiles)
+            .set({
+              status: 'pending',
+              sharedAt: new Date(),
+              reviewedBy: null,
+              reviewedAt: null,
+              reviewFeedback: null,
+            })
+            .where(eq(chefLocationProfiles.id, existing[0].id))
+            .returning();
+          return updated;
+        }
+        return existing[0]; // Already shared
+      }
+      
+      // Create new profile sharing
+      const [profile] = await db
+        .insert(chefLocationProfiles)
+        .values({
+          chefId,
+          locationId,
+          status: 'pending',
+        })
+        .returning();
+      
+      return profile;
+    } catch (error) {
+      console.error('Error sharing chef profile with location:', error);
+      throw error;
+    }
+  }
+
+  async getChefLocationProfile(chefId: number, locationId: number): Promise<any | undefined> {
+    try {
+      const [profile] = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(
+          and(
+            eq(chefLocationProfiles.chefId, chefId),
+            eq(chefLocationProfiles.locationId, locationId)
+          )
+        );
+      
+      return profile || undefined;
+    } catch (error) {
+      console.error('Error getting chef location profile:', error);
+      throw error;
+    }
+  }
+
+  async getChefLocationProfiles(chefId: number): Promise<any[]> {
+    try {
+      const profiles = await db
+        .select()
+        .from(chefLocationProfiles)
+        .where(eq(chefLocationProfiles.chefId, chefId));
+      
+      return profiles;
+    } catch (error) {
+      console.error('Error getting chef location profiles:', error);
+      throw error;
+    }
+  }
+
+  async updateChefLocationProfileStatus(
+    profileId: number,
+    status: 'approved' | 'rejected',
+    reviewedBy: number,
+    reviewFeedback?: string
+  ): Promise<any> {
+    try {
+      const [updated] = await db
+        .update(chefLocationProfiles)
+        .set({
+          status,
+          reviewedBy,
+          reviewedAt: new Date(),
+          reviewFeedback: reviewFeedback || null,
+        })
+        .where(eq(chefLocationProfiles.id, profileId))
+        .returning();
+      
+      return updated;
+    } catch (error) {
+      console.error('Error updating chef location profile status:', error);
+      throw error;
     }
   }
 }
