@@ -41,6 +41,7 @@ export const users = pgTable("users", {
   isChef: boolean("is_chef").default(false).notNull(),
   isDeliveryPartner: boolean("is_delivery_partner").default(false).notNull(),
   isManager: boolean("is_manager").default(false).notNull(),
+  isPortalUser: boolean("is_portal_user").default(false).notNull(), // Portal user (third-party kitchen users)
   applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
 });
 
@@ -173,6 +174,7 @@ export const insertUserSchema = z.object({
   isChef: z.boolean().default(false),
   isDeliveryPartner: z.boolean().default(false),
   isManager: z.boolean().default(false),
+  isPortalUser: z.boolean().default(false),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -322,6 +324,7 @@ export const locations = pgTable("locations", {
   address: text("address").notNull(),
   managerId: integer("manager_id").references(() => users.id),
   notificationEmail: text("notification_email"), // Email where notifications will be sent
+  notificationPhone: text("notification_phone"), // Phone number where SMS notifications will be sent
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
@@ -369,15 +372,91 @@ export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
-  chefId: integer("chef_id").references(() => users.id).notNull(), // MUST match actual DB - NOT NULL
+  chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
   status: bookingStatusEnum("status").default("pending").notNull(),
   specialNotes: text("special_notes"),
+  bookingType: text("booking_type").default("chef").notNull(), // 'chef', 'external', 'manager_blocked'
+  createdBy: integer("created_by").references(() => users.id), // Manager who created the booking (for external/manual bookings)
+  externalContactName: text("external_contact_name"), // For third-party bookings
+  externalContactEmail: text("external_contact_email"), // For third-party bookings
+  externalContactPhone: text("external_contact_phone"), // For third-party bookings
+  externalContactCompany: text("external_contact_company"), // For third-party bookings
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Define chef_location_access table (admin grants chef access to specific locations)
+// When a chef has access to a location, they can book any kitchen within that location
+export const chefLocationAccess = pgTable("chef_location_access", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(), // admin who granted access
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+});
+
+// Legacy table - kept for backward compatibility during migration
+export const chefKitchenAccess = pgTable("chef_kitchen_access", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+});
+
+// Define chef_kitchen_profiles table (chef shares profile, manager approves)
+export const chefKitchenProfiles = pgTable("chef_kitchen_profiles", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  sharedAt: timestamp("shared_at").defaultNow().notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }), // manager who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  reviewFeedback: text("review_feedback"), // optional feedback from manager
+});
+
+// Define chef_location_profiles table (NEW - location-based profile sharing)
+export const chefLocationProfiles = pgTable("chef_location_profiles", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  sharedAt: timestamp("shared_at").defaultNow().notNull(),
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }), // manager who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  reviewFeedback: text("review_feedback"), // optional feedback from manager
+});
+
+// Define portal_user_applications table (portal users apply for location access)
+export const portalUserApplications = pgTable("portal_user_applications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  company: text("company"), // Optional company name
+  status: applicationStatusEnum("status").default("inReview").notNull(), // 'inReview', 'approved', 'rejected', 'cancelled'
+  feedback: text("feedback"), // Manager feedback
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }), // manager who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Define portal_user_location_access table (manager grants portal user access after approval)
+// Portal users can book kitchens at their assigned location
+export const portalUserLocationAccess = pgTable("portal_user_location_access", {
+  id: serial("id").primaryKey(),
+  portalUserId: integer("portal_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "cascade" }).notNull(), // manager who granted access
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+  applicationId: integer("application_id").references(() => portalUserApplications.id, { onDelete: "set null" }), // Link to original application
 });
 
 // Zod schemas for kitchen booking system
@@ -489,3 +568,121 @@ export type UpdateKitchenDateOverride = z.infer<typeof updateKitchenDateOverride
 export type KitchenBooking = typeof kitchenBookings.$inferSelect;
 export type InsertKitchenBooking = z.infer<typeof insertKitchenBookingSchema>;
 export type UpdateKitchenBooking = z.infer<typeof updateKitchenBookingSchema>;
+
+// Zod schemas for chef location access
+export const insertChefLocationAccessSchema = createInsertSchema(chefLocationAccess, {
+  chefId: z.number(),
+  locationId: z.number(),
+  grantedBy: z.number(),
+}).omit({
+  id: true,
+  grantedAt: true,
+});
+
+// Zod schemas for chef kitchen access (legacy - for backward compatibility)
+export const insertChefKitchenAccessSchema = createInsertSchema(chefKitchenAccess, {
+  chefId: z.number(),
+  kitchenId: z.number(),
+  grantedBy: z.number(),
+}).omit({
+  id: true,
+  grantedAt: true,
+});
+
+// Zod schemas for chef kitchen profiles
+export const insertChefKitchenProfileSchema = createInsertSchema(chefKitchenProfiles, {
+  chefId: z.number(),
+  kitchenId: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+}).omit({
+  id: true,
+  sharedAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewFeedback: true,
+});
+
+export const updateChefKitchenProfileSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]),
+  reviewFeedback: z.string().optional(),
+});
+
+// Type exports for chef location access
+export type ChefLocationAccess = typeof chefLocationAccess.$inferSelect;
+export type InsertChefLocationAccess = z.infer<typeof insertChefLocationAccessSchema>;
+
+// Type exports for chef kitchen access (legacy)
+export type ChefKitchenAccess = typeof chefKitchenAccess.$inferSelect;
+export type InsertChefKitchenAccess = z.infer<typeof insertChefKitchenAccessSchema>;
+
+export type ChefKitchenProfile = typeof chefKitchenProfiles.$inferSelect;
+export type InsertChefKitchenProfile = z.infer<typeof insertChefKitchenProfileSchema>;
+export type UpdateChefKitchenProfile = z.infer<typeof updateChefKitchenProfileSchema>;
+
+// Zod schemas for location-based profiles (NEW)
+export const insertChefLocationProfileSchema = createInsertSchema(chefLocationProfiles, {
+  chefId: z.number(),
+  locationId: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+}).omit({
+  id: true,
+  sharedAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewFeedback: true,
+});
+
+export const updateChefLocationProfileSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "approved", "rejected"]),
+  reviewFeedback: z.string().optional(),
+});
+
+// Type exports for location-based profiles
+export type ChefLocationProfile = typeof chefLocationProfiles.$inferSelect;
+export type InsertChefLocationProfile = z.infer<typeof insertChefLocationProfileSchema>;
+export type UpdateChefLocationProfile = z.infer<typeof updateChefLocationProfileSchema>;
+
+// Zod schemas for portal user applications
+export const insertPortalUserApplicationSchema = createInsertSchema(portalUserApplications, {
+  userId: z.number(),
+  locationId: z.number(),
+  fullName: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  phone: z.string().min(1, "Phone number is required"),
+  company: z.string().optional(),
+}).omit({
+  id: true,
+  status: true,
+  createdAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  feedback: true,
+});
+
+export const updatePortalUserApplicationStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["inReview", "approved", "rejected", "cancelled"]),
+  feedback: z.string().optional(),
+});
+
+// Zod schemas for portal user location access
+export const insertPortalUserLocationAccessSchema = createInsertSchema(portalUserLocationAccess, {
+  portalUserId: z.number(),
+  locationId: z.number(),
+  grantedBy: z.number(),
+  applicationId: z.number().optional(),
+}).omit({
+  id: true,
+  grantedAt: true,
+});
+
+// Type exports for portal user applications
+export type PortalUserApplication = typeof portalUserApplications.$inferSelect;
+export type InsertPortalUserApplication = z.infer<typeof insertPortalUserApplicationSchema>;
+export type UpdatePortalUserApplicationStatus = z.infer<typeof updatePortalUserApplicationStatusSchema>;
+
+// Type exports for portal user location access
+export type PortalUserLocationAccess = typeof portalUserLocationAccess.$inferSelect;
+export type InsertPortalUserLocationAccess = z.infer<typeof insertPortalUserLocationAccessSchema>;

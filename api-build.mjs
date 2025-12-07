@@ -72,6 +72,34 @@ if (fs.existsSync(schemaFile)) {
   fs.writeFileSync(schemaDestPath, content);
 }
 
+// Copy subdomain-utils.js file
+const subdomainUtilsFile = path.join('shared', 'subdomain-utils.js');
+const subdomainUtilsDestPath = path.join(tempSharedDir, 'subdomain-utils.js');
+
+if (fs.existsSync(subdomainUtilsFile)) {
+  console.log(`Copying ${subdomainUtilsFile}...`);
+  fs.copyFileSync(subdomainUtilsFile, subdomainUtilsDestPath);
+} else {
+  console.log(`Warning: ${subdomainUtilsFile} not found, trying TypeScript version...`);
+  // Try TypeScript version if JS doesn't exist
+  const subdomainUtilsTsFile = path.join('shared', 'subdomain-utils.ts');
+  if (fs.existsSync(subdomainUtilsTsFile)) {
+    console.log(`Processing ${subdomainUtilsTsFile}...`);
+    let content = fs.readFileSync(subdomainUtilsTsFile, 'utf8');
+    // Remove TypeScript type annotations (simplified conversion)
+    content = content.replace(/:\s*SubdomainType/g, '');
+    content = content.replace(/:\s*string/g, '');
+    content = content.replace(/:\s*Record<string, string \| string\[\] \| undefined>/g, '');
+    content = content.replace(/:\s*boolean/g, '');
+    content = content.replace(/export type SubdomainType[^;]+;/g, '');
+    // Convert TypeScript imports to JavaScript
+    content = content.replace(/from ["'](.+)\.ts["'];/g, 'from "$1.js";');
+    fs.writeFileSync(subdomainUtilsDestPath, content);
+  } else {
+    console.error(`Error: Neither ${subdomainUtilsFile} nor ${subdomainUtilsTsFile} found!`);
+  }
+}
+
 // No need to copy vercel-server.js anymore since we've integrated it into api/index.js
 console.log('Using simplified API implementation for better serverless support...');
 

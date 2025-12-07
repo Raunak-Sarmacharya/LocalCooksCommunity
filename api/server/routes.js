@@ -8,14 +8,23 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateBookingNotificationEmail, generateBookingConfirmationEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
+import { sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS } from "./sms";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
+import { pool, db } from "./db";
+import { chefKitchenAccess, chefLocationAccess, users, locations, applications } from "../shared/schema.js";
+import { eq, inArray, and, desc } from "drizzle-orm";
+import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
+
+// Import portal user applications schema
+import { portalUserApplications, portalUserLocationAccess } from "../shared/schema.js";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   // Set up authentication routes and middleware
   setupAuth(app);
 
@@ -734,7 +743,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
         role: req.body.role || "chef", // Base role but don't set flags
         isChef: false, // No default roles - user must choose
-        isDeliveryPartner: false // No default roles - user must choose
+        isDeliveryPartner: false, // No default roles - user must choose
+        isManager: false,
+        isPortalUser: false
       });
       
       // Log the user in
@@ -1031,6 +1042,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error checking user session:", error);
       return res.status(500).json({ error: "Failed to check session" });
+    }
+  });
+
+  // Get users endpoint for email studio and user selection
+  app.get("/api/get-users", async (req: Request, res: Response) => {
+    try {
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { search } = req.query;
+
+      let query: string;
+      let params: string[] = [];
+
+      if (search && typeof search === 'string' && search.trim()) {
+        // Search by username (which is usually email) or application data
+        query = `
+          SELECT 
+            u.id,
+            u.username,
+            COALESCE(a.email, u.username) as email,
+            COALESCE(a.full_name, 
+              CASE 
+                WHEN u.username LIKE '%@%' THEN SPLIT_PART(u.username, '@', 1)
+                ELSE u.username 
+              END
+            ) as full_name,
+            u.role
+          FROM users u
+          LEFT JOIN applications a ON u.id = a.user_id
+          WHERE 
+            LOWER(u.username) LIKE LOWER($1) OR 
+            LOWER(COALESCE(a.email, '')) LIKE LOWER($1) OR
+            LOWER(COALESCE(a.full_name, '')) LIKE LOWER($1)
+          ORDER BY 
+            u.role = 'admin' DESC,
+            u.username
+          LIMIT 20
+        `;
+        params = [`%${search.trim()}%`];
+      } else {
+        // Return all users with their info
+        query = `
+          SELECT 
+            u.id,
+            u.username,
+            COALESCE(a.email, u.username) as email,
+            COALESCE(a.full_name, 
+              CASE 
+                WHEN u.username LIKE '%@%' THEN SPLIT_PART(u.username, '@', 1)
+                ELSE u.username 
+              END
+            ) as full_name,
+            u.role
+          FROM users u
+          LEFT JOIN applications a ON u.id = a.user_id
+          ORDER BY 
+            u.role = 'admin' DESC,
+            u.username
+          LIMIT 50
+        `;
+      }
+
+      const result = await pool.query(query, params);
+
+      // Format the response for the frontend
+      const users = result.rows.map((user: any) => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.full_name,
+        role: user.role,
+        displayText: `${user.full_name} (${user.email})` // For dropdown display
+      }));
+
+      res.status(200).json({ users });
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
     }
   });
 
@@ -3169,7 +3260,241 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
   // ===================================
 
-  // Get all locations for manager
+  // IMPORTANT: Put route must be defined BEFORE get route with same base path
+  // to avoid Express routing conflicts. Specific routes must come before generic ones.
+  
+  // Update location cancellation policy (manager only)
+  app.put("/api/manager/locations/:locationId/cancellation-policy", async (req: Request, res: Response) => {
+    console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
+      locationId: req.params.locationId,
+      body: req.body
+    });
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const { locationId } = req.params;
+      const locationIdNum = parseInt(locationId);
+      
+      if (isNaN(locationIdNum) || locationIdNum <= 0) {
+        console.error('[PUT] Invalid locationId:', locationId);
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+      
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone } = req.body;
+      
+      console.log('[PUT] Request body:', {
+        cancellationPolicyHours,
+        cancellationPolicyMessage,
+        defaultDailyBookingLimit,
+        minimumBookingWindowHours,
+        notificationEmail,
+        logoUrl,
+        timezone,
+        locationId: locationIdNum
+      });
+
+      if (cancellationPolicyHours !== undefined && (typeof cancellationPolicyHours !== 'number' || cancellationPolicyHours < 0)) {
+        return res.status(400).json({ error: "Cancellation policy hours must be a non-negative number" });
+      }
+
+      if (defaultDailyBookingLimit !== undefined && (typeof defaultDailyBookingLimit !== 'number' || defaultDailyBookingLimit < 1 || defaultDailyBookingLimit > 24)) {
+        return res.status(400).json({ error: "Daily booking limit must be between 1 and 24 hours" });
+      }
+
+      if (minimumBookingWindowHours !== undefined && (typeof minimumBookingWindowHours !== 'number' || minimumBookingWindowHours < 0 || minimumBookingWindowHours > 168)) {
+        return res.status(400).json({ error: "Minimum booking window hours must be between 0 and 168 hours" });
+      }
+
+      // Import db dynamically
+      const { db } = await import('./db');
+      const { locations } = await import('@shared/schema');
+      const { eq, and, sql } = await import('drizzle-orm');
+
+      // Verify manager owns this location
+      const locationResults = await db
+        .select()
+        .from(locations)
+        .where(and(eq(locations.id, locationIdNum), eq(locations.managerId, user.id)));
+      
+      const location = locationResults[0];
+
+      if (!location) {
+        console.error('[PUT] Location not found or access denied:', {
+          locationId: locationIdNum,
+          managerId: user.id,
+          userRole: user.role
+        });
+        return res.status(404).json({ error: "Location not found or access denied" });
+      }
+      
+      console.log('[PUT] Location verified:', {
+        locationId: location.id,
+        locationName: location.name,
+        managerId: location.managerId
+      });
+
+      // Get old notification email before updating
+      const oldNotificationEmail = (location as any).notificationEmail || (location as any).notification_email || null;
+
+      // Update location settings
+      // Build updates object with proper field names matching the schema
+      const updates: Partial<typeof locations.$inferInsert> = { 
+        updatedAt: new Date() 
+      };
+      
+      if (cancellationPolicyHours !== undefined) {
+        (updates as any).cancellationPolicyHours = cancellationPolicyHours;
+      }
+      if (cancellationPolicyMessage !== undefined) {
+        (updates as any).cancellationPolicyMessage = cancellationPolicyMessage;
+      }
+      if (defaultDailyBookingLimit !== undefined) {
+        (updates as any).defaultDailyBookingLimit = defaultDailyBookingLimit;
+      }
+      if (minimumBookingWindowHours !== undefined) {
+        (updates as any).minimumBookingWindowHours = minimumBookingWindowHours;
+      }
+      if (notificationEmail !== undefined) {
+        // Validate email format if provided and not empty
+        if (notificationEmail && notificationEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
+          return res.status(400).json({ error: "Invalid email format" });
+        }
+        // Set to null if empty string, otherwise use the value
+        (updates as any).notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
+        console.log('[PUT] Setting notificationEmail:', { 
+          raw: notificationEmail, 
+          processed: (updates as any).notificationEmail,
+          oldEmail: oldNotificationEmail
+        });
+      }
+      if (notificationPhone !== undefined) {
+        // Validate phone format if provided and not empty (basic validation)
+        if (notificationPhone && notificationPhone.trim() !== '') {
+          const phoneDigits = notificationPhone.replace(/\D/g, '');
+          // Basic validation: should have at least 10 digits (US/Canada format)
+          if (phoneDigits.length < 10) {
+            return res.status(400).json({ error: "Invalid phone number format. Please include area code." });
+          }
+        }
+        // Set to null if empty string, otherwise use the value
+        (updates as any).notificationPhone = notificationPhone && notificationPhone.trim() !== '' ? notificationPhone.trim() : null;
+        console.log('[PUT] Setting notificationPhone:', { 
+          raw: notificationPhone, 
+          processed: (updates as any).notificationPhone
+        });
+      }
+      if (logoUrl !== undefined) {
+        // Set to null if empty string, otherwise use the value
+        // Use the schema field name (logoUrl) - Drizzle will map it to logo_url column
+        const processedLogoUrl = logoUrl && logoUrl.trim() !== '' ? logoUrl.trim() : null;
+        // Try both camelCase (schema field name) and snake_case (database column name)
+        (updates as any).logoUrl = processedLogoUrl;
+        // Also set it using the database column name directly as a fallback
+        (updates as any).logo_url = processedLogoUrl;
+        console.log('[PUT] Setting logoUrl:', {
+          raw: logoUrl,
+          processed: processedLogoUrl,
+          type: typeof processedLogoUrl,
+          inUpdates: (updates as any).logoUrl,
+          alsoSetAsLogo_url: (updates as any).logo_url
+        });
+      }
+      if (timezone !== undefined) {
+        // Validate timezone format (basic validation - should be a valid IANA timezone)
+        if (timezone && typeof timezone === 'string' && timezone.trim() !== '') {
+          (updates as any).timezone = timezone.trim();
+        } else if (timezone === null || timezone === '') {
+          // Use default if empty
+          (updates as any).timezone = DEFAULT_TIMEZONE;
+        }
+        console.log('[PUT] Setting timezone:', {
+          raw: timezone,
+          processed: (updates as any).timezone
+        });
+      }
+
+      console.log('[PUT] Final updates object before DB update:', JSON.stringify(updates, null, 2));
+      console.log('[PUT] Updates keys:', Object.keys(updates));
+      console.log('[PUT] Updates object has logoUrl?', 'logoUrl' in updates);
+      console.log('[PUT] Updates object logoUrl value:', (updates as any).logoUrl);
+      console.log('[PUT] Updates object has logo_url?', 'logo_url' in updates);
+      console.log('[PUT] Updates object logo_url value:', (updates as any).logo_url);
+
+      const updatedResults = await db
+        .update(locations)
+        .set(updates)
+        .where(eq(locations.id, locationIdNum))
+        .returning();
+      
+      console.log('[PUT] Updated location from DB (full object):', JSON.stringify(updatedResults[0], null, 2));
+      console.log('[PUT] Updated location logoUrl (camelCase):', (updatedResults[0] as any).logoUrl);
+      console.log('[PUT] Updated location logo_url (snake_case):', (updatedResults[0] as any).logo_url);
+      console.log('[PUT] Updated location all keys:', Object.keys(updatedResults[0] || {}));
+
+      if (!updatedResults || updatedResults.length === 0) {
+        console.error('[PUT] Cancellation policy update failed: No location returned from DB', {
+          locationId: locationIdNum,
+          updates
+        });
+        return res.status(500).json({ error: "Failed to update location settings - no rows updated" });
+      }
+
+      const updated = updatedResults[0];
+      console.log('[PUT] Location settings updated successfully:', {
+        locationId: updated.id,
+        cancellationPolicyHours: updated.cancellationPolicyHours,
+        defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || 'not set',
+        logoUrl: (updated as any).logoUrl || (updated as any).logo_url || 'NOT SET'
+      });
+      
+      // Map snake_case fields to camelCase for the frontend
+      const response = {
+        ...updated,
+        logoUrl: (updated as any).logoUrl || (updated as any).logo_url || null,
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
+        notificationPhone: (updated as any).notificationPhone || (updated as any).notification_phone || null,
+        cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours,
+        cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message,
+        defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
+        minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 1,
+        timezone: (updated as any).timezone || DEFAULT_TIMEZONE,
+      };
+      
+      // Send email to new notification email if it was changed
+      if (notificationEmail !== undefined && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
+        try {
+          const emailContent = generateLocationEmailChangedEmail({
+            email: response.notificationEmail,
+            locationName: (location as any).name || 'Location',
+            locationId: locationIdNum
+          });
+          await sendEmail(emailContent);
+          console.log(`✅ Location notification email change notification sent to: ${response.notificationEmail}`);
+        } catch (emailError) {
+          console.error("Error sending location email change notification:", emailError);
+          // Don't fail the update if email fails
+        }
+      }
+      
+      console.log('[PUT] Sending response with notificationEmail:', response.notificationEmail);
+      res.status(200).json(response);
+    } catch (error: any) {
+      console.error("Error updating cancellation policy:", error);
+      res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
+    }
+  });
+
   app.get("/api/manager/locations", async (req: Request, res: Response) => {
     try {
       // Check authentication - managers use session-based auth
@@ -3186,7 +3511,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
-      res.json(locations);
+      
+      console.log('[GET] /api/manager/locations - Raw locations from DB:', locations.map(loc => ({
+        id: loc.id,
+        name: loc.name,
+        logoUrl: (loc as any).logoUrl,
+        logo_url: (loc as any).logo_url,
+        allKeys: Object.keys(loc)
+      })));
+      
+      // Map snake_case fields to camelCase for the frontend
+      const mappedLocations = locations.map(loc => ({
+        ...loc,
+        notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null,
+        notificationPhone: (loc as any).notificationPhone || (loc as any).notification_phone || null,
+        cancellationPolicyHours: (loc as any).cancellationPolicyHours || (loc as any).cancellation_policy_hours,
+        cancellationPolicyMessage: (loc as any).cancellationPolicyMessage || (loc as any).cancellation_policy_message,
+        defaultDailyBookingLimit: (loc as any).defaultDailyBookingLimit || (loc as any).default_daily_booking_limit,
+        minimumBookingWindowHours: (loc as any).minimumBookingWindowHours || (loc as any).minimum_booking_window_hours || 1,
+        logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
+        timezone: (loc as any).timezone || DEFAULT_TIMEZONE,
+      }));
+      
+      // Log to verify logoUrl is included in response
+      console.log('[GET] /api/manager/locations - Mapped locations:', 
+        mappedLocations.map(loc => ({
+          id: loc.id,
+          name: loc.name,
+          logoUrl: (loc as any).logoUrl,
+          notificationEmail: loc.notificationEmail || 'not set'
+        }))
+      );
+      
+      res.json(mappedLocations);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
       res.status(500).json({ error: error.message || "Failed to fetch locations" });
@@ -3247,6 +3604,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
       await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
+      
+      // Send email notifications to chefs and managers
+      try {
+        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        if (kitchen) {
+          const location = await firebaseStorage.getLocationById(kitchen.locationId);
+          
+          // Get all chefs who have bookings at this kitchen
+          const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+          const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
+          
+          // Send emails to chefs
+          for (const chefId of uniqueChefIds) {
+            try {
+              const chef = await storage.getUser(chefId);
+              if (chef) {
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const changeType = isAvailable ? 'Availability Updated' : 'Kitchen Closed';
+                const details = isAvailable 
+                  ? `The kitchen is now available on ${dayNames[dayOfWeek]} from ${startTime} to ${endTime}.`
+                  : `The kitchen is now closed on ${dayNames[dayOfWeek]}.`;
+                
+                const email = generateKitchenAvailabilityChangeEmail({
+                  chefEmail: chef.username,
+                  chefName: (chef as any).displayName || chef.username || 'Chef',
+                  kitchenName: kitchen.name,
+                  changeType,
+                  details
+                });
+                await sendEmail(email);
+                console.log(`✅ Availability change email sent to chef: ${chef.username}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to chef ${chefId}:`, emailError);
+            }
+          }
+          
+          // Send email to manager
+          if (location?.managerId) {
+            try {
+              const manager = await storage.getUser(location.managerId);
+              if (manager) {
+                const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                const changes = `Kitchen availability updated: ${dayNames[dayOfWeek]} ${isAvailable ? `is now available from ${startTime} to ${endTime}` : 'is now closed'}.`;
+                
+                const email = generateKitchenSettingsChangeEmail({
+                  email: notificationEmail,
+                  name: manager.username,
+                  kitchenName: kitchen.name,
+                  changes,
+                  isChef: false
+                });
+                await sendEmail(email);
+                console.log(`✅ Availability change email sent to manager: ${notificationEmail}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to manager:`, emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending availability change emails:", emailError);
+        // Don't fail the request if emails fail
+      }
+      
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error setting availability:", error);
@@ -3300,6 +3723,327 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching bookings:", error);
       res.status(500).json({ error: error.message || "Failed to fetch bookings" });
+    }
+  });
+
+  // Manager: Get chef profiles for review
+  app.get("/api/manager/chef-profiles", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const profiles = await firebaseStorage.getChefProfilesForManager(user.id);
+      res.json(profiles);
+    } catch (error: any) {
+      console.error("Error getting chef profiles for manager:", error);
+      res.status(500).json({ error: error.message || "Failed to get profiles" });
+    }
+  });
+
+  // Manager: Get portal user applications for review
+  app.get("/api/manager/portal-applications", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      // Get all locations managed by this manager
+      const { users } = await import('@shared/schema');
+      
+      console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
+      
+      const managedLocations = await db.select()
+        .from(locations)
+        .where(eq(locations.managerId, user.id));
+      
+      console.log(`[Manager Portal Applications] Found ${managedLocations.length} managed locations`);
+      
+      if (managedLocations.length === 0) {
+        console.log(`[Manager Portal Applications] No locations found for manager ${user.id}`);
+        return res.json([]);
+      }
+      
+      const locationIds = managedLocations.map(loc => loc.id);
+      console.log(`[Manager Portal Applications] Location IDs: ${locationIds.join(', ')}`);
+      
+      // Get ALL portal user applications for these locations (not just inReview)
+      const applications = await db.select({
+        application: portalUserApplications,
+        location: locations,
+        user: users,
+      })
+        .from(portalUserApplications)
+        .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
+        .innerJoin(users, eq(portalUserApplications.userId, users.id))
+        .where(
+          inArray(portalUserApplications.locationId, locationIds)
+        );
+      
+      console.log(`[Manager Portal Applications] Found ${applications.length} total applications`);
+      
+      // Format response
+      const formatted = applications.map(app => ({
+        id: app.application.id,
+        userId: app.application.userId,
+        locationId: app.application.locationId,
+        fullName: app.application.fullName,
+        email: app.application.email,
+        phone: app.application.phone,
+        company: app.application.company,
+        status: app.application.status,
+        feedback: app.application.feedback,
+        reviewedBy: app.application.reviewedBy,
+        reviewedAt: app.application.reviewedAt,
+        createdAt: app.application.createdAt,
+        location: {
+          id: app.location.id,
+          name: (app.location as any).name,
+          address: (app.location as any).address,
+        },
+        user: {
+          id: app.user.id,
+          username: app.user.username,
+        },
+      }));
+      
+      console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
+      
+      res.json(formatted);
+    } catch (error: any) {
+      console.error("Error getting portal applications for manager:", error);
+      res.status(500).json({ error: error.message || "Failed to get applications" });
+    }
+  });
+
+  // Manager: Approve or reject portal user application
+  app.put("/api/manager/portal-applications/:id/status", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const applicationId = parseInt(req.params.id);
+      const { status, feedback } = req.body;
+      
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+      }
+
+      const { users } = await import('@shared/schema');
+      
+      // Get application and verify it belongs to a location managed by this manager
+      const applicationRecords = await db.select({
+        application: portalUserApplications,
+        location: locations,
+      })
+        .from(portalUserApplications)
+        .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
+        .where(eq(portalUserApplications.id, applicationId))
+        .limit(1);
+      
+      if (applicationRecords.length === 0) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      
+      const applicationData = applicationRecords[0];
+      const location = applicationData.location;
+      const application = applicationData.application;
+      
+      // Verify manager owns this location
+      if ((location as any).managerId !== user.id) {
+        return res.status(403).json({ error: "You don't have permission to manage this application" });
+      }
+      
+      // Update application status
+      const updatedApplication = await db.update(portalUserApplications)
+        .set({
+          status: status,
+          feedback: feedback || null,
+          reviewedBy: user.id,
+          reviewedAt: new Date(),
+        })
+        .where(eq(portalUserApplications.id, applicationId))
+        .returning();
+      
+      // If approved, grant location access
+      if (status === 'approved') {
+        // Check if access already exists
+        const existingAccess = await db.select()
+          .from(portalUserLocationAccess)
+          .where(
+            and(
+              eq(portalUserLocationAccess.portalUserId, application.userId),
+              eq(portalUserLocationAccess.locationId, application.locationId)
+            )
+          )
+          .limit(1);
+        
+        if (existingAccess.length === 0) {
+          // Create location access
+          await db.insert(portalUserLocationAccess).values({
+            portalUserId: application.userId,
+            locationId: application.locationId,
+            grantedBy: user.id,
+            applicationId: applicationId,
+          });
+        }
+        
+        // Send notification email to portal user
+        try {
+          const { sendEmail } = await import('./email');
+          const portalUser = await firebaseStorage.getUser(application.userId);
+          if (portalUser && (portalUser as any).username) {
+            const userEmail = (portalUser as any).username;
+            const emailContent = {
+              to: userEmail,
+              subject: `Portal Access Approved - ${(location as any).name}`,
+              text: `Your application for portal access has been approved!\n\n` +
+                    `Location: ${(location as any).name}\n` +
+                    `Address: ${(location as any).address}\n` +
+                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                    `\nYou can now log in to the portal and book kitchens at this location.`,
+              html: `<h2>Portal Access Approved</h2>` +
+                    `<p>Your application for portal access has been approved!</p>` +
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Address:</strong> ${(location as any).address}</p>` +
+                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                    `<p>You can now log in to the portal and book kitchens at this location.</p>`,
+            };
+            await sendEmail(emailContent);
+          }
+        } catch (emailError) {
+          console.error("Error sending portal approval email:", emailError);
+          // Don't fail the approval if email fails
+        }
+      } else if (status === 'rejected') {
+        // Send rejection email
+        try {
+          const { sendEmail } = await import('./email');
+          const portalUser = await firebaseStorage.getUser(application.userId);
+          if (portalUser && (portalUser as any).username) {
+            const userEmail = (portalUser as any).username;
+            const emailContent = {
+              to: userEmail,
+              subject: `Portal Access Application - ${(location as any).name}`,
+              text: `Your application for portal access has been reviewed.\n\n` +
+                    `Location: ${(location as any).name}\n` +
+                    `Status: Rejected\n` +
+                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                    `\nIf you have questions, please contact the location manager.`,
+              html: `<h2>Portal Access Application</h2>` +
+                    `<p>Your application for portal access has been reviewed.</p>` +
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Status:</strong> Rejected</p>` +
+                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                    `<p>If you have questions, please contact the location manager.</p>`,
+            };
+            await sendEmail(emailContent);
+          }
+        } catch (emailError) {
+          console.error("Error sending portal rejection email:", emailError);
+          // Don't fail the rejection if email fails
+        }
+      }
+      
+      res.json(updatedApplication[0]);
+    } catch (error: any) {
+      console.error("Error updating portal application status:", error);
+      res.status(500).json({ error: error.message || "Failed to update application status" });
+    }
+  });
+
+  // Manager: Approve or reject chef profile
+  app.put("/api/manager/chef-profiles/:id/status", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const profileId = parseInt(req.params.id);
+      const { status, reviewFeedback } = req.body;
+      
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+      }
+
+      const updated = await firebaseStorage.updateChefLocationProfileStatus(
+        profileId,
+        status,
+        user.id,
+        reviewFeedback
+      );
+      
+      // Send email notification to chef when access is approved
+      if (status === 'approved') {
+        try {
+          // Get location details
+          const location = await firebaseStorage.getLocationById(updated.locationId);
+          if (!location) {
+            console.warn(`⚠️ Location ${updated.locationId} not found for email notification`);
+          } else {
+            // Get chef details
+            const chef = await storage.getUser(updated.chefId);
+            if (!chef) {
+              console.warn(`⚠️ Chef ${updated.chefId} not found for email notification`);
+            } else {
+              try {
+                const chefEmail = generateChefLocationAccessApprovedEmail({
+                  chefEmail: chef.username || '',
+                  chefName: chef.username || 'Chef',
+                  locationName: location.name || 'Location',
+                  locationId: updated.locationId
+                });
+                await sendEmail(chefEmail);
+                console.log(`✅ Chef location access approved email sent to chef: ${chef.username}`);
+              } catch (emailError) {
+                console.error("Error sending chef approval email:", emailError);
+                console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+              }
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending chef approval emails:", emailError);
+          // Don't fail the status update if emails fail
+        }
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating chef profile status:", error);
+      res.status(500).json({ error: error.message || "Failed to update profile status" });
     }
   });
 
@@ -3357,27 +4101,258 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await firebaseStorage.updateKitchenBookingStatus(id, status);
       
-      // Send email notification to chef when booking is confirmed
-      if (status === 'confirmed' && booking) {
+      // Send email notifications to chef and manager based on status change
+      if (booking) {
         try {
           const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
           const chef = await storage.getUser(booking.chefId);
           
           if (chef && kitchen) {
-            const approvalEmail = generateBookingConfirmationEmail({
-              chefEmail: chef.username,
-              chefName: (chef as any).displayName || chef.username,
-              kitchenName: kitchen.name,
-              bookingDate: booking.bookingDate,
-              startTime: booking.startTime,
-              endTime: booking.endTime,
-              specialNotes: booking.specialNotes
-            });
-            await sendEmail(approvalEmail);
-            console.log(`✅ Booking approval email sent to chef: ${chef.username}`);
+            // Get location details
+            const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+            let location = null;
+            let manager = null;
+            
+            if (kitchenLocationId) {
+              location = await firebaseStorage.getLocationById(kitchenLocationId);
+              if (location) {
+                // Get manager details if manager_id is set
+                const managerId = location.managerId || (location as any).manager_id;
+                if (managerId) {
+                  manager = await storage.getUser(managerId);
+                }
+              }
+            }
+            
+            // Get chef's full name and phone from application if available (better than just email)
+            let chefName = chef.username || 'Chef';
+            let chefPhone: string | null = null;
+            if (pool && booking.chefId) {
+              try {
+                const appResult = await pool.query(
+                  'SELECT full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                  [booking.chefId]
+                );
+                if (appResult.rows.length > 0) {
+                  if (appResult.rows[0].full_name) {
+                    chefName = appResult.rows[0].full_name;
+                  }
+                  if (appResult.rows[0].phone) {
+                    chefPhone = appResult.rows[0].phone;
+                  }
+                  console.log(`📋 Using application full name "${chefName}" for chef ${booking.chefId} in confirmation email${chefPhone ? `, phone: ${chefPhone}` : ''}`);
+                }
+              } catch (error) {
+                console.debug(`Could not get full name for chef ${booking.chefId} from applications, using username`);
+              }
+            }
+            
+            const chefEmailAddress = chef.username;
+            
+            if (!chefEmailAddress) {
+              console.warn(`⚠️ Chef ${booking.chefId} has no email address, skipping status update email`);
+            } else {
+              if (status === 'confirmed') {
+                // Send confirmation email to chef
+                try {
+                  const confirmationEmail = generateBookingConfirmationEmail({
+                    chefEmail: chefEmailAddress,
+                    chefName: chefName,
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate,
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    specialNotes: booking.specialNotes
+                  });
+                  const emailSent = await sendEmail(confirmationEmail);
+                  if (emailSent) {
+                    console.log(`✅ Booking confirmation email sent to chef: ${chefEmailAddress}`);
+                  } else {
+                    console.error(`❌ Failed to send booking confirmation email to chef: ${chefEmailAddress}`);
+                  }
+                } catch (confirmationEmailError) {
+                  console.error(`❌ Error sending booking confirmation email to chef ${chefEmailAddress}:`, confirmationEmailError);
+                  console.error("Confirmation email error details:", confirmationEmailError instanceof Error ? confirmationEmailError.message : String(confirmationEmailError));
+                }
+
+                // Send confirmation SMS to chef
+                if (chefPhone) {
+                  try {
+                    const smsMessage = generateChefBookingConfirmationSMS({
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_confirmed` });
+                    console.log(`✅ Booking confirmation SMS sent to chef: ${chefPhone}`);
+                  } catch (smsError) {
+                    console.error(`❌ Error sending booking confirmation SMS to chef:`, smsError);
+                  }
+                }
+                
+                // Send notification email to manager
+                const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
+                if (notificationEmailAddress) {
+                  try {
+                    const managerEmail = generateBookingStatusChangeNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: chefName,
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      status: 'confirmed'
+                    });
+                    const emailSent = await sendEmail(managerEmail);
+                    if (emailSent) {
+                      console.log(`✅ Booking confirmation notification email sent to manager: ${notificationEmailAddress}`);
+                    } else {
+                      console.error(`❌ Failed to send booking confirmation notification email to manager: ${notificationEmailAddress}`);
+                    }
+                  } catch (managerEmailError) {
+                    console.error(`❌ Error sending manager confirmation email:`, managerEmailError);
+                  }
+                }
+
+                // Check if this is a portal user booking and send SMS to portal user
+                try {
+                  // Check if booking is a portal user booking (has external contact or bookingType is 'external')
+                  const bookingData = await firebaseStorage.getBookingById(id);
+                  const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
+                  
+                  if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
+                    // Get portal user phone from portal_user_applications table
+                    try {
+                      const portalAppResult = await pool.query(
+                        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
+                        [booking.chefId, kitchenLocationId]
+                      );
+                      
+                      if (portalAppResult.rows.length > 0 && portalAppResult.rows[0].phone) {
+                        const portalUserPhone = portalAppResult.rows[0].phone;
+                        const smsMessage = generatePortalUserBookingConfirmationSMS({
+                          kitchenName: kitchen.name || 'Kitchen',
+                          bookingDate: booking.bookingDate,
+                          startTime: booking.startTime,
+                          endTime: booking.endTime
+                        });
+                        await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_confirmed` });
+                        console.log(`✅ Booking confirmation SMS sent to portal user: ${portalUserPhone}`);
+                      } else {
+                        console.log(`📱 No phone number found in portal_user_applications for user ${booking.chefId} and location ${kitchenLocationId}`);
+                      }
+                    } catch (portalAppError) {
+                      console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
+                    }
+                  }
+                } catch (portalSmsError) {
+                  console.error(`❌ Error sending booking confirmation SMS to portal user:`, portalSmsError);
+                }
+              } else if (status === 'cancelled') {
+                // Send cancellation email to chef
+                try {
+                  const cancellationEmail = generateBookingCancellationEmail({
+                    chefEmail: chefEmailAddress,
+                    chefName: chefName,
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate,
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    cancellationReason: 'The manager has cancelled this booking'
+                  });
+                  const emailSent = await sendEmail(cancellationEmail);
+                  if (emailSent) {
+                    console.log(`✅ Booking cancellation email sent to chef: ${chefEmailAddress}`);
+                  } else {
+                    console.error(`❌ Failed to send booking cancellation email to chef: ${chefEmailAddress}`);
+                  }
+                } catch (cancellationEmailError) {
+                  console.error(`❌ Error sending booking cancellation email to chef ${chefEmailAddress}:`, cancellationEmailError);
+                  console.error("Cancellation email error details:", cancellationEmailError instanceof Error ? cancellationEmailError.message : String(cancellationEmailError));
+                }
+
+                // Send cancellation SMS to chef
+                if (chefPhone) {
+                  try {
+                    const smsMessage = generateChefBookingCancellationSMS({
+                      kitchenName: kitchen.name,
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      reason: 'The manager has cancelled this booking'
+                    });
+                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to chef: ${chefPhone}`);
+                  } catch (smsError) {
+                    console.error(`❌ Error sending booking cancellation SMS to chef:`, smsError);
+                  }
+                }
+                
+                // Send notification email to manager
+                const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
+                if (notificationEmailAddress) {
+                  try {
+                    const managerEmail = generateBookingStatusChangeNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: chefName,
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      status: 'cancelled'
+                    });
+                    const emailSent = await sendEmail(managerEmail);
+                    if (emailSent) {
+                      console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
+                    } else {
+                      console.error(`❌ Failed to send booking cancellation notification email to manager: ${notificationEmailAddress}`);
+                    }
+                  } catch (managerEmailError) {
+                    console.error(`❌ Error sending manager cancellation email:`, managerEmailError);
+                  }
+                }
+
+                // Check if this is a portal user booking and send SMS to portal user
+                try {
+                  // Check if booking is a portal user booking (has external contact or bookingType is 'external')
+                  const bookingData = await firebaseStorage.getBookingById(id);
+                  const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
+                  
+                  if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
+                    // Get portal user phone from portal_user_applications table
+                    try {
+                      const portalAppResult = await pool.query(
+                        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
+                        [booking.chefId, kitchenLocationId]
+                      );
+                      
+                      if (portalAppResult.rows.length > 0 && portalAppResult.rows[0].phone) {
+                        const portalUserPhone = portalAppResult.rows[0].phone;
+                        const smsMessage = generatePortalUserBookingCancellationSMS({
+                          kitchenName: kitchen.name || 'Kitchen',
+                          bookingDate: booking.bookingDate,
+                          startTime: booking.startTime,
+                          endTime: booking.endTime,
+                          reason: 'The manager has cancelled this booking'
+                        });
+                        await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_cancelled` });
+                        console.log(`✅ Booking cancellation SMS sent to portal user: ${portalUserPhone}`);
+                      } else {
+                        console.log(`📱 No phone number found in portal_user_applications for user ${booking.chefId} and location ${kitchenLocationId}`);
+                      }
+                    } catch (portalAppError) {
+                      console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
+                    }
+                  }
+                } catch (portalSmsError) {
+                  console.error(`❌ Error sending booking cancellation SMS to portal user:`, portalSmsError);
+                }
+              }
+            }
           }
         } catch (emailError) {
-          console.error("Error sending booking approval email:", emailError);
+          console.error("Error sending booking status email:", emailError);
           // Don't fail the status update if email fails
         }
       }
@@ -3484,6 +4459,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reason,
       });
       
+      // Send email notifications to chefs and managers
+      try {
+        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        if (kitchen) {
+          const location = await firebaseStorage.getLocationById(kitchen.locationId);
+          const dateStr = new Date(specificDate).toLocaleDateString();
+          
+          // Get all chefs who have bookings at this kitchen
+          const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+          const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
+          
+          const changeType = isAvailable ? 'Special Availability Added' : 'Kitchen Closed for Date';
+          const details = isAvailable 
+            ? `Special availability on ${dateStr} from ${startTime} to ${endTime}.${reason ? ` Reason: ${reason}` : ''}`
+            : `Kitchen will be closed on ${dateStr}.${reason ? ` Reason: ${reason}` : ''}`;
+          
+          // Send emails to chefs
+          for (const chefId of uniqueChefIds) {
+            try {
+              const chef = await storage.getUser(chefId);
+              if (chef) {
+                const email = generateKitchenAvailabilityChangeEmail({
+                  chefEmail: chef.username,
+                  chefName: (chef as any).displayName || chef.username || 'Chef',
+                  kitchenName: kitchen.name,
+                  changeType,
+                  details
+                });
+                await sendEmail(email);
+                console.log(`✅ Date override email sent to chef: ${chef.username}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to chef ${chefId}:`, emailError);
+            }
+          }
+          
+          // Send email to manager
+          if (location?.managerId) {
+            try {
+              const manager = await storage.getUser(location.managerId);
+              if (manager) {
+                const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                const changes = `Date override created: ${dateStr} - ${isAvailable ? `special availability from ${startTime} to ${endTime}` : 'kitchen closed'}.${reason ? ` Reason: ${reason}` : ''}`;
+                
+                const email = generateKitchenSettingsChangeEmail({
+                  email: notificationEmail,
+                  name: manager.username,
+                  kitchenName: kitchen.name,
+                  changes,
+                  isChef: false
+                });
+                await sendEmail(email);
+                console.log(`✅ Date override email sent to manager: ${notificationEmail}`);
+              }
+            } catch (emailError) {
+              console.error(`Error sending email to manager:`, emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending date override emails:", emailError);
+        // Don't fail the request if emails fail
+      }
+      
       res.json(override);
     } catch (error: any) {
       console.error("Error creating date override:", error);
@@ -3551,6 +4590,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isAvailable,
         reason,
       });
+      
+      // Send email notifications to chefs and managers
+      try {
+        const override = await firebaseStorage.getKitchenDateOverrideById(id);
+        if (override) {
+          const kitchen = await firebaseStorage.getKitchenById(override.kitchenId);
+          if (kitchen) {
+            const location = await firebaseStorage.getLocationById(kitchen.locationId);
+            const dateStr = new Date(override.specificDate).toLocaleDateString();
+            
+            // Get all chefs who have bookings at this kitchen
+            const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
+            const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
+            
+            const changeType = isAvailable !== undefined 
+              ? (isAvailable ? 'Date Override Updated - Special Availability' : 'Date Override Updated - Kitchen Closed')
+              : 'Date Override Updated';
+            const details = isAvailable !== undefined
+              ? (isAvailable 
+                  ? `Date override updated: ${dateStr} is now available${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}.${reason ? ` Reason: ${reason}` : ''}`
+                  : `Date override updated: ${dateStr} is now closed.${reason ? ` Reason: ${reason}` : ''}`)
+              : `Date override updated for ${dateStr}.${startTime && endTime ? ` Time: ${startTime} to ${endTime}` : ''}${reason ? ` Reason: ${reason}` : ''}`;
+            
+            // Send emails to chefs
+            for (const chefId of uniqueChefIds) {
+              try {
+                const chef = await storage.getUser(chefId);
+                if (chef) {
+                  const email = generateKitchenAvailabilityChangeEmail({
+                    chefEmail: chef.username,
+                    chefName: (chef as any).displayName || chef.username || 'Chef',
+                    kitchenName: kitchen.name,
+                    changeType,
+                    details
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Date override update email sent to chef: ${chef.username}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to chef ${chefId}:`, emailError);
+              }
+            }
+            
+            // Send email to manager
+            if (location?.managerId) {
+              try {
+                const manager = await storage.getUser(location.managerId);
+                if (manager) {
+                  const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                  const changes = `Date override updated for ${dateStr}.${isAvailable !== undefined ? (isAvailable ? ` Special availability${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}` : ' Kitchen closed') : ''}${reason ? `. Reason: ${reason}` : ''}`;
+                  
+                  const email = generateKitchenSettingsChangeEmail({
+                    email: notificationEmail,
+                    name: manager.username,
+                    kitchenName: kitchen.name,
+                    changes,
+                    isChef: false
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Date override update email sent to manager: ${notificationEmail}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to manager:`, emailError);
+              }
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending date override update emails:", emailError);
+        // Don't fail the request if emails fail
+      }
       
       res.json(updated);
     } catch (error: any) {
@@ -3638,15 +4748,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens with location and manager info
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      // Only return kitchens the chef has been granted access to by admin
+      const chefKitchens = await firebaseStorage.getKitchensForChef(req.user!.id);
       
-      // Filter to only return active kitchens - handle both camelCase and snake_case
-      const activeKitchens = allKitchens.filter(k => {
-        const isActive = k.isActive !== undefined ? k.isActive : (k as any).is_active;
-        return isActive !== false && isActive !== null;
-      });
-      
-      res.json(activeKitchens);
+      res.json(chefKitchens);
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
@@ -3730,6 +4835,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
+      const chefId = req.user!.id;
+      
+      // Check if chef has admin-granted access to the location containing this kitchen
+      const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
+      if (!kitchenLocationId1) {
+        return res.status(400).json({ error: "Kitchen location not found" });
+      }
+      
+      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId1);
+      
+      if (!hasLocationAccess) {
+        return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
+      }
+      
+      // Check if chef has shared their profile with the location and it's been approved by manager
+      const profile = await firebaseStorage.getChefLocationProfile(chefId, kitchenLocationId1);
+      if (!profile) {
+        return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
+      }
+      
+      if (profile.status !== 'approved') {
+        return res.status(403).json({ 
+          error: profile.status === 'pending' 
+            ? "Your profile is pending manager approval. Please wait for approval before booking."
+            : "Your profile was rejected. Please contact the location manager for more information."
+        });
+      }
       
       // First validate that the booking is within manager-set availability
       const bookingDateObj = new Date(bookingDate);
@@ -3744,12 +4876,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
       }
       
+      // Get location to get timezone and minimum booking window
+      const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
+      let location = null;
+      let timezone = DEFAULT_TIMEZONE;
+      let minimumBookingWindowHours = 1; // Default
+      
+      if (kitchenLocationId2) {
+        location = await firebaseStorage.getLocationById(kitchenLocationId2);
+        if (location) {
+          timezone = (location as any).timezone || DEFAULT_TIMEZONE;
+          minimumBookingWindowHours = (location as any).minimumBookingWindowHours || 1;
+        }
+      }
+      
+      // Extract date string from ISO string to avoid timezone shifts
+      // The frontend sends bookingDate as ISO string (e.g., "2025-01-15T00:00:00.000Z")
+      // We need to extract the date part (YYYY-MM-DD) before timezone conversion
+      const bookingDateStr = typeof bookingDate === 'string' 
+        ? bookingDate.split('T')[0] 
+        : bookingDateObj.toISOString().split('T')[0];
+      
+      // Validate booking time using timezone-aware functions
+      if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+      
+      // Check if booking is within minimum booking window (timezone-aware)
+      const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+      if (hoursUntilBooking < minimumBookingWindowHours) {
+        return res.status(400).json({ 
+          error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+        });
+      }
+      
       // Check for conflicts with existing bookings
       const hasConflict = await firebaseStorage.checkBookingConflict(kitchenId, bookingDateObj, startTime, endTime);
       if (hasConflict) {
         return res.status(409).json({ error: "Time slot is already booked" });
       }
 
+      // Step 1: Create booking in database
+      console.log(`📝 STEP 1: Creating booking in database...`);
       const booking = await firebaseStorage.createKitchenBooking({
         chefId: req.user!.id,
         kitchenId,
@@ -3758,50 +4926,248 @@ export async function registerRoutes(app: Express): Promise<Server> {
         endTime,
         specialNotes
       });
+      console.log(`✅ STEP 1 COMPLETE: Booking ${booking.id} created successfully`);
 
-      // Send email notifications (background)
+      // Step 2: Send email notifications - SEQUENTIAL execution to ensure reliability
+      console.log(`📧 STEP 2: Starting sequential email notification process for booking ${booking.id}`);
+      
+      let emailResults = {
+        chefEmailSent: false,
+        managerEmailSent: false,
+        errors: [] as string[]
+      };
+
       try {
-        // Get kitchen and location details
+        // Step 2.1: Get kitchen details
+        console.log(`📧 STEP 2.1: Fetching kitchen details...`);
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
-        if (kitchen) {
-          const location = await firebaseStorage.getLocationById(kitchen.locationId);
-          
-          // Get chef and manager details
-          const chef = await storage.getUser(req.user!.id);
-          const manager = location?.managerId ? await storage.getUser(location.managerId) : null;
+        if (!kitchen) {
+          const errorMsg = `Kitchen ${kitchenId} not found`;
+          console.error(`❌ STEP 2.1 FAILED: ${errorMsg}`);
+          emailResults.errors.push(errorMsg);
+          throw new Error(errorMsg);
+        }
+        console.log(`✅ STEP 2.1 COMPLETE: Kitchen found - ${kitchen.name || kitchenId}`);
+        
+        // Step 2.2: Get location details
+        console.log(`📧 STEP 2.2: Fetching location details...`);
+        const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+        if (!kitchenLocationId) {
+          const errorMsg = `Kitchen ${kitchenId} has no locationId`;
+          console.error(`❌ STEP 2.2 FAILED: ${errorMsg}`);
+          emailResults.errors.push(errorMsg);
+          throw new Error(errorMsg);
+        }
+        console.log(`✅ STEP 2.2 PROGRESS: Kitchen locationId is ${kitchenLocationId}`);
+        
+        const location = await firebaseStorage.getLocationById(kitchenLocationId);
+        if (!location) {
+          const errorMsg = `Location ${kitchenLocationId} not found`;
+          console.error(`❌ STEP 2.2 FAILED: ${errorMsg}`);
+          emailResults.errors.push(errorMsg);
+          throw new Error(errorMsg);
+        }
+        console.log(`✅ STEP 2.2 COMPLETE: Location found - ${location.name}, Notification Email: ${location.notificationEmail || (location as any).notification_email || 'NOT SET'}`);
+        
+        // Step 2.3: Get chef details
+        console.log(`📧 STEP 2.3: Fetching chef details...`);
+        const chef = await storage.getUser(req.user!.id);
+        if (!chef) {
+          const errorMsg = `Chef ${req.user!.id} not found`;
+          console.error(`❌ STEP 2.3 FAILED: ${errorMsg}`);
+          emailResults.errors.push(errorMsg);
+          throw new Error(errorMsg);
+        }
+        console.log(`✅ STEP 2.3 COMPLETE: Chef found - ${chef.username || 'unknown'}`);
+        
+        // Step 2.4: Get manager details (optional - notification email might be set without manager)
+        console.log(`📧 STEP 2.4: Fetching manager details...`);
+        const managerId = location.managerId || (location as any).manager_id;
+        console.log(`📋 STEP 2.4 PROGRESS: Manager ID from location: ${managerId || 'NOT SET'}`);
+        
+        const manager = managerId ? await storage.getUser(managerId) : null;
+        if (!manager && managerId) {
+          console.warn(`⚠️ STEP 2.4 WARNING: Manager ${managerId} not found in database, will use notification email only`);
+        } else if (manager) {
+          console.log(`✅ STEP 2.4 COMPLETE: Manager found - ${manager.username || 'unknown'}`);
+        } else {
+          console.log(`✅ STEP 2.4 COMPLETE: No manager ID set, will rely on location notification email`);
+        }
 
-          if (chef && kitchen && manager) {
-            // Send confirmation to chef
-            const chefEmail = generateBookingConfirmationEmail({
-              chefEmail: chef.username,
-              chefName: (chef as any).displayName || chef.username,
-              kitchenName: kitchen.name,
+        // Step 2.5: Get chef's full name and phone from application (optional enhancement)
+        console.log(`📧 STEP 2.5: Enriching chef name and phone from application...`);
+        let chefName = chef.username || 'Chef';
+        let chefPhone: string | null = null;
+        if (pool && req.user!.id) {
+          try {
+            const appResult = await pool.query(
+              'SELECT full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+              [req.user!.id]
+            );
+            if (appResult.rows.length > 0) {
+              if (appResult.rows[0].full_name) {
+                chefName = appResult.rows[0].full_name;
+              }
+              if (appResult.rows[0].phone) {
+                chefPhone = appResult.rows[0].phone;
+              }
+              console.log(`✅ STEP 2.5 COMPLETE: Using application full name "${chefName}"${chefPhone ? `, phone: ${chefPhone}` : ''}`);
+            } else {
+              console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
+            }
+          } catch (error) {
+            console.log(`✅ STEP 2.5 COMPLETE: Could not query application, using username (non-critical)`);
+          }
+        } else {
+          console.log(`✅ STEP 2.5 COMPLETE: Pool not available, using username`);
+        }
+
+        // Step 2.6: Send chef email (MUST complete before manager email)
+        console.log(`📧 STEP 2.6: Sending booking request email to chef...`);
+        const chefEmailAddress = chef.username; // chef.username is the email
+        if (!chefEmailAddress) {
+          const errorMsg = `Chef ${req.user!.id} has no email address (username)`;
+          console.error(`❌ STEP 2.6 FAILED: ${errorMsg}`);
+          emailResults.errors.push(errorMsg);
+        } else {
+          console.log(`📧 STEP 2.6 PROGRESS: Attempting to send to chef: ${chefEmailAddress}`);
+          try {
+            const chefEmail = generateBookingRequestEmail({
+              chefEmail: chefEmailAddress,
+              chefName: chefName,
+              kitchenName: kitchen.name || 'Kitchen',
               bookingDate: bookingDate,
               startTime,
               endTime,
-              specialNotes
+              specialNotes: specialNotes || ''
             });
-            await sendEmail(chefEmail);
-
-            // Send notification to manager
-            // Use notification email if set, otherwise fallback to manager's username (email)
-            const notificationEmailAddress = location.notificationEmail || location.notification_email || manager.username;
-            const managerEmail = generateBookingNotificationEmail({
-              managerEmail: notificationEmailAddress,
-              chefName: (chef as any).displayName || chef.username,
-              kitchenName: kitchen.name,
-              bookingDate: bookingDate,
-              startTime,
-              endTime,
-              specialNotes
-            });
-            await sendEmail(managerEmail);
+            console.log(`📧 STEP 2.6 PROGRESS: Generated chef email - To: ${chefEmail.to}, Subject: ${chefEmail.subject}`);
+            
+            // CRITICAL: Wait for email to complete before proceeding
+            const emailSent = await sendEmail(chefEmail);
+            if (emailSent) {
+              console.log(`✅ STEP 2.6 COMPLETE: Booking request email sent successfully to chef: ${chefEmailAddress}`);
+              emailResults.chefEmailSent = true;
+            } else {
+              const errorMsg = `sendEmail() returned false for chef email: ${chefEmailAddress}`;
+              console.error(`❌ STEP 2.6 FAILED: ${errorMsg}`);
+              emailResults.errors.push(errorMsg);
+            }
+          } catch (chefEmailError) {
+            const errorMsg = `Exception sending chef email: ${chefEmailError instanceof Error ? chefEmailError.message : String(chefEmailError)}`;
+            console.error(`❌ STEP 2.6 FAILED: ${errorMsg}`);
+            console.error("Chef email error stack:", chefEmailError instanceof Error ? chefEmailError.stack : 'No stack trace');
+            emailResults.errors.push(errorMsg);
           }
         }
+        
+        // Step 2.7: Send manager email (ONLY after chef email completes)
+        console.log(`📧 STEP 2.7: Sending booking notification email to manager...`);
+        const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager?.username || null);
+        if (!notificationEmailAddress) {
+          const errorMsg = `No notification email available - location.notificationEmail: ${location.notificationEmail}, location.notification_email: ${(location as any).notification_email}, manager.username: ${manager?.username || 'N/A'}`;
+          console.error(`❌ STEP 2.7 FAILED: ${errorMsg}`);
+          console.error(`   Location ID: ${kitchenLocationId}, Manager ID from location: ${managerId || 'NOT SET'}`);
+          emailResults.errors.push(errorMsg);
+        } else {
+          console.log(`📧 STEP 2.7 PROGRESS: Attempting to send to manager: ${notificationEmailAddress}`);
+          console.log(`   Email source: ${location.notificationEmail ? 'location.notificationEmail' : (location as any).notification_email ? 'location.notification_email' : 'manager.username'}`);
+          try {
+            const managerEmail = generateBookingNotificationEmail({
+              managerEmail: notificationEmailAddress,
+              chefName: chefName,
+              kitchenName: kitchen.name || 'Kitchen',
+              bookingDate: bookingDate,
+              startTime,
+              endTime,
+              specialNotes: specialNotes || ''
+            });
+            console.log(`📧 STEP 2.7 PROGRESS: Generated manager email - To: ${managerEmail.to}, Subject: ${managerEmail.subject}`);
+            
+            // CRITICAL: Wait for email to complete before proceeding
+            const emailSent = await sendEmail(managerEmail);
+            if (emailSent) {
+              console.log(`✅ STEP 2.7 COMPLETE: Booking notification email sent successfully to manager: ${notificationEmailAddress}`);
+              emailResults.managerEmailSent = true;
+            } else {
+              const errorMsg = `sendEmail() returned false for manager email: ${notificationEmailAddress}`;
+              console.error(`❌ STEP 2.7 FAILED: ${errorMsg}`);
+              console.error(`   This indicates the email sending failed silently. Check EMAIL_USER and EMAIL_PASS environment variables.`);
+              emailResults.errors.push(errorMsg);
+            }
+          } catch (managerEmailError) {
+            const errorMsg = `Exception sending manager email: ${managerEmailError instanceof Error ? managerEmailError.message : String(managerEmailError)}`;
+            console.error(`❌ STEP 2.7 FAILED: ${errorMsg}`);
+            console.error("Manager email error stack:", managerEmailError instanceof Error ? managerEmailError.stack : 'No stack trace');
+            emailResults.errors.push(errorMsg);
+          }
+        }
+
+        // Step 2.8: Send manager SMS notification
+        console.log(`📱 STEP 2.8: Sending booking notification SMS to manager...`);
+        try {
+          // Get manager phone number - check location notificationPhone first, then manager's application
+          let managerPhone: string | null = (location as any).notificationPhone || (location as any).notification_phone || null;
+          
+          if (!managerPhone && managerId && pool) {
+            // Try to get phone from manager's application (if they have one)
+            try {
+              const managerAppResult = await pool.query(
+                'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [managerId]
+              );
+              if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
+                managerPhone = managerAppResult.rows[0].phone;
+                console.log(`📱 STEP 2.8 PROGRESS: Found manager phone from application: ${managerPhone}`);
+              }
+            } catch (error) {
+              console.log(`📱 STEP 2.8 PROGRESS: Could not get manager phone from application (non-critical)`);
+            }
+          }
+
+          if (managerPhone) {
+            const smsMessage = generateManagerBookingSMS({
+              chefName: chefName,
+              kitchenName: kitchen.name || 'Kitchen',
+              bookingDate: bookingDate,
+              startTime,
+              endTime
+            });
+            const smsSent = await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${booking.id}_manager` });
+            if (smsSent) {
+              console.log(`✅ STEP 2.8 COMPLETE: Booking notification SMS sent successfully to manager: ${managerPhone}`);
+            } else {
+              console.warn(`⚠️ STEP 2.8 WARNING: SMS sending failed for manager: ${managerPhone}`);
+            }
+          } else {
+            console.log(`📱 STEP 2.8 SKIPPED: No manager phone number available`);
+          }
+        } catch (smsError) {
+          console.error(`❌ STEP 2.8 ERROR: Exception sending manager SMS:`, smsError);
+          // Don't fail the booking if SMS fails
+        }
+        
+        // Final summary
+        console.log(`📧 STEP 2 COMPLETE: Email notification process finished for booking ${booking.id}`);
+        console.log(`   Chef email: ${emailResults.chefEmailSent ? '✅ SENT' : '❌ FAILED'}`);
+        console.log(`   Manager email: ${emailResults.managerEmailSent ? '✅ SENT' : '❌ FAILED'}`);
+        if (emailResults.errors.length > 0) {
+          console.log(`   Errors encountered: ${emailResults.errors.length}`);
+          emailResults.errors.forEach((error, index) => {
+            console.log(`     ${index + 1}. ${error}`);
+          });
+        }
+        
       } catch (emailError) {
-        console.error("Error sending booking emails:", emailError);
-        // Don't fail the booking if emails fail
+        const errorMsg = emailError instanceof Error ? emailError.message : String(emailError);
+        console.error(`❌ STEP 2 CRITICAL ERROR: ${errorMsg}`);
+        console.error("Email error details:", errorMsg);
+        console.error("Email error stack:", emailError instanceof Error ? emailError.stack : 'No stack trace');
+        emailResults.errors.push(`Critical error: ${errorMsg}`);
+        // Don't fail the booking if emails fail - booking is already created
       }
+      
+      console.log(`📝 FINAL: Booking ${booking.id} created. Email status: Chef=${emailResults.chefEmailSent ? 'sent' : 'failed'}, Manager=${emailResults.managerEmailSent ? 'sent' : 'failed'}`);
       
       res.status(201).json(booking);
     } catch (error) {
@@ -3825,7 +5191,167 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
+      
+      // Get booking details before cancelling
+      const booking = await firebaseStorage.getBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+      
+      // Verify the booking belongs to this chef
+      if (booking.chefId !== req.user!.id) {
+        return res.status(403).json({ error: "You don't have permission to cancel this booking" });
+      }
+      
       await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
+      
+      // Send email notifications to chef and manager
+      try {
+        // Get kitchen details
+        const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+        if (!kitchen) {
+          console.warn(`⚠️ Kitchen ${booking.kitchenId} not found for email notification`);
+        } else {
+          // Get location details
+          const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+          if (!kitchenLocationId) {
+            console.warn(`⚠️ Kitchen ${booking.kitchenId} has no locationId`);
+          } else {
+            const location = await firebaseStorage.getLocationById(kitchenLocationId);
+            if (!location) {
+              console.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
+            } else {
+              // Get chef details
+              const chef = await storage.getUser(booking.chefId);
+              if (!chef) {
+                console.warn(`⚠️ Chef ${booking.chefId} not found for email notification`);
+              } else {
+                // Get manager details if manager_id is set
+                const managerId = location.managerId || (location as any).manager_id;
+                let manager = null;
+                if (managerId) {
+                  manager = await storage.getUser(managerId);
+                }
+
+                // Get chef phone from application
+                let chefPhone: string | null = null;
+                if (pool && booking.chefId) {
+                  try {
+                    const appResult = await pool.query(
+                      'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                      [booking.chefId]
+                    );
+                    if (appResult.rows.length > 0 && appResult.rows[0].phone) {
+                      chefPhone = appResult.rows[0].phone;
+                    }
+                  } catch (error) {
+                    // Non-critical
+                  }
+                }
+                
+                // Import email functions
+                const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('./email.js');
+                
+                // Send email to chef
+                try {
+                  const chefEmail = generateBookingCancellationEmail({
+                    chefEmail: chef.username || '',
+                    chefName: chef.username || 'Chef',
+                    kitchenName: kitchen.name || 'Kitchen',
+                    bookingDate: booking.bookingDate,
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    cancellationReason: 'You cancelled this booking'
+                  });
+                  await sendEmail(chefEmail);
+                  console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+                } catch (emailError) {
+                  console.error("Error sending chef cancellation email:", emailError);
+                }
+
+                // Send SMS to chef
+                if (chefPhone) {
+                  try {
+                    const smsMessage = generateChefSelfCancellationSMS({
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_self_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to chef: ${chefPhone}`);
+                  } catch (smsError) {
+                    console.error("Error sending chef cancellation SMS:", smsError);
+                  }
+                }
+                
+                // Send email to manager
+                const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null);
+                
+                if (notificationEmailAddress) {
+                  try {
+                    const managerEmail = generateBookingCancellationNotificationEmail({
+                      managerEmail: notificationEmailAddress,
+                      chefName: chef.username || 'Chef',
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime,
+                      cancellationReason: 'Cancelled by chef'
+                    });
+                    await sendEmail(managerEmail);
+                    console.log(`✅ Booking cancellation notification email sent to manager: ${notificationEmailAddress}`);
+                  } catch (emailError) {
+                    console.error("Error sending manager cancellation email:", emailError);
+                    console.error("Manager email error details:", emailError instanceof Error ? emailError.message : emailError);
+                  }
+                } else {
+                  console.warn(`⚠️ No notification email found for location ${kitchenLocationId}`);
+                }
+
+                // Send SMS to manager
+                try {
+                  // Get manager phone number - check location notificationPhone first, then manager's application
+                  let managerPhone: string | null = (location as any).notificationPhone || (location as any).notification_phone || null;
+                  
+                  if (!managerPhone && managerId && pool) {
+                    // Try to get phone from manager's application
+                    try {
+                      const managerAppResult = await pool.query(
+                        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                        [managerId]
+                      );
+                      if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
+                        managerPhone = managerAppResult.rows[0].phone;
+                      }
+                    } catch (error) {
+                      // Non-critical
+                    }
+                  }
+
+                  if (managerPhone) {
+                    const smsMessage = generateManagerBookingCancellationSMS({
+                      chefName: chef.username || 'Chef',
+                      kitchenName: kitchen.name || 'Kitchen',
+                      bookingDate: booking.bookingDate,
+                      startTime: booking.startTime,
+                      endTime: booking.endTime
+                    });
+                    await sendSMS(managerPhone, smsMessage, { trackingId: `booking_${id}_manager_cancelled` });
+                    console.log(`✅ Booking cancellation SMS sent to manager: ${managerPhone}`);
+                  }
+                } catch (smsError) {
+                  console.error("Error sending manager cancellation SMS:", smsError);
+                }
+              }
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending booking cancellation emails:", emailError);
+        // Don't fail the cancellation if emails fail
+      }
+      
       res.json({ success: true });
     } catch (error) {
       console.error("Error cancelling booking:", error);
@@ -3833,9 +5359,312 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Chef: Share profile with location (NEW - location-based)
+  app.post("/api/chef/share-profile", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { locationId } = req.body;
+      const chefId = req.user!.id;
+      
+      if (!locationId) {
+        return res.status(400).json({ error: "locationId is required" });
+      }
+
+      // Check if chef has admin-granted access to this location
+      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, locationId);
+      
+      if (!hasLocationAccess) {
+        return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
+      }
+
+      // Get chef details before sharing profile
+      const chef = await storage.getUser(chefId);
+      if (!chef) {
+        return res.status(404).json({ error: "Chef not found" });
+      }
+
+      // Get location details
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Get chef's application details for email
+      const chefApp = await db
+        .select()
+        .from(applications)
+        .where(and(
+          eq(applications.userId, chefId),
+          eq(applications.status, 'approved')
+        ))
+        .orderBy(desc(applications.createdAt))
+        .limit(1);
+
+      const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
+      
+      // Send email to manager if this is a new profile share (status is pending)
+      if (profile && profile.status === 'pending') {
+        try {
+          const managerEmail = (location as any).notificationEmail || (location as any).notification_email;
+          if (managerEmail) {
+            const chefName = chefApp.length > 0 && chefApp[0].fullName 
+              ? chefApp[0].fullName 
+              : (chef as any).username || 'Chef';
+            const chefEmail = chefApp.length > 0 && chefApp[0].email 
+              ? chefApp[0].email 
+              : (chef as any).email || (chef as any).username || 'chef@example.com';
+            
+            const emailContent = generateChefProfileRequestEmail({
+              managerEmail: managerEmail,
+              chefName: chefName,
+              chefEmail: chefEmail,
+              locationName: (location as any).name || 'Location',
+              locationId: locationId
+            });
+            await sendEmail(emailContent);
+            console.log(`✅ Chef profile request notification sent to manager: ${managerEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Error sending chef profile request notification:", emailError);
+          // Don't fail the profile share if email fails
+        }
+      }
+      
+      res.status(201).json(profile);
+    } catch (error: any) {
+      console.error("Error sharing chef profile:", error);
+      res.status(500).json({ error: error.message || "Failed to share profile" });
+    }
+  });
+
+  // Chef: Get profile status for locations (using location-based access)
+  app.get("/api/chef/profiles", requireChef, async (req: Request, res: Response) => {
+    try {
+      const chefId = req.user!.id;
+      
+      // Get all locations chef has access to via admin-granted access
+      const locationAccessRecords = await db
+        .select()
+        .from(chefLocationAccess)
+        .where(eq(chefLocationAccess.chefId, chefId));
+      
+      const locationIds = locationAccessRecords.map(access => access.locationId);
+      
+      if (locationIds.length === 0) {
+        return res.json([]);
+      }
+      
+      // Get all locations with details
+      const allLocations = await db
+        .select()
+        .from(locations)
+        .where(inArray(locations.id, locationIds));
+      
+      // Get profiles for all accessible locations
+      const profiles = await Promise.all(
+        locationIds.map(async (locationId) => {
+          const profile = await firebaseStorage.getChefLocationProfile(chefId, locationId);
+          const location = allLocations.find(l => l.id === locationId);
+          return { locationId, location, profile };
+        })
+      );
+      
+      res.json(profiles);
+    } catch (error: any) {
+      console.error("Error getting chef profiles:", error);
+      res.status(500).json({ error: error.message || "Failed to get profiles" });
+    }
+  });
+
   // ===================================
   // KITCHEN BOOKING SYSTEM - ADMIN ROUTES
   // ===================================
+
+  // Admin: Grant chef access to a location (NEW - location-based access)
+  app.post("/api/admin/chef-location-access", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { chefId, locationId } = req.body;
+      
+      if (!chefId || !locationId) {
+        return res.status(400).json({ error: "chefId and locationId are required" });
+      }
+
+      const access = await firebaseStorage.grantChefLocationAccess(chefId, locationId, user.id);
+      
+      // Send email notification to chef when access is granted
+      try {
+        // Get location details
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location) {
+          console.warn(`⚠️ Location ${locationId} not found for email notification`);
+        } else {
+          // Get chef details
+          const chef = await storage.getUser(chefId);
+          if (!chef) {
+            console.warn(`⚠️ Chef ${chefId} not found for email notification`);
+          } else {
+            try {
+              const chefEmail = generateChefLocationAccessApprovedEmail({
+                chefEmail: chef.username || '',
+                chefName: chef.username || 'Chef',
+                locationName: location.name || 'Location',
+                locationId: locationId
+              });
+              await sendEmail(chefEmail);
+              console.log(`✅ Chef location access granted email sent to chef: ${chef.username}`);
+            } catch (emailError) {
+              console.error("Error sending chef access email:", emailError);
+              console.error("Chef email error details:", emailError instanceof Error ? emailError.message : emailError);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending chef access emails:", emailError);
+        // Don't fail the access grant if emails fail
+      }
+      
+      res.status(201).json(access);
+    } catch (error: any) {
+      console.error("Error granting chef location access:", error);
+      res.status(500).json({ error: error.message || "Failed to grant access" });
+    }
+  });
+
+  // Admin: Revoke chef access to a location (NEW - location-based access)
+  app.delete("/api/admin/chef-location-access", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { chefId, locationId } = req.body;
+      
+      if (!chefId || !locationId) {
+        return res.status(400).json({ error: "chefId and locationId are required" });
+      }
+
+      await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error revoking chef location access:", error);
+      res.status(500).json({ error: error.message || "Failed to revoke access" });
+    }
+  });
+
+  // Admin: Get all chefs with their location access (NEW - location-based access)
+  app.get("/api/admin/chef-location-access", async (req: Request, res: Response) => {
+    try {
+      console.log("[Admin Chef Access] GET request received");
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      console.log("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        console.log("[Admin Chef Access] Not authenticated");
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      console.log("[Admin Chef Access] User:", { id: user.id, role: user.role });
+      
+      if (user.role !== "admin") {
+        console.log("[Admin Chef Access] Not admin");
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Get all chefs from database
+      // Chefs are identified by role = 'chef' OR isChef = true
+      const allUsers = await db.select().from(users);
+      const chefs = allUsers.filter(u => {
+        const role = (u as any).role;
+        const isChef = (u as any).isChef ?? (u as any).is_chef;
+        return role === 'chef' || isChef === true;
+      });
+      
+      console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
+      console.log(`[Admin Chef Access] Chefs:`, chefs.map(c => ({ id: c.id, username: c.username, role: (c as any).role, isChef: (c as any).isChef ?? (c as any).is_chef })));
+      
+      // Get all locations
+      const allLocations = await db.select().from(locations);
+      console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
+      
+      // Get all location access records (handle case if table doesn't exist yet)
+      let allAccess: any[] = [];
+      try {
+        allAccess = await db.select().from(chefLocationAccess);
+        console.log(`[Admin Chef Access] Found ${allAccess.length} location access records`);
+      } catch (error: any) {
+        console.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
+        // If table doesn't exist, return empty array (table will be created via migration)
+        if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+          console.log(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
+          allAccess = [];
+        } else {
+          throw error; // Re-throw if it's a different error
+        }
+      }
+      
+      // Build response with chef location access info
+      const response = chefs.map(chef => {
+        // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
+        const chefAccess = allAccess.filter(a => {
+          const accessChefId = (a as any).chefId ?? (a as any).chef_id;
+          return accessChefId === chef.id;
+        });
+        const accessibleLocations = chefAccess.map(access => {
+          // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
+          const accessLocationId = (access as any).locationId ?? (access as any).location_id;
+          const location = allLocations.find(l => l.id === accessLocationId);
+          
+          if (location) {
+            const grantedAt = (access as any).grantedAt ?? (access as any).granted_at;
+            return {
+              id: location.id,
+              name: location.name,
+              address: location.address ?? null,
+              accessGrantedAt: grantedAt ? (typeof grantedAt === 'string' ? grantedAt : new Date(grantedAt).toISOString()) : undefined,
+            };
+          }
+          return null;
+        }).filter((l): l is NonNullable<typeof l> => l !== null);
+        
+        return {
+          chef: {
+            id: chef.id,
+            username: chef.username,
+          },
+          accessibleLocations,
+        };
+      });
+      
+      console.log(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
+      res.json(response);
+    } catch (error: any) {
+      console.error("[Admin Chef Access] Error:", error);
+      console.error("[Admin Chef Access] Error stack:", error.stack);
+      res.status(500).json({ error: error.message || "Failed to get access" });
+    }
+  });
 
   // Create manager account
   app.post("/api/admin/managers", async (req: Request, res: Response) => {
@@ -3876,8 +5705,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isChef: false,
         isDeliveryPartner: false,
         isManager: true,
+        isPortalUser: false,
         has_seen_welcome: false  // Manager must change password on first login
       });
+
+      // Send welcome email to manager with credentials
+      try {
+        // Use email field if provided, otherwise fallback to username
+        const managerEmail = email || username;
+        
+        const welcomeEmail = generateManagerCredentialsEmail({
+          email: managerEmail,
+          name: name || 'Manager',
+          username: username,
+          password: password
+        });
+        
+        await sendEmail(welcomeEmail);
+        console.log(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
+      } catch (emailError) {
+        console.error("Error sending manager welcome email:", emailError);
+        console.error("Email error details:", emailError instanceof Error ? emailError.message : emailError);
+        // Don't fail manager creation if email fails
+      }
 
       res.status(201).json({ success: true, managerId: manager.id });
     } catch (error: any) {
@@ -3904,29 +5754,269 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      // Fetch all users with manager role
+      // Fetch all users with manager role and their managed locations with notification emails
       const { pool, db } = await import('./db');
       
+      console.log('🔍 GET /api/admin/managers - Pool available?', !!pool);
+      console.log('🔍 GET /api/admin/managers - DB available?', !!db);
+      
+      // CRITICAL: Always use pool if available (faster SQL aggregation)
+      // Only fallback to Drizzle if pool is not available
       if (pool) {
+        console.log('✅ Using pool query for GET /api/admin/managers');
+        
+        // Get managers with their locations and notification emails
+        // CRITICAL: Use COALESCE with json_agg to ensure we always get an array (even if empty)
         const result = await pool.query(
-          'SELECT id, username, role FROM users WHERE role = $1 ORDER BY username ASC',
+          `SELECT 
+            u.id, 
+            u.username, 
+            u.role,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'locationId', l.id,
+                  'locationName', l.name,
+                  'notificationEmail', l.notification_email
+                )
+              ) FILTER (WHERE l.id IS NOT NULL),
+              '[]'::json
+            ) as locations
+          FROM users u
+          LEFT JOIN locations l ON l.manager_id = u.id
+          WHERE u.role = $1
+          GROUP BY u.id, u.username, u.role
+          ORDER BY u.username ASC`,
           ['manager']
         );
-        return res.json(result.rows);
-      }
-      
-      // Fallback to Drizzle if pool is not available
-      try {
-        const { users } = await import('@shared/schema');
-        const { eq } = await import('drizzle-orm');
-        const rows = await db
-          .select({ id: users.id, username: users.username, role: users.role })
-          .from(users)
-          .where(eq(users.role as any, 'manager'));
-        return res.json(rows);
-      } catch (e) {
-        console.error('Error fetching managers with Drizzle:', e);
-        return res.json([]);
+        
+        console.log('📊 Database query executed, rows returned:', result.rows.length);
+        if (result.rows.length > 0) {
+          console.log('📊 First row from database:', {
+            id: result.rows[0].id,
+            username: result.rows[0].username,
+            role: result.rows[0].role,
+            locations: result.rows[0].locations,
+            locationsType: typeof result.rows[0].locations,
+            locationsIsArray: Array.isArray(result.rows[0].locations)
+          });
+        }
+        
+        // Transform the result to include notification emails in a flat structure
+        console.log(`📊 Raw database result - ${result.rows.length} manager(s) found`);
+        if (result.rows.length > 0) {
+          console.log(`📊 First row keys:`, Object.keys(result.rows[0]));
+          console.log(`📊 First row locations property:`, result.rows[0].locations);
+          console.log(`📊 First row locations type:`, typeof result.rows[0].locations);
+        }
+        
+        const managersWithEmails = result.rows.map((row: any) => {
+          // Parse JSON if it's a string, otherwise use as-is
+          // PostgreSQL json_agg returns JSON as a string or object depending on driver
+          let locations = row.locations;
+          
+          console.log(`🔍 Manager ${row.id} (${row.username}): raw locations =`, typeof locations, locations);
+          console.log(`🔍 Manager ${row.id}: row object keys:`, Object.keys(row));
+          
+          // Handle different return types from PostgreSQL
+          // COALESCE in SQL should ensure we get []::json, but handle all cases
+          if (locations === null || locations === undefined) {
+            console.log(`⚠️ Manager ${row.id}: locations is null/undefined, using empty array`);
+            locations = [];
+          } else if (typeof locations === 'string') {
+            try {
+              // Handle empty JSON array string
+              const trimmed = locations.trim();
+              if (trimmed === '[]' || trimmed === '' || trimmed === 'null') {
+                locations = [];
+                console.log(`✅ Manager ${row.id}: Empty locations string converted to array`);
+              } else {
+                locations = JSON.parse(locations);
+                console.log(`✅ Manager ${row.id}: Parsed JSON string, got ${Array.isArray(locations) ? locations.length : 'non-array'} items`);
+              }
+            } catch (e) {
+              console.error(`❌ Error parsing locations JSON for manager ${row.id}:`, e, 'Raw value:', locations);
+              locations = [];
+            }
+          } else if (typeof locations === 'object') {
+            // Already parsed JSON object/array
+            console.log(`✅ Manager ${row.id}: locations is already object, isArray=${Array.isArray(locations)}`);
+          }
+          
+          // Ensure locations is an array (handle case where it's already parsed)
+          if (!Array.isArray(locations)) {
+            console.warn(`⚠️ Manager ${row.id} locations is not an array after processing:`, typeof locations, locations);
+            // Try to extract array if it's wrapped in an object
+            if (locations && typeof locations === 'object' && '0' in locations) {
+              locations = Object.values(locations);
+            } else {
+              locations = [];
+            }
+          }
+          
+          console.log(`✅ Manager ${row.id} (${row.username}) FINAL: ${locations.length} location(s):`, JSON.stringify(locations, null, 2));
+          
+          // Get all notification emails from locations managed by this manager
+          // Handle both camelCase (from mapping) and raw snake_case
+          const notificationEmails = locations
+            .map((loc: any) => loc.notificationEmail || loc.notification_email)
+            .filter((email: string) => email && email.trim() !== '');
+          
+          // STEP 4: Map to consistent structure (camelCase)
+          const mappedLocations = locations.map((loc: any) => {
+            // Handle both camelCase and snake_case from database
+            const locationId = loc.locationId || loc.location_id || loc.id;
+            const locationName = loc.locationName || loc.location_name || loc.name;
+            const notificationEmail = loc.notificationEmail || loc.notification_email || null;
+            
+            return {
+              locationId: locationId,
+              locationName: locationName,
+              notificationEmail: notificationEmail
+            };
+          });
+          
+          // CRITICAL: Build managerData with explicit locations property
+          const managerData: any = {
+            id: row.id,
+            username: row.username,
+            role: row.role,
+          };
+          
+          // EXPLICITLY set locations property - do not rely on object spread
+          managerData.locations = mappedLocations;
+          
+          console.log(`📦 Manager ${row.id} FINAL structure (BEFORE return):`, {
+            id: managerData.id,
+            username: managerData.username,
+            role: managerData.role,
+            hasLocationsProperty: 'locations' in managerData,
+            locationsCount: managerData.locations?.length || 0,
+            locationsIsArray: Array.isArray(managerData.locations),
+            locationsValue: managerData.locations,
+            fullObject: JSON.stringify(managerData, null, 2)
+          });
+          
+          // Verify the object has locations before returning
+          if (!('locations' in managerData)) {
+            console.error(`❌ CRITICAL ERROR: Manager ${row.id} object missing locations property!`);
+            managerData.locations = [];
+          }
+          
+          return managerData;
+        });
+        
+        console.log('📤 GET /api/admin/managers - managersWithEmails.length:', managersWithEmails.length);
+        if (managersWithEmails.length > 0) {
+          const firstManager = managersWithEmails[0];
+          console.log('📤 managersWithEmails[0] keys:', Object.keys(firstManager));
+          console.log('📤 managersWithEmails[0] has locations?', 'locations' in firstManager);
+          console.log('📤 managersWithEmails[0].locations:', firstManager.locations);
+          console.log('📤 managersWithEmails[0].locations type:', typeof firstManager.locations);
+          console.log('📤 managersWithEmails[0].locations is array?', Array.isArray(firstManager.locations));
+          console.log('📤 managersWithEmails[0] FULL OBJECT:', JSON.stringify(firstManager, null, 2));
+        }
+        
+        // FINAL VERIFICATION: Ensure every manager has a locations array before sending
+        const verifiedManagers = managersWithEmails.map((manager: any) => {
+          // CRITICAL: Explicitly check and ensure locations property exists
+          if (!manager.hasOwnProperty('locations')) {
+            console.error(`❌ Manager ${manager.id} is missing locations property! Adding it.`);
+            manager.locations = [];
+          } else if (!Array.isArray(manager.locations)) {
+            console.warn(`⚠️ Manager ${manager.id} has locations but it's not an array (${typeof manager.locations}), converting`);
+            manager.locations = Array.isArray(manager.locations) ? manager.locations : [];
+          }
+          
+          // Return a new object with explicit structure to ensure properties are preserved
+          return {
+            id: manager.id,
+            username: manager.username,
+            role: manager.role,
+            locations: Array.isArray(manager.locations) ? manager.locations : []
+          };
+        });
+        
+        console.log('📤 FINAL VERIFIED - First manager structure:', {
+          id: verifiedManagers[0]?.id,
+          username: verifiedManagers[0]?.username,
+          role: verifiedManagers[0]?.role,
+          hasLocations: 'locations' in verifiedManagers[0],
+          locationsCount: verifiedManagers[0]?.locations?.length || 0,
+          locationsIsArray: Array.isArray(verifiedManagers[0]?.locations),
+          locations: verifiedManagers[0]?.locations,
+          fullJSON: JSON.stringify(verifiedManagers[0], null, 2)
+        });
+        
+        // CRITICAL: Log what we're actually sending
+        console.log('📤 SENDING RESPONSE - Full response array:', JSON.stringify(verifiedManagers, null, 2));
+        
+        return res.json(verifiedManagers);
+      } else {
+        // Fallback to Drizzle if pool is not available
+        try {
+          console.log('⚠️ Using Drizzle fallback for GET /api/admin/managers');
+          const { users, locations } = await import('@shared/schema');
+          const { eq } = await import('drizzle-orm');
+          const managerRows = await db
+            .select({ id: users.id, username: users.username, role: users.role })
+            .from(users)
+            .where(eq(users.role as any, 'manager'));
+          
+          console.log(`Found ${managerRows.length} managers with Drizzle`);
+          
+          // Get locations for each manager
+          const managersWithLocations = await Promise.all(
+            managerRows.map(async (manager) => {
+              const managerLocations = await db
+                .select()
+                .from(locations)
+                .where(eq(locations.managerId, manager.id));
+              
+              console.log(`Manager ${manager.id} has ${managerLocations.length} locations`);
+              
+              const notificationEmails = managerLocations
+                .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
+                .filter(email => email && email.trim() !== '');
+              
+              // CRITICAL: Build managerData with explicit locations property
+              const managerData: any = {
+                id: manager.id,
+                username: manager.username,
+                role: manager.role,
+              };
+              
+              // EXPLICITLY set locations property
+              managerData.locations = managerLocations.map(loc => ({
+                locationId: loc.id,
+                locationName: (loc as any).name,
+                notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
+              }));
+              
+              console.log(`📤 Drizzle Manager ${manager.id} final structure:`, {
+                id: managerData.id,
+                username: managerData.username,
+                role: managerData.role,
+                hasLocations: 'locations' in managerData,
+                locationCount: managerData.locations.length,
+                locations: managerData.locations,
+                fullJSON: JSON.stringify(managerData, null, 2)
+              });
+              
+              return managerData;
+            })
+          );
+          
+          console.log('📤 Drizzle fallback returning', managersWithLocations.length, 'managers');
+          if (managersWithLocations.length > 0) {
+            console.log('📤 Drizzle managersWithLocations[0] FULL:', JSON.stringify(managersWithLocations[0], null, 2));
+          }
+          // CRITICAL: Return managersWithLocations directly - it already has locations properly mapped
+          return res.json(managersWithLocations);
+        } catch (e) {
+          console.error('❌ Error fetching managers with Drizzle:', e);
+          return res.json([]);
+        }
       }
     } catch (error: any) {
       console.error("Error fetching managers:", error);
@@ -4017,7 +6107,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const locations = await firebaseStorage.getAllLocations();
-      res.json(locations);
+      
+      // Map snake_case fields to camelCase for the frontend (consistent with manager endpoint)
+      // Drizzle ORM may return snake_case depending on configuration, so we ensure camelCase
+      const mappedLocations = locations.map((loc: any) => ({
+        ...loc,
+        managerId: loc.managerId || loc.manager_id || null,
+        notificationEmail: loc.notificationEmail || loc.notification_email || null,
+        cancellationPolicyHours: loc.cancellationPolicyHours || loc.cancellation_policy_hours || 24,
+        cancellationPolicyMessage: loc.cancellationPolicyMessage || loc.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: loc.defaultDailyBookingLimit || loc.default_daily_booking_limit || 2,
+        createdAt: loc.createdAt || loc.created_at,
+        updatedAt: loc.updatedAt || loc.updated_at,
+      }));
+      
+      res.json(mappedLocations);
     } catch (error) {
       console.error("Error fetching locations:", error);
       res.status(500).json({ error: "Failed to fetch locations" });
@@ -4067,9 +6171,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const location = await firebaseStorage.createLocation({ 
         name, 
         address, 
-        managerId: managerIdNum 
+        managerId: managerIdNum,
+        notificationEmail: req.body.notificationEmail || undefined
       });
-      res.status(201).json(location);
+      
+      // Map snake_case to camelCase for consistent API response
+      const mappedLocation = {
+        ...location,
+        managerId: (location as any).managerId || (location as any).manager_id || null,
+        notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
+        cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
+        createdAt: (location as any).createdAt || (location as any).created_at,
+        updatedAt: (location as any).updatedAt || (location as any).updated_at,
+      };
+      
+      res.status(201).json(mappedLocation);
     } catch (error: any) {
       console.error("Error creating location:", error);
       console.error("Error details:", error.message, error.stack);
@@ -4154,6 +6272,1463 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update location (admin)
+  // IMPORTANT: Route registration order matters - specific routes before catch-all
+  app.put("/api/admin/locations/:id", async (req: Request, res: Response) => {
+    try {
+      console.log(`📍 PUT /api/admin/locations/:id - Request received for location ID: ${req.params.id}`);
+      console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
+      
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        console.error('❌ PUT /api/admin/locations/:id - Not authenticated');
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        console.error(`❌ PUT /api/admin/locations/:id - User ${user.id} is not admin (role: ${user.role})`);
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const locationId = parseInt(req.params.id);
+      if (isNaN(locationId) || locationId <= 0) {
+        console.error(`❌ Invalid location ID: ${req.params.id}`);
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+      
+      console.log(`✅ Validated - updating location ${locationId} for admin user ${user.id}`);
+
+      const { name, address, managerId, notificationEmail } = req.body;
+      
+      // Validate managerId if provided
+      let managerIdNum: number | undefined | null = undefined;
+      if (managerId !== undefined && managerId !== null && managerId !== '') {
+        managerIdNum = parseInt(managerId.toString());
+        if (isNaN(managerIdNum) || managerIdNum <= 0) {
+          return res.status(400).json({ error: "Invalid manager ID format" });
+        }
+        
+        // Validate that the manager exists and has manager role
+        const manager = await firebaseStorage.getUser(managerIdNum);
+        if (!manager) {
+          return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
+        }
+        if (manager.role !== 'manager') {
+          return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
+        }
+      } else if (managerId === null || managerId === '') {
+        // Explicitly allow setting to null
+        managerIdNum = null;
+      }
+
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (address !== undefined) updates.address = address;
+      if (managerIdNum !== undefined) updates.managerId = managerIdNum;
+
+      console.log(`💾 Updating location ${locationId} with:`, updates);
+      
+      const updated = await firebaseStorage.updateLocation(locationId, updates);
+      if (!updated) {
+        console.error(`❌ Location ${locationId} not found in database`);
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      console.log(`✅ Location ${locationId} updated successfully`);
+      
+      // Map snake_case to camelCase for consistent API response (matching getAllLocations pattern)
+      const mappedLocation = {
+        ...updated,
+        managerId: (updated as any).managerId || (updated as any).manager_id || null,
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
+        cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit || 2,
+        createdAt: (updated as any).createdAt || (updated as any).created_at,
+        updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
+      };
+      
+      return res.json(mappedLocation);
+    } catch (error: any) {
+      console.error("❌ Error updating location:", error);
+      console.error("Error stack:", error.stack);
+      res.status(500).json({ error: error.message || "Failed to update location" });
+    }
+  });
+
+  // Delete location (admin)
+  app.delete("/api/admin/locations/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const locationId = parseInt(req.params.id);
+      if (isNaN(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      await firebaseStorage.deleteLocation(locationId);
+      res.json({ success: true, message: "Location deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting location:", error);
+      res.status(500).json({ error: error.message || "Failed to delete location" });
+    }
+  });
+
+  // Update kitchen (admin)
+  app.put("/api/admin/kitchens/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const kitchenId = parseInt(req.params.id);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get current kitchen data for comparison
+      const currentKitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!currentKitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const { name, description, isActive, locationId } = req.body;
+      
+      const updates: any = {};
+      const changesList: string[] = [];
+      
+      if (name !== undefined && name !== currentKitchen.name) {
+        updates.name = name;
+        changesList.push(`Name changed to "${name}"`);
+      }
+      if (description !== undefined && description !== currentKitchen.description) {
+        updates.description = description;
+        changesList.push(`Description updated`);
+      }
+      if (isActive !== undefined && isActive !== currentKitchen.isActive) {
+        updates.isActive = isActive;
+        changesList.push(`Status changed to ${isActive ? 'Active' : 'Inactive'}`);
+      }
+      if (locationId !== undefined) {
+        const locationIdNum = parseInt(locationId.toString());
+        if (isNaN(locationIdNum) || locationIdNum <= 0) {
+          return res.status(400).json({ error: "Invalid location ID format" });
+        }
+        
+        // Validate that the location exists
+        const location = await firebaseStorage.getLocationById(locationIdNum);
+        if (!location) {
+          return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
+        }
+        if (locationIdNum !== currentKitchen.locationId) {
+          updates.locationId = locationIdNum;
+          changesList.push(`Location changed to "${location.name}"`);
+        }
+      }
+
+      // Only update if there are actual changes
+      if (Object.keys(updates).length === 0) {
+        return res.json(currentKitchen);
+      }
+
+      const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      // Send email notifications to chefs and managers
+      if (changesList.length > 0) {
+        try {
+          const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+          if (kitchen) {
+            const location = await firebaseStorage.getLocationById(kitchen.locationId);
+            
+            // Get all chefs who have bookings at this kitchen
+            const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+            const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
+            
+            const changes = changesList.join(', ');
+            
+            // Send emails to chefs
+            for (const chefId of uniqueChefIds) {
+              try {
+                const chef = await storage.getUser(chefId);
+                if (chef) {
+                  const email = generateKitchenSettingsChangeEmail({
+                    email: chef.username,
+                    name: (chef as any).displayName || chef.username || 'Chef',
+                    kitchenName: kitchen.name,
+                    changes,
+                    isChef: true
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Kitchen settings change email sent to chef: ${chef.username}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to chef ${chefId}:`, emailError);
+              }
+            }
+            
+            // Send email to manager
+            if (location?.managerId) {
+              try {
+                const manager = await storage.getUser(location.managerId);
+                if (manager) {
+                  const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
+                  const email = generateKitchenSettingsChangeEmail({
+                    email: notificationEmail,
+                    name: manager.username,
+                    kitchenName: kitchen.name,
+                    changes,
+                    isChef: false
+                  });
+                  await sendEmail(email);
+                  console.log(`✅ Kitchen settings change email sent to manager: ${notificationEmail}`);
+                }
+              } catch (emailError) {
+                console.error(`Error sending email to manager:`, emailError);
+              }
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending kitchen settings change emails:", emailError);
+          // Don't fail the request if emails fail
+        }
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating kitchen:", error);
+      res.status(500).json({ error: error.message || "Failed to update kitchen" });
+    }
+  });
+
+  // Delete kitchen (admin)
+  app.delete("/api/admin/kitchens/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const kitchenId = parseInt(req.params.id);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      await firebaseStorage.deleteKitchen(kitchenId);
+      res.json({ success: true, message: "Kitchen deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting kitchen:", error);
+      res.status(500).json({ error: error.message || "Failed to delete kitchen" });
+    }
+  });
+
+  // Update manager (admin)
+  // IMPORTANT: Route registration order matters - specific routes before catch-all
+  app.put("/api/admin/managers/:id", async (req: Request, res: Response) => {
+    try {
+      console.log(`📍 PUT /api/admin/managers/:id - Request received for manager ID: ${req.params.id}`);
+      console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
+      
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        console.error('❌ PUT /api/admin/managers/:id - Not authenticated');
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        console.error(`❌ PUT /api/admin/managers/:id - User ${user.id} is not admin (role: ${user.role})`);
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const managerId = parseInt(req.params.id);
+      if (isNaN(managerId) || managerId <= 0) {
+        console.error(`❌ Invalid manager ID: ${req.params.id}`);
+        return res.status(400).json({ error: "Invalid manager ID" });
+      }
+      
+      console.log(`✅ Validated - updating manager ${managerId} for admin user ${user.id}`);
+
+      const { username, role, isManager, locationNotificationEmails } = req.body;
+      
+      // Verify the user exists and is a manager
+      const manager = await firebaseStorage.getUser(managerId);
+      if (!manager) {
+        return res.status(404).json({ error: "Manager not found" });
+      }
+      if (manager.role !== 'manager') {
+        return res.status(400).json({ error: "User is not a manager" });
+      }
+
+      const updates: any = {};
+      if (username !== undefined) {
+        // Check if username is already taken by another user
+        const existingUser = await firebaseStorage.getUserByUsername(username);
+        if (existingUser && existingUser.id !== managerId) {
+          return res.status(400).json({ error: "Username already exists" });
+        }
+        updates.username = username;
+      }
+      if (role !== undefined) updates.role = role;
+      if (isManager !== undefined) updates.isManager = isManager;
+
+      const updated = await firebaseStorage.updateUser(managerId, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Failed to update manager" });
+      }
+      
+      // Update notification emails for locations managed by this manager
+      if (locationNotificationEmails && Array.isArray(locationNotificationEmails)) {
+        const { db } = await import('./db');
+        const { locations } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        
+        // Get all locations managed by this manager
+        const managedLocations = await db
+          .select()
+          .from(locations)
+          .where(eq(locations.managerId, managerId));
+        
+        // Update each location's notification email
+        for (const emailUpdate of locationNotificationEmails) {
+          if (emailUpdate.locationId && emailUpdate.notificationEmail !== undefined) {
+            const locationId = parseInt(emailUpdate.locationId.toString());
+            if (!isNaN(locationId)) {
+              // Validate email format if provided and not empty
+              const email = emailUpdate.notificationEmail?.trim() || '';
+              if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                console.warn(`Invalid email format for location ${locationId}: ${email}`);
+                continue; // Skip invalid emails
+              }
+              
+              await db
+                .update(locations)
+                .set({ 
+                  notificationEmail: email || null,
+                  updatedAt: new Date()
+                })
+                .where(eq(locations.id, locationId));
+              
+              console.log(`✅ Updated notification email for location ${locationId}: ${email || 'null'}`);
+            }
+          }
+        }
+      }
+      
+      // Return updated manager with location info
+      const { locations } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const managedLocations = await db
+        .select()
+        .from(locations)
+        .where(eq(locations.managerId, managerId));
+      
+      const notificationEmails = managedLocations
+        .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
+        .filter(email => email && email.trim() !== '');
+      
+      const response = {
+        ...updated,
+        locations: managedLocations.map(loc => ({
+          locationId: loc.id,
+          locationName: (loc as any).name,
+          notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
+        })),
+        notificationEmails: notificationEmails,
+        primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
+      };
+      
+      res.json(response);
+    } catch (error: any) {
+      console.error("Error updating manager:", error);
+      res.status(500).json({ error: error.message || "Failed to update manager" });
+    }
+  });
+
+  // Delete manager (admin)
+  app.delete("/api/admin/managers/:id", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const managerId = parseInt(req.params.id);
+      if (isNaN(managerId) || managerId <= 0) {
+        return res.status(400).json({ error: "Invalid manager ID" });
+      }
+
+      // Prevent deleting yourself
+      if (managerId === user.id) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+
+      // Verify the user exists and is a manager
+      const manager = await firebaseStorage.getUser(managerId);
+      if (!manager) {
+        return res.status(404).json({ error: "Manager not found" });
+      }
+      if (manager.role !== 'manager') {
+        return res.status(400).json({ error: "User is not a manager" });
+      }
+
+      await firebaseStorage.deleteUser(managerId);
+      res.json({ success: true, message: "Manager deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting manager:", error);
+      res.status(500).json({ error: error.message || "Failed to delete manager" });
+    }
+  });
+
+  // ===============================
+  // PORTAL USER AUTHENTICATION ROUTES
+  // ===============================
+
+  // Portal user login endpoint
+  app.post("/api/portal-login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      console.log('Portal user login attempt for:', username);
+
+      // Get portal user
+      const portalUser = await firebaseStorage.getUserByUsername(username);
+
+      if (!portalUser) {
+        console.log('Portal user not found:', username);
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      // Verify user is portal user
+      const isPortalUser = (portalUser as any).isPortalUser || (portalUser as any).is_portal_user;
+      if (!isPortalUser) {
+        console.log('User is not a portal user:', username);
+        return res.status(403).json({ error: 'Not authorized - portal user access required' });
+      }
+
+      // Check password
+      const passwordMatches = await comparePasswords(password, portalUser.password);
+
+      if (!passwordMatches) {
+        console.log('Password mismatch for portal user:', username);
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      // Log in the user
+      req.login(portalUser, (err: Error | null) => {
+        if (err) {
+          console.error('Login error:', err);
+          return res.status(500).json({ error: 'Login failed' });
+        }
+
+        // Get user's assigned location
+        const getPortalUserLocation = async () => {
+          try {
+            const { portalUserLocationAccess } = await import('../shared/schema');
+            const { eq } = await import('drizzle-orm');
+            
+            const accessRecords = await db.select()
+              .from(portalUserLocationAccess)
+              .where(eq(portalUserLocationAccess.portalUserId, portalUser.id));
+            
+            if (accessRecords.length > 0) {
+              return accessRecords[0].locationId;
+            }
+            return null;
+          } catch (error) {
+            console.error('Error fetching portal user location:', error);
+            return null;
+          }
+        };
+
+        getPortalUserLocation().then((locationId) => {
+          res.json({
+            id: portalUser.id,
+            username: portalUser.username,
+            role: portalUser.role,
+            isPortalUser: true,
+            locationId: locationId,
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("Portal login error:", error);
+      res.status(500).json({ error: error.message || "Portal login failed" });
+    }
+  });
+
+  // Portal user registration endpoint - creates application instead of direct access
+  console.log("[Routes] Registering /api/portal-register route");
+  app.post("/api/portal-register", async (req, res) => {
+    console.log("[Routes] /api/portal-register called");
+    try {
+      const { username, password, locationId, fullName, email, phone, company } = req.body;
+
+      if (!username || !password || !locationId || !fullName || !email || !phone) {
+        return res.status(400).json({ error: 'Username, password, locationId, fullName, email, and phone are required' });
+      }
+
+      // Validate location exists
+      const location = await firebaseStorage.getLocationById(parseInt(locationId));
+      if (!location) {
+        return res.status(400).json({ error: "Location not found" });
+      }
+
+      // Check if user already exists
+      let user = await firebaseStorage.getUserByUsername(username);
+      let isNewUser = false;
+      
+      if (!user) {
+        // Hash password and create user
+        const hashedPassword = await hashPassword(password);
+
+        user = await firebaseStorage.createUser({
+          username: username,
+          password: hashedPassword,
+          role: "chef", // Default role, but portal user flag takes precedence
+          isChef: false,
+          isDeliveryPartner: false,
+          isManager: false,
+          isPortalUser: true,
+        });
+        isNewUser = true;
+      } else {
+        // Check if user is already a portal user
+        const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
+        if (!isPortalUser) {
+          return res.status(400).json({ error: "Username already exists with different account type" });
+        }
+      }
+
+      // Check if user already has an application for this location
+      let existingApplications: any[] = [];
+      try {
+        existingApplications = await db.select()
+          .from(portalUserApplications)
+          .where(
+            and(
+              eq(portalUserApplications.userId, user.id),
+              eq(portalUserApplications.locationId, parseInt(locationId))
+            )
+          );
+      } catch (dbError: any) {
+        console.error("Error checking existing applications:", dbError);
+        // If table doesn't exist, provide helpful error message
+        if (dbError.message && dbError.message.includes('does not exist')) {
+          return res.status(500).json({ 
+            error: "Database migration required. Please run the migration to create portal_user_applications table.",
+            details: "Run: migrations/0005_add_portal_user_tables.sql"
+          });
+        }
+        throw dbError;
+      }
+      
+      if (existingApplications.length > 0) {
+        const existingApp = existingApplications[0];
+        if (existingApp.status === 'inReview' || existingApp.status === 'approved') {
+          return res.status(400).json({ 
+            error: "You already have an application for this location",
+            applicationId: existingApp.id,
+            status: existingApp.status
+          });
+        }
+      }
+
+      // Create application
+      let application: any[];
+      try {
+        application = await db.insert(portalUserApplications).values({
+          userId: user.id,
+          locationId: parseInt(locationId),
+          fullName: fullName,
+          email: email,
+          phone: phone,
+          company: company || null,
+          status: 'inReview',
+        }).returning();
+      } catch (dbError: any) {
+        console.error("Error creating application:", dbError);
+        // If table doesn't exist, provide helpful error message
+        if (dbError.message && dbError.message.includes('does not exist')) {
+          return res.status(500).json({ 
+            error: "Database migration required. Please run the migration to create portal_user_applications table.",
+            details: "Run: migrations/0005_add_portal_user_tables.sql"
+          });
+        }
+        throw dbError;
+      }
+
+      // Log the user in immediately after registration (for both new and existing users)
+      return new Promise<void>((resolve, reject) => {
+        req.login(user, (err: Error | null) => {
+          if (err) {
+            console.error("Login error after registration:", err);
+            return res.status(500).json({ error: "Login failed after registration" });
+          }
+          
+          // Send notification to manager
+          (async () => {
+            try {
+              const { sendEmail } = await import('./email');
+              
+              // First, try to get notification_email from location (preferred)
+              let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
+              
+              // If no notification_email, get manager's email from manager_id
+              if (!managerEmail) {
+                const managerId = (location as any).managerId || (location as any).manager_id;
+                if (managerId) {
+                  const manager = await firebaseStorage.getUser(managerId);
+                  if (manager && (manager as any).username) {
+                    managerEmail = (manager as any).username;
+                  }
+                }
+              }
+              
+              // Send email if we have a manager email
+              if (managerEmail) {
+                const emailContent = {
+                  to: managerEmail,
+                  subject: `New Portal User Application - ${(location as any).name}`,
+                  text: `A new portal user has applied for access to your location:\n\n` +
+                        `Location: ${(location as any).name}\n` +
+                        `Applicant Name: ${fullName}\n` +
+                        `Email: ${email}\n` +
+                        `Phone: ${phone}\n` +
+                        `${company ? `Company: ${company}\n` : ''}` +
+                        `\nPlease log in to your manager dashboard to review and approve this application.`,
+                  html: `<h2>New Portal User Application</h2>` +
+                        `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                        `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                        `<p><strong>Email:</strong> ${email}</p>` +
+                        `<p><strong>Phone:</strong> ${phone}</p>` +
+                        `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                        `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+                };
+                await sendEmail(emailContent);
+                console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
+              } else {
+                console.log("⚠️ No manager email found for location - skipping email notification");
+              }
+            } catch (emailError) {
+              console.error("Error sending application notification email:", emailError);
+              // Don't fail registration if email fails
+            }
+
+            // Return success response
+            res.status(201).json({
+              id: user.id,
+              username: user.username,
+              role: user.role,
+              isPortalUser: true,
+              application: {
+                id: application[0].id,
+                status: application[0].status,
+                message: "Your application has been submitted. You are now logged in. The location manager will review it shortly."
+              }
+            });
+          })();
+        });
+      });
+
+    } catch (error: any) {
+      console.error("Portal registration error:", error);
+      res.status(500).json({ error: error.message || "Portal registration failed" });
+    }
+  });
+
+  // ===============================
+  // PORTAL USER BOOKING ROUTES (Auth required)
+  // ===============================
+
+  // Middleware to require portal user authentication and approved access
+  async function requirePortalUser(req: Request, res: Response, next: () => void) {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Authentication required. Please sign in." });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
+      
+      if (!isPortalUser) {
+        return res.status(403).json({ error: "Portal user access required" });
+      }
+      
+      // Verify user has approved location access
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, user.id))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        // Check if user has a pending application
+        const applications = await db.select()
+          .from(portalUserApplications)
+          .where(eq(portalUserApplications.userId, user.id))
+          .limit(1);
+        
+        if (applications.length > 0) {
+          const app = applications[0];
+          return res.status(403).json({ 
+            error: "Access denied. Your application is pending approval by the location manager.",
+            applicationStatus: app.status,
+            awaitingApproval: true
+          });
+        }
+        
+        return res.status(403).json({ 
+          error: "Access denied. Your application is pending approval by the location manager.",
+          awaitingApproval: true
+        });
+      }
+      
+      // Attach user to request
+      req.user = user as any;
+      console.log(`✅ Portal user authenticated: ${user.username} (ID: ${user.id})`);
+      return next();
+    } catch (error) {
+      console.error('Error in requirePortalUser middleware:', error);
+      return res.status(401).json({ error: "Authentication failed" });
+    }
+  }
+
+  // Get portal user's assigned location
+  app.get("/api/portal/my-location", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      
+      const { portalUserLocationAccess, locations } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      // Get user's location access
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const locationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, locationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      const location = locationRecords[0];
+      const slug = (location as any).name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        
+      res.json({
+        id: location.id,
+        name: (location as any).name,
+        address: (location as any).address,
+        logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+          slug: slug,
+      });
+    } catch (error: any) {
+      console.error("Error fetching portal user location:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location" });
+    }
+  });
+
+  // ===============================
+  // PORTAL USER BOOKING ROUTES (Auth required - filtered by user's location)
+  // ===============================
+
+  // Get portal user application status (for authenticated portal users without approved access)
+  app.get("/api/portal/application-status", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
+      
+      if (!isPortalUser) {
+        return res.status(403).json({ error: "Portal user access required" });
+      }
+
+      // Check for approved access first
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, user.id))
+        .limit(1);
+      
+      if (accessRecords.length > 0) {
+        return res.json({ 
+          hasAccess: true,
+          status: 'approved'
+        });
+      }
+
+      // Check application status
+      const applications = await db.select()
+        .from(portalUserApplications)
+        .where(eq(portalUserApplications.userId, user.id))
+        .orderBy(desc(portalUserApplications.createdAt))
+        .limit(1);
+      
+      if (applications.length > 0) {
+        const app = applications[0];
+        return res.json({
+          hasAccess: false,
+          status: app.status,
+          applicationId: app.id,
+          locationId: app.locationId,
+          awaitingApproval: app.status === 'inReview'
+        });
+      }
+
+      return res.json({
+        hasAccess: false,
+        status: 'no_application',
+        awaitingApproval: false
+      });
+    } catch (error: any) {
+      console.error("Error getting portal application status:", error);
+      res.status(500).json({ error: error.message || "Failed to get application status" });
+    }
+  });
+
+  // Get portal user's assigned location (for authenticated portal users)
+  app.get("/api/portal/locations", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      
+      const { portalUserLocationAccess, locations } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      // Get user's location access
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const locationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, locationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      const location = locationRecords[0];
+      const slug = (location as any).name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+      
+      res.json([{
+        id: location.id,
+        name: (location as any).name,
+        address: (location as any).address,
+        logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+        slug: slug,
+      }]);
+    } catch (error: any) {
+      console.error("Error fetching portal user location:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location" });
+    }
+  });
+
+  // Get portal user's location info (by name slug) - requires auth and verifies ownership
+  app.get("/api/portal/locations/:locationSlug", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const locationSlug = req.params.locationSlug;
+      
+      // Get user's assigned location
+      const { portalUserLocationAccess, locations } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, userLocationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      const location = locationRecords[0];
+      const slug = (location as any).name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      // Verify the slug matches the user's location
+      if (slug !== locationSlug) {
+        return res.status(403).json({ error: "Access denied. You can only access your assigned location." });
+      }
+
+      // Return location info
+      res.json({
+        id: location.id,
+        name: (location as any).name,
+        address: (location as any).address,
+        logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+      });
+    } catch (error: any) {
+      console.error("Error fetching portal location:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch location" });
+    }
+  });
+
+  // Get kitchens for portal user's location (by name slug) - requires auth and verifies ownership
+  app.get("/api/portal/locations/:locationSlug/kitchens", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const locationSlug = req.params.locationSlug;
+      
+      // Get user's assigned location
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Get location details
+      const locationRecords = await db.select()
+        .from(locations)
+        .where(eq(locations.id, userLocationId))
+        .limit(1);
+      
+      if (locationRecords.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      const location = locationRecords[0];
+      const slug = (location as any).name
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/[\s_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+
+      // Verify the slug matches the user's location
+      if (slug !== locationSlug) {
+        return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
+      }
+
+      const kitchens = await firebaseStorage.getKitchensByLocation(userLocationId);
+      
+      // Filter only active kitchens and return info
+      const publicKitchens = kitchens
+        .filter((kitchen: any) => kitchen.isActive !== false)
+        .map((kitchen: any) => ({
+          id: kitchen.id,
+          name: kitchen.name,
+          description: kitchen.description,
+          locationId: kitchen.locationId || kitchen.location_id,
+        }));
+
+      res.json(publicKitchens);
+    } catch (error: any) {
+      console.error("Error fetching portal kitchens:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+    }
+  });
+
+  // Get available slots for a kitchen - requires auth and verifies kitchen belongs to user's location
+  app.get("/api/portal/kitchens/:kitchenId/availability", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const kitchenId = parseInt(req.params.kitchenId);
+      const date = req.query.date as string;
+
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      if (!date) {
+        return res.status(400).json({ error: "Date parameter is required" });
+      }
+
+      // Get user's assigned location
+      const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Verify kitchen belongs to user's location
+      const kitchenRecords = await db.select()
+        .from(kitchens)
+        .where(eq(kitchens.id, kitchenId))
+        .limit(1);
+      
+      if (kitchenRecords.length === 0) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      const kitchen = kitchenRecords[0];
+      const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+      
+      if (kitchenLocationId !== userLocationId) {
+        return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
+      }
+
+      // Get available slots using the same logic as chef bookings
+      const slots = await firebaseStorage.getAvailableSlots(kitchenId, date);
+      
+      res.json({ slots });
+    } catch (error: any) {
+      console.error("Error fetching portal availability:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch availability" });
+    }
+  });
+
+  // Submit public booking (third-party booking)
+  app.post("/api/public/bookings", async (req: Request, res: Response) => {
+    try {
+      const {
+        locationId,
+        kitchenId,
+        bookingDate,
+        startTime,
+        endTime,
+        bookingName,
+        bookingEmail,
+        bookingPhone,
+        bookingCompany,
+        specialNotes,
+      } = req.body;
+
+      if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Validate booking date/time
+      const bookingDateObj = new Date(bookingDate);
+      const now = new Date();
+      
+      if (bookingDateObj < now) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+
+      // Check availability
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        kitchenId,
+        bookingDateObj,
+        startTime,
+        endTime
+      );
+
+      if (!availabilityCheck.valid) {
+        return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
+      }
+
+      // Get location to check minimum booking window
+      const location = await firebaseStorage.getLocationById(locationId);
+      const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
+
+      // Check minimum booking window if booking is today
+      const isToday = bookingDateObj.toDateString() === now.toDateString();
+      if (isToday) {
+        const [startHours, startMins] = startTime.split(':').map(Number);
+        const slotTime = new Date(bookingDateObj);
+        slotTime.setHours(startHours, startMins, 0, 0);
+        const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursUntilBooking < minimumBookingWindowHours) {
+          return res.status(400).json({ 
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          });
+        }
+      }
+
+      // Create booking as external/third-party booking
+      const booking = await firebaseStorage.createBooking({
+        kitchenId,
+        bookingDate: bookingDateObj,
+        startTime,
+        endTime,
+        specialNotes: specialNotes || `Third-party booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}. Email: ${bookingEmail}${bookingPhone ? `, Phone: ${bookingPhone}` : ''}`,
+        bookingType: 'external',
+        createdBy: null, // No authenticated user
+        externalContact: {
+          name: bookingName,
+          email: bookingEmail,
+          phone: bookingPhone || null,
+          company: bookingCompany || null,
+        },
+      });
+
+      // Send notification to manager
+      try {
+        const { sendEmail } = await import('./email');
+        if ((location as any)?.notificationEmail) {
+          // Create simple email notification for third-party booking
+          const emailContent = {
+            to: (location as any).notificationEmail,
+            subject: `New Third-Party Booking Request - ${(location as any).name}`,
+            text: `A new booking request has been submitted:\n\n` +
+                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+                  `Date: ${bookingDate}\n` +
+                  `Time: ${startTime} - ${endTime}\n\n` +
+                  `Contact Information:\n` +
+                  `Name: ${bookingName}\n` +
+                  `Email: ${bookingEmail}\n` +
+                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+            html: `<h2>New Third-Party Booking Request</h2>` +
+                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
+                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+                  `<h3>Contact Information:</h3>` +
+                  `<ul>` +
+                  `<li><strong>Name:</strong> ${bookingName}</li>` +
+                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+                  `</ul>` +
+                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+          };
+          await sendEmail(emailContent);
+        }
+      } catch (emailError) {
+        console.error("Error sending booking notification email:", emailError);
+        // Don't fail the booking if email fails
+      }
+
+      res.status(201).json({
+        success: true,
+        booking: {
+          id: booking.id,
+          bookingDate,
+          startTime,
+          endTime,
+          status: 'pending',
+        },
+        message: "Booking request submitted successfully. The kitchen manager will contact you shortly.",
+      });
+    } catch (error: any) {
+      console.error("Error creating public booking:", error);
+      res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
+  });
+
+  // Submit portal booking (authenticated portal user) - requires auth and verifies location access
+  app.post("/api/portal/bookings", requirePortalUser, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.user as any).id;
+      const {
+        locationId,
+        kitchenId,
+        bookingDate,
+        startTime,
+        endTime,
+        bookingName,
+        bookingEmail,
+        bookingPhone,
+        bookingCompany,
+        specialNotes,
+      } = req.body;
+
+      if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Get user's assigned location
+      const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(eq(portalUserLocationAccess.portalUserId, userId))
+        .limit(1);
+      
+      if (accessRecords.length === 0) {
+        return res.status(404).json({ error: "No location assigned to this portal user" });
+      }
+      
+      const userLocationId = accessRecords[0].locationId;
+      
+      // Verify location matches user's assigned location
+      if (parseInt(locationId) !== userLocationId) {
+        return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
+      }
+      
+      // Verify kitchen belongs to user's location
+      const kitchenRecords = await db.select()
+        .from(kitchens)
+        .where(eq(kitchens.id, parseInt(kitchenId)))
+        .limit(1);
+      
+      if (kitchenRecords.length === 0) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      const kitchen = kitchenRecords[0];
+      const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+      
+      if (kitchenLocationId !== userLocationId) {
+        return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
+      }
+
+      // Validate booking date/time
+      const bookingDateObj = new Date(bookingDate);
+      const now = new Date();
+      
+      if (bookingDateObj < now) {
+        return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+      }
+
+      // Check availability
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        parseInt(kitchenId),
+        bookingDateObj,
+        startTime,
+        endTime
+      );
+
+      if (!availabilityCheck.valid) {
+        return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
+      }
+
+      // Get location to check minimum booking window
+      const location = await firebaseStorage.getLocationById(userLocationId);
+      const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
+
+      // Check minimum booking window if booking is today
+      const isToday = bookingDateObj.toDateString() === now.toDateString();
+      if (isToday) {
+        const [startHours, startMins] = startTime.split(':').map(Number);
+        const slotTime = new Date(bookingDateObj);
+        slotTime.setHours(startHours, startMins, 0, 0);
+        const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursUntilBooking < minimumBookingWindowHours) {
+          return res.status(400).json({ 
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          });
+        }
+      }
+
+      // Create booking as external/third-party booking (using portal user info)
+      const booking = await firebaseStorage.createBooking({
+        kitchenId: parseInt(kitchenId),
+        chefId: userId, // Portal user ID
+        bookingDate: bookingDateObj,
+        startTime,
+        endTime,
+        specialNotes: specialNotes || `Portal user booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}. Email: ${bookingEmail}${bookingPhone ? `, Phone: ${bookingPhone}` : ''}`,
+        bookingType: 'external',
+        createdBy: userId, // Portal user who created the booking
+        externalContact: {
+          name: bookingName,
+          email: bookingEmail,
+          phone: bookingPhone || null,
+          company: bookingCompany || null,
+        },
+      });
+
+      // Send notification to manager
+      try {
+        const { sendEmail } = await import('./email');
+        if ((location as any)?.notificationEmail) {
+          // Create simple email notification for portal user booking
+          const emailContent = {
+            to: (location as any).notificationEmail,
+            subject: `New Portal User Booking Request - ${(location as any).name}`,
+            text: `A new booking request has been submitted by a portal user:\n\n` +
+                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+                  `Date: ${bookingDate}\n` +
+                  `Time: ${startTime} - ${endTime}\n\n` +
+                  `Contact Information:\n` +
+                  `Name: ${bookingName}\n` +
+                  `Email: ${bookingEmail}\n` +
+                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+            html: `<h2>New Portal User Booking Request</h2>` +
+                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
+                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+                  `<h3>Contact Information:</h3>` +
+                  `<ul>` +
+                  `<li><strong>Name:</strong> ${bookingName}</li>` +
+                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+                  `</ul>` +
+                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+          };
+          await sendEmail(emailContent);
+        }
+
+        // Send SMS to manager
+        try {
+          const { db } = await import('./db');
+          const { locations } = await import('../shared/schema');
+          const { eq } = await import('drizzle-orm');
+          
+          const locationRecord = await db.select().from(locations).where(eq(locations.id, userLocationId)).limit(1);
+          const locationData = locationRecord[0];
+          
+          // Get manager phone number - check location notificationPhone first, then manager's application
+          let managerPhone: string | null = (locationData as any)?.notificationPhone || (locationData as any)?.notification_phone || null;
+          
+          if (!managerPhone && (locationData as any)?.managerId && pool) {
+            // Try to get phone from manager's application
+            try {
+              const managerAppResult = await pool.query(
+                'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                [(locationData as any).managerId]
+              );
+              if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
+                managerPhone = managerAppResult.rows[0].phone;
+              }
+            } catch (error) {
+              // Non-critical
+            }
+          }
+
+          if (managerPhone) {
+            const smsMessage = generateManagerPortalBookingSMS({
+              portalUserName: bookingName,
+              kitchenName: booking.kitchenName || 'Kitchen',
+              bookingDate: bookingDate,
+              startTime,
+              endTime
+            });
+            await sendSMS(managerPhone, smsMessage, { trackingId: `portal_booking_${booking.id}_manager` });
+            console.log(`✅ Portal booking SMS sent to manager: ${managerPhone}`);
+          }
+        } catch (smsError) {
+          console.error("Error sending booking SMS to manager:", smsError);
+          // Don't fail the booking if SMS fails
+        }
+      } catch (emailError) {
+        console.error("Error sending booking notification email:", emailError);
+        // Don't fail the booking if email fails
+      }
+
+      res.status(201).json({
+        success: true,
+        booking: {
+          id: booking.id,
+          bookingDate,
+          startTime,
+          endTime,
+          status: 'pending',
+        },
+        message: "Booking request submitted successfully. The kitchen manager will contact you shortly.",
+      });
+    } catch (error: any) {
+      console.error("Error creating portal booking:", error);
+      res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
+
