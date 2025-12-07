@@ -1,4 +1,4 @@
-import { User } from "../shared/schema.js";
+import { User } from "../shared/schema.js.js";
 import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { Express } from "express";
 import session from "express-session";

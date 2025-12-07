@@ -12600,6 +12600,56 @@ app.post("/api/manager/change-password", async (req, res) => {
   }
 });
 
+// Admin change password endpoint
+app.post("/api/admin/change-password", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    // Validate required fields
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+
+    // Validate new password strength
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters long" });
+    }
+
+    // Verify current password
+    const passwordMatches = await comparePasswords(currentPassword, user.password);
+    if (!passwordMatches) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+
+    // Update password
+    const hashedNewPassword = await hashPassword(newPassword);
+    if (pool) {
+      await pool.query(
+        'UPDATE users SET password = $1 WHERE id = $2',
+        [hashedNewPassword, user.id]
+      );
+    } else {
+      // Fallback for in-memory storage
+      user.password = hashedNewPassword;
+    }
+
+    res.json({ success: true, message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Error changing admin password:", error);
+    res.status(500).json({ error: error.message || "Failed to change password" });
+  }
+});
+
 // Get all locations (admin)
 app.get("/api/admin/locations", async (req, res) => {
   try {
