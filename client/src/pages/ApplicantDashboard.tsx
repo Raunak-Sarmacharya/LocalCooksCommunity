@@ -1193,10 +1193,10 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 group relative overflow-hidden"
             >
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center flex-shrink-0 shadow-md group-hover:scale-110 transition-transform duration-300">
                   <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
                 <div className="min-w-0">
@@ -1217,10 +1217,10 @@ export default function ApplicantDashboard() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
+                className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 group relative overflow-hidden"
               >
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-green-100 to-green-50 flex items-center justify-center flex-shrink-0 shadow-md group-hover:scale-110 transition-transform duration-300">
                     <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                   </div>
                   <div className="min-w-0">
@@ -1242,10 +1242,10 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 group relative overflow-hidden"
             >
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-100 to-purple-50 flex items-center justify-center flex-shrink-0 shadow-md group-hover:scale-110 transition-transform duration-300">
                   <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
                 </div>
                 <div className="min-w-0">
@@ -1261,10 +1261,10 @@ export default function ApplicantDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200"
+              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 group relative overflow-hidden"
             >
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-yellow-100 to-yellow-50 flex items-center justify-center flex-shrink-0 shadow-md group-hover:scale-110 transition-transform duration-300">
                   <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                 </div>
                 <div className="min-w-0">
@@ -1280,7 +1280,7 @@ export default function ApplicantDashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-6 backdrop-blur-sm"
+            className="bg-white rounded-3xl p-8 md:p-10 shadow-xl border border-gray-100 hover:shadow-2xl hover:border-gray-200 transition-all duration-300 mb-6 backdrop-blur-sm group relative overflow-hidden"
           >
             <div className="flex items-center gap-4 mb-6">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
@@ -1368,7 +1368,7 @@ export default function ApplicantDashboard() {
                         </p>
 
                         {/* Comprehensive Application Details Card */}
-                        <div className="p-6 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50 space-y-4">
+                        <div className="p-6 md:p-8 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 space-y-4 shadow-md hover:shadow-lg transition-all duration-300">
                           <h5 className="font-medium text-gray-900 mb-4">Complete Application Details</h5>
                           
                           {/* Personal Information */}
@@ -1449,7 +1449,7 @@ export default function ApplicantDashboard() {
                         </div>
                         
                         {defaultApp.feedback && (
-                          <div className="p-4 bg-gradient-to-br from-red-50 to-red-100/50 rounded-xl border border-red-200">
+                          <div className="p-4 md:p-6 bg-gradient-to-br from-red-50 to-red-100/50 rounded-2xl border border-red-200 shadow-md">
                             <p className="text-sm text-red-800 font-medium">Feedback:</p>
                             <p className="text-sm text-red-700 mt-1">{defaultApp.feedback}</p>
                           </div>
@@ -1532,7 +1532,7 @@ export default function ApplicantDashboard() {
                initial={{ opacity: 0, y: 20 }}
                animate={{ opacity: 1, y: 0 }}
                transition={{ delay: 0.6 }}
-               className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
+               className="bg-white rounded-3xl p-8 md:p-10 shadow-xl border border-gray-100 hover:shadow-2xl hover:border-gray-200 transition-all duration-300 backdrop-blur-sm h-full flex flex-col group relative overflow-hidden"
              >
                <div className="flex items-center gap-4 mb-6">
                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
@@ -1607,7 +1607,7 @@ export default function ApplicantDashboard() {
                          {/* Document Cards - Expanded to fill space */}
                          <div className="space-y-4 flex-1">
                            {/* Food Safety License - Enhanced */}
-                           <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Food Safety License</h4>
                                {chefApp.foodSafetyLicenseStatus && (
@@ -1638,7 +1638,7 @@ export default function ApplicantDashboard() {
                            </div>
                            
                            {/* Food Establishment Certificate - Enhanced */}
-                           <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Establishment Certificate</h4>
                                {chefApp.foodEstablishmentCertStatus && (
@@ -1704,7 +1704,7 @@ export default function ApplicantDashboard() {
                        <div className="flex flex-col h-full">
                          <div className="space-y-4 flex-1">
                            {/* Driver's License */}
-                           <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Driver's License</h4>
                                {getStatusBadge(deliveryApp.driversLicenseStatus, !!deliveryApp.driversLicenseUrl)}
@@ -1727,7 +1727,7 @@ export default function ApplicantDashboard() {
                            </div>
                            
                            {/* Vehicle Registration */}
-                           <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
                                {getStatusBadge(deliveryApp.vehicleRegistrationStatus, !!deliveryApp.vehicleRegistrationUrl)}
@@ -1750,7 +1750,7 @@ export default function ApplicantDashboard() {
                            </div>
                            
                            {/* Insurance */}
-                           <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
                              <div className="flex items-center justify-between mb-3">
                                <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
                                {getStatusBadge(deliveryApp.insuranceStatus, !!deliveryApp.insuranceUrl)}
@@ -1820,7 +1820,7 @@ export default function ApplicantDashboard() {
                  initial={{ opacity: 0, y: 20 }}
                  animate={{ opacity: 1, y: 0 }}
                  transition={{ delay: 0.7 }}
-                 className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 backdrop-blur-sm h-full flex flex-col"
+                 className="bg-white rounded-3xl p-8 md:p-10 shadow-xl border border-gray-100 hover:shadow-2xl hover:border-gray-200 transition-all duration-300 backdrop-blur-sm h-full flex flex-col group relative overflow-hidden"
                >
                  <div className="flex items-center gap-4 mb-6">
                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">

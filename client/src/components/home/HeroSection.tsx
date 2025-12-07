@@ -82,20 +82,42 @@ export default function HeroSection() {
   };
   
   return (
-    <GradientHero variant="warm" className="pt-28 pb-8 md:pt-36 md:pb-16 px-4">
-      <div className="container mx-auto grid md:grid-cols-2 gap-6 md:gap-8 items-center">
+    <GradientHero variant="cream" className="pt-28 pb-12 md:pt-36 md:pb-20 px-4 relative overflow-hidden">
+      {/* Enhanced background decorative elements */}
+      <div className="absolute inset-0 opacity-5 pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+      </div>
+      
+      <div className="container mx-auto max-w-6xl relative z-10">
         <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="space-y-4 md:space-y-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-center space-y-8 md:space-y-10"
         >
-          <h1 className="text-3xl md:text-5xl font-bold mb-1 md:mb-2">
-            Join <span className="font-logo text-primary">
-              Local <span className="inline-block min-w-[140px] md:min-w-[200px]">{currentText}<span className="animate-pulse">|</span></span>
-            </span>
-          </h1>
-          <h2 className="text-lg md:text-2xl font-semibold mb-3 md:mb-4 text-gray-700">
+          {/* Brand Name with enhanced styling */}
+          <motion.div 
+            className="space-y-3 md:space-y-4"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <h1 className="font-display text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[var(--color-primary)] leading-none mb-3 md:mb-4 drop-shadow-sm">
+              LocalCooks
+            </h1>
+            <p className="font-mono text-[11px] md:text-[12px] text-[var(--color-charcoal-light)] uppercase tracking-[0.5em] mb-6 md:mb-8 font-medium">
+              Homemade with Love
+            </p>
+          </motion.div>
+
+          {/* Main Heading with enhanced typography */}
+          <motion.h2 
+            className="text-3xl md:text-5xl lg:text-6xl font-bold mb-6 md:mb-8 text-[var(--color-text-primary)] font-sans max-w-5xl mx-auto leading-tight"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
             {(() => {
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
@@ -104,11 +126,18 @@ export default function HeroSection() {
               } else if (user) {
                 return "Bringing Communities Together Through Homemade Meals";
               } else {
-                return "Connect Communities Through Food";
+                return "Local Cooks • Local Company • Local Community";
               }
             })()}
-          </h2>
-          <p className="text-base md:text-lg mb-4 md:mb-6 text-gray-600 leading-relaxed">
+          </motion.h2>
+
+          {/* Description with better spacing */}
+          <motion.p 
+            className="text-lg md:text-xl lg:text-2xl mb-8 md:mb-12 text-[var(--color-text-primary)]/90 leading-relaxed font-sans max-w-3xl mx-auto font-medium"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
             {(() => {
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
@@ -120,9 +149,15 @@ export default function HeroSection() {
                 return "Join Local Cooks as a chef to share your culinary skills and connect communities with fresh, homemade meals.";
               }
             })()}
-          </p>
+          </motion.p>
           
-          <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
+          {/* Benefits Grid with enhanced design */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-10 md:mb-12 max-w-5xl mx-auto"
+          >
             {(() => {
               const isDeliveryPartner = (user as any)?.isDeliveryPartner;
               
@@ -130,124 +165,126 @@ export default function HeroSection() {
                 // Delivery partner benefits
                 return (
                   <>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
-                        <Truck className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <Truck className="h-6 w-6 md:h-7 md:w-7 text-blue-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Flexible delivery work</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
-                        <Clock className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Flexible delivery work</span>
+                    </motion.div>
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <Clock className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Choose your hours</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
-                        <Route className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Choose your hours</span>
+                    </motion.div>
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <Route className="h-6 w-6 md:h-7 md:w-7 text-yellow-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Optimized routes</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
-                        <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Optimized routes</span>
+                    </motion.div>
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <DollarSign className="h-6 w-6 md:h-7 md:w-7 text-purple-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Competitive earnings</span>
-                    </div>
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Competitive earnings</span>
+                    </motion.div>
                   </>
                 );
               } else {
                 // Chef benefits (for chefs or no role)
                 return (
                   <>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-green-100 rounded-full">
-                        <ChefHat className="h-4 w-4 md:h-5 md:w-5 text-green-600" />
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <ChefHat className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Showcase your talent</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-blue-100 rounded-full">
-                        <Users className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Showcase your talent</span>
+                    </motion.div>
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <Users className="h-6 w-6 md:h-7 md:w-7 text-blue-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Expand your network</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-yellow-100 rounded-full">
-                        <ShoppingBag className="h-4 w-4 md:h-5 md:w-5 text-yellow-600" />
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Expand your network</span>
+                    </motion.div>
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <ShoppingBag className="h-6 w-6 md:h-7 md:w-7 text-yellow-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">We handle delivery</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 md:p-2 bg-purple-100 rounded-full">
-                        <CreditCard className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">We handle delivery</span>
+                    </motion.div>
+                    <motion.div 
+                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      transition={{ type: "spring", stiffness: 300 }}
+                    >
+                      <div className="p-3 md:p-4 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                        <CreditCard className="h-6 w-6 md:h-7 md:w-7 text-purple-600" />
                       </div>
-                      <span className="text-xs md:text-sm font-medium">Get paid weekly</span>
-                    </div>
+                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Get paid weekly</span>
+                    </motion.div>
                   </>
                 );
               }
             })()}
-          </div>
+          </motion.div>
           
-          {!user ? (
-            // Guest users - show only chef option
-            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          {/* CTA Button with enhanced design */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="flex justify-center"
+          >
+            {!user ? (
+              // Guest users - show only chef option
               <Button 
                 onClick={handleChefClick}
                 size="lg"
-                className="bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl flex-1 sm:flex-initial btn-glow"
+                className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-5 md:py-7 px-10 md:px-16 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform"
               >
                 Apply as Chef
               </Button>
-            </div>
-          ) : (
-            // Logged-in users - show personalized button
-            <Button 
-              onClick={handleChefClick}
-              disabled={isLoading}
-              size="lg"
-              className="bg-primary hover:bg-opacity-90 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full shadow-lg hover-transform hover:shadow-xl w-full sm:w-auto btn-glow"
-            >
-              {isLoading ? "Loading..." : getPrimaryButtonText()}
-            </Button>
-          )}
-        </motion.div>
-        
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="relative mt-6 md:mt-0"
-        >
-          <div className="absolute inset-0 bg-primary/5 rounded-2xl -rotate-3 transform hidden md:block"></div>
-          <div className="absolute inset-0 bg-primary/5 rounded-2xl rotate-3 transform hidden md:block"></div>
-          <div className="relative overflow-hidden rounded-xl shadow-xl">
-            {(() => {
-              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-              
-              // Show delivery image for delivery partners, chef image for chefs or no role
-              if (isDeliveryPartner) {
-                return (
-                  <img 
-                    src={foodDeliveryImage} 
-                    alt="Delivery partner bringing food to customer" 
-                    className="w-full h-64 md:h-full object-cover rounded-xl shadow-lg"
-                  />
-                );
-              } else {
-                // Default to chef image for chefs or no role selected
-                return (
-                  <img 
-                    src={chefCookingImage} 
-                    alt="Professional chef cooking in home kitchen" 
-                    className="w-full h-64 md:h-full object-cover rounded-xl shadow-lg"
-                  />
-                );
-              }
-            })()}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
-          </div>
+            ) : (
+              // Logged-in users - show personalized button
+              <Button 
+                onClick={handleChefClick}
+                disabled={isLoading}
+                size="lg"
+                className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-5 md:py-7 px-10 md:px-16 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? "Loading..." : getPrimaryButtonText()}
+              </Button>
+            )}
+          </motion.div>
         </motion.div>
       </div>
     </GradientHero>

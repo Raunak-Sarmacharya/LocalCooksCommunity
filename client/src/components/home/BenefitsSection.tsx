@@ -144,11 +144,11 @@ export default function BenefitsSection() {
   const mainBenefits = getBenefits();
   
   return (
-    <section id="benefits" className="py-16 md:py-24 px-4 bg-gradient-to-b from-blue-50 to-white scroll-mt-24">
+    <section id="benefits" className="py-16 md:py-24 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 to-white scroll-mt-24">
       <div className="container mx-auto max-w-6xl">
         <div className="text-center mb-12 md:mb-16">
           <motion.span 
-            className="inline-block text-primary font-medium mb-2"
+            className="inline-block text-[var(--color-primary)] font-medium mb-2 font-mono text-xs uppercase tracking-wider"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -157,7 +157,7 @@ export default function BenefitsSection() {
             Why Join Us
           </motion.span>
           <motion.h2 
-            className="text-3xl md:text-4xl font-bold mb-4"
+            className="text-3xl md:text-5xl font-display text-[var(--color-primary)] mb-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -166,7 +166,7 @@ export default function BenefitsSection() {
             {getTitle()}
           </motion.h2>
           <motion.p 
-            className="max-w-2xl mx-auto text-gray-600"
+            className="max-w-2xl mx-auto text-[var(--color-text-primary)] font-sans"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -176,31 +176,38 @@ export default function BenefitsSection() {
           </motion.p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 mb-16">
           {mainBenefits.map((benefit, index) => (
             <motion.div 
               key={index}
-              className="bg-white p-4 md:p-6 rounded-xl shadow-lg hover:shadow-xl hover-shadow hover:-translate-y-1 hover-transform group card-hover"
-              initial={{ opacity: 0, y: 20 }}
+              className="bg-white p-6 md:p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 group card-hover border border-gray-100 relative overflow-hidden"
+              initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: index * 0.1 + 0.3 }}
+              transition={{ delay: index * 0.1 + 0.3, type: "spring", stiffness: 100 }}
+              whileHover={{ y: -8, scale: 1.02 }}
             >
-              <div className="mb-3 md:mb-4 bg-gray-50 w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center">
-                {benefit.icon}
+              {/* Decorative gradient overlay on hover */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              
+              <div className="relative z-10">
+                <div className="mb-4 md:mb-6 bg-gradient-to-br from-gray-50 to-gray-100 w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:scale-110 transition-all duration-300">
+                  {benefit.icon}
+                </div>
+                <h3 className="text-lg md:text-xl font-bold mb-2 md:mb-3 text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300">{benefit.title}</h3>
+                <p className="text-sm md:text-base text-[var(--color-text-primary)]/80 font-sans leading-relaxed">{benefit.description}</p>
               </div>
-              <h3 className="text-base md:text-lg font-bold mb-1 md:mb-2 text-gray-900">{benefit.title}</h3>
-              <p className="text-xs md:text-sm text-gray-600">{benefit.description}</p>
             </motion.div>
           ))}
         </div>
         
         <motion.div 
-          className="relative bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 rounded-2xl md:rounded-3xl overflow-hidden shadow-[0_10px_25px_rgba(0,0,0,0.4)] md:shadow-[0_20px_50px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105"
+          className="relative bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900 rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.4)] md:shadow-[0_30px_60px_rgba(0,0,0,0.5)] transform scale-100 md:scale-105 border border-gray-600/20"
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 100 }}
+          whileHover={{ scale: 1.02, y: -4 }}
         >
           <div className="absolute top-0 right-0 w-[17.5%] h-full opacity-5">
             <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
@@ -209,17 +216,18 @@ export default function BenefitsSection() {
           </div>
           
           <div className="p-6 md:p-10 lg:p-14 flex flex-col md:flex-row items-center relative z-10">
-            <div className="md:w-1/2 mb-6 md:mb-0">
+            <div className="md:w-1/2 mb-6 md:mb-0 relative group">
+              <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/20 to-transparent rounded-xl md:rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               <img 
                 src={foodDeliveryImage} 
                 alt="Chef delivering food to customer at doorstep" 
-                className="rounded-xl md:rounded-2xl w-full h-48 sm:h-60 md:h-72 object-cover shadow-[0_5px_15px_rgba(0,0,0,0.2)] md:shadow-[0_10px_25px_rgba(0,0,0,0.3)]"
+                className="rounded-xl md:rounded-2xl w-full h-48 sm:h-60 md:h-72 object-cover shadow-[0_10px_30px_rgba(0,0,0,0.3)] md:shadow-[0_15px_40px_rgba(0,0,0,0.4)] group-hover:scale-105 transition-transform duration-500"
               />
             </div>
             
             <div className="md:w-1/2 md:pl-8 lg:pl-10 text-white">
-              <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4 md:mb-6 text-shadow-lg">Early Bird Advantages</h2>
-              <p className="text-base md:text-lg mb-4 md:mb-6 opacity-95 text-shadow-md">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-5 md:mb-6 text-shadow-lg leading-tight">Early Bird Advantages</h2>
+              <p className="text-lg md:text-xl mb-6 md:mb-8 opacity-95 text-shadow-md leading-relaxed">
                 Join during our trial phase and get exclusive benefits that won't be available later.
               </p>
               
@@ -227,18 +235,19 @@ export default function BenefitsSection() {
                 {pilotBenefits.map((benefit, index) => (
                   <motion.li 
                     key={index} 
-                    className="flex items-start"
+                    className="flex items-start group/item"
                     initial={{ opacity: 0, x: -20 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
-                    transition={{ delay: index * 0.1 + 0.4 }}
+                    transition={{ delay: index * 0.1 + 0.4, type: "spring", stiffness: 100 }}
+                    whileHover={{ x: 4 }}
                   >
-                    <div className="bg-white/90 rounded-full p-1.5 mr-4 flex-shrink-0 mt-0.5 shadow-sm">
+                    <div className="bg-white/95 rounded-full p-2 mr-4 flex-shrink-0 mt-0.5 shadow-lg group-hover/item:scale-110 group-hover/item:shadow-xl transition-all duration-300">
                       {benefit.icon}
                     </div>
                     <div>
-                      <div className="font-medium text-lg text-shadow-sm">{benefit.text}</div>
-                      <div className="text-sm opacity-85 text-shadow-xs">{benefit.description}</div>
+                      <div className="font-semibold text-lg md:text-xl text-shadow-sm mb-1">{benefit.text}</div>
+                      <div className="text-sm md:text-base opacity-90 text-shadow-xs leading-relaxed">{benefit.description}</div>
                     </div>
                   </motion.li>
                 ))}

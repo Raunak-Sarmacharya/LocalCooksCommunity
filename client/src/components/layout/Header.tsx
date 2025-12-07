@@ -4,8 +4,9 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, GraduationCap, LogOut, Menu, User, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { getSubdomainFromHostname } from "@shared/subdomain-utils";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -22,6 +23,19 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
+  
+  // Get current subdomain
+  const currentSubdomain = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      return getSubdomainFromHostname(window.location.hostname);
+    }
+    return null;
+  }, []);
+  
+  // Check if Partner Login should be shown (only for kitchen.* and chef.* subdomains)
+  const showPartnerLogin = useMemo(() => {
+    return currentSubdomain === 'kitchen' || currentSubdomain === 'chef';
+  }, [currentSubdomain]);
   
   // Always check for session-based auth, not just for admin routes
   const { data: sessionUser } = useQuery({
@@ -201,10 +215,10 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white/95 backdrop-blur-sm shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300">
+    <header className="bg-white/98 backdrop-blur-sm shadow-sm border-b border-gray-100 fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300">
       <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
         <Link href="/" className="flex items-center transition-transform duration-300 hover:scale-105">
-          <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
+          <Logo variant="brand" className="h-12 sm:h-14 lg:h-16 w-auto" />
         </Link>
 
         <nav className="hidden md:block">
@@ -212,7 +226,7 @@ export default function Header() {
             <li>
               <a
                 href="#how-it-works"
-                className="hover:text-primary hover-text cursor-pointer"
+                className="text-gray-700 hover:text-[#F51042] transition-colors duration-200 cursor-pointer font-medium"
                 onClick={(e) => scrollToSection("how-it-works", e)}
               >
                 How It Works
@@ -221,7 +235,7 @@ export default function Header() {
             <li>
               <a
                 href="#benefits"
-                className="hover:text-primary hover-text cursor-pointer"
+                className="text-gray-700 hover:text-[#F51042] transition-colors duration-200 cursor-pointer font-medium"
                 onClick={(e) => scrollToSection("benefits", e)}
               >
                 Benefits
@@ -230,7 +244,7 @@ export default function Header() {
             <li>
               <a
                 href="#about"
-                className="hover:text-primary hover-text cursor-pointer"
+                className="text-gray-700 hover:text-[#F51042] transition-colors duration-200 cursor-pointer font-medium"
                 onClick={(e) => scrollToSection("about", e)}
               >
                 About Us
@@ -249,20 +263,22 @@ export default function Header() {
             )}
             {!user && (
               <>
-                <li>
-                  <Link 
-                    href="/manager/login"
-                    className="text-gray-700 hover:text-primary transition-colors text-sm flex items-center gap-1 px-3 py-2 rounded-md hover:bg-gray-50"
-                  >
-                    <Building2 className="h-4 w-4" />
-                    Partner Login
-                  </Link>
-                </li>
+                {showPartnerLogin && (
+                  <li>
+                    <Link 
+                      href="/manager/login"
+                      className="text-gray-700 hover:text-primary transition-colors text-sm flex items-center gap-1 px-3 py-2 rounded-md hover:bg-gray-50"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Partner Login
+                    </Link>
+                  </li>
+                )}
                 <li>
                   <Button
                     asChild
                     variant="outline"
-                    className="border-primary text-primary hover:bg-primary hover:text-white hover-standard"
+                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-200 rounded-md"
                   >
                     <Link href="/auth">Login / Register</Link>
                   </Button>
@@ -416,16 +432,18 @@ export default function Header() {
             )}
             {!user && (
               <>
-                <li>
-                  <Link 
-                    href="/manager/login"
-                    className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
-                    onClick={closeMenu}
-                  >
-                    <Building2 className="h-4 w-4" />
-                    Partner Login
-                  </Link>
-                </li>
+                {showPartnerLogin && (
+                  <li>
+                    <Link 
+                      href="/manager/login"
+                      className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                      onClick={closeMenu}
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Partner Login
+                    </Link>
+                  </li>
+                )}
                 <li className="pt-2">
                   <Button
                     asChild

@@ -6,6 +6,8 @@ import { registerRoutes } from "./routes";
 import { log, serveStatic, setupVite } from "./vite";
 
 const app = express();
+// Set environment explicitly to match NODE_ENV
+app.set('env', process.env.NODE_ENV || 'development');
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
 
@@ -53,10 +55,13 @@ app.use((req, res, next) => {
   const { createServer } = await import('http');
   const server = createServer(app);
 
+  // Determine port (5001 for dev, 5000 for production, or PORT env var)
+  const port = process.env.PORT || (app.get("env") === "development" ? 5001 : 5000);
+
   // Warm up vehicle data cache on server startup
   try {
     log('🚗 Warming up vehicle data cache on server startup...');
-    const baseUrl = `http://localhost:5000`;
+    const baseUrl = `http://localhost:${port}`;
     const preloadResponse = await fetch(`${baseUrl}/api/vehicles/preload`);
     if (preloadResponse.ok) {
       const preloadData = await preloadResponse.json();
@@ -85,10 +90,8 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
+  // Serve the app on configured port (5001 for dev, 5000 for production, or PORT env var)
+  // This serves both the API and the client.
   server.listen(port, () => {
     log(`serving on port ${port}`);
   });

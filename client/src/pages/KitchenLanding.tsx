@@ -1,15 +1,17 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import Preloader from "@/components/ui/Preloader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
 import { Building2, Calendar, Lock, ArrowRight, Settings, Users } from "lucide-react";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function KitchenLanding() {
   const [, setLocation] = useLocation();
+  const [showPreloader, setShowPreloader] = useState(true);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -30,160 +32,239 @@ export default function KitchenLanding() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      {showPreloader && (
+        <Preloader
+          onComplete={() => setShowPreloader(false)}
+          duration={3000}
+        />
+      )}
       <Header />
       <main className="flex-grow">
         {/* Kitchen-Specific Hero Section */}
-        <GradientHero variant="cool" className="pt-28 pb-8 md:pt-36 md:pb-16 px-4">
-          <div className="container mx-auto">
+        <GradientHero variant="cream" className="pt-28 pb-12 md:pt-36 md:pb-20 px-4 relative overflow-hidden">
+          {/* Enhanced background decorative elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <div className="max-w-4xl mx-auto text-center mb-16">
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-8">
-                  <Building2 className="h-10 w-10 text-blue-600" />
+              <div className="text-center space-y-8 md:space-y-10">
+                <div className="space-y-3 md:space-y-4">
+                  <h1 className="font-display text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[var(--color-primary)] leading-none mb-3 md:mb-4 drop-shadow-sm">
+                    LocalCooks
+                  </h1>
+                  <p className="font-mono text-[11px] md:text-[12px] text-[var(--color-charcoal-light)] uppercase tracking-[0.5em] font-medium mb-6 md:mb-8">
+                    Homemade with Love
+                  </p>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+                <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold mb-6 md:mb-8 text-[var(--color-text-primary)] font-sans max-w-5xl mx-auto leading-tight">
                   Commercial Kitchen Booking Platform
-                </h1>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
-                Find and book commercial kitchens for your culinary business. Perfect for chefs, caterers, and food entrepreneurs.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  size="lg"
-                  onClick={() => setLocation("/portal/book")}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
-                >
-                  <Calendar className="h-5 w-5" />
-                  Browse Available Kitchens
-                  <ArrowRight className="h-5 w-5" />
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => setLocation("/portal/register")}
-                  className="flex items-center gap-2"
-                >
-                  <Lock className="h-5 w-5" />
-                  Register as Portal User
-                </Button>
-              </div>
+                </h2>
+                <p className="text-lg md:text-xl lg:text-2xl mb-8 md:mb-12 text-[var(--color-text-primary)]/90 leading-relaxed font-sans max-w-3xl mx-auto font-medium">
+                  Find and book commercial kitchens for your culinary business. Perfect for chefs, caterers, and food entrepreneurs.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button
+                    size="lg"
+                    onClick={() => setLocation("/portal/book")}
+                    className="flex items-center gap-2 bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-5 md:py-7 px-10 md:px-16 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform"
+                  >
+                    <Calendar className="h-5 w-5" />
+                    Browse Available Kitchens
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => setLocation("/portal/register")}
+                    className="flex items-center gap-2 border-2 border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 font-bold py-5 md:py-7 px-10 md:px-16 text-lg md:text-xl rounded-xl transition-all duration-300 hover:scale-105"
+                  >
+                    <Lock className="h-5 w-5" />
+                    Register as Portal User
+                  </Button>
+                </div>
               </div>
             </FadeInSection>
           </div>
         </GradientHero>
 
         {/* How It Works Section */}
-        <section id="how-it-works" className="py-12 md:py-16 px-4 bg-white">
-          <div className="container mx-auto">
+        <section id="how-it-works" className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-40 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">How It Works</h2>
+              <div className="text-center mb-20">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Simple Process
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">How It Works</h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans max-w-3xl mx-auto leading-relaxed">
+                  Book a commercial kitchen in three simple steps
+                </p>
+              </div>
             </FadeInSection>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10 max-w-5xl mx-auto">
               <FadeInSection delay={1}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-blue-600 font-bold text-xl">1</span>
-                  </div>
-                  <CardTitle>Choose a Location</CardTitle>
-                  <CardDescription>
-                    Browse available commercial kitchen locations in your area and find the perfect space for your needs.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+                <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white text-center group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/15 to-[var(--color-primary)]/5 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-4xl font-bold text-[var(--color-primary)]">1</span>
+                    </div>
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300">Choose a Location</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Browse available commercial kitchen locations in your area and find the perfect space for your needs.</p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-green-600 font-bold text-xl">2</span>
-                  </div>
-                  <CardTitle>Select Date & Time</CardTitle>
-                  <CardDescription>
-                    Choose a kitchen, date, and available time slot that works for your schedule.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                    <span className="text-purple-600 font-bold text-xl">3</span>
-                  </div>
-                  <CardTitle>Submit Booking</CardTitle>
-                  <CardDescription>
-                    Fill in your details and submit your booking request. The kitchen manager will confirm your booking.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+              <FadeInSection delay={2}>
+                <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white text-center group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-4xl font-bold text-green-600">2</span>
+                    </div>
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-green-600 transition-colors duration-300">Select Date & Time</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Choose a kitchen, date, and available time slot that works for your schedule.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+              <FadeInSection delay={3}>
+                <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white text-center group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-4xl font-bold text-purple-600">3</span>
+                    </div>
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-purple-600 transition-colors duration-300">Submit Booking</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Fill in your details and submit your booking request. The kitchen manager will confirm your booking.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
             </div>
           </div>
         </section>
 
         {/* Features Section */}
-        <section id="benefits" className="py-12 md:py-16 px-4 bg-light-gray">
-          <div className="container mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">Why Book With Us?</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                    <Calendar className="h-6 w-6 text-green-600" />
-                  </div>
-                  <CardTitle>Flexible Booking</CardTitle>
-                  <CardDescription>
-                    Book commercial kitchens by the hour or day. Choose from multiple locations and time slots.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                    <Building2 className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <CardTitle>Professional Kitchens</CardTitle>
-                  <CardDescription>
-                    Access fully equipped commercial kitchens with all the tools and space you need for your culinary business.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                    <Users className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <CardTitle>Easy Management</CardTitle>
-                  <CardDescription>
-                    Manage all your bookings in one place. View history, upcoming bookings, and manage your account.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              <Card className="border-2">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                    <Settings className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <CardTitle>Transparent Pricing</CardTitle>
-                  <CardDescription>
-                    Clear pricing with no hidden fees. See exactly what you'll pay before booking.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+        <section id="benefits" className="py-24 md:py-32 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 via-white to-[var(--color-cream)]/20 relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-40 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-20">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Features
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">Why Book With Us?</h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans max-w-3xl mx-auto leading-relaxed">
+                  Everything you need to run your culinary business professionally
+                </p>
+              </div>
+            </FadeInSection>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-4xl mx-auto">
+              <FadeInSection delay={1}>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Calendar className="h-8 w-8 text-green-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-green-600 transition-colors duration-300">Flexible Booking</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Book commercial kitchens by the hour or day. Choose from multiple locations and time slots.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+              <FadeInSection delay={1}>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Building2 className="h-8 w-8 text-purple-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-purple-600 transition-colors duration-300">Professional Kitchens</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Access fully equipped commercial kitchens with all the tools and space you need for your culinary business.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+              <FadeInSection delay={2}>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Users className="h-8 w-8 text-blue-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-blue-600 transition-colors duration-300">Easy Management</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Manage all your bookings in one place. View history, upcoming bookings, and manage your account.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+              <FadeInSection delay={2}>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Settings className="h-8 w-8 text-orange-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-orange-600 transition-colors duration-300">Transparent Pricing</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Clear pricing with no hidden fees. See exactly what you'll pay before booking.</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
             </div>
           </div>
         </section>
 
         {/* CTA Section */}
-        <section className="py-12 md:py-16 px-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
-          <div className="container mx-auto text-center">
+        <section className="py-24 md:py-36 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-white rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-4xl text-center relative z-10">
             <FadeInSection>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to Book a Kitchen?</h2>
-            <p className="text-xl mb-8 max-w-2xl mx-auto">
-              Start booking commercial kitchens today and take your culinary business to the next level.
-            </p>
-            <Button
-              size="lg"
-              onClick={() => setLocation("/portal/book")}
-              className="bg-white text-blue-600 hover:bg-blue-50 font-semibold py-6 px-8 text-lg flex items-center gap-2 mx-auto"
-            >
-              <Calendar className="h-5 w-5" />
+              <h2 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-8 leading-tight text-shadow-lg">Ready to Book a Kitchen?</h2>
+              <p className="text-xl md:text-2xl mb-10 max-w-3xl mx-auto font-sans opacity-95 leading-relaxed">
+                Start booking commercial kitchens today and take your culinary business to the next level.
+              </p>
+              <Button
+                size="lg"
+                onClick={() => setLocation("/portal/book")}
+                className="bg-white text-[var(--color-primary)] hover:bg-gray-50 font-bold py-7 px-14 text-lg md:text-xl rounded-xl flex items-center gap-2 mx-auto transition-all duration-300 shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] hover:-translate-y-2 transform"
+              >
+                <Calendar className="h-5 w-5" />
                 Browse Available Kitchens
                 <ArrowRight className="h-5 w-5" />
               </Button>

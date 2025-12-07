@@ -1,9 +1,11 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import Preloader from "@/components/ui/Preloader";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
 import { 
@@ -18,6 +20,7 @@ export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
+  const [showPreloader, setShowPreloader] = useState(true);
 
   // Fetch real kitchens data
   const { data: kitchens = [], isLoading: kitchensLoading } = useQuery({
@@ -29,6 +32,22 @@ export default function ChefLanding() {
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
+
+  // Extract unique locations from kitchens
+  const uniqueLocations = useMemo(() => {
+    const locationMap = new Map();
+    kitchens.forEach((kitchen: any) => {
+      const locationId = kitchen.locationId || kitchen.location_id;
+      if (locationId && !locationMap.has(locationId)) {
+        locationMap.set(locationId, {
+          id: locationId,
+          name: kitchen.locationName || "Unknown Location",
+          address: kitchen.locationAddress || "",
+        });
+      }
+    });
+    return Array.from(locationMap.values());
+  }, [kitchens]);
 
   // Fetch real platform statistics
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -75,770 +94,746 @@ export default function ChefLanding() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
+      {showPreloader && (
+        <Preloader
+          onComplete={() => setShowPreloader(false)}
+          duration={3000}
+        />
+      )}
       <Header />
       <main className="flex-grow">
-        {/* PART 1: HERO SECTION */}
-        <GradientHero variant="warm" className="pt-28 pb-16 md:pt-36 md:pb-24 px-4">
-          <div className="container mx-auto max-w-4xl text-center">
+        {/* HERO SECTION */}
+        <GradientHero variant="cream" className="pt-32 pb-20 md:pt-40 md:pb-32 px-4 relative overflow-hidden">
+          {/* Enhanced background decorative elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-5xl text-center relative z-10">
             <FadeInSection>
-              <h1 className="text-4xl md:text-6xl font-bold mb-6 text-gray-900">
-                Your Cooking Speaks for Itself.
-                <br />
-                <span className="text-primary">Everything Else Shouldn't.</span>
-              </h1>
+              <div className="space-y-8 md:space-y-10 mb-12">
+                <div className="space-y-3 md:space-y-4">
+                  <h1 className="font-display text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[var(--color-primary)] leading-none drop-shadow-sm">
+                    LocalCooks
+                  </h1>
+                  <p className="font-mono text-[11px] md:text-[12px] text-[var(--color-charcoal-light)] uppercase tracking-[0.5em] font-medium">
+                    Homemade with Love
+                  </p>
+                </div>
+                <h2 className="text-4xl md:text-6xl lg:text-7xl font-bold text-[var(--color-text-primary)] font-sans max-w-5xl mx-auto leading-tight">
+                  Your Cooking Speaks for Itself.
+                  <br />
+                  <span className="text-[var(--color-primary)]">Everything Else Shouldn't.</span>
+                </h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)]/90 font-sans max-w-3xl mx-auto leading-relaxed font-medium">
+                  Turn your culinary passion into a sustainable business. We handle the logistics. You focus on what you do best.
+                </p>
+              </div>
             </FadeInSection>
-            
+
             <FadeInSection delay={1}>
-              <div className="text-left max-w-3xl mx-auto space-y-6 mb-8 text-lg text-gray-700">
-              <p className="font-semibold">You might be:</p>
-              <ul className="space-y-3 list-disc list-inside">
-                <li>A line cook in someone else's kitchen, 14 hours a day, watching the owner take credit for YOUR food</li>
-                <li>A home chef selling on Marketplace, coordinating 30 WhatsApp chats, getting ghosted by customers who ghost you after you buy ingredients</li>
-                <li>A culinary professional exhausted by the system, ready to build something real</li>
-              </ul>
-              <p>Or maybe you're all three at different times.</p>
-              
-              <p className="font-semibold mt-6">Here's what all of you have in common:</p>
-              <p>Your food is good. Your customers love it. You're making money.</p>
-              <p>But you're doing it the hard way—managing spreadsheets, chasing payments, answering the same questions 50 times a week, explaining your delivery zones to every single customer.</p>
-              <p className="font-semibold text-primary">You're trading your passion for logistics management.</p>
-              <p className="text-2xl font-bold text-primary">Local Cooks fixes that.</p>
-              </div>
-            </FadeInSection>
-
-            <FadeInSection delay={2}>
-              <div className="grid md:grid-cols-3 gap-6 mb-8 text-left max-w-4xl mx-auto">
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <CardTitle className="text-lg">For the Restaurant Burnout Escape:</CardTitle>
-                  <CardDescription className="text-base">
-                    You leave the kitchen. You keep your skills. You own what you create.
-                    <br /><br />
-                    Keep 100% during trial. Work 10 hours a week or 40—your choice.
-                    <br /><br />
-                    Cook your food, not their food. Build your brand, not their business.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              
-                <Card className="border-2 card-hover">
-                  <CardHeader>
-                    <CardTitle className="text-lg">For the Marketplace Seller Scaling Up:</CardTitle>
-                  <CardDescription className="text-base">
-                    You're already winning. Your customers prove it.
-                    <br /><br />
-                    We just take the chaos out of the process.
-                    <br /><br />
-                    One organized inbox. Professional payments. Customer data.
-                    <br /><br />
-                    Everything you need to grow what you've already built.
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              
-                <Card className="border-2 card-hover">
-                  <CardHeader>
-                    <CardTitle className="text-lg">For anyone caught between:</CardTitle>
-                  <CardDescription className="text-base">
-                    It's time to stop choosing between:
-                    <br /><br />
-                    <span className="text-red-600">✗</span> Freedom but no structure
-                    <br />
-                    <span className="text-red-600">✗</span> Security but no autonomy
-                    <br />
-                    <span className="text-red-600">✗</span> Your passion but someone else's profit
-                    <br /><br />
-                    <span className="font-semibold">Local Cooks is the bridge.</span>
-                    <br /><br />
-                    One platform. Professional operations. Your complete control. Your food. Your business.
-                  </CardDescription>
-                  </CardHeader>
-                </Card>
-              </div>
-            </FadeInSection>
-
-            <FadeInSection delay={3}>
-              <div className="space-y-4 mb-8">
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
                 <Button
                   onClick={handleGetStarted}
                   size="lg"
-                  className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg btn-glow"
+                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-6 px-12 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform"
                 >
                   Start Your Application
                 </Button>
-              <p className="text-sm text-gray-600">
-                Approved in 24 hours. Keep 100% during trial.
-                <br />
-                Your next chapter starts this week.
-              </p>
-              <Button
-                variant="outline"
-                size="lg"
-                className="mt-4"
-                onClick={() => {
-                  document.getElementById('earnings')?.scrollIntoView({ behavior: 'smooth' });
-                }}
-              >
-                See How Much Chefs Like You Earn
-              </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="border-2 border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 font-bold py-6 px-12 text-lg md:text-xl rounded-xl transition-all duration-300 hover:scale-105"
+                  onClick={() => {
+                    document.getElementById('benefits')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Learn More
+                </Button>
               </div>
+              <p className="text-base md:text-lg text-[var(--color-charcoal-light)] font-sans font-medium">
+                Approved in 24 hours • Keep 100% during trial
+              </p>
             </FadeInSection>
           </div>
         </GradientHero>
 
-        {/* PART 2: BENEFITS GRID (6 BENEFITS) */}
-        <section className="py-16 px-4 bg-white">
-          <div className="container mx-auto max-w-6xl">
+        {/* BENEFITS SECTION */}
+        <section id="benefits" className="py-20 md:py-28 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-40 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <h2 className="text-4xl font-bold text-center mb-12">Why Local Cooks Works</h2>
+              <div className="text-center mb-20">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-3 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Why Choose Us
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">Why Local Cooks Works</h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans max-w-3xl mx-auto leading-relaxed">
+                  Everything you need to build a successful culinary business, without the overhead.
+                </p>
+              </div>
             </FadeInSection>
             
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {/* Benefit 1 */}
               <FadeInSection delay={1}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                    <Target className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <CardTitle className="text-xl">Stop Managing the Business. Start Being a Chef.</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold mb-2">If you're in a restaurant:</p>
-                    <p>You spend 70% of your shift managing systems that aren't yours—communicating with the pass, managing prep stations, cleaning station 3. Your brilliance goes to executing someone else's menu.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2">If you're selling on Marketplace:</p>
-                    <p>You spend 70% of your day managing customer chaos—30 WhatsApp messages, payment coordination, delivery logistics. Your skill is hidden behind logistical friction.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2 text-primary">On Local Cooks:</p>
-                    <ul className="space-y-2">
-                      <li>✓ Customer questions? Our team answers them</li>
-                      <li>✓ Payment chaos? Handled. Professional payment processing. Weekly payouts.</li>
-                      <li>✓ Delivery logistics? We coordinate. You cook.</li>
-                      <li>✓ Customer issues? We mediate. We protect your rating.</li>
-                      <li>✓ Data tracking? You see everything. Orders, patterns, preferences.</li>
-                    </ul>
-                    <p className="mt-4 font-semibold">The result: 80% of your energy goes to cooking. The other 20% to business decisions that actually matter.</p>
-                  </div>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  {/* Decorative gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="pb-4 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/15 to-[var(--color-primary)]/5 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Target className="h-8 w-8 text-[var(--color-primary)]" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300">Focus on Cooking</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">
+                      We handle customer support, payment processing, and delivery logistics. You spend your time doing what you love—cooking.
+                    </p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
 
               {/* Benefit 2 */}
               <FadeInSection delay={1}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                    <DollarSign className="h-6 w-6 text-green-600" />
-                  </div>
-                  <CardTitle className="text-xl">Zero Platform Fees During Trial. Keep Everything You Earn.</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold mb-2">Right now (Trial Phase):</p>
-                    <p>Keep 100% of your sales. We're building this for chefs, so we're waiving our cut.</p>
-                    <p className="text-sm italic">Standard payment processing fees apply (2.9% + 30¢ via Stripe)</p>
-                    <div className="mt-4 p-4 bg-gray-50 rounded">
-                      <p className="font-semibold">Example:</p>
-                      <p>Customer pays $30 for your meal</p>
-                      <p>Stripe takes $1.17 (2.9% + 30¢)</p>
-                      <p className="font-bold text-green-600">YOU KEEP: $28.83</p>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="pb-4 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <DollarSign className="h-8 w-8 text-green-600" />
                     </div>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2">After Trial Phase:</p>
-                    <p>We'll transition to our standard model: 15-20% platform fee. But here's why that still works better than everything else:</p>
-                    <p className="mt-2">Compare to DoorDash/Uber Eats: 65-70% to you (30-35% they take)</p>
-                    <p className="font-semibold text-primary mt-4">We're highest commission because we do the most work. And we're transparent about it.</p>
-                  </div>
-                </CardContent>
-              </Card>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-green-600 transition-colors duration-300">Keep 100% During Trial</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed mb-3 text-base md:text-lg">
+                      Zero platform fees during trial. Keep everything you earn (only standard payment processing applies).
+                    </p>
+                    <p className="text-sm md:text-base text-[var(--color-charcoal-light)]">
+                      After trial: 80-85% to you, still better than traditional platforms.
+                    </p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
 
               {/* Benefit 3 */}
               <FadeInSection delay={2}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                    <Utensils className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <CardTitle className="text-xl">Your Menu. Your Vision. Your Brand.</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold mb-2">Restaurant Kitchen Reality:</p>
-                    <p>The menu gets decided in a meeting. You execute it. Your ideas? They compete with "what the owner thinks will sell." You're a tool. A skilled tool. But a tool nonetheless.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2">Marketplace Seller Reality:</p>
-                    <p>You DO have menu freedom. But you're stuck selling whatever you happen to cook that day, hoping customers want it and coordinate properly via messages. No strategy. No testing. Just hoping.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2 text-primary">On Local Cooks:</p>
-                    <p>You build your menu. Customers see it before ordering. You test what works. You optimize based on real data. Your Indian curries. Your Italian pasta. Your Newfoundland traditions. Your fusion experiments. Whatever represents you as a chef.</p>
-                    <p className="mt-4 font-semibold">You're not a restaurant line cook or a marketplace seller. You're a chef with a brand.</p>
-                  </div>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="pb-4 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Utensils className="h-8 w-8 text-orange-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-orange-600 transition-colors duration-300">Your Menu, Your Brand</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">
+                      Build your menu, set your prices, and create your brand. You're not executing someone else's vision—you're building your own.
+                    </p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
 
               {/* Benefit 4 */}
               <FadeInSection delay={2}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                    <FileCheck className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <CardTitle className="text-xl">Regulatory Compliance Without the Financial Barrier</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold mb-2">The Barrier Nobody Talks About:</p>
-                    <p>You want to cook professionally (legally). You need a commercial kitchen. That costs $40,000 to build OR $800-3,000/month to rent.</p>
-                    <p className="mt-2">Local Cooks breaks this barrier down.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2 text-primary">Kitchen Marketplace: Affordable Professional Space</p>
-                    <p>Browse certified commercial kitchens in your area. $15-32/hour depending on amenities and location. Start with 4 hours/week while you test the market. Scale to 8, 12, 16 hours as orders grow.</p>
-                    <p className="mt-4 font-semibold">The Math:</p>
-                    <p>By month 3-4, your orders pay for the kitchen. By month 6, you're scaling. By month 12, you've built a legitimate, documented business.</p>
-                  </div>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="pb-4 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <FileCheck className="h-8 w-8 text-purple-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-purple-600 transition-colors duration-300">Affordable Kitchen Access</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">
+                      Access certified commercial kitchens by the hour. Start small, scale as you grow. No huge upfront costs.
+                    </p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
 
               {/* Benefit 5 */}
               <FadeInSection delay={3}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mb-4">
-                    <Users className="h-6 w-6 text-pink-600" />
-                  </div>
-                  <CardTitle className="text-xl">You Own the Relationship. Not the Platform.</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold mb-2">The DoorDash/UberEats Problem:</p>
-                    <p>They own your customer. You're a vendor. They're the brand. If you leave the platform, your customers disappear.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2">The Marketplace Reality:</p>
-                    <p>You DO have your customers. But they're scattered. 30 WhatsApp contacts. 20 Instagram DMs. 10 Facebook messages. You can't email them. You can't analyze patterns.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2 text-primary">On Local Cooks:</p>
-                    <p>Your profile is your brand. Your customers see your story, your food, your personality. You collect customer contact information (permission-based, ethically). Your customer base is an asset YOU OWN.</p>
-                    <p className="mt-4 font-semibold">This is the difference between having a gig on an app and owning an actual food brand.</p>
-                  </div>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-pink-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="pb-4 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-pink-100 to-pink-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Users className="h-8 w-8 text-pink-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-pink-600 transition-colors duration-300">Own Your Customer Base</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">
+                      Build your brand and own your customer relationships. Your profile, your story, your business.
+                    </p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
 
               {/* Benefit 6 */}
               <FadeInSection delay={3}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
-                    <Heart className="h-6 w-6 text-indigo-600" />
-                  </div>
-                  <CardTitle className="text-xl">Mentorship from Chefs Who've Already Done This</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold mb-2">Restaurant Kitchen Isolation:</p>
-                    <p>You're in a hierarchy. Other line cooks are competition for the best stations. Senior chefs aren't mentoring. They're gatekeeping. Knowledge is hoarded.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2">Marketplace Seller Isolation:</p>
-                    <p>You're alone. No peer network. No one to ask "am I pricing right?" No one to share suppliers who won't flake out.</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-2 text-primary">On Local Cooks:</p>
-                    <p>Private community (just our chefs). Slack channel. Real conversations. You learn from chefs 6 months ahead of you. You help chefs 6 months behind. You build a network, not just a revenue stream.</p>
-                    <p className="mt-4 font-semibold">This community is why chefs stay on Local Cooks. The app is great. But the people? That's the real competitive advantage.</p>
-                  </div>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="pb-4 relative z-10">
+                    <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-indigo-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                      <Heart className="h-8 w-8 text-indigo-600" />
+                    </div>
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-indigo-600 transition-colors duration-300">Chef Community</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">
+                      Join a private community of chefs. Learn, share, and grow together with mentorship and support.
+                    </p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
             </div>
           </div>
         </section>
 
-        {/* PART 3: TRIAL PHASE HIGHLIGHT */}
-        <section className="py-16 px-4 bg-gradient-to-r from-primary/10 to-orange-100">
-          <div className="container mx-auto max-w-4xl text-center">
+        {/* TRIAL PHASE HIGHLIGHT */}
+        <section className="py-24 md:py-32 px-4 bg-gradient-to-br from-[var(--color-cream)]/50 via-white to-[var(--color-cream)]/30 relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-4xl text-center relative z-10">
             <FadeInSection>
-              <h2 className="text-4xl font-bold mb-6">Trial Phase: Keep 100% to Prove We're Worth It</h2>
-              <p className="text-lg text-gray-700 mb-8">
-              We're not asking you to trust us yet. During trial, you keep everything. Every dollar customers pay (minus Stripe's 2.9% + 30¢). We handle customer management, order coordination, payment processing, data tracking, delivery logistics, and customer support. You keep 100%.
-            </p>
-            <div className="bg-white p-6 rounded-lg shadow-lg text-left max-w-2xl mx-auto">
-              <p className="font-semibold mb-4">Trial Phase Details:</p>
-              <ul className="space-y-2">
-                <li>✓ Duration: Trial period as specified</li>
-                <li>✓ Commission: 0% (platform fee waived)</li>
-                <li>✓ Payment processing: 2.9% + 30¢ (Stripe standard)</li>
-                <li>✓ Minimum order volume: None</li>
-                <li>✓ Exit: Free to leave anytime</li>
-              </ul>
-              <p className="mt-4 font-semibold text-primary">What you pay: Only what Stripe charges. What you earn: Everything else.</p>
-            </div>
+              <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                Trial Benefits
+              </span>
+              <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-8">Keep 100% During Trial</h2>
+              <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans mb-12 max-w-3xl mx-auto leading-relaxed font-medium">
+                We handle everything—customer support, payments, delivery logistics. You keep 100% of your earnings (only standard payment processing applies).
+              </p>
+              <div className="bg-white p-10 md:p-12 rounded-3xl shadow-2xl border border-gray-100 max-w-2xl mx-auto relative overflow-hidden group">
+                {/* Decorative gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <div className="space-y-5 text-left relative z-10">
+                  <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-green-50/50 transition-colors duration-300">
+                    <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                      <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    </div>
+                    <span className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans font-medium">0% platform fees during trial</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-green-50/50 transition-colors duration-300">
+                    <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                      <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    </div>
+                    <span className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans font-medium">Only 2.9% + 30¢ payment processing</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-green-50/50 transition-colors duration-300">
+                    <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                      <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    </div>
+                    <span className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans font-medium">No minimum order volume</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-green-50/50 transition-colors duration-300">
+                    <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                      <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    </div>
+                    <span className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans font-medium">Free to leave anytime</span>
+                  </div>
+                </div>
+              </div>
             </FadeInSection>
           </div>
         </section>
 
-        {/* PART 4: HOW IT WORKS (3-STEP FLOW) */}
-        <section className="py-16 px-4 bg-white">
-          <div className="container mx-auto max-w-6xl">
+        {/* HOW IT WORKS */}
+        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-40 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
-              <h2 className="text-4xl font-bold text-center mb-12">How It Works</h2>
+              <div className="text-center mb-20">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Simple Process
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">How It Works</h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans max-w-3xl mx-auto leading-relaxed">
+                  Get started in three simple steps
+                </p>
+              </div>
             </FadeInSection>
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-3 gap-8 md:gap-10">
               <FadeInSection delay={1}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-                    <span className="text-2xl font-bold text-blue-600">1</span>
-                  </div>
-                  <CardTitle className="text-xl text-center">15 Minutes to Get Started</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p>We need to know you. Not a corporate bio. The real story. What cuisines do you cook? What's your background? Why do you cook? Upload a photo. Share 3-5 sentences about yourself. Once you submit, we review in 24 hours. Most chefs are approved and live on the same day.</p>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white text-center group relative overflow-hidden">
+                  {/* Decorative gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/15 to-[var(--color-primary)]/5 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-4xl font-bold text-[var(--color-primary)]">1</span>
+                    </div>
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300">Apply in 15 Minutes</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Share your story, upload photos, and tell us about your cuisine. Get approved in 24 hours.</p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
 
               <FadeInSection delay={2}>
-                <Card className="border-2 card-hover">
-                  <CardHeader>
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-                      <span className="text-2xl font-bold text-green-600">2</span>
+                <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white text-center group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-4xl font-bold text-green-600">2</span>
                     </div>
-                    <CardTitle className="text-xl text-center">Make Your Food Impossible to Ignore</CardTitle>
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-green-600 transition-colors duration-300">Build Your Menu</CardTitle>
                   </CardHeader>
-                  <CardContent className="text-gray-700">
-                    <p>Food is visual. Your food is beautiful. We guide you through uploading great menu items: Clear, well-lit photos of actual food you cook. Ingredient lists and dietary info. Price per serving or full order. Prep time. Your menu is your storefront. Make it count.</p>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Create your menu with beautiful photos, set your prices, and showcase your unique culinary style.</p>
                   </CardContent>
                 </Card>
               </FadeInSection>
 
               <FadeInSection delay={3}>
-                <Card className="border-2 card-hover">
-                <CardHeader>
-                  <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-                    <span className="text-2xl font-bold text-purple-600">3</span>
-                  </div>
-                  <CardTitle className="text-xl text-center">Orders Come In. You Cook. Money Goes to Your Account.</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p>Customers browse menus. They order your food. The order flows into your app with all details. You cook. You keep 100% during trial. (Only Stripe charges apply: 2.9% + 30¢) Weekly payouts to your bank account. Transparent earnings dashboard shows exactly what you made.</p>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white text-center group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-4xl font-bold text-purple-600">3</span>
+                    </div>
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-purple-600 transition-colors duration-300">Start Earning</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                    <p className="leading-relaxed text-base md:text-lg">Orders come in, you cook, and money goes directly to your account. Keep 100% during trial.</p>
+                  </CardContent>
+                </Card>
               </FadeInSection>
             </div>
           </div>
         </section>
 
-        {/* PART 5: REALITY CHECK */}
-        <section className="py-16 px-4 bg-gray-50">
-          <div className="container mx-auto max-w-6xl">
-            <h2 className="text-4xl font-bold text-center mb-12">From Chaos to Clarity. From Scrambling to System.</h2>
-            <div className="grid md:grid-cols-2 gap-8">
-              <Card className="border-2 border-red-200">
-                <CardHeader>
-                  <CardTitle className="text-xl text-red-600">IF YOU'RE IN A RESTAURANT:</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <p><X className="inline h-4 w-4 text-red-600" /> 14-16 hour shifts for a fixed paycheck</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> No autonomy over menu or plating</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> Exhausted even when you're winning</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> Building someone else's brand</p>
-                  <p className="mt-4 font-semibold">RESULT: You're trapped. Good at your job, but trapped.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2 border-red-200">
-                <CardHeader>
-                  <CardTitle className="text-xl text-red-600">IF YOU'RE SELLING ON MARKETPLACE:</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <p><X className="inline h-4 w-4 text-red-600" /> 30 WhatsApp conversations per day</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> Customers asking "Can you deliver?" 50 times/week</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> Multiple payment methods with zero tracking</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> Phone exploding with notifications</p>
-                  <p><X className="inline h-4 w-4 text-red-600" /> No data. No patterns. Just hope.</p>
-                  <p className="mt-4 font-semibold">RESULT: You're winning but exhausted. Viral but chaotic.</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="border-2 border-green-200 mt-8">
-              <CardHeader>
-                <CardTitle className="text-xl text-green-600">ON LOCAL COOKS (DURING TRIAL - KEEP 100%):</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-gray-700">
-                <div>
-                  <p className="font-semibold mb-2">If Restaurant Chef:</p>
-                  <ul className="space-y-1">
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Keep 100% of earnings (only Stripe 2.9% + 30¢)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Cook YOUR food, not theirs</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> 10-20 hours/week (you decide)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Build your brand (asset you own)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Work-life balance is real</li>
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-semibold mb-2">If Marketplace Seller:</p>
-                  <ul className="space-y-1">
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> One organized inbox (not 30 chats)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Professional payment system (automatic)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Customer data (patterns, preferences)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Legitimate operations (regulated)</li>
-                    <li><CheckCircle2 className="inline h-4 w-4 text-green-600" /> Growth that feels sustainable</li>
-                  </ul>
-                </div>
-                <p className="mt-4 font-semibold text-primary">RESULT (Both): Your passion and your business align.</p>
-              </CardContent>
-            </Card>
+        {/* COMPARISON SECTION */}
+        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/20 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
           </div>
-        </section>
+          
+          <div className="container mx-auto max-w-5xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-16">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Compare
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">
+                  From Chaos to Clarity
+                </h2>
+              </div>
+            </FadeInSection>
+            <div className="grid md:grid-cols-3 gap-8 md:gap-10">
+              <FadeInSection delay={1}>
+                <Card className="border border-gray-200 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-red-50/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)]">Restaurant Life</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-[var(--color-text-primary)] font-sans relative z-10">
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-red-50/50 transition-colors duration-300">
+                      <X className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg">14-16 hour shifts</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-red-50/50 transition-colors duration-300">
+                      <X className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg">No menu autonomy</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-red-50/50 transition-colors duration-300">
+                      <X className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg">Building someone else's brand</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
 
-        {/* PART 6: EARNINGS MODEL SECTION */}
-        <section id="earnings" className="py-16 px-4 bg-white">
-          <div className="container mx-auto max-w-4xl">
-            <h2 className="text-4xl font-bold text-center mb-8">Trial Phase: Keep 100%. Then 80-85%. Then Decide.</h2>
-            <p className="text-lg text-center text-gray-700 mb-12">
-              During trial, you keep everything. See how it works. See the difference it makes. Then decide if 15-20% is worth the infrastructure.
-            </p>
+              <FadeInSection delay={2}>
+                <Card className="border border-gray-200 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)]">Marketplace Chaos</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-[var(--color-text-primary)] font-sans relative z-10">
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-orange-50/50 transition-colors duration-300">
+                      <X className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg">30+ WhatsApp chats daily</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-orange-50/50 transition-colors duration-300">
+                      <X className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg">Payment coordination chaos</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-orange-50/50 transition-colors duration-300">
+                      <X className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg">No data or tracking</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
 
-            <div className="space-y-8">
-              <Card className="border-2 border-green-200 bg-green-50">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-green-700">TRIAL PHASE - KEEP 100% DURING TESTING</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <div className="flex justify-between">
-                    <span>Customer Order Value:</span>
-                    <span className="font-semibold">$30</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Food Cost (ingredients):</span>
-                    <span className="text-red-600">-$8 (27%)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Your Profit Per Order:</span>
-                    <span className="font-semibold">$22</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Payment Processing (Stripe):</span>
-                    <span className="text-red-600">-$1.17 (2.9% + 30c)</span>
-                  </div>
-                  <div className="flex justify-between border-t-2 pt-2 mt-2">
-                    <span className="font-bold text-lg">YOU KEEP (NET):</span>
-                    <span className="font-bold text-lg text-green-600">$20.83 per order ✓✓✓</span>
-                  </div>
-                  <p className="text-sm italic mt-4">NOTE: Zero platform fees during trial. Only standard payment processing applies.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle className="text-2xl">AFTER TRIAL - STANDARD MODEL: 80-85% TO YOU</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-gray-700">
-                  <div className="flex justify-between">
-                    <span>Customer Order Value:</span>
-                    <span className="font-semibold">$30</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Food Cost (ingredients):</span>
-                    <span className="text-red-600">-$8 (27%)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Your Profit Per Order:</span>
-                    <span className="font-semibold">$22</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Local Cooks Fee (15-20%):</span>
-                    <span className="text-red-600">-$4.50</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Payment Processing (Stripe):</span>
-                    <span className="text-red-600">-$1.17 (2.9% + 30c)</span>
-                  </div>
-                  <div className="flex justify-between border-t-2 pt-2 mt-2">
-                    <span className="font-bold text-lg">YOU KEEP (NET):</span>
-                    <span className="font-bold text-lg text-green-600">$16.33 per order ✓</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle className="text-xl">EARNINGS AT DIFFERENT SCALES</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-gray-700">
-                  <div>
-                    <p className="font-semibold">TESTING PHASE: 5 orders/week (using trial 100%)</p>
-                    <p>$20.83 × 5 × 4 weeks = <span className="font-bold text-green-600">$416/month</span></p>
-                    <p className="text-sm">➜ Side income while you keep your day job</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">PART-TIME: 15 orders/week (after trial, standard rates)</p>
-                    <p>$16.33 × 15 × 4 weeks = <span className="font-bold text-green-600">$980/month</span></p>
-                    <p className="text-sm">➜ Meaningful income alongside employment</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">SERIOUS PART-TIME: 30 orders/week</p>
-                    <p>$16.33 × 30 × 4 weeks = <span className="font-bold text-green-600">$1,960/month</span></p>
-                    <p className="text-sm">➜ Full-time equivalent for some chefs</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">FULL-TIME: 50 orders/week</p>
-                    <p>$16.33 × 50 × 4 weeks = <span className="font-bold text-green-600">$3,266/month</span></p>
-                    <p className="text-sm">➜ Approaching professional income</p>
-                  </div>
-                </CardContent>
-              </Card>
+              <FadeInSection delay={3}>
+                <Card className="border-2 border-[var(--color-primary)]/40 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-gradient-to-br from-[var(--color-cream)]/40 via-white to-[var(--color-cream)]/20 group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-primary)]">Local Cooks</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-[var(--color-text-primary)] font-sans relative z-10">
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-green-50/50 transition-colors duration-300">
+                      <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg font-medium">Keep 100% during trial</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-green-50/50 transition-colors duration-300">
+                      <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg font-medium">Your menu, your brand</p>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 rounded-lg hover:bg-green-50/50 transition-colors duration-300">
+                      <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-base md:text-lg font-medium">We handle the logistics</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
             </div>
           </div>
         </section>
 
-        {/* PART 7: KITCHEN MARKETPLACE SECTION */}
-        <section className="py-16 px-4 bg-light-gray">
-          <div className="container mx-auto max-w-6xl">
-            <h2 className="text-4xl font-bold text-center mb-4">No Kitchen? No Problem.</h2>
-            <p className="text-xl text-center text-gray-700 mb-12">
-              Professional Space. Affordable Hours. Proven Results.
-            </p>
-            <p className="text-center text-gray-600 mb-12 max-w-3xl mx-auto">
-              The #1 question from chefs ready to go pro: "I want to start, but I don't have a commercial kitchen certified. What do I do?"
-              <br /><br />
-              You don't need to commit to an expensive build or lease. Our Kitchen Marketplace solves this. Browse real commercial kitchens in your area. Book by the hour. Start small. Scale as you grow.
-            </p>
+        {/* EARNINGS SECTION */}
+        <section id="earnings" className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-40 left-10 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-40 right-10 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-5xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-20">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Earnings Breakdown
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">Transparent Earnings</h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans max-w-3xl mx-auto leading-relaxed">
+                  Keep 100% during trial. After that, 80-85% to you—still better than traditional platforms.
+                </p>
+              </div>
+            </FadeInSection>
+            <div className="grid md:grid-cols-2 gap-8 md:gap-10">
+              <FadeInSection delay={1}>
+                <Card className="border-2 border-green-300 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-gradient-to-br from-green-50 via-white to-green-50/30 group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-100/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-green-700">Trial Phase</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-[var(--color-text-primary)] font-sans relative z-10">
+                    <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                      <span className="text-base md:text-lg font-medium">Order Value</span>
+                      <span className="font-bold text-lg md:text-xl">$30</span>
+                    </div>
+                    <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                      <span className="text-base md:text-lg">Payment Processing</span>
+                      <span className="text-base md:text-lg">-$1.17</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-4 bg-green-50/50 rounded-xl p-4 mt-4">
+                      <span className="font-bold text-lg md:text-xl">You Keep</span>
+                      <span className="font-bold text-3xl md:text-4xl text-green-600">$28.83</span>
+                    </div>
+                    <p className="text-base md:text-lg text-green-700 font-semibold mt-4 bg-green-100/50 rounded-lg p-3 text-center">0% platform fees during trial</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+
+              <FadeInSection delay={2}>
+                <Card className="border border-gray-200 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-gray-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  
+                  <CardHeader className="relative z-10">
+                    <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)]">After Trial</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-[var(--color-text-primary)] font-sans relative z-10">
+                    <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                      <span className="text-base md:text-lg font-medium">Order Value</span>
+                      <span className="font-bold text-lg md:text-xl">$30</span>
+                    </div>
+                    <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                      <span className="text-base md:text-lg">Platform Fee (15-20%)</span>
+                      <span className="text-base md:text-lg">-$4.50</span>
+                    </div>
+                    <div className="flex justify-between items-center py-3 border-b border-gray-200">
+                      <span className="text-base md:text-lg">Payment Processing</span>
+                      <span className="text-base md:text-lg">-$1.17</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-4 bg-gray-50 rounded-xl p-4 mt-4">
+                      <span className="font-bold text-lg md:text-xl">You Keep</span>
+                      <span className="font-bold text-3xl md:text-4xl text-green-600">$16.33</span>
+                    </div>
+                    <p className="text-base md:text-lg text-[var(--color-charcoal-light)] font-medium mt-4 bg-gray-100/50 rounded-lg p-3 text-center">80-85% to you, still better than DoorDash/UberEats</p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+            </div>
+          </div>
+        </section>
+
+        {/* KITCHEN MARKETPLACE SECTION */}
+        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-[var(--color-cream)]/20 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-16">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Kitchen Access
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">No Kitchen? No Problem.</h2>
+                <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans max-w-3xl mx-auto leading-relaxed">
+                  Access certified commercial kitchens by the hour. Start small, scale as you grow.
+                </p>
+              </div>
+            </FadeInSection>
 
             {kitchensLoading ? (
               <div className="text-center mb-12">
-                <p className="text-gray-600">Loading kitchens...</p>
+                <p className="text-lg md:text-xl text-[var(--color-text-primary)] font-sans">Loading locations...</p>
               </div>
-            ) : kitchens.length > 0 ? (
-              <div className="grid md:grid-cols-3 gap-8 mb-12">
-                {kitchens.slice(0, 3).map((kitchen: any) => (
-                  <Card key={kitchen.id} className="border-2">
-                    <CardHeader>
-                      <Building2 className="h-12 w-12 text-blue-600 mb-4" />
-                      <CardTitle>{kitchen.name}</CardTitle>
-                      <CardDescription>
-                        {kitchen.locationName ? `📍 ${kitchen.locationName}` : kitchen.locationAddress ? `📍 ${kitchen.locationAddress}` : ""}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-gray-700">
-                      {kitchen.description && (
-                        <p className="text-sm">{kitchen.description}</p>
-                      )}
-                      <Button 
-                        className="w-full mt-4" 
-                        onClick={() => navigate('/portal/book')}
-                      >
-                        Book This Kitchen
-                      </Button>
-                    </CardContent>
-                  </Card>
+            ) : uniqueLocations.length > 0 ? (
+              <div className={uniqueLocations.length < 3 
+                ? `flex flex-wrap justify-center gap-8 mb-16` 
+                : `grid md:grid-cols-3 gap-8 mb-16`}>
+                {uniqueLocations.slice(0, 3).map((location: any) => (
+                  <FadeInSection key={location.id} delay={1}>
+                    <Card className={`border border-gray-100 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 bg-white group relative overflow-hidden ${uniqueLocations.length < 3 ? 'w-full max-w-sm' : ''}`}>
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      
+                      <CardHeader className="relative z-10">
+                        <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-50 rounded-2xl flex items-center justify-center mb-4 shadow-md group-hover:scale-110 transition-transform duration-300">
+                          <Building2 className="h-8 w-8 text-blue-600" />
+                        </div>
+                        <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-blue-600 transition-colors duration-300">{location.name}</CardTitle>
+                        <CardDescription className="text-base md:text-lg text-[var(--color-text-primary)] font-sans">
+                          {location.address ? `📍 ${location.address}` : ""}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="relative z-10">
+                        <p className="text-base md:text-lg text-[var(--color-text-primary)] font-sans mb-6 leading-relaxed">
+                          Access certified commercial kitchens at this location by the hour.
+                        </p>
+                        <Button 
+                          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1 transform" 
+                          onClick={() => navigate('/portal/book')}
+                        >
+                          Browse Kitchens
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </FadeInSection>
                 ))}
               </div>
             ) : (
-              <div className="text-center mb-12">
+              <div className="text-center mb-16">
                 <Button 
                   size="lg" 
                   onClick={() => navigate('/portal/book')}
-                  className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg"
+                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-6 px-12 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform"
                 >
-                  <Building2 className="h-5 w-5 mr-2" />
-                  Browse Available Kitchens
+                  <Building2 className="h-6 w-6 mr-2" />
+                  Browse Available Locations
                 </Button>
               </div>
             )}
 
-            <Card className="border-2 bg-blue-50">
-              <CardHeader>
-                <CardTitle className="text-2xl">Own a Commercial Kitchen with Empty Hours?</CardTitle>
-              </CardHeader>
-              <CardContent className="text-gray-700">
-                <p className="mb-4">
-                  Partner with Local Cooks and monetize your empty kitchen hours.
-                </p>
-                <p className="mb-4 font-semibold">How it works:</p>
-                <ul className="space-y-2 mb-4">
-                  <li>✓ List your kitchen (you set the price)</li>
-                  <li>✓ Chefs book (we handle scheduling)</li>
-                  <li>✓ You do facility checks (minimal effort)</li>
-                  <li>✓ Get paid weekly to your account</li>
-                </ul>
-                <Button onClick={() => navigate('/portal/book')}>
-                  List Your Kitchen
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {/* PART 8: SOCIAL PROOF */}
-        <section className="py-16 px-4 bg-white">
-          <div className="container mx-auto max-w-6xl">
-            <h2 className="text-4xl font-bold text-center mb-12">Join Our Growing Community</h2>
-            <p className="text-center text-gray-600 mb-12 max-w-2xl mx-auto">
-              Chefs from across Newfoundland are building their culinary businesses on Local Cooks. 
-              Join a community of passionate cooks who are turning their skills into sustainable businesses.
-            </p>
-            <div className="text-center">
-              <Button
-                onClick={handleGetStarted}
-                size="lg"
-                className="bg-primary hover:bg-primary/90 text-white font-semibold py-6 px-8 text-lg"
-              >
-                Start Your Journey Today
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        {/* PART 9: FAQ */}
-        <section className="py-16 px-4 bg-gray-50">
-          <div className="container mx-auto max-w-4xl">
-            <h2 className="text-4xl font-bold text-center mb-12">Frequently Asked Questions</h2>
-            
-            <div className="space-y-6">
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle>How long does approval take?</CardTitle>
+            <FadeInSection delay={2}>
+              <Card className="border border-gray-100 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 bg-gradient-to-br from-blue-50/50 via-white to-blue-50/30 group relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-100/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                <CardHeader className="relative z-10">
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-[var(--color-text-primary)] group-hover:text-blue-600 transition-colors duration-300">Own a Commercial Kitchen?</CardTitle>
                 </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p><strong>A:</strong> 15 minutes to apply. 24 hours to hear back. We review your profile, food story, menu, and photos. We're looking for chefs who care about quality. Fast approval because we want you live and earning ASAP.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle>Do I need a commercial kitchen already?</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p><strong>A:</strong> No. Many of our chefs use our Kitchen Marketplace. If you have a certified kitchen, start immediately. If not: Browse available kitchens, book by the hour. $15-32/hour depending on location and amenities. By month 3-4, orders pay for the kitchen.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle>What exactly happens during trial phase?</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p><strong>A:</strong> You keep 100% of your sales (minus only Stripe's 2.9% + 30¢). We handle customer management, order coordination, payment processing, delivery logistics, data tracking, and customer support. You experience full infrastructure with zero commission cost.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle>Can I quit my restaurant job and go full-time?</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p><strong>A:</strong> Yes, but strategically. Most chefs: Month 1-2: Work restaurant job + cook 5-10 hours/week. Month 3-4: Build reviews, test demand. Month 5-6: Restaurant job + 15-20 hours/week. Month 7+: Quit when you're making 80%+ of your restaurant salary. Fastest: 6 months. Most common: 9-12 months.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle>I'm already on Facebook Marketplace. Will this replace it?</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p><strong>A:</strong> No. It complements it. Orders flow through Local Cooks (organized). Payments process through Local Cooks (professional). Customer data lives in Local Cooks (actionable). You can still post to Facebook/Instagram. Your social media still drives traffic TO Local Cooks. Think: Facebook Marketplace = Discovery channel. Local Cooks = Professional operations.</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle>What if I fail? Can I quit?</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-700">
-                  <p><strong>A:</strong> Yes, completely free to leave. No contracts. No commitments. No penalties. Want to pause for a month? Done. Want to quit? Done. Want to come back later? We reactivate you. You're an independent operator, not an employee.</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </section>
-
-        {/* PART 10: CLOSING + NEWSLETTER */}
-        <section className="py-16 px-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-          <div className="container mx-auto max-w-4xl text-center">
-            <h2 className="text-4xl md:text-5xl font-bold mb-8">Your Skill Deserves Better. Your Life Deserves Better. It's Time.</h2>
-            
-            <div className="text-left max-w-3xl mx-auto space-y-6 mb-12 text-lg">
-              <div>
-                <p className="font-semibold mb-2">TO THE RESTAURANT CHEFS:</p>
-                <p>For years, you've cooked in someone else's vision. Answered to someone else's standards. Made someone else rich. You're done. And you're right to be done. What if the next great meal you cook is for yourself? Your food. Your rules. Your kitchen. Your customers. Your brand. Your business.</p>
-              </div>
-              
-              <div>
-                <p className="font-semibold mb-2">TO THE MARKETPLACE SELLERS:</p>
-                <p>You've proven the demand is real. Your customers prove it every day. But you're doing it the hard way—managing chaos, coordinating chaos, living in chaos. What if everything else just... worked? One organized system. Professional operations. Your food. Your customers. Your data. Your business.</p>
-              </div>
-              
-              <div>
-                <p className="font-semibold mb-2">TO EVERYONE:</p>
-                <p>Local Cooks isn't about maximum hustle or venture-backed hype. It's about cooking with freedom, earning what you're worth, building a community, expressing your creativity, living on your terms, actually having time. You've trained long enough. Your skill deserves to be rewarded. Your life deserves to be lived. It's time to build something that's yours.</p>
-              </div>
-            </div>
-
-            <Card className="bg-white/10 backdrop-blur-sm border-white/20 mb-12">
-              <CardHeader>
-                <CardTitle className="text-2xl text-white">
-                  {statsLoading ? (
-                    "Join Chefs Building the Future of Food in Newfoundland"
-                  ) : stats?.totalChefs ? (
-                    `Join ${stats.totalChefs}+ Chefs Building the Future of Food in Newfoundland`
-                  ) : (
-                    "Join Chefs Building the Future of Food in Newfoundland"
-                  )}
-                </CardTitle>
-                <CardDescription className="text-white/80">
-                  Get weekly tips: menu pricing, customer communication, scaling strategies, and stories from chefs who made the jump. Real strategies. No fluff. Just what works.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleNewsletterSubmit} className="flex gap-4">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="your@email.com"
-                    className="flex-1 px-4 py-3 rounded-lg text-gray-900"
-                    required
-                  />
-                  <Button type="submit" className="bg-primary hover:bg-primary/90">
-                    Send Me the Chef Tips
+                <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
+                  <p className="mb-6 leading-relaxed text-base md:text-lg">
+                    Partner with Local Cooks and monetize your empty kitchen hours. List your kitchen, set your price, and get paid weekly.
+                  </p>
+                  <Button 
+                    onClick={() => navigate('/portal/book')}
+                    className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-1 transform"
+                  >
+                    List Your Kitchen
                   </Button>
-                </form>
-                <p className="text-sm text-white/70 mt-2">✓ No spam. No nonsense. ✓ Just real strategies that work. ✓ Unsubscribe anytime.</p>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </FadeInSection>
+          </div>
+        </section>
 
-            <div className="space-y-4">
+        {/* CTA SECTION */}
+        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-4xl text-center relative z-10">
+            <FadeInSection>
+              <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-8">
+                Ready to Start Your Culinary Journey?
+              </h2>
+              <p className="text-xl md:text-2xl text-[var(--color-text-primary)] font-sans mb-10 max-w-3xl mx-auto leading-relaxed font-medium">
+                Join chefs from across Newfoundland who are building their culinary businesses on Local Cooks.
+              </p>
               <Button
                 onClick={handleGetStarted}
                 size="lg"
-                className="bg-white text-gray-900 hover:bg-gray-100 font-semibold py-6 px-8 text-lg"
+                className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-7 px-14 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-2 transform"
               >
-                Start Your Application Now
+                Start Your Application
               </Button>
-              <p className="text-lg">
-                Approved in 24 hours. Keep 100% during trial.
+            </FadeInSection>
+          </div>
+        </section>
+
+        {/* FAQ SECTION */}
+        <section className="py-24 md:py-32 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 via-white to-[var(--color-cream)]/20 relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-[var(--color-gold)] rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-4xl relative z-10">
+            <FadeInSection>
+              <div className="text-center mb-16">
+                <span className="inline-block text-[var(--color-primary)] font-semibold mb-4 font-mono text-xs md:text-sm uppercase tracking-widest px-4 py-2 bg-[var(--color-primary)]/10 rounded-full">
+                  Questions
+                </span>
+                <h2 className="text-4xl md:text-6xl font-display text-[var(--color-primary)] mb-6">
+                  Frequently Asked Questions
+                </h2>
+              </div>
+            </FadeInSection>
+            
+            <FadeInSection delay={1}>
+              <Accordion type="single" collapsible className="w-full space-y-4">
+                <AccordionItem value="item-1" className="border border-gray-100 rounded-2xl bg-white px-6 md:px-8 shadow-lg hover:shadow-xl transition-all duration-300 border-b-0 group">
+                  <AccordionTrigger className="text-left text-xl md:text-2xl font-bold text-[var(--color-text-primary)] py-6 md:py-8 hover:no-underline group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    How long does approval take?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-[var(--color-text-primary)] font-sans pb-6 md:pb-8 text-base md:text-lg leading-relaxed">
+                    <p>15 minutes to apply. 24 hours to hear back. Most chefs are approved and live on the same day.</p>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="item-2" className="border border-gray-100 rounded-2xl bg-white px-6 md:px-8 shadow-lg hover:shadow-xl transition-all duration-300 border-b-0 group">
+                  <AccordionTrigger className="text-left text-xl md:text-2xl font-bold text-[var(--color-text-primary)] py-6 md:py-8 hover:no-underline group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    Do I need a commercial kitchen already?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-[var(--color-text-primary)] font-sans pb-6 md:pb-8 text-base md:text-lg leading-relaxed">
+                    <p>No. Use our Kitchen Marketplace to access certified commercial kitchens by the hour. Start small, scale as you grow.</p>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="item-3" className="border border-gray-100 rounded-2xl bg-white px-6 md:px-8 shadow-lg hover:shadow-xl transition-all duration-300 border-b-0 group">
+                  <AccordionTrigger className="text-left text-xl md:text-2xl font-bold text-[var(--color-text-primary)] py-6 md:py-8 hover:no-underline group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    What happens during trial phase?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-[var(--color-text-primary)] font-sans pb-6 md:pb-8 text-base md:text-lg leading-relaxed">
+                    <p>You keep 100% of your sales (only standard payment processing applies). We handle everything else—customer support, payments, delivery logistics.</p>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="item-4" className="border border-gray-100 rounded-2xl bg-white px-6 md:px-8 shadow-lg hover:shadow-xl transition-all duration-300 border-b-0 group">
+                  <AccordionTrigger className="text-left text-xl md:text-2xl font-bold text-[var(--color-text-primary)] py-6 md:py-8 hover:no-underline group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    Can I quit my restaurant job?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-[var(--color-text-primary)] font-sans pb-6 md:pb-8 text-base md:text-lg leading-relaxed">
+                    <p>Yes, but strategically. Most chefs start part-time while keeping their day job, then transition to full-time as their business grows.</p>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="item-5" className="border border-gray-100 rounded-2xl bg-white px-6 md:px-8 shadow-lg hover:shadow-xl transition-all duration-300 border-b-0 group">
+                  <AccordionTrigger className="text-left text-xl md:text-2xl font-bold text-[var(--color-text-primary)] py-6 md:py-8 hover:no-underline group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    Will this replace Facebook Marketplace?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-[var(--color-text-primary)] font-sans pb-6 md:pb-8 text-base md:text-lg leading-relaxed">
+                    <p>No. It complements it. Use social media for discovery, Local Cooks for professional operations, payments, and customer management.</p>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="item-6" className="border border-gray-100 rounded-2xl bg-white px-6 md:px-8 shadow-lg hover:shadow-xl transition-all duration-300 border-b-0 group">
+                  <AccordionTrigger className="text-left text-xl md:text-2xl font-bold text-[var(--color-text-primary)] py-6 md:py-8 hover:no-underline group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    Can I quit anytime?
+                  </AccordionTrigger>
+                  <AccordionContent className="text-[var(--color-text-primary)] font-sans pb-6 md:pb-8 text-base md:text-lg leading-relaxed">
+                    <p>Yes. No contracts, no commitments, no penalties. You're an independent operator, free to leave or pause anytime.</p>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </FadeInSection>
+          </div>
+        </section>
+
+        {/* FINAL CTA */}
+        <section className="py-24 md:py-36 px-4 bg-gradient-to-br from-[var(--color-primary)] via-[#FF5470] to-[var(--color-primary)] text-white relative overflow-hidden">
+          {/* Decorative background elements */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none">
+            <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-20 w-80 h-80 bg-white rounded-full blur-3xl"></div>
+          </div>
+          
+          <div className="container mx-auto max-w-4xl text-center relative z-10">
+            <FadeInSection>
+              <h2 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-8 leading-tight text-shadow-lg">
+                Your Skill Deserves Better.
                 <br />
-                Whether you're leaving a restaurant or scaling from Marketplace,
+                Your Life Deserves Better.
                 <br />
-                your next chapter starts this week.
+                <span className="text-white/95">It's Time.</span>
+              </h2>
+              <p className="text-xl md:text-2xl mb-10 max-w-3xl mx-auto font-sans opacity-95 leading-relaxed">
+                Turn your culinary passion into a sustainable business. Cook with freedom. Earn what you're worth. Build something that's yours.
               </p>
-            </div>
+              <div className="space-y-6">
+                <Button
+                  onClick={handleGetStarted}
+                  size="lg"
+                  className="bg-white text-[var(--color-primary)] hover:bg-gray-50 font-bold py-7 px-14 text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] hover:-translate-y-2 transform"
+                >
+                  Start Your Application Now
+                </Button>
+                <p className="text-base md:text-lg opacity-90 font-sans font-medium">
+                  Approved in 24 hours • Keep 100% during trial
+                </p>
+              </div>
+            </FadeInSection>
           </div>
         </section>
       </main>
