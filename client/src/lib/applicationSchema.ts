@@ -1,16 +1,11 @@
 import { z } from "zod";
+import { phoneNumberSchema } from "@shared/phone-validation";
 
 // Create a schema for the application form
 export const applicationSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string()
-    .min(13, "Phone numbers must be 10 digits")
-    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone numbers must be 10 digits")
-    .refine((val) => {
-      const digitsOnly = val.replace(/\D/g, '');
-      return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Phone numbers must be 10 digits"),
+  phone: phoneNumberSchema, // Uses shared phone validation
   foodSafetyLicense: z.enum(["yes", "no"], {
     required_error: "Please select an option",
   }),

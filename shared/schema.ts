@@ -1,6 +1,7 @@
 import { boolean, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { phoneNumberSchema, optionalPhoneNumberSchema } from './phone-validation';
 
 // Define an enum for kitchen preference
 export const kitchenPreferenceEnum = pgEnum('kitchen_preference', ['commercial', 'home', 'notSure']);
@@ -109,11 +110,14 @@ export const deliveryPartnerApplications = pgTable("delivery_partner_application
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Import phone validation utilities
+import { phoneNumberSchema } from './phone-validation';
+
 // Define the Zod schema for inserting an application
 export const insertApplicationSchema = createInsertSchema(applications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string().regex(/^\+?[0-9\s\(\)-]{10,15}$/, "Please enter a valid phone number"),
+  phone: phoneNumberSchema, // Uses shared phone validation
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
@@ -244,13 +248,7 @@ export type InsertVideoProgress = z.infer<typeof insertVideoProgressSchema>;
 export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliveryPartnerApplications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string()
-    .min(13, "Phone numbers must be 10 digits")
-    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone numbers must be 10 digits")
-    .refine((val) => {
-      const digitsOnly = val.replace(/\D/g, '');
-      return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Phone numbers must be 10 digits"),
+  phone: phoneNumberSchema,
   address: z.string().min(5, "Address must be at least 5 characters"),
   city: z.string().min(2, "City must be at least 2 characters"),
   province: z.string().min(2, "Province must be at least 2 characters"),
@@ -466,6 +464,7 @@ export const insertLocationSchema = createInsertSchema(locations, {
   address: z.string().min(5, "Address must be at least 5 characters"),
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
+  notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
 }).omit({ 
   id: true, 
   createdAt: true,
@@ -478,6 +477,7 @@ export const updateLocationSchema = z.object({
   address: z.string().min(5).optional(),
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
+  notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
 });
 
 export const insertKitchenSchema = createInsertSchema(kitchens, {
@@ -650,7 +650,7 @@ export const insertPortalUserApplicationSchema = createInsertSchema(portalUserAp
   locationId: z.number(),
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string().min(1, "Phone number is required"),
+  phone: phoneNumberSchema, // Uses shared phone validation
   company: z.string().optional(),
 }).omit({
   id: true,
