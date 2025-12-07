@@ -47,31 +47,32 @@ serverFiles.forEach(file => {
     // Read the TypeScript file
     let content = fs.readFileSync(srcPath, 'utf8');
     
-    // Convert TypeScript imports to JavaScript
-    content = content.replace(/from ["'](.+)\.ts["'];/g, 'from "$1.js";');
-    content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/schema["'];/g, 'import {$1} from "../shared/schema.js";');
-    // Fix imports from shared directory (relative paths)
-    // Ensure .js extension is always included for ESM compatibility
-    content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
-    content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
-    // Also handle imports without ../ (in case they exist)
-    content = content.replace(/from\s+["']shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
-    content = content.replace(/from\s+["']shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
-    
     // Special handling for email.ts - use dynamic import for timezone-utils to avoid Vercel path resolution issues
+    // Do this BEFORE general import conversion so we can match the original pattern
     if (file === 'email.ts') {
       // Replace static import with dynamic import and lazy-load pattern
-      // Match the import statement after it's been converted to .js
-      const importPattern = /import\s+\{\s*createBookingDateTime\s*\}\s+from\s+["']\.\.\/shared\/timezone-utils\.js["'];?/;
+      // Match the import statement BEFORE it's been converted to .js
+      // Use a more permissive pattern to catch any variation
+      const importPattern = /import\s+\{[^}]*createBookingDateTime[^}]*\}\s+from\s+["']([^"']*timezone-utils[^"']*)["'];?/;
+      
       if (importPattern.test(content)) {
-        content = content.replace(
-          importPattern,
-          `// Dynamic import for timezone-utils to handle Vercel serverless path resolution
+        console.log('Found timezone-utils import, replacing with dynamic import...');
+          const replacement = `// Dynamic import for timezone-utils to handle Vercel serverless path resolution
 let createBookingDateTimeCache = null;
 async function getCreateBookingDateTime() {
   if (!createBookingDateTimeCache) {
     try {
-      const timezoneUtils = await import('../shared/timezone-utils.js');
+      // Use new URL() with import.meta.url for proper ESM path resolution
+      // This ensures the path is resolved relative to the current file
+      const timezoneUtilsUrl = new URL('../shared/timezone-utils.js', import.meta.url).href;
+      
+      // Import the module
+      const timezoneUtils = await import(timezoneUtilsUrl);
+      
+      if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
+        throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+      }
+      
       createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
     } catch (error) {
       console.error('Failed to load timezone-utils, using fallback:', error);
@@ -88,12 +89,12 @@ async function getCreateBookingDateTime() {
 async function createBookingDateTime(...args) {
   const fn = await getCreateBookingDateTime();
   return fn(...args);
-}`
-        );
-        
-        // Also need to make the function calls async where createBookingDateTime is used
-        // But this is complex, so let's just ensure the import is replaced first
+}`;
+        content = content.replace(importPattern, replacement);
+      } else {
+        console.warn('Warning: timezone-utils import pattern not found in email.ts');
       }
+      
       // Remove interface declarations - need to match balanced braces
       // First, remove interfaces with nested braces by counting braces
       let interfaceRegex = /\/\/\s*Email\s+configuration\s*\n\s*interface\s+\w+\s*\{/g;
@@ -163,7 +164,52 @@ async function createBookingDateTime(...args) {
       content = content.replace(/\):\s*Promise<\w+>\s*\{/g, ') {');
       // Remove Map type annotations
       content = content.replace(/Map<string,\s*number>/g, 'Map');
+      // Remove TypeScript type annotations from function parameters and return types
+      // Remove return type annotations first
+      content = content.replace(/\):\s*Promise<\w+>/g, ')');
+      content = content.replace(/\):\s*boolean/g, ')');
+      content = content.replace(/\):\s*string/g, ')');
+      content = content.replace(/\):\s*number/g, ')');
+      content = content.replace(/\):\s*Date/g, ')');
+      content = content.replace(/\):\s*void/g, ')');
+      // Remove parameter type annotations - handle complex object types
+      content = content.replace(/,\s*options\s*:\s*\{[^}]+\}/g, ', options');
+      content = content.replace(/,\s*options\s*\?\s*:\s*\{[^}]+\}/g, ', options');
+      content = content.replace(/\(\s*options\s*:\s*\{[^}]+\}/g, '(options');
+      content = content.replace(/\(\s*options\s*\?\s*:\s*\{[^}]+\}/g, '(options');
+      // Remove simple type annotations
+      content = content.replace(/:\s*Promise<\w+>/g, '');
+      content = content.replace(/:\s*boolean\s*(?=[,=\)\s*\{;])/g, '');
+      content = content.replace(/:\s*string\s*(?=[,=\)\s*\{;])/g, '');
+      content = content.replace(/:\s*number\s*(?=[,=\)\s*\{;])/g, '');
+      content = content.replace(/:\s*Date\s*(?=[,=\)\s*\{;])/g, '');
+      content = content.replace(/:\s*Record<[^>]+>\s*(?=[,=\)\s*\{;])/g, '');
+      content = content.replace(/:\s*Array<[^>]+>\s*(?=[,=\)\s*\{;])/g, '');
+      // Remove object type annotations in parameters (e.g., options: { trackingId: string })
+      content = content.replace(/:\s*\{[^}]*trackingId[^}]*\}/g, '');
+      // Remove variable type annotations (let/const varName: type)
+      content = content.replace(/let\s+(\w+)\s*:\s*any/g, 'let $1');
+      content = content.replace(/const\s+(\w+)\s*:\s*any/g, 'const $1');
+      // Remove 'as any' and 'as const' type assertions
+      content = content.replace(/\s+as\s+any/g, '');
+      content = content.replace(/\s+as\s+const/g, '');
+      // Remove optional parameter markers (?) but keep the parameter
+      content = content.replace(/\?\s*:/g, '');
+      content = content.replace(/\?\s*\)/g, ')');
+      // Remove export type declarations
+      content = content.replace(/export\s+type\s+\w+[^;]+;/g, '');
     }
+    
+    // Convert TypeScript imports to JavaScript (for all files, after special handling)
+    content = content.replace(/from ["'](.+)\.ts["'];/g, 'from "$1.js";');
+    content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/schema["'];/g, 'import {$1} from "../shared/schema.js";');
+    // Fix imports from shared directory (relative paths)
+    // Ensure .js extension is always included for ESM compatibility
+    content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
+    content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
+    // Also handle imports without ../ (in case they exist)
+    content = content.replace(/from\s+["']shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
+    content = content.replace(/from\s+["']shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
     
     // Write the modified content to the destination
     fs.writeFileSync(destPath, content);

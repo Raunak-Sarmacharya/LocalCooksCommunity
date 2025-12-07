@@ -301,7 +301,9 @@ export default function BookingControlPanel({
       
       const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-      if (hoursUntilBooking < cancellationHours) {
+      // Only apply cancellation policy to future bookings
+      // Past bookings (hoursUntilBooking < 0) should always be allowed to be cancelled
+      if (hoursUntilBooking >= 0 && hoursUntilBooking < cancellationHours) {
         toast({
           title: "Cancellation Policy",
           description: policyMessage,
@@ -432,10 +434,13 @@ export default function BookingControlPanel({
                 const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
                 // Use cancellation policy from location (default to 24 hours)
                 const cancellationHours = booking.location?.cancellationPolicyHours ?? 24;
+                // Allow cancellation if:
+                // 1. Booking is not already cancelled
+                // 2. Either the booking is in the past (hoursUntilBooking < 0) OR
+                //    the booking is upcoming and outside the cancellation window
                 canCancel =
                   booking.status !== "cancelled" &&
-                  isUpcoming &&
-                  hoursUntilBooking >= cancellationHours;
+                  (hoursUntilBooking < 0 || (isUpcoming && hoursUntilBooking >= cancellationHours));
               }
             } catch (error) {
               console.error('Error processing booking date:', booking, error);
