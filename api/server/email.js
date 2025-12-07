@@ -4,7 +4,16 @@ let createBookingDateTimeCache = null;
 async function getCreateBookingDateTime() {
   if (!createBookingDateTimeCache) {
     try {
-      const timezoneUtils = await import('../shared/timezone-utils.js');
+      // Use new URL() with import.meta.url for proper ESM path resolution
+      // This ensures the path is resolved relative to the current file
+      const timezoneUtilsUrl = new URL('../shared/timezone-utils.js', import.meta.url).href;
+      
+      // Import the module
+      const timezoneUtils = await import(timezoneUtilsUrl);
+      
+      if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
+        throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+      }
       createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
     } catch (error) {
       console.error('Failed to load timezone-utils, using fallback:', error);
@@ -56,7 +65,7 @@ const createTransporter = (config ) => {
     pool: isProduction ? true : false,
     maxConnections: 1, // Single connection for serverless
     maxMessages: 1, // Single message per connection for serverless
-  } as any);
+  });
 };
 
 // Get email configuration from environment variables
@@ -79,9 +88,9 @@ const getEmailConfig = () => {
 };
 
 // Enhanced send email function with Vercel serverless optimizations
-export const sendEmail = async (content , options { trackingId string }): Promise<boolean> => {
+export const sendEmail = async (content, options = {}) => {
   const startTime = Date.now();
-  let transporter: any = null;
+  let transporter = null;
 
   try {
     // Check for duplicate emails if trackingId is provided
@@ -92,6 +101,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
       if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
         console.log(`Preventing duplicate email for tracking ID: ${options.trackingId} (sent ${now - lastSent}ms ago)`);
         return true; // Return true to avoid breaking existing code
+      }
       // Update the tracking map with current timestamp
       recentEmails.set(options.trackingId, now);
 
@@ -101,12 +111,14 @@ export const sendEmail = async (content , options { trackingId string }): Promis
         recentEmails.forEach((timestamp, id) => {
           if (timestamp < cutoffTime) recentEmails.delete(id);
         });
+      }
     }
 
     // Check if email configuration is available
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.error('Email configuration is missing. Please set EMAIL_USER and EMAIL_PASS environment variables.');
       return false;
+    }
     const config = getEmailConfig();
     const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
@@ -129,6 +141,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
         isProduction,
         environment: process.env.VERCEL_ENV || process.env.NODE_ENV,
         vercelRegion: process.env.VERCEL_REGION || 'unknown'
+      }
     });
 
     transporter = createTransporter(config);
@@ -145,7 +158,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
             reject(new Error('SMTP verification timeout'));
           }, 10000); // 10s timeout
 
-          transporter.verify((error: any, success: any) => {
+          transporter.verify((error, success) => {
             clearTimeout(timeout);
             if (error) {
               console.error('SMTP connection verification failed:', error);
@@ -153,11 +166,13 @@ export const sendEmail = async (content , options { trackingId string }): Promis
             } else {
               console.log('SMTP connection verified successfully');
               resolve(success);
+            }
           });
         });
       } catch (verifyError) {
         console.error('Failed to verify SMTP connection:', verifyError);
         // Continue anyway, as some providers might not support verification
+      }
     }
 
     // Get domain and other configuration from Vercel environment variables
@@ -166,7 +181,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
     const organizationName = getOrganizationName();
 
     // Enhanced email options with better headers for MailChannels compatibility
-    const mailOptions: any = {
+    const mailOptions = {
       from: fromEmail,
       to: content.to,
       subject: content.subject,
@@ -188,7 +203,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
         ...(content.headers || {})
       },
       // Proper encoding settings for DKIM
-      encoding: 'utf8' as const,
+      encoding: 'utf8',
       // Enhanced delivery options for Hostinger SMTP
       envelope: {
         from: config.auth.user,
@@ -225,16 +240,18 @@ export const sendEmail = async (content , options { trackingId string }): Promis
 
         if (attempts >= maxAttempts) {
           throw attemptError; // Re-throw on final attempt
+        }
         // Wait briefly before retry (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+      }
     }
 
     const executionTime = Date.now() - startTime;
     console.log('Email sent successfully:', {
-      messageId: (info as any).messageId,
-      accepted: (info as any).accepted,
-      rejected: (info as any).rejected,
-      response: (info as any).response,
+      messageId: (info).messageId,
+      accepted: (info).accepted,
+      rejected: (info).rejected,
+      response: (info).response,
       domain: domain,
       organization: organizationName,
       fromEmail: fromEmail,
@@ -245,6 +262,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
     // Close the transporter connection (important for serverless)
     if (transporter && typeof transporter.close === 'function') {
       transporter.close();
+    }
     return true;
   } catch (error) {
     const executionTime = Date.now() - startTime;
@@ -260,9 +278,11 @@ export const sendEmail = async (content , options { trackingId string }): Promis
     if (error instanceof Error) {
       console.error('Error details:', error.message);
       if ('code' in error) {
-        console.error('Error code:', (error as any).code);
+        console.error('Error code:', (error).code);
+      }
       if ('responseCode' in error) {
-        console.error('SMTP Response code:', (error as any).responseCode);
+        console.error('SMTP Response code:', (error).responseCode);
+      }
     }
 
     // Close the transporter connection on error (important for serverless)
@@ -271,6 +291,7 @@ export const sendEmail = async (content , options { trackingId string }): Promis
         transporter.close();
       } catch (closeError) {
         console.error('Error closing transporter:', closeError);
+      }
     }
 
     return false;
@@ -316,7 +337,7 @@ const getSupportEmail = ()=> {
 };
 
 // Helper function to detect email provider from email address
-const detectEmailProvider = (email): 'google' | 'outlook' | 'yahoo' | 'apple' | 'generic' => {
+const detectEmailProvider = (email) => {
   const emailLower = email.toLowerCase();
   const domain = emailLower.split('@')[1] || '';
   
@@ -360,9 +381,9 @@ const escapeIcalText = (text)=> {
 // Helper function to generate a consistent event UID for synchronization
 // Based on booking details so chef and manager get the same event
 const generateEventUid = (
-  bookingDate: string | Date,
+  bookingDate,
   startTime,
-  location)=> {
+  location) => {
   // Create a deterministic UID based on booking details
   const dateStr = bookingDate instanceof Date 
     ? bookingDate.toISOString().split('T')[0] 
@@ -388,10 +409,10 @@ const generateIcsFile = (
   endDateTime,
   location,
   description,
-  organizerEmail?,
-  attendeeEmails string[],
-  eventUid string // Optional: Use same UID for synchronization
-)=> {
+  organizerEmail,
+  attendeeEmails,
+  eventUid // Optional: Use same UID for synchronization
+) => {
   // Format dates in UTC (Z suffix) for RFC 5545 compliance
   const startDateStr = formatDateForCalendar(startDateTime);
   const endDateStr = formatDateForCalendar(endDateTime);
@@ -436,7 +457,9 @@ const generateIcsFile = (
         // RSVP=TRUE means attendee should respond
         // CUTYPE=INDIVIDUAL indicates this is an individual person
         lines.push(`ATTENDEE;CN=${email.split('@')[0]};RSVP=TRUE;CUTYPE=INDIVIDUAL:mailto:${email}`);
+      }
     });
+  }
   // Add reminder alarms (15 minutes before and 1 day before)
   lines.push(
     'BEGIN:VALARM',
@@ -461,13 +484,13 @@ const generateIcsFile = (
 const generateCalendarUrl = (
   email,
   title,
-  bookingDate: string | Date,
+  bookingDate,
   startTime,
   endTime,
   location,
   description,
-  timezone= 'America/St_Johns'
-)=> {
+  timezone = 'America/St_Johns'
+) => {
   try {
     // Convert bookingDate to string format (YYYY-MM-DD) if it's a Date object
     let bookingDateStr;
@@ -478,9 +501,10 @@ const generateCalendarUrl = (
       bookingDateStr = bookingDate.split('T')[0];
     } else {
       bookingDateStr = String(bookingDate);
+    }
     // Create start and end Date objects in the specified timezone
-    const startDateTime = await createBookingDateTime(bookingDateStr, startTime, timezone);
-    const endDateTime = await createBookingDateTime(bookingDateStr, endTime, timezone);
+    const startDateTime = createBookingDateTime(bookingDateStr, startTime, timezone);
+    const endDateTime = createBookingDateTime(bookingDateStr, endTime, timezone);
     
     const startDateStr = formatDateForCalendar(startDateTime);
     const endDateStr = formatDateForCalendar(endDateTime);
@@ -555,6 +579,7 @@ const generateCalendarUrl = (
           location: location,
         });
         return `https://calendar.google.com/calendar/render?${genericParams.toString()}`;
+    }
   } catch (error) {
     console.error('Error generating calendar URL:', error);
     // Return a fallback Google Calendar URL if there's an error
@@ -692,10 +717,7 @@ const getUniformEmailStyles = () => `
 
 // Generate application status change email with spam-optimized content
 export const generateStatusChangeEmail = (
-  applicationData: {
-    fullName;
-    email;
-    status;
+  applicationData
 ) => {
   // Create professional, non-promotional subject line
   const getSubjectLine = (status) => {
@@ -726,7 +748,7 @@ export const generateStatusChangeEmail = (
 
     return `Hello ${fullName},
 
-${statusMessages[status as keyof typeof statusMessages] || 'Your application status has been updated.'}
+${statusMessages[status] || 'Your application status has been updated.'}
 
 Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
 
@@ -828,6 +850,7 @@ const generateVendorCredentials = (fullName, phone) => {
   // If phone starts with '1' and has 11 digits, remove the leading '1' (US/Canada country code)
   if (cleanPhone.length === 11 && cleanPhone.startsWith('1')) {
     cleanPhone = cleanPhone.substring(1);
+  }
   const username = cleanPhone;
   const namePrefix = fullName.replace(/[^a-zA-Z]/g, '').toLowerCase().substring(0, 3) || 'usr';
   const phoneSuffix = cleanPhone.slice(-4) || '0000';
@@ -837,10 +860,7 @@ const generateVendorCredentials = (fullName, phone) => {
 
 // Generate full verification email with vendor credentials
 export const generateFullVerificationEmail = (
-  userData: {
-    fullName;
-    email;
-    phone;
+  userData
 ) => {
   const { username, password } = generateVendorCredentials(userData.fullName, userData.phone);
 
@@ -931,14 +951,13 @@ export const generateFullVerificationEmail = (
       'X-MSMail-Priority': 'Normal',
       'Importance': 'Normal',
       'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
 // Generate application submission email for applications WITH documents
 export const generateApplicationWithDocumentsEmail = (
-  applicationData: {
-    fullName;
-    email;
+  applicationData
 ) => {
   const supportEmail = getSupportEmail();
 
@@ -985,9 +1004,7 @@ export const generateApplicationWithDocumentsEmail = (
 
 // Generate application submission email for applications WITHOUT documents
 export const generateApplicationWithoutDocumentsEmail = (
-  applicationData: {
-    fullName;
-    email;
+  applicationData
 ) => {
   const supportEmail = getSupportEmail();
 
@@ -1034,9 +1051,7 @@ export const generateApplicationWithoutDocumentsEmail = (
 
 // Generate delivery partner application submission email for applications WITH documents
 export const generateDeliveryPartnerApplicationWithDocumentsEmail = (
-  applicationData: {
-    fullName;
-    email;
+  applicationData
 ) => {
   const supportEmail = getSupportEmail();
 
@@ -1083,9 +1098,7 @@ export const generateDeliveryPartnerApplicationWithDocumentsEmail = (
 
 // Generate delivery partner application submission email for applications WITHOUT documents
 export const generateDeliveryPartnerApplicationWithoutDocumentsEmail = (
-  applicationData: {
-    fullName;
-    email;
+  applicationData
 ) => {
   const supportEmail = getSupportEmail();
 
@@ -1132,12 +1145,7 @@ export const generateDeliveryPartnerApplicationWithoutDocumentsEmail = (
 
 // Generate document verification status change email with unified design
 export const generateDocumentStatusChangeEmail = (
-  userData: {
-    fullName;
-    email;
-    documentType;
-    status;
-    adminFeedback?;
+  userData
 ) => {
   // Create professional, non-promotional subject line
   const getSubjectLine = (documentType, status) => {
@@ -1154,7 +1162,7 @@ export const generateDocumentStatusChangeEmail = (
   const subject = getSubjectLine(userData.documentType, userData.status);
 
   // Generate plain text version for better deliverability
-  const generatePlainText = (documentType, status, fullName, adminFeedback?) => {
+  const generatePlainText = (documentType, status, fullName, adminFeedback) => {
     const docName = documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
     const statusMessages = {
       approved: `Great news! Your ${docName} has been approved.`,
@@ -1164,7 +1172,7 @@ export const generateDocumentStatusChangeEmail = (
 
     return `Hello ${fullName},
 
-${statusMessages[status as keyof typeof statusMessages] || `Your ${docName} status has been updated.`}
+${statusMessages[status] || `Your ${docName} status has been updated.`}
 
 Document: ${docName}
 Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
@@ -1191,10 +1199,11 @@ Visit: ${getWebsiteUrl()}
         return `Your ${docName} is currently being reviewed by our verification team. We will notify you once the review is complete.`;
       default:
         return `Your ${docName} status has been updated. Please check your dashboard for more details.`;
+    }
   };
 
   const message = getMessage(userData.documentType, userData.status);
-  const docName = userData.documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
+  const documentName = userData.documentType === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate';
 
   // Use uniform email template with proper styling
   const html = `
@@ -1245,12 +1254,7 @@ Visit: ${getWebsiteUrl()}
 
 // Generate delivery partner document verification status change email
 export const generateDeliveryPartnerDocumentStatusChangeEmail = (
-  userData: {
-    fullName;
-    email;
-    documentType;
-    status;
-    adminFeedback?;
+  userData
 ) => {
   // Create professional, non-promotional subject line
   const getSubjectLine = (documentType, status) => {
@@ -1268,7 +1272,7 @@ export const generateDeliveryPartnerDocumentStatusChangeEmail = (
   const subject = getSubjectLine(userData.documentType, userData.status);
 
   // Generate plain text version for better deliverability
-  const generatePlainText = (documentType, status, fullName, adminFeedback?) => {
+  const generatePlainText = (documentType, status, fullName, adminFeedback) => {
     const docName = documentType === 'driversLicense' ? 'Driver\'s License' : 
                    documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
     const statusMessages = {
@@ -1279,7 +1283,7 @@ export const generateDeliveryPartnerDocumentStatusChangeEmail = (
 
     return `Hello ${fullName},
 
-${statusMessages[status as keyof typeof statusMessages] || `Your ${docName} status has been updated.`}
+${statusMessages[status] || `Your ${docName} status has been updated.`}
 
 Document: ${docName}
 Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
@@ -1307,10 +1311,11 @@ Visit: ${getWebsiteUrl()}
         return `Your ${docName} is currently being reviewed by our verification team. We will notify you once the review is complete.`;
       default:
         return `Your ${docName} status has been updated. Please check your dashboard for more details.`;
+    }
   };
 
   const message = getMessage(userData.documentType, userData.status);
-  const docName = userData.documentType === 'driversLicense' ? 'Driver\'s License' : 
+  const documentName = userData.documentType === 'driversLicense' ? 'Driver\'s License' : 
                  userData.documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
 
   // Use uniform email template with proper styling
@@ -1362,10 +1367,7 @@ Visit: ${getWebsiteUrl()}
 
 // Generate delivery partner application status change email
 export const generateDeliveryPartnerStatusChangeEmail = (
-  userData: {
-    fullName;
-    email;
-    status;
+  userData
 ) => {
   // Create professional, non-promotional subject line
   const getSubjectLine = (status) => {
@@ -1393,7 +1395,7 @@ export const generateDeliveryPartnerStatusChangeEmail = (
 
     return `Hello ${fullName},
 
-${statusMessages[status as keyof typeof statusMessages] || 'Your delivery partner application status has been updated.'}
+${statusMessages[status] || 'Your delivery partner application status has been updated.'}
 
 Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
 
@@ -1466,7 +1468,7 @@ Visit: ${getWebsiteUrl()}
   };
 };
 
-export async function sendApplicationReceivedEmail(applicationData: any) {
+export async function sendApplicationReceivedEmail(applicationData) {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
 
@@ -1542,7 +1544,7 @@ If you have any questions, contact us at ${supportEmail}
 // Removed unused sendApplicationApprovedEmail function - was causing duplicate emails
 // Full verification emails are now handled by generateFullVerificationEmail only
 
-export async function sendApplicationRejectedEmail(applicationData: any, reason?) {
+export async function sendApplicationRejectedEmail(applicationData, reason) {
   const supportEmail = getSupportEmail();
   const organizationName = getOrganizationName();
 
@@ -1624,11 +1626,7 @@ If you have any questions, contact us at ${supportEmail}
   });
 // Generate password reset email with unified design
 export const generatePasswordResetEmail = (
-  userData: {
-    fullName;
-    email;
-    resetToken;
-    resetUrl;
+  userData
 ) => {
   const html = `
 <!DOCTYPE html>
@@ -1678,16 +1676,13 @@ export const generatePasswordResetEmail = (
       'X-MSMail-Priority': 'Normal',
       'Importance': 'Normal',
       'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
 // Generate email verification email with unified design
 export const generateEmailVerificationEmail = (
-  userData: {
-    fullName;
-    email;
-    verificationToken;
-    verificationUrl;
+  userData
 ) => {
   const html = `
 <!DOCTYPE html>
@@ -1733,14 +1728,13 @@ export const generateEmailVerificationEmail = (
       'X-MSMail-Priority': 'Normal',
       'Importance': 'Normal',
       'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
 // Generate welcome email with unified design
 export const generateWelcomeEmail = (
-  userData: {
-    fullName;
-    email;
+  userData
 ) => {
   const html = `
 <!DOCTYPE html>
@@ -1785,12 +1779,13 @@ export const generateWelcomeEmail = (
 };
 
 // Helper function to get the correct subdomain URL based on user type
-const getSubdomainUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' | 'main' = 'main')=> {
+const getSubdomainUrl = (userType = 'main') => {
   const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
   
   // In development, use localhost
   if (process.env.NODE_ENV !== 'production' && !process.env.BASE_URL) {
     return 'http://localhost:5000';
+  }
   // Use BASE_URL if explicitly set (for backward compatibility)
   if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
     // Extract subdomain from BASE_URL if it contains one
@@ -1801,13 +1796,17 @@ const getSubdomainUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' | 'ma
     // If BASE_URL already has a subdomain, use it
     if (parts.length >= 3) {
       return process.env.BASE_URL;
+    }
     // Otherwise, construct subdomain URL
     if (userType === 'main') {
       return process.env.BASE_URL;
+    }
     return `https://${userType}.${baseDomain}`;
+  }
   // Production: construct subdomain URL
   if (userType === 'main') {
     return `https://${baseDomain}`;
+  }
   return `https://${userType}.${baseDomain}`;
 };
 
@@ -1817,7 +1816,7 @@ const getWebsiteUrl = ()=> {
 };
 
 // Helper function to get the correct dashboard URL based on user type
-const getDashboardUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' = 'chef')=> {
+const getDashboardUrl = (userType = 'chef') => {
   const baseUrl = getSubdomainUrl(userType);
   
   if (userType === 'chef') {
@@ -1828,6 +1827,7 @@ const getDashboardUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' = 'ch
     return `${baseUrl}/portal`;
   } else if (userType === 'admin') {
     return `${baseUrl}/admin`;
+  }
   return `${baseUrl}/auth?redirect=/dashboard`;
 };
 
@@ -1849,9 +1849,7 @@ const getPromoUrl = ()=> {
 
 // Generate document update email with unified design
 export const generateDocumentUpdateEmail = (
-  userData: {
-    fullName;
-    email;
+  userData
 ) => {
   const html = `
 <!DOCTYPE html>
@@ -1899,132 +1897,12 @@ export const generateDocumentUpdateEmail = (
       'X-MSMail-Priority': 'Normal',
       'Importance': 'Normal',
       'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
 export const generatePromoCodeEmail = (
-  userData: {
-    email;
-    promoCode;
-    customMessage?;
-    message?; // Added to handle both field names
-    greeting?;
-    promoStyle {
-      colorTheme;
-      borderStyle;
-    };
-    promoCodeStyling {
-      backgroundColor?;
-      borderColor?;
-      textColor?;
-      fontSize?;
-      fontWeight?;
-      labelColor?;
-      labelFontSize?;
-      labelFontWeight?;
-      borderRadius?;
-      borderWidth?;
-      borderStyle?;
-      boxShadow?;
-      padding?;
-    };
-    designSystem any;
-    isPremium?;
-    sections Array<{
-      id;
-      type;
-      content: any;
-      styling: any;
-
-    }> | { [key: string]: any }; // Support both array and object formats
-    orderButton {
-      text;
-      url;
-      styling {
-        backgroundColor?;
-        color?;
-        fontSize?;
-        fontWeight?;
-        padding?;
-        borderRadius?;
-        textAlign?;
-      };
-    };
-    header {
-      title;
-      subtitle;
-      styling {
-        backgroundColor?;
-        titleColor?;
-        subtitleColor?;
-        titleFontSize?;
-        subtitleFontSize?;
-        padding?;
-        borderRadius?;
-        textAlign?;
-        backgroundImage?;
-        backgroundSize?;
-        backgroundPosition?;
-        backgroundRepeat?;
-        backgroundAttachment?;
-      };
-    };
-    footer {
-      mainText?;
-      contactText?;
-      copyrightText?;
-      showContact?;
-      showCopyright?;
-      styling {
-        backgroundColor?;
-        textColor?;
-        linkColor?;
-        fontSize?;
-        padding?;
-        textAlign?;
-        borderColor?;
-      };
-    };
-    usageSteps {
-      title?;
-      steps string[];
-      enabled?;
-      styling {
-        backgroundColor?;
-        borderColor?;
-        titleColor?;
-        textColor?;
-        linkColor?;
-        padding?;
-        borderRadius?;
-      };
-    };
-    emailContainer {
-      maxWidth?;
-      backgroundColor?;
-      borderRadius?;
-      boxShadow?;
-      backgroundImage?;
-      backgroundSize?;
-      backgroundPosition?;
-      backgroundRepeat?;
-      backgroundAttachment?;
-      mobileMaxWidth?;
-      mobilePadding?;
-      mobileFontScale?;
-      mobileButtonSize?;
-    };
-    dividers {
-      enabled?;
-      style?;
-      color?;
-      thickness?;
-      margin?;
-      opacity?;
-    };
-    subject?;
-    previewText?;
-    promoCodeLabel?;
+  userData
 ) => {
   const organizationName = getOrganizationName();
   const supportEmail = getSupportEmail();
@@ -2116,15 +1994,17 @@ export const generatePromoCodeEmail = (
         borderColor: '#475569',
         border: '2px dashed #475569',
         boxShadow: '0 4px 16px rgba(71, 85, 105, 0.15)'
+      }
     };
 
-    const theme = themes[colorTheme as keyof typeof themes] || themes.green;
+    const theme = themes[colorTheme] || themes.green;
 
     // Apply border style variations
     if (borderStyle === 'solid') {
       theme.border = `2px solid ${theme.borderColor}`;
     } else if (borderStyle === 'dotted') {
       theme.border = `2px dotted ${theme.borderColor}`;
+    }
     return theme;
   };
 
@@ -2237,11 +2117,13 @@ export const generatePromoCodeEmail = (
                   />
                 </div>
               `;
+            }
           }
           return '';
 
         default:
           return '';
+      }
     }).join('');
   };
 
@@ -2373,8 +2255,7 @@ Visit: ${getPromoUrl()}
       background: ${userData.promoCodeStyling?.backgroundColor || '#f3f4f6'};
       border: ${userData.promoCodeStyling?.borderWidth || userData.promoCodeStyling?.borderStyle || userData.promoCodeStyling?.borderColor
       ? `${userData.promoCodeStyling?.borderWidth || '2px'} ${userData.promoCodeStyling?.borderStyle || 'dashed'} ${userData.promoCodeStyling?.borderColor || '#9ca3af'}`
-      : '2px dashed #9ca3af'
-    };
+      : '2px dashed #9ca3af'};
       border-radius: ${userData.promoCodeStyling?.borderRadius || '12px'};
       padding: ${userData.promoCodeStyling?.padding || '20px'};
       box-shadow: ${userData.promoCodeStyling?.boxShadow || '0 2px 4px rgba(0,0,0,0.1)'};
@@ -2668,7 +2549,7 @@ Visit: ${getPromoUrl()}
       <!-- Custom Sections (if any) -->
       ${userData.sections && (Array.isArray(userData.sections) ? userData.sections.length > 0 : Object.keys(userData.sections).length > 0) ?
       generateAdvancedSections(Array.isArray(userData.sections) ? userData.sections : Object.values(userData.sections)) + generateDivider()
-      : ''
+      : ''}
       <!-- Call to Action Button -->
       <div class="cta-container">
         <a href="${userData.orderButton?.url || getPromoUrl()}" class="custom-order-button">
@@ -2686,6 +2567,7 @@ Visit: ${getPromoUrl()}
           ${userData.footer.contactText.includes('@') ?
         userData.footer.contactText.replace(/(\S+@\S+)/g, '<a href="mailto:$1" class="footer-link">$1</a>') :
         userData.footer.contactText
+      }
         </p>
       ` : userData.footer?.showContact !== false ? `
         <p class="footer-text">Questions? Contact us at <a href="mailto:${supportEmail}" class="footer-link">${supportEmail}</a>.</p>
@@ -2723,21 +2605,18 @@ Visit: ${getPromoUrl()}
       'X-MSMail-Priority': 'Normal',
       'Importance': 'Normal',
       'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+    }
   };
 };
 
 // Generate consolidated document approval email for chefs when all documents are approved
 export const generateChefAllDocumentsApprovedEmail = (
-  userData: {
-    fullName;
-    email;
-    approvedDocuments: string[];
-    adminFeedback?;
+  userData
 ) => {
   const subject = 'All Documents Approved - Welcome to Local Cooks Community!';
   
   // Generate plain text version
-  const generatePlainText = (fullName, approvedDocuments: string[], adminFeedback?) => {
+  const generatePlainText = (fullName, approvedDocuments, adminFeedback) => {
     const docList = approvedDocuments.join(', ');
     
     return `Hello ${fullName},
@@ -2818,16 +2697,12 @@ Visit: ${getWebsiteUrl()}
 
 // Generate consolidated document approval email for delivery partners when all documents are approved
 export const generateDeliveryPartnerAllDocumentsApprovedEmail = (
-  userData: {
-    fullName;
-    email;
-    approvedDocuments: string[];
-    adminFeedback?;
+  userData
 ) => {
   const subject = 'All Documents Approved - Welcome to Local Cooks Community!';
   
   // Generate plain text version
-  const generatePlainText = (fullName, approvedDocuments: string[], adminFeedback?) => {
+  const generatePlainText = (fullName, approvedDocuments, adminFeedback) => {
     const docList = approvedDocuments.join(', ');
     
     return `Hello ${fullName},
@@ -2908,7 +2783,7 @@ Visit: ${getWebsiteUrl()}
 // KITCHEN BOOKING EMAILS
 // ===================================
 
-export const generateManagerMagicLinkEmail = (userData: { email; name; resetToken: string }) => {
+export const generateManagerMagicLinkEmail = (userData) => {
   const subject = 'Set Up Your Manager Account - Local Cooks';
   // Use password reset with manager redirect parameter
   const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -2918,7 +2793,7 @@ export const generateManagerMagicLinkEmail = (userData: { email; name; resetToke
 };
 
 // Manager credentials email with username and password
-export const generateManagerCredentialsEmail = (userData: { email; name; username; password: string }) => {
+export const generateManagerCredentialsEmail = (userData) => {
   const subject = 'Your Manager Account - Local Cooks Community';
   // Use manager login page URL for managers
   const baseUrl = getWebsiteUrl();
@@ -2927,7 +2802,7 @@ export const generateManagerCredentialsEmail = (userData: { email; name; usernam
   return { to: userData.email, subject, text: `Hello ${userData.name || 'Manager'}, Your manager account has been created! Username: ${userData.username}, Password: ${userData.password}. Login at: ${loginUrl}`, html };
 };
 
-export const generateBookingNotificationEmail = (bookingData: { managerEmail; chefName; kitchenName; bookingDate: string | Date; startTime; endTime; specialNotes?; timezone?; locationName string }) => {
+export const generateBookingNotificationEmail = (bookingData) => {
   const subject = `New Kitchen Booking - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
@@ -2958,8 +2833,8 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail; ch
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = await createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = await createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
   const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
   const icsContent = generateIcsFile(
     calendarTitle,
@@ -2987,14 +2862,14 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail; ch
 };
 
 // Booking cancellation notification email for managers (when chef cancels)
-export const generateBookingCancellationNotificationEmail = (bookingData: { managerEmail; chefName; kitchenName; bookingDate; startTime; endTime; cancellationReason string }) => {
+export const generateBookingCancellationNotificationEmail = (bookingData) => {
   const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking Cancelled</h2><p class="message">A chef has cancelled their booking:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${bookingData.chefName}<br><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>📝 Reason:</strong> ${bookingData.cancellationReason}` : ''}</div><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: bookingData.managerEmail, subject, text: `Booking Cancelled - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}`, html };
 };
 
 // Booking status change notification email for managers (when manager confirms/cancels)
-export const generateBookingStatusChangeNotificationEmail = (bookingData: { managerEmail; chefName; kitchenName; bookingDate: string | Date; startTime; endTime; status; timezone?; locationName string }) => {
+export const generateBookingStatusChangeNotificationEmail = (bookingData) => {
   const subject = `Booking ${bookingData.status === 'confirmed' ? 'Confirmed' : 'Updated'} - ${bookingData.kitchenName}`;
   const statusColor = bookingData.status === 'confirmed' ? '#16a34a' : '#dc2626';
   const statusText = bookingData.status === 'confirmed' ? 'Confirmed' : 'Cancelled';
@@ -3027,9 +2902,10 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
                          provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
                          provider === 'apple' ? '📅 Add to Apple Calendar' :
                          '📅 Add to Calendar';
+  }
   // Generate .ics file for confirmed bookings
   // Use consistent UID for synchronization - both chef and manager will get the same event
-  let attachments ['attachments'] = [];
+  let attachments = [];
   if (bookingData.status === 'confirmed' && calendarUrl) {
     const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
     const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
@@ -3052,6 +2928,7 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
       content: icsContent,
       contentType: 'text/calendar; charset=utf-8; method=REQUEST'
     }];
+  }
   const calendarButton = bookingData.status === 'confirmed' && calendarUrl
     ? `<p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div>`
     : `<a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a>`;
@@ -3067,7 +2944,7 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
   };
 };
 
-export const generateBookingRequestEmail = (bookingData: { chefEmail; chefName; kitchenName; bookingDate: string | Date; startTime; endTime; specialNotes?; timezone?; locationName string }) => {
+export const generateBookingRequestEmail = (bookingData) => {
   const subject = `Booking Request Received - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
@@ -3099,8 +2976,8 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail; chefName; 
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = await createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = await createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
   const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
   const icsContent = generateIcsFile(
     calendarTitle,
@@ -3127,7 +3004,7 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail; chefName; 
   };
 };
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail; chefName; kitchenName; bookingDate: string | Date; startTime; endTime; specialNotes?; timezone?; locationName string }) => {
+export const generateBookingConfirmationEmail = (bookingData) => {
   const subject = `Booking Confirmed - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
@@ -3159,8 +3036,8 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail; chefN
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = await createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = await createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
   const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
   const icsContent = generateIcsFile(
     calendarTitle,
@@ -3187,21 +3064,21 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail; chefN
   };
 };
 
-export const generateBookingCancellationEmail = (bookingData: { chefEmail; chefName; kitchenName; bookingDate; startTime; endTime; cancellationReason string }) => {
+export const generateBookingCancellationEmail = (bookingData) => {
   const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Your kitchen booking has been cancelled.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>📝 Reason:</strong> ${bookingData.cancellationReason}` : ''}</div><p class="message">You can make a new booking anytime from your dashboard.</p><a href="${getDashboardUrl()}/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">Browse Available Kitchens</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: bookingData.chefEmail, subject, text: `Hello ${bookingData.chefName}, Your kitchen booking has been cancelled. Kitchen: ${bookingData.kitchenName}, Date: ${new Date(bookingData.bookingDate).toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}${bookingData.cancellationReason ? `. Reason: ${bookingData.cancellationReason}` : ''}`, html };
 };
 
 // Kitchen availability change notification email for chefs
-export const generateKitchenAvailabilityChangeEmail = (data: { chefEmail; chefName; kitchenName; changeType; details: string }) => {
+export const generateKitchenAvailabilityChangeEmail = (data) => {
   const subject = `Kitchen Availability Update - ${data.kitchenName}`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">The availability for <strong>${data.kitchenName}</strong> has been updated.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📋 Change Type:</strong> ${data.changeType}<br><strong>📝 Details:</strong> ${data.details}</div><p class="message">Please check the updated availability before making your next booking.</p><a href="${getDashboardUrl()}/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Availability</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.chefEmail, subject, text: `Hello ${data.chefName}, The availability for ${data.kitchenName} has been updated. Change Type: ${data.changeType}. Details: ${data.details}`, html };
 };
 
 // Kitchen settings change notification email for chefs and managers
-export const generateKitchenSettingsChangeEmail = (data: { email; name; kitchenName; changes; isChef: boolean }) => {
+export const generateKitchenSettingsChangeEmail = (data) => {
   const subject = `Kitchen Settings Updated - ${data.kitchenName}`;
   const greeting = data.isChef ? `Hello ${data.name},` : `Hello ${data.name},`;
   const message = data.isChef 
@@ -3212,7 +3089,7 @@ export const generateKitchenSettingsChangeEmail = (data: { email; name; kitchenN
 };
 
 // Chef profile request notification email for managers
-export const generateChefProfileRequestEmail = (data: { managerEmail; chefName; chefEmail; locationName; locationId: number }) => {
+export const generateChefProfileRequestEmail = (data) => {
   const subject = `Chef Access Request - ${data.locationName}`;
   const baseUrl = getWebsiteUrl();
   const reviewUrl = `${baseUrl}/manager/chefs?locationId=${data.locationId}`;
@@ -3221,7 +3098,7 @@ export const generateChefProfileRequestEmail = (data: { managerEmail; chefName; 
 };
 
 // Chef location access approved notification email for chefs
-export const generateChefLocationAccessApprovedEmail = (data: { chefEmail; chefName; locationName; locationId: number }) => {
+export const generateChefLocationAccessApprovedEmail = (data) => {
   const subject = `Kitchen Access Approved - ${data.locationName}`;
   const baseUrl = getWebsiteUrl();
   const bookingsUrl = `${baseUrl}/bookings`;
@@ -3230,7 +3107,7 @@ export const generateChefLocationAccessApprovedEmail = (data: { chefEmail; chefN
 };
 
 // Chef kitchen access approved notification email for chefs (when manager approves kitchen profile)
-export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail; chefName; kitchenName; kitchenId: number }) => {
+export const generateChefKitchenAccessApprovedEmail = (data) => {
   const subject = `Kitchen Access Approved - ${data.kitchenName}`;
   const baseUrl = getWebsiteUrl();
   const bookingsUrl = `${baseUrl}/bookings`;
@@ -3239,7 +3116,7 @@ export const generateChefKitchenAccessApprovedEmail = (data: { chefEmail; chefNa
 };
 
 // Location notification email changed notification email
-export const generateLocationEmailChangedEmail = (data: { email; locationName; locationId: number }) => {
+export const generateLocationEmailChangedEmail = (data) => {
   const subject = `Location Notification Email Updated - ${data.locationName}`;
   const baseUrl = getWebsiteUrl();
   const dashboardUrl = `${baseUrl}/manager/dashboard`;

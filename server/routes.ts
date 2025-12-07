@@ -4949,8 +4949,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check daily booking limit
-      const { db } = await import('./db');
-      const { pool } = db;
+      const { pool } = await import('./db');
       
       // Calculate requested slots
       const [sH, sM] = String(startTime).split(':').map(Number);
@@ -7646,6 +7645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user's assigned location
       const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
+      const { db } = await import('./db');
       
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
@@ -7720,8 +7720,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check daily booking limit
-      const { db } = await import('./db');
-      const { pool } = db;
+      const { pool } = await import('./db');
       
       if (pool) {
         // Calculate requested slots
@@ -7861,7 +7860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Send SMS to manager
         try {
-          const { db } = await import('./db');
+          const { db, pool } = await import('./db');
           const { locations } = await import('../shared/schema');
           const { eq } = await import('drizzle-orm');
           
