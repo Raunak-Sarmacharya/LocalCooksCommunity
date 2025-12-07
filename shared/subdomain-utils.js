@@ -7,7 +7,7 @@
  * @param hostname - The hostname from the request (e.g., 'chef.localcooks.ca' or 'localhost:5000')
  * @returns The subdomain type or null
  */
-function getSubdomainFromHostname(hostname) {
+export function getSubdomainFromHostname(hostname) {
   if (!hostname) return null;
 
   // Remove port if present
@@ -51,7 +51,7 @@ function getSubdomainFromHostname(hostname) {
  * @param baseDomain - The base domain (default: 'localcooks.ca')
  * @returns The full URL
  */
-function getSubdomainUrl(subdomainType, baseDomain = 'localcooks.ca') {
+export function getSubdomainUrl(subdomainType, baseDomain = 'localcooks.ca') {
   if (!subdomainType || subdomainType === 'main') {
     return `https://${baseDomain}`;
   }
@@ -63,7 +63,7 @@ function getSubdomainUrl(subdomainType, baseDomain = 'localcooks.ca') {
  * @param headers - Request headers object
  * @returns The subdomain type
  */
-function getSubdomainFromHeaders(headers) {
+export function getSubdomainFromHeaders(headers) {
   // Check x-forwarded-host first (Vercel sets this)
   const forwardedHost = headers['x-forwarded-host'] || headers['x-vercel-deployment-url'];
   if (forwardedHost) {
@@ -87,7 +87,7 @@ function getSubdomainFromHeaders(headers) {
  * @param routePath - The route path
  * @returns Whether the route is accessible
  */
-function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
+export function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
   // Admin routes only accessible from admin subdomain
   if (routePath.startsWith('/admin')) {
     return subdomainType === 'admin';
@@ -129,11 +129,4 @@ function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
   // Default: accessible from all subdomains
   return true;
 }
-
-module.exports = {
-  getSubdomainFromHostname,
-  getSubdomainUrl,
-  getSubdomainFromHeaders,
-  isRouteAccessibleFromSubdomain
-};
 

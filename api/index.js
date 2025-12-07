@@ -257,7 +257,7 @@ app.use(session({
 }));
 
 // Import subdomain utilities
-const { getSubdomainFromHeaders } = require('./shared/subdomain-utils.js');
+import { getSubdomainFromHeaders } from './shared/subdomain-utils.js';
 
 // Add subdomain detection middleware
 app.use((req, res, next) => {

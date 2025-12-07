@@ -101,9 +101,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       
       if (targetSubdomain && targetSubdomain !== currentSubdomain) {
         const baseDomain = 'localcooks.ca';
-        const targetUrl = targetSubdomain === 'main' 
-          ? `https://${baseDomain}${path}`
-          : `https://${targetSubdomain}.${baseDomain}${path}`;
+        const targetUrl = `https://${targetSubdomain}.${baseDomain}${path}`;
         window.location.href = targetUrl;
       }
     }
@@ -150,29 +148,32 @@ function Router() {
     // Only redirect if we're on a subdomain that's not the correct one
     // Main domain (subdomain === 'main') should never redirect
     
-    // Redirect admin routes to admin subdomain (only if not on main domain)
-    if ((path.startsWith('/admin') || path.startsWith('/admin/')) && subdomain !== 'admin' && subdomain !== 'main') {
+    // At this point, subdomain is guaranteed to be one of: 'chef' | 'driver' | 'kitchen' | 'admin'
+    // (not 'main' or null due to early return above)
+    
+    // Redirect admin routes to admin subdomain
+    if ((path.startsWith('/admin') || path.startsWith('/admin/')) && subdomain !== 'admin') {
       window.location.href = `https://admin.localcooks.ca${path}`;
       return;
     }
     
-    // Redirect chef routes to chef subdomain (only if not on main domain)
+    // Redirect chef routes to chef subdomain
     if ((path.startsWith('/apply') || path.startsWith('/dashboard') || 
          path.startsWith('/book-kitchen') || path.startsWith('/share-profile')) && 
-        subdomain !== 'chef' && subdomain !== 'main') {
+        subdomain !== 'chef') {
       window.location.href = `https://chef.localcooks.ca${path}`;
       return;
     }
     
-    // Redirect delivery partner routes to driver subdomain (only if not on main domain)
-    if (path.startsWith('/delivery-partner-apply') && subdomain !== 'driver' && subdomain !== 'main') {
+    // Redirect delivery partner routes to driver subdomain
+    if (path.startsWith('/delivery-partner-apply') && subdomain !== 'driver') {
       window.location.href = `https://driver.localcooks.ca${path}`;
       return;
     }
     
-    // Redirect portal/manager routes to kitchen subdomain (only if not on main domain)
+    // Redirect portal/manager routes to kitchen subdomain
     if ((path.startsWith('/portal') || path.startsWith('/manager')) && 
-        subdomain !== 'kitchen' && subdomain !== 'admin' && subdomain !== 'main') {
+        subdomain !== 'kitchen' && subdomain !== 'admin') {
       window.location.href = `https://kitchen.localcooks.ca${path}`;
       return;
     }
