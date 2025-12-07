@@ -4350,11 +4350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     }
                   }
                 } catch (portalAppError) {
-                      console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
-                    }
-                  }
-                } catch (portalSmsError) {
-                  console.error(`❌ Error sending booking cancellation SMS to portal user:`, portalSmsError);
+                  console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
                 }
               }
             }
@@ -5050,10 +5046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.debug(`Could not get full name for chef ${req.user!.id} from applications, using username`);
           }
           if (!chefPhone) {
-              console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
-            }
-          } catch (error) {
-            console.log(`✅ STEP 2.5 COMPLETE: Could not query application, using username (non-critical)`);
+            console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
           }
         } else {
           console.log(`✅ STEP 2.5 COMPLETE: Pool not available, using username`);
