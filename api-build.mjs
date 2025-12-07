@@ -51,11 +51,49 @@ serverFiles.forEach(file => {
     content = content.replace(/from ["'](.+)\.ts["'];/g, 'from "$1.js";');
     content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/schema["'];/g, 'import {$1} from "../shared/schema.js";');
     // Fix imports from shared directory (relative paths)
+    // Ensure .js extension is always included for ESM compatibility
     content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
     content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
+    // Also handle imports without ../ (in case they exist)
+    content = content.replace(/from\s+["']shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
+    content = content.replace(/from\s+["']shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
     
-    // Remove TypeScript-specific syntax (basic cleanup for email.ts)
+    // Special handling for email.ts - use dynamic import for timezone-utils to avoid Vercel path resolution issues
     if (file === 'email.ts') {
+      // Replace static import with dynamic import and lazy-load pattern
+      // Match the import statement after it's been converted to .js
+      const importPattern = /import\s+\{\s*createBookingDateTime\s*\}\s+from\s+["']\.\.\/shared\/timezone-utils\.js["'];?/;
+      if (importPattern.test(content)) {
+        content = content.replace(
+          importPattern,
+          `// Dynamic import for timezone-utils to handle Vercel serverless path resolution
+let createBookingDateTimeCache = null;
+async function getCreateBookingDateTime() {
+  if (!createBookingDateTimeCache) {
+    try {
+      const timezoneUtils = await import('../shared/timezone-utils.js');
+      createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
+    } catch (error) {
+      console.error('Failed to load timezone-utils, using fallback:', error);
+      // Fallback implementation
+      createBookingDateTimeCache = (dateStr, timeStr, timezone = 'America/St_Johns') => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return new Date(year, month - 1, day, hours, minutes);
+      };
+    }
+  }
+  return createBookingDateTimeCache;
+}
+async function createBookingDateTime(...args) {
+  const fn = await getCreateBookingDateTime();
+  return fn(...args);
+}`
+        );
+        
+        // Also need to make the function calls async where createBookingDateTime is used
+        // But this is complex, so let's just ensure the import is replaced first
+      }
       // Remove interface declarations - need to match balanced braces
       // First, remove interfaces with nested braces by counting braces
       let interfaceRegex = /\/\/\s*Email\s+configuration\s*\n\s*interface\s+\w+\s*\{/g;

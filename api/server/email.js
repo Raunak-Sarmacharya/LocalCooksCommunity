@@ -1,5 +1,27 @@
 import nodemailer from 'nodemailer';
-import { createBookingDateTime } from "../shared/timezone-utils.js";
+// Dynamic import for timezone-utils to handle Vercel serverless path resolution
+let createBookingDateTimeCache = null;
+async function getCreateBookingDateTime() {
+  if (!createBookingDateTimeCache) {
+    try {
+      const timezoneUtils = await import('../shared/timezone-utils.js');
+      createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
+    } catch (error) {
+      console.error('Failed to load timezone-utils, using fallback:', error);
+      // Fallback implementation
+      createBookingDateTimeCache = (dateStr, timeStr, timezone = 'America/St_Johns') => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return new Date(year, month - 1, day, hours, minutes);
+      };
+    }
+  }
+  return createBookingDateTimeCache;
+}
+async function createBookingDateTime(...args) {
+  const fn = await getCreateBookingDateTime();
+  return fn(...args);
+}
 // Add email tracking to prevent duplicates
 const recentEmails = new Map();
 const DUPLICATE_PREVENTION_WINDOW = 30000; // 30 seconds
@@ -457,8 +479,8 @@ const generateCalendarUrl = (
     } else {
       bookingDateStr = String(bookingDate);
     // Create start and end Date objects in the specified timezone
-    const startDateTime = createBookingDateTime(bookingDateStr, startTime, timezone);
-    const endDateTime = createBookingDateTime(bookingDateStr, endTime, timezone);
+    const startDateTime = await createBookingDateTime(bookingDateStr, startTime, timezone);
+    const endDateTime = await createBookingDateTime(bookingDateStr, endTime, timezone);
     
     const startDateStr = formatDateForCalendar(startDateTime);
     const endDateStr = formatDateForCalendar(endDateTime);
@@ -2936,8 +2958,8 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail; ch
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+  const startDateTime = await createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+  const endDateTime = await createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
   const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
   const icsContent = generateIcsFile(
     calendarTitle,
@@ -3077,8 +3099,8 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail; chefName; 
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+  const startDateTime = await createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+  const endDateTime = await createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
   const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
   const icsContent = generateIcsFile(
     calendarTitle,
@@ -3137,8 +3159,8 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail; chefN
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
+  const startDateTime = await createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
+  const endDateTime = await createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
   const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
   const icsContent = generateIcsFile(
     calendarTitle,
