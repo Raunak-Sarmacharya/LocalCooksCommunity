@@ -442,9 +442,12 @@ export class FirebaseStorage {
 
   // ===== LOCATIONS MANAGEMENT =====
   
-  async createLocation(locationData: { name: string; address: string; managerId?: number; notificationEmail?: string }): Promise<any> {
+  async createLocation(locationData: { name: string; address: string; managerId?: number; notificationEmail?: string; notificationPhone?: string }): Promise<any> {
     try {
       console.log('Inserting location into database:', locationData);
+      
+      // Import phone normalization utility
+      const { normalizePhoneForStorage } = await import('./phone-utils');
       
       // Build the insert data, excluding managerId if it's undefined
       const insertData: any = {
@@ -460,6 +463,13 @@ export class FirebaseStorage {
       // Include notificationEmail if provided
       if (locationData.notificationEmail !== undefined && locationData.notificationEmail !== null && locationData.notificationEmail !== '') {
         insertData.notificationEmail = locationData.notificationEmail;
+      }
+      
+      // Include notificationPhone if provided (already normalized by routes)
+      if (locationData.notificationPhone !== undefined && locationData.notificationPhone !== null && locationData.notificationPhone !== '') {
+        // Double-check normalization (should already be normalized, but ensure it)
+        const normalized = normalizePhoneForStorage(locationData.notificationPhone);
+        insertData.notificationPhone = normalized || locationData.notificationPhone;
       }
       
       console.log('Insert data:', insertData);
@@ -542,11 +552,25 @@ export class FirebaseStorage {
   }
 
 
-  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number; notificationEmail?: string | null }): Promise<any> {
+  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number; notificationEmail?: string | null; notificationPhone?: string | null }): Promise<any> {
     try {
+      // Import phone normalization utility
+      const { normalizePhoneForStorage } = await import('./phone-utils');
+      
+      // Normalize notificationPhone if provided
+      const normalizedUpdates = { ...updates };
+      if (updates.notificationPhone !== undefined) {
+        if (updates.notificationPhone && updates.notificationPhone.trim() !== '') {
+          // Should already be normalized by routes, but ensure it
+          normalizedUpdates.notificationPhone = normalizePhoneForStorage(updates.notificationPhone) || updates.notificationPhone;
+        } else {
+          normalizedUpdates.notificationPhone = null;
+        }
+      }
+      
       const [updated] = await db
         .update(locations)
-        .set({ ...updates, updatedAt: new Date() })
+        .set({ ...normalizedUpdates, updatedAt: new Date() })
         .where(eq(locations.id, id))
         .returning();
       return updated;

@@ -1,0 +1,150 @@
+import { validateAndNormalizePhone } from '@shared/phone-validation';
+
+/**
+ * Utility functions for phone number handling across the application
+ */
+
+/**
+ * Gets a manager's phone number with fallback logic
+ * Priority: location.notificationPhone > applications.phone (manager's application)
+ * Always checks applications table as fallback if location phone is not available
+ */
+export async function getManagerPhone(
+  location: any,
+  managerId: number | null | undefined,
+  pool: any
+): Promise<string | null> {
+  // First, check location's notification phone
+  let phone = location?.notificationPhone || location?.notification_phone || null;
+  
+  if (phone) {
+    const normalized = validateAndNormalizePhone(phone);
+    if (normalized) {
+      return normalized;
+    }
+    console.warn(`⚠️ Location notification phone is invalid format: ${phone}`);
+  }
+  
+  // Fallback: Get phone from manager's application
+  if (!phone && managerId && pool) {
+    try {
+      const result = await pool.query(
+        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [managerId]
+      );
+      
+      if (result.rows.length > 0 && result.rows[0].phone) {
+        phone = result.rows[0].phone;
+        const normalized = validateAndNormalizePhone(phone);
+        if (normalized) {
+          return normalized;
+        }
+        console.warn(`⚠️ Manager application phone is invalid format: ${phone}`);
+      }
+    } catch (error) {
+      // Non-critical error
+      console.warn('Could not retrieve manager phone from application:', error);
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Gets a chef's phone number from their application
+ */
+export async function getChefPhone(
+  chefId: number,
+  pool: any
+): Promise<string | null> {
+  if (!chefId || !pool) return null;
+  
+  try {
+    const result = await pool.query(
+      'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [chefId]
+    );
+    
+    if (result.rows.length > 0 && result.rows[0].phone) {
+      const phone = result.rows[0].phone;
+      const normalized = validateAndNormalizePhone(phone);
+      if (normalized) {
+        return normalized;
+      }
+      console.warn(`⚠️ Chef application phone is invalid format: ${phone}`);
+    }
+  } catch (error) {
+    console.warn('Could not retrieve chef phone from application:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Gets a portal user's phone number from their application
+ * Priority: portal_user_applications.phone > applications.phone (fallback)
+ */
+export async function getPortalUserPhone(
+  userId: number,
+  locationId: number,
+  pool: any
+): Promise<string | null> {
+  if (!userId || !pool) return null;
+  
+  let phone: string | null = null;
+  
+  // First, try portal_user_applications table (if locationId is provided)
+  if (locationId) {
+    try {
+      const result = await pool.query(
+        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
+        [userId, locationId]
+      );
+      
+      if (result.rows.length > 0 && result.rows[0].phone) {
+        phone = result.rows[0].phone;
+        const normalized = validateAndNormalizePhone(phone);
+        if (normalized) {
+          return normalized;
+        }
+        console.warn(`⚠️ Portal user application phone is invalid format: ${phone}`);
+        phone = null; // Reset if invalid
+      }
+    } catch (error) {
+      console.warn('Could not retrieve portal user phone from portal_user_applications:', error);
+    }
+  }
+  
+  // Fallback: Get phone from applications table (if not found in portal_user_applications)
+  if (!phone) {
+    try {
+      const result = await pool.query(
+        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [userId]
+      );
+      
+      if (result.rows.length > 0 && result.rows[0].phone) {
+        phone = result.rows[0].phone;
+        const normalized = validateAndNormalizePhone(phone);
+        if (normalized) {
+          return normalized;
+        }
+        console.warn(`⚠️ Applications table phone is invalid format: ${phone}`);
+      }
+    } catch (error) {
+      console.warn('Could not retrieve phone from applications table:', error);
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Normalizes a phone number before storing in database
+ * Always stores in E.164 format for consistency
+ */
+export function normalizePhoneForStorage(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  return validateAndNormalizePhone(phone);
+}
+

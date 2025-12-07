@@ -10,17 +10,50 @@ import { Label } from "@/components/ui/label";
 import { ArrowRight, Mail, Phone, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
+// Phone validation helper (matches server-side validation)
+const phoneNumberSchema = z.string()
+  .min(1, "Phone number is required")
+  .refine(
+    (val) => {
+      // Remove all non-digit characters except +
+      const cleaned = val.replace(/[^\d+]/g, '');
+      
+      // Check if it starts with +
+      if (cleaned.startsWith('+')) {
+        const digitsAfterPlus = cleaned.substring(1);
+        // Must be +1 followed by 10 digits (North American)
+        if (digitsAfterPlus.startsWith('1') && digitsAfterPlus.length === 11) {
+          const areaCode = parseInt(digitsAfterPlus[1]);
+          const exchangeCode = parseInt(digitsAfterPlus[4]);
+          return areaCode >= 2 && areaCode <= 9 && exchangeCode >= 2 && exchangeCode <= 9;
+        }
+        return false;
+      }
+      
+      // Check 10 or 11 digit format
+      const digitsOnly = cleaned.replace(/\D/g, '');
+      if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+        const areaCode = parseInt(digitsOnly[1]);
+        const exchangeCode = parseInt(digitsOnly[4]);
+        return areaCode >= 2 && areaCode <= 9 && exchangeCode >= 2 && exchangeCode <= 9;
+      }
+      if (digitsOnly.length === 10) {
+        const areaCode = parseInt(digitsOnly[0]);
+        const exchangeCode = parseInt(digitsOnly[3]);
+        return areaCode >= 2 && areaCode <= 9 && exchangeCode >= 2 && exchangeCode <= 9;
+      }
+      return false;
+    },
+    {
+      message: "Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+    }
+  );
+
 // Create a schema for just the personal info fields - matching main schema validation
 const personalInfoSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string()
-    .min(13, "Phone numbers must be 10 digits")
-    .regex(/^\+1\s[0-9\s\(\)\-\.]+$/, "Phone numbers must be 10 digits")
-    .refine((val) => {
-      const digitsOnly = val.replace(/\D/g, '');
-      return digitsOnly.length === 11 && digitsOnly.startsWith('1');
-    }, "Phone numbers must be 10 digits"),
+  phone: phoneNumberSchema,
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
