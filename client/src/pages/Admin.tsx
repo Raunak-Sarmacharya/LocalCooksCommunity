@@ -62,6 +62,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ChangePassword from "@/components/auth/ChangePassword";
 import { useToast } from "@/hooks/use-toast";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
@@ -1095,7 +1096,7 @@ function AdminDashboard() {
           >
             {/* Main Admin Tabs */}
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-5 rounded-xl bg-gray-100 p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-6 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
                   Chef Applications
@@ -1115,6 +1116,10 @@ function AdminDashboard() {
                 <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
                   <ExternalLink className="h-4 w-4" />
                   Manage Kitchens
+                </TabsTrigger>
+                <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
+                  <Shield className="h-4 w-4" />
+                  Account Settings
                 </TabsTrigger>
               </TabsList>
 
@@ -1403,6 +1408,17 @@ function AdminDashboard() {
                   >
                     Open Kitchen Management →
                   </Button>
+                </div>
+              </TabsContent>
+
+              {/* Account Settings Tab Content */}
+              <TabsContent value="account-settings" className="mt-0">
+                <div className="max-w-2xl">
+                  <div className="mb-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Account Settings</h3>
+                    <p className="text-gray-600">Manage your admin account password</p>
+                  </div>
+                  <ChangePassword role="admin" />
                 </div>
               </TabsContent>
             </Tabs>

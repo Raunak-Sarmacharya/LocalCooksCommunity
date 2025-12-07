@@ -1,5 +1,5 @@
 import type { User } from "@shared/schema";
-import { insertApplicationSchema, updateApplicationStatusSchema, updateDeliveryPartnerApplicationStatusSchema, updateDocumentVerificationSchema } from "../shared/schema.js";
+import { insertApplicationSchema, updateApplicationStatusSchema, updateDeliveryPartnerApplicationStatusSchema, updateDocumentVerificationSchema } from "../shared/schema.js.js";
 import type { Express, Request, Response } from "express";
 import fs from "fs";
 import { createServer, type Server } from "http";
@@ -10,18 +10,19 @@ import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFood
 import { setupAuth } from "./auth";
 import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
 import { sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS } from "./sms";
+import { getManagerPhone, getChefPhone, getPortalUserPhone, normalizePhoneForStorage } from "./phone-utils";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
-import { chefKitchenAccess, chefLocationAccess, users, locations, applications } from "../shared/schema.js";
+import { chefKitchenAccess, chefLocationAccess, users, locations, applications, kitchens } from "../shared/schema.js.js";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
 
 // Import portal user applications schema
-import { portalUserApplications, portalUserLocationAccess } from "../shared/schema.js";
+import { portalUserApplications, portalUserLocationAccess } from "../shared/schema.js.js";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
@@ -163,9 +164,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Ensure the application is associated with the current user
         // Override any userId in the request to prevent spoofing
+        // Normalize phone number before storing (schema already does this via transform, but ensure it's done)
         const applicationData = {
           ...parsedData.data,
-          userId: req.user!.id
+          userId: req.user!.id,
+          phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone, // Ensure normalization
         };
 
         console.log('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
@@ -3378,20 +3381,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       if (notificationPhone !== undefined) {
-        // Validate phone format if provided and not empty (basic validation)
+        // Normalize phone number if provided
         if (notificationPhone && notificationPhone.trim() !== '') {
-          const phoneDigits = notificationPhone.replace(/\D/g, '');
-          // Basic validation: should have at least 10 digits (US/Canada format)
-          if (phoneDigits.length < 10) {
-            return res.status(400).json({ error: "Invalid phone number format. Please include area code." });
+          const normalized = normalizePhoneForStorage(notificationPhone);
+          if (!normalized) {
+            return res.status(400).json({ 
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            });
           }
+          (updates as any).notificationPhone = normalized;
+          console.log('[PUT] Setting notificationPhone:', { 
+            raw: notificationPhone, 
+            normalized: normalized
+          });
+        } else {
+          (updates as any).notificationPhone = null;
         }
-        // Set to null if empty string, otherwise use the value
-        (updates as any).notificationPhone = notificationPhone && notificationPhone.trim() !== '' ? notificationPhone.trim() : null;
-        console.log('[PUT] Setting notificationPhone:', { 
-          raw: notificationPhone, 
-          processed: (updates as any).notificationPhone
-        });
       }
       if (logoUrl !== undefined) {
         // Set to null if empty string, otherwise use the value
@@ -4128,20 +4133,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             let chefName = chef.username || 'Chef';
             let chefPhone: string | null = null;
             if (pool && booking.chefId) {
+              // Get phone using utility function (from applications table)
+              chefPhone = await getChefPhone(booking.chefId, pool);
+              
+              // Get full name from application
               try {
                 const appResult = await pool.query(
-                  'SELECT full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+                  'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
                   [booking.chefId]
                 );
-                if (appResult.rows.length > 0) {
-                  if (appResult.rows[0].full_name) {
-                    chefName = appResult.rows[0].full_name;
-                  }
-                  if (appResult.rows[0].phone) {
-                    chefPhone = appResult.rows[0].phone;
-                  }
-                  console.log(`📋 Using application full name "${chefName}" for chef ${booking.chefId} in confirmation email${chefPhone ? `, phone: ${chefPhone}` : ''}`);
+                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                  chefName = appResult.rows[0].full_name;
                 }
+                console.log(`📋 Using application full name "${chefName}" for chef ${booking.chefId} in confirmation email${chefPhone ? `, phone: ${chefPhone}` : ''}`);
               } catch (error) {
                 console.debug(`Could not get full name for chef ${booking.chefId} from applications, using username`);
               }
@@ -4155,6 +4159,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (status === 'confirmed') {
                 // Send confirmation email to chef
                 try {
+                  const locationTimezone = location ? ((location as any).timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
+                  const locationName = location ? (location.name || kitchen.name) : kitchen.name;
                   const confirmationEmail = generateBookingConfirmationEmail({
                     chefEmail: chefEmailAddress,
                     chefName: chefName,
@@ -4162,7 +4168,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     bookingDate: booking.bookingDate,
                     startTime: booking.startTime,
                     endTime: booking.endTime,
-                    specialNotes: booking.specialNotes
+                    specialNotes: booking.specialNotes,
+                    timezone: locationTimezone,
+                    locationName: locationName
                   });
                   const emailSent = await sendEmail(confirmationEmail);
                   if (emailSent) {
@@ -4195,6 +4203,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
                   try {
+                    const locationTimezone = location ? ((location as any).timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
+                    const locationName = location ? (location.name || kitchen.name) : kitchen.name;
                     const managerEmail = generateBookingStatusChangeNotificationEmail({
                       managerEmail: notificationEmailAddress,
                       chefName: chefName,
@@ -4202,7 +4212,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       bookingDate: booking.bookingDate,
                       startTime: booking.startTime,
                       endTime: booking.endTime,
-                      status: 'confirmed'
+                      status: 'confirmed',
+                      timezone: locationTimezone,
+                      locationName: locationName
                     });
                     const emailSent = await sendEmail(managerEmail);
                     if (emailSent) {
@@ -4222,15 +4234,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
                   
                   if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
-                    // Get portal user phone from portal_user_applications table
                     try {
-                      const portalAppResult = await pool.query(
-                        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
-                        [booking.chefId, kitchenLocationId]
-                      );
+                      // Get portal user phone using utility function (normalized)
+                      const portalUserPhone = await getPortalUserPhone(booking.chefId, kitchenLocationId, pool);
                       
-                      if (portalAppResult.rows.length > 0 && portalAppResult.rows[0].phone) {
-                        const portalUserPhone = portalAppResult.rows[0].phone;
+                      if (portalUserPhone) {
                         const smsMessage = generatePortalUserBookingConfirmationSMS({
                           kitchenName: kitchen.name || 'Kitchen',
                           bookingDate: booking.bookingDate,
@@ -4293,6 +4301,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
                   try {
+                    const locationTimezone = location ? ((location as any).timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
+                    const locationName = location ? (location.name || kitchen.name) : kitchen.name;
                     const managerEmail = generateBookingStatusChangeNotificationEmail({
                       managerEmail: notificationEmailAddress,
                       chefName: chefName,
@@ -4300,7 +4310,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       bookingDate: booking.bookingDate,
                       startTime: booking.startTime,
                       endTime: booking.endTime,
-                      status: 'cancelled'
+                      status: 'cancelled',
+                      timezone: locationTimezone,
+                      locationName: locationName
                     });
                     const emailSent = await sendEmail(managerEmail);
                     if (emailSent) {
@@ -4320,33 +4332,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
                   
                   if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
-                    // Get portal user phone from portal_user_applications table
-                    try {
-                      const portalAppResult = await pool.query(
-                        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
-                        [booking.chefId, kitchenLocationId]
-                      );
-                      
-                      if (portalAppResult.rows.length > 0 && portalAppResult.rows[0].phone) {
-                        const portalUserPhone = portalAppResult.rows[0].phone;
-                        const smsMessage = generatePortalUserBookingCancellationSMS({
-                          kitchenName: kitchen.name || 'Kitchen',
-                          bookingDate: booking.bookingDate,
-                          startTime: booking.startTime,
-                          endTime: booking.endTime,
-                          reason: 'The manager has cancelled this booking'
-                        });
-                        await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_cancelled` });
-                        console.log(`✅ Booking cancellation SMS sent to portal user: ${portalUserPhone}`);
-                      } else {
-                        console.log(`📱 No phone number found in portal_user_applications for user ${booking.chefId} and location ${kitchenLocationId}`);
-                      }
-                    } catch (portalAppError) {
-                      console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
+                    // Get portal user phone using utility function (normalized)
+                    const portalUserPhone = await getPortalUserPhone(booking.chefId, kitchenLocationId, pool);
+                    
+                    if (portalUserPhone) {
+                      const smsMessage = generatePortalUserBookingCancellationSMS({
+                        kitchenName: kitchen.name || 'Kitchen',
+                        bookingDate: booking.bookingDate,
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        reason: 'The manager has cancelled this booking'
+                      });
+                      await sendSMS(portalUserPhone, smsMessage, { trackingId: `booking_${id}_portal_cancelled` });
+                      console.log(`✅ Booking cancellation SMS sent to portal user: ${portalUserPhone}`);
+                    } else {
+                      console.log(`📱 No phone number found in portal_user_applications for user ${booking.chefId} and location ${kitchenLocationId}`);
                     }
                   }
-                } catch (portalSmsError) {
-                  console.error(`❌ Error sending booking cancellation SMS to portal user:`, portalSmsError);
+                } catch (portalAppError) {
+                  console.error(`❌ Error querying portal_user_applications for SMS:`, portalAppError);
                 }
               }
             }
@@ -4748,10 +4752,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all kitchens with location and manager info
   app.get("/api/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
-      // Only return kitchens the chef has been granted access to by admin
-      const chefKitchens = await firebaseStorage.getKitchensForChef(req.user!.id);
+      // For marketing purposes, show ALL active kitchens at all locations
+      // Chefs can see all available commercial kitchen locations
+      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
       
-      res.json(chefKitchens);
+      // Filter only active kitchens
+      const activeKitchens = allKitchens.filter((kitchen: any) => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      console.log(`[API] /api/chef/kitchens - Returning ${activeKitchens.length} active kitchens (all locations for marketing)`);
+      
+      res.json(activeKitchens);
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
@@ -4761,8 +4774,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all locations (for chefs to see kitchen locations)
   app.get("/api/chef/locations", requireChef, async (req: Request, res: Response) => {
     try {
-      const locations = await firebaseStorage.getAllLocations();
-      res.json(locations);
+      // Get all locations with active kitchens for marketing purposes
+      const allLocations = await firebaseStorage.getAllLocations();
+      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      
+      // Filter to only locations that have at least one active kitchen
+      const activeKitchens = allKitchens.filter((kitchen: any) => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      const locationIdsWithKitchens = new Set(
+        activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
+      );
+      
+      const locationsWithKitchens = allLocations.filter((location: any) => 
+        locationIdsWithKitchens.has(location.id)
+      );
+      
+      console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
+      
+      res.json(locationsWithKitchens);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
       res.status(500).json({ error: "Failed to fetch locations" });
@@ -4999,24 +5031,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let chefName = chef.username || 'Chef';
         let chefPhone: string | null = null;
         if (pool && req.user!.id) {
+          // Use utility function to get normalized phone
+          chefPhone = await getChefPhone(req.user!.id, pool);
           try {
             const appResult = await pool.query(
-              'SELECT full_name, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+              'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
               [req.user!.id]
             );
-            if (appResult.rows.length > 0) {
-              if (appResult.rows[0].full_name) {
-                chefName = appResult.rows[0].full_name;
-              }
-              if (appResult.rows[0].phone) {
-                chefPhone = appResult.rows[0].phone;
-              }
-              console.log(`✅ STEP 2.5 COMPLETE: Using application full name "${chefName}"${chefPhone ? `, phone: ${chefPhone}` : ''}`);
-            } else {
-              console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
+            if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+              chefName = appResult.rows[0].full_name;
             }
+            console.log(`✅ STEP 2.5 COMPLETE: Using application full name "${chefName}"${chefPhone ? `, phone: ${chefPhone}` : ''}`);
           } catch (error) {
-            console.log(`✅ STEP 2.5 COMPLETE: Could not query application, using username (non-critical)`);
+            console.debug(`Could not get full name for chef ${req.user!.id} from applications, using username`);
+          }
+          if (!chefPhone) {
+            console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
           }
         } else {
           console.log(`✅ STEP 2.5 COMPLETE: Pool not available, using username`);
@@ -5039,7 +5069,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bookingDate: bookingDate,
               startTime,
               endTime,
-              specialNotes: specialNotes || ''
+              specialNotes: specialNotes || '',
+              timezone: timezone,
+              locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.6 PROGRESS: Generated chef email - To: ${chefEmail.to}, Subject: ${chefEmail.subject}`);
             
@@ -5080,7 +5112,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bookingDate: bookingDate,
               startTime,
               endTime,
-              specialNotes: specialNotes || ''
+              specialNotes: specialNotes || '',
+              timezone: timezone,
+              locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.7 PROGRESS: Generated manager email - To: ${managerEmail.to}, Subject: ${managerEmail.subject}`);
             
@@ -5106,24 +5140,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Step 2.8: Send manager SMS notification
         console.log(`📱 STEP 2.8: Sending booking notification SMS to manager...`);
         try {
-          // Get manager phone number - check location notificationPhone first, then manager's application
-          let managerPhone: string | null = (location as any).notificationPhone || (location as any).notification_phone || null;
-          
-          if (!managerPhone && managerId && pool) {
-            // Try to get phone from manager's application (if they have one)
-            try {
-              const managerAppResult = await pool.query(
-                'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                [managerId]
-              );
-              if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
-                managerPhone = managerAppResult.rows[0].phone;
-                console.log(`📱 STEP 2.8 PROGRESS: Found manager phone from application: ${managerPhone}`);
-              }
-            } catch (error) {
-              console.log(`📱 STEP 2.8 PROGRESS: Could not get manager phone from application (non-critical)`);
-            }
-          }
+          // Get manager phone number using utility function (with fallback logic)
+          const managerPhone = await getManagerPhone(location, managerId, pool);
 
           if (managerPhone) {
             const smsMessage = generateManagerBookingSMS({
@@ -5233,21 +5251,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   manager = await storage.getUser(managerId);
                 }
 
-                // Get chef phone from application
-                let chefPhone: string | null = null;
-                if (pool && booking.chefId) {
-                  try {
-                    const appResult = await pool.query(
-                      'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                      [booking.chefId]
-                    );
-                    if (appResult.rows.length > 0 && appResult.rows[0].phone) {
-                      chefPhone = appResult.rows[0].phone;
-                    }
-                  } catch (error) {
-                    // Non-critical
-                  }
-                }
+                // Get chef phone using utility function (from applications table)
+                const chefPhone = await getChefPhone(booking.chefId, pool);
                 
                 // Import email functions
                 const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('./email.js');
@@ -5311,23 +5316,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 // Send SMS to manager
                 try {
-                  // Get manager phone number - check location notificationPhone first, then manager's application
-                  let managerPhone: string | null = (location as any).notificationPhone || (location as any).notification_phone || null;
-                  
-                  if (!managerPhone && managerId && pool) {
-                    // Try to get phone from manager's application
-                    try {
-                      const managerAppResult = await pool.query(
-                        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                        [managerId]
-                      );
-                      if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
-                        managerPhone = managerAppResult.rows[0].phone;
-                      }
-                    } catch (error) {
-                      // Non-critical
-                    }
-                  }
+                  // Get manager phone number using utility function (with fallback to applications table)
+                  const managerPhone = await getManagerPhone(location, managerId, pool);
 
                   if (managerPhone) {
                     const smsMessage = generateManagerBookingCancellationSMS({
@@ -6166,13 +6156,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      console.log('Creating location with:', { name, address, managerId: managerIdNum });
+      // Normalize notification phone if provided
+      let normalizedNotificationPhone: string | undefined = undefined;
+      if (req.body.notificationPhone && req.body.notificationPhone.trim() !== '') {
+        const normalized = normalizePhoneForStorage(req.body.notificationPhone);
+        if (!normalized) {
+          return res.status(400).json({ 
+            error: "Invalid notification phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          });
+        }
+        normalizedNotificationPhone = normalized;
+      }
+      
+      console.log('Creating location with:', { name, address, managerId: managerIdNum, notificationPhone: normalizedNotificationPhone });
       
       const location = await firebaseStorage.createLocation({ 
         name, 
         address, 
         managerId: managerIdNum,
-        notificationEmail: req.body.notificationEmail || undefined
+        notificationEmail: req.body.notificationEmail || undefined,
+        notificationPhone: normalizedNotificationPhone
       });
       
       // Map snake_case to camelCase for consistent API response
@@ -6180,6 +6183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...location,
         managerId: (location as any).managerId || (location as any).manager_id || null,
         notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
+        notificationPhone: (location as any).notificationPhone || (location as any).notification_phone || null,
         cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
         cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
         defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
@@ -6301,7 +6305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ Validated - updating location ${locationId} for admin user ${user.id}`);
 
-      const { name, address, managerId, notificationEmail } = req.body;
+      const { name, address, managerId, notificationEmail, notificationPhone } = req.body;
       
       // Validate managerId if provided
       let managerIdNum: number | undefined | null = undefined;
@@ -6328,6 +6332,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (name !== undefined) updates.name = name;
       if (address !== undefined) updates.address = address;
       if (managerIdNum !== undefined) updates.managerId = managerIdNum;
+      if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail || null;
+      
+      // Normalize phone number if provided
+      if (notificationPhone !== undefined) {
+        if (notificationPhone && notificationPhone.trim() !== '') {
+          const normalized = normalizePhoneForStorage(notificationPhone);
+          if (!normalized) {
+            return res.status(400).json({ 
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            });
+          }
+          updates.notificationPhone = normalized;
+        } else {
+          updates.notificationPhone = null;
+        }
+      }
 
       console.log(`💾 Updating location ${locationId} with:`, updates);
       
@@ -6880,12 +6900,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create application
       let application: any[];
       try {
+        // Normalize phone number before storing
+        const normalizedPhone = normalizePhoneForStorage(phone);
+        if (!normalizedPhone) {
+          return res.status(400).json({ error: "Invalid phone number format. Please enter a valid phone number." });
+        }
+        
         application = await db.insert(portalUserApplications).values({
           userId: user.id,
           locationId: parseInt(locationId),
           fullName: fullName,
           email: email,
-          phone: phone,
+          phone: normalizedPhone, // Store normalized phone number
           company: company || null,
           status: 'inReview',
         }).returning();
@@ -7673,23 +7699,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const locationRecord = await db.select().from(locations).where(eq(locations.id, userLocationId)).limit(1);
           const locationData = locationRecord[0];
           
-          // Get manager phone number - check location notificationPhone first, then manager's application
-          let managerPhone: string | null = (locationData as any)?.notificationPhone || (locationData as any)?.notification_phone || null;
-          
-          if (!managerPhone && (locationData as any)?.managerId && pool) {
-            // Try to get phone from manager's application
-            try {
-              const managerAppResult = await pool.query(
-                'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                [(locationData as any).managerId]
-              );
-              if (managerAppResult.rows.length > 0 && managerAppResult.rows[0].phone) {
-                managerPhone = managerAppResult.rows[0].phone;
-              }
-            } catch (error) {
-              // Non-critical
-            }
-          }
+          // Get manager phone number using utility function (with fallback logic and normalization)
+          const managerPhone = await getManagerPhone(locationData, (locationData as any)?.managerId, pool);
 
           if (managerPhone) {
             const smsMessage = generateManagerPortalBookingSMS({
@@ -7725,6 +7736,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error creating portal booking:", error);
       res.status(500).json({ error: error.message || "Failed to create booking" });
+    }
+  });
+
+  // ===============================
+  // PUBLIC LANDING PAGE ENDPOINTS (No Authentication Required)
+  // ===============================
+
+  // Get public kitchen listings for landing pages (all active kitchens for marketing)
+  app.get("/api/public/kitchens", async (req: Request, res: Response) => {
+    try {
+      const kitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      
+      console.log(`[API] /api/public/kitchens - Found ${kitchens.length} total kitchens`);
+      
+      // Filter only active kitchens (handle both camelCase and snake_case)
+      const activeKitchens = kitchens.filter((kitchen: any) => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      console.log(`[API] /api/public/kitchens - ${activeKitchens.length} active kitchens after filtering`);
+      
+      // Return public-safe info with location data (no limit - show all for marketing)
+      const publicKitchens = activeKitchens
+        .map((kitchen: any) => {
+          const locationId = kitchen.locationId || kitchen.location_id;
+          const locationName = kitchen.locationName || kitchen.location_name;
+          const locationAddress = kitchen.locationAddress || kitchen.location_address;
+          
+          // Log for debugging
+          if (locationId && !locationName) {
+            console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
+          }
+          
+          return {
+            id: kitchen.id,
+            name: kitchen.name,
+            description: kitchen.description,
+            locationId: locationId || null,
+            locationName: locationName || null,
+            locationAddress: locationAddress || null,
+          };
+        });
+
+      console.log(`[API] /api/public/kitchens - Returning ${publicKitchens.length} kitchens (all active for marketing)`);
+      console.log(`[API] Sample kitchen data:`, publicKitchens[0] || "No kitchens");
+
+      res.json(publicKitchens);
+    } catch (error: any) {
+      console.error("Error fetching public kitchens:", error);
+      console.error("Error stack:", error.stack);
+      res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
+    }
+  });
+
+  // Get public locations with active kitchens (for marketing - no authentication required)
+  app.get("/api/public/locations", async (req: Request, res: Response) => {
+    try {
+      const allLocations = await firebaseStorage.getAllLocations();
+      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      
+      // Filter to only active kitchens
+      const activeKitchens = allKitchens.filter((kitchen: any) => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+        return isActive !== false && isActive !== null;
+      });
+      
+      // Get unique location IDs that have active kitchens
+      const locationIdsWithKitchens = new Set(
+        activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
+      );
+      
+      // Filter locations to only those with active kitchens
+      const locationsWithKitchens = allLocations
+        .filter((location: any) => locationIdsWithKitchens.has(location.id))
+        .map((location: any) => {
+          // Count kitchens per location
+          const kitchenCount = activeKitchens.filter((kitchen: any) => 
+            (kitchen.locationId || kitchen.location_id) === location.id
+          ).length;
+          
+          return {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+            kitchenCount: kitchenCount,
+            logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+          };
+        });
+      
+      console.log(`[API] /api/public/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
+      
+      res.json(locationsWithKitchens);
+    } catch (error: any) {
+      console.error("Error fetching public locations:", error);
+      console.error("Error stack:", error.stack);
+      res.status(500).json({ error: "Failed to fetch locations", details: error.message });
+    }
+  });
+
+  // Get public platform statistics for landing pages
+  app.get("/api/public/stats", async (req: Request, res: Response) => {
+    try {
+      if (!db) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      // Get counts from database
+      const [
+        chefCountResult,
+        applicationCountResult,
+        approvedApplicationCountResult,
+        deliveryPartnerCountResult,
+        locationCountResult,
+        kitchenCountResult,
+      ] = await Promise.all([
+        db.select().from(users).where(eq(users.isChef, true)),
+        db.select().from(applications),
+        db.select().from(applications).where(eq(applications.status, "approved")),
+        db.select().from(users).where(eq(users.isDeliveryPartner, true)),
+        db.select().from(locations),
+        db.select().from(kitchens).where(eq(kitchens.isActive, true)),
+      ]);
+
+      const stats = {
+        totalChefs: chefCountResult.length,
+        totalApplications: applicationCountResult.length,
+        approvedChefs: approvedApplicationCountResult.length,
+        totalDeliveryPartners: deliveryPartnerCountResult.length,
+        totalLocations: locationCountResult.length,
+        totalKitchens: kitchenCountResult.length,
+      };
+
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Error fetching public stats:", error);
+      res.status(500).json({ error: "Failed to fetch statistics" });
     }
   });
 

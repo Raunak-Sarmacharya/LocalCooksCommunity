@@ -1,4 +1,4 @@
-import { applications, deliveryPartnerApplications, microlearningCompletions, users, videoProgress, type Application, type DeliveryPartnerApplication, type InsertApplication, type InsertDeliveryPartnerApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDeliveryPartnerApplicationStatus, type UpdateDeliveryPartnerDocuments, type UpdateDeliveryPartnerDocumentVerification, type UpdateDocumentVerification, type User } from "../shared/schema.js";
+import { applications, deliveryPartnerApplications, microlearningCompletions, users, videoProgress, type Application, type DeliveryPartnerApplication, type InsertApplication, type InsertDeliveryPartnerApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDeliveryPartnerApplicationStatus, type UpdateDeliveryPartnerDocuments, type UpdateDeliveryPartnerDocumentVerification, type UpdateDocumentVerification, type User } from "../shared/schema.js.js";
 import connectPg from "connect-pg-simple";
 import { and, eq } from "drizzle-orm";
 import session from "express-session";
