@@ -10,7 +10,6 @@ import {
   MessageSquare, Shield, Heart, Leaf, Globe, Quote, Mail
 } from "lucide-react";
 import { useLocation } from "wouter";
-import chefCookingImage from "../../assets/chef-cooking.png";
 
 export default function ChefLanding() {
   const { user } = useFirebaseAuth();

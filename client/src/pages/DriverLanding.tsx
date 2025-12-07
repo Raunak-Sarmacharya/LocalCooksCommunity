@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Truck, Clock, DollarSign, Route, MapPin, Shield } from "lucide-react";
 import { useLocation } from "wouter";
-import foodDeliveryImage from "../../assets/food-delivery.png";
+import foodDeliveryImage from "@/assets/food-delivery.png";
 
 export default function DriverLanding() {
   const { user } = useFirebaseAuth();
