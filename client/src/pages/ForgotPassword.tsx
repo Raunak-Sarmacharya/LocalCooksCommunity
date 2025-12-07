@@ -7,13 +7,18 @@ import ForgotPasswordForm from "../components/auth/ForgotPasswordForm";
 export default function ForgotPassword() {
   const [, setLocation] = useLocation();
   const [emailSent, setEmailSent] = useState(false);
+  
+  // Get role from URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const role = urlParams.get('role');
 
   const handleSuccess = () => {
     setEmailSent(true);
   };
 
   const handleGoBack = () => {
-    setLocation("/auth");
+    const redirectPath = role === 'manager' ? '/manager/login' : '/auth';
+    setLocation(redirectPath);
   };
 
   return (
@@ -27,7 +32,7 @@ export default function ForgotPassword() {
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          <span>Back to Login</span>
+          <span>Back to {role === 'manager' ? 'Manager ' : ''}Login</span>
         </motion.button>
       </div>
 
@@ -42,6 +47,7 @@ export default function ForgotPassword() {
             <ForgotPasswordForm
               onSuccess={handleSuccess}
               onGoBack={handleGoBack}
+              role={role || undefined}
             />
           </motion.div>
         </div>

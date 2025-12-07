@@ -324,7 +324,7 @@ export default function ManagerLogin() {
 
                 <motion.div variants={itemVariants} className="text-center">
                   <Link
-                    href="/password-reset?role=manager"
+                    href="/forgot-password?role=manager"
                     className="text-sm text-blue-600 hover:text-blue-700 hover:underline transition-colors"
                   >
                     Forgot your password?

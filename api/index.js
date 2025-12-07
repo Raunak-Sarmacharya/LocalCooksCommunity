@@ -1620,6 +1620,189 @@ app.post('/api/firebase/reset-password', async (req, res) => {
   }
 });
 
+// Manager forgot password endpoint (for managers who don't have Firebase accounts)
+app.post('/api/manager/forgot-password', async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ message: "Username is required" });
+    }
+
+    console.log(`🔐 Manager password reset requested for username: ${username}`);
+
+    if (!pool) {
+      return res.status(500).json({ 
+        message: "Password reset service unavailable. Please try again later." 
+      });
+    }
+
+    // Find manager by username
+    const manager = await getUserByUsername(username);
+
+    if (!manager) {
+      // Don't reveal if user exists or not for security
+      console.log(`❌ Manager not found: ${username}`);
+      return res.status(200).json({ 
+        message: "If an account with this username exists, you will receive a password reset link." 
+      });
+    }
+
+    // Verify user is a manager
+    if (manager.role !== 'manager') {
+      console.log(`❌ User is not a manager: ${username}, role: ${manager.role}`);
+      // Don't reveal if user exists or not for security
+      return res.status(200).json({ 
+        message: "If an account with this username exists, you will receive a password reset link." 
+      });
+    }
+
+    // Generate reset token
+    const resetToken = randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date();
+    resetTokenExpiry.setHours(resetTokenExpiry.getHours() + 1); // Token expires in 1 hour
+
+    // Store reset token in database
+    try {
+      await pool.query(
+        `INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
+         VALUES ($1, $2, $3, NOW()) 
+         ON CONFLICT (user_id) 
+         DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()`,
+        [manager.id, resetToken, resetTokenExpiry]
+      );
+      console.log(`✅ Password reset token stored for manager: ${manager.id}`);
+    } catch (dbError) {
+      console.error('Error storing password reset token:', dbError);
+      return res.status(500).json({ 
+        message: "Error processing password reset request. Please try again later." 
+      });
+    }
+
+    // Generate reset URL
+    const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? `https://kitchen.${baseDomain}`
+      : (process.env.BASE_URL || 'http://localhost:5000');
+    const resetUrl = `${baseUrl}/password-reset?token=${resetToken}&role=manager`;
+
+    // Send password reset email
+    try {
+      const { sendEmail, generatePasswordResetEmail } = await import('../server/email.js');
+      
+      // Generate email content
+      const emailContent = generatePasswordResetEmail({
+        fullName: manager.username || username,
+        email: username, // Username is the email for managers
+        resetToken: resetToken,
+        resetUrl: resetUrl
+      });
+
+      // Send the email
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `manager_password_reset_${manager.id}_${Date.now()}`
+      });
+
+      if (emailSent) {
+        console.log(`✅ Password reset email sent successfully to manager: ${username}`);
+      } else {
+        console.error(`❌ Failed to send password reset email to manager: ${username}`);
+        return res.status(500).json({ 
+          message: "Error sending password reset email. Please try again later." 
+        });
+      }
+    } catch (emailError) {
+      console.error(`❌ Error sending password reset email:`, emailError);
+      return res.status(500).json({ 
+        message: "Error sending password reset email. Please try again later." 
+      });
+    }
+
+    return res.status(200).json({ 
+      message: "If an account with this username exists, you will receive a password reset link." 
+    });
+
+  } catch (error) {
+    console.error("Error in manager forgot password:", error);
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
+// Manager reset password endpoint (for managers who don't have Firebase accounts)
+app.post('/api/manager/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: "Token and new password are required" });
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters long" });
+    }
+
+    console.log(`🔐 Manager password reset attempt with token: ${token.substring(0, 8)}...`);
+
+    if (!pool) {
+      return res.status(500).json({ 
+        message: "Password reset service unavailable. Please try again later." 
+      });
+    }
+
+    // Verify reset token and get manager
+    const result = await pool.query(`
+      SELECT u.* FROM users u 
+      JOIN password_reset_tokens prt ON u.id = prt.user_id 
+      WHERE prt.token = $1 AND prt.expires_at > NOW() AND u.role = 'manager'
+    `, [token]);
+
+    if (result.rows.length === 0) {
+      console.log(`❌ Invalid or expired reset token`);
+      return res.status(400).json({ message: "Invalid or expired reset token" });
+    }
+
+    const manager = result.rows[0];
+
+    // Hash the new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update password in database
+    try {
+      await pool.query(
+        'UPDATE users SET password = $1 WHERE id = $2',
+        [hashedPassword, manager.id]
+      );
+      console.log(`✅ Password updated for manager: ${manager.id}`);
+
+      // Clear reset token
+      await pool.query(
+        'DELETE FROM password_reset_tokens WHERE user_id = $1',
+        [manager.id]
+      );
+      console.log(`✅ Reset token cleared for manager: ${manager.id}`);
+    } catch (dbError) {
+      console.error('Error updating password:', dbError);
+      return res.status(500).json({ 
+        message: "Error updating password. Please try again later." 
+      });
+    }
+
+    console.log(`✅ Password successfully reset for manager: ${manager.id}`);
+    return res.status(200).json({ 
+      message: "Password reset successfully. You can now log in with your new password." 
+    });
+
+  } catch (error) {
+    console.error("Error in manager reset password:", error);
+    return res.status(500).json({ 
+      message: "Internal server error. Please try again later." 
+    });
+  }
+});
+
 // 🔥 Firebase-Compatible Get Current User (for auth page)
 app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
   try {
