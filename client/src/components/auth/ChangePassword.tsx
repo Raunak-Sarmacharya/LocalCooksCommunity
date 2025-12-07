@@ -20,7 +20,7 @@ import { KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { toast } from "../hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
