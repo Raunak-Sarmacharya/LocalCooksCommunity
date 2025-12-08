@@ -3,7 +3,8 @@
 
 # Build artifacts generated for API (not needed at deploy time)
 api/server/**
-api/shared/**
+# Note: api/shared/** is needed for timezone-utils.js and other shared modules
+# api/shared/**
 
 # Legacy/duplicate API routes (main API is served via api/index.js)
 api/check-users.js
