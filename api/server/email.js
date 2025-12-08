@@ -3,20 +3,39 @@ import nodemailer from 'nodemailer';
 let createBookingDateTimeCache = null;
 async function getCreateBookingDateTime() {
   if (!createBookingDateTimeCache) {
-    try {
-      // Use new URL() with import.meta.url for proper ESM path resolution
-      // This ensures the path is resolved relative to the current file
-      const timezoneUtilsUrl = new URL('../shared/timezone-utils.js', import.meta.url).href;
-      
-      // Import the module
-      const timezoneUtils = await import(timezoneUtilsUrl);
-      
-      if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
-        throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+    // Try multiple possible paths for timezone-utils
+    const possiblePaths = [
+      '../shared/timezone-utils.js',  // From api/server/email.js to api/shared/timezone-utils.js
+      '../../api/shared/timezone-utils.js',  // Alternative path structure
+      './shared/timezone-utils.js',  // If files are in same directory
+      '../api/shared/timezone-utils.js',  // Another alternative
+    ];
+    
+    let lastError = null;
+    for (const relativePath of possiblePaths) {
+      try {
+        // Use new URL() with import.meta.url for proper ESM path resolution
+        const timezoneUtilsUrl = new URL(relativePath, import.meta.url).href;
+        
+        // Import the module
+        const timezoneUtils = await import(timezoneUtilsUrl);
+        
+        if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
+          throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+        }
+        createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
+        console.log(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
+        break; // Success, exit loop
+      } catch (error) {
+        lastError = error;
+        // Continue to next path
+        continue;
       }
-      createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
-    } catch (error) {
-      console.error('Failed to load timezone-utils, using fallback:', error);
+    }
+    
+    // If all paths failed, use fallback
+    if (!createBookingDateTimeCache) {
+      console.error('Failed to load timezone-utils from all attempted paths, using fallback. Last error:', lastError);
       // Fallback implementation
       createBookingDateTimeCache = (dateStr, timeStr, timezone = 'America/St_Johns') => {
         const [year, month, day] = dateStr.split('-').map(Number);
@@ -3120,6 +3139,42 @@ export const generateLocationEmailChangedEmail = (data) => {
   const subject = `Location Notification Email Updated - ${data.locationName}`;
   const baseUrl = getWebsiteUrl();
   const dashboardUrl = `${baseUrl}/manager/dashboard`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Location Notification Email Updated</h2><p class="message">This email address has been set as the notification email for <strong>${data.locationName}</strong>.</p><div class="info-box"><strong>📍 Location:</strong> ${data.locationName}<br><strong>📧 Notification Email:</strong> ${data.email}</div><p class="message">You will now receive email notifications for bookings, cancellations, and other important updates for this location.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you didn't make this change, please contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-  return { to: data.email, subject, text: `Location Notification Email Updated - This email address has been set as the notification email for ${data.locationName}. You will now receive email notifications for bookings, cancellations, and other important updates for this location.`, html };
+  const html = `<!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${subject}</title>
+      ${getUniformEmailStyles()}
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">
+          <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+        </div>
+        <div class="content">
+          <h2 class="greeting">Location Notification Email Updated</h2>
+          <p class="message">This email address has been set as the notification email for <strong>${data.locationName}</strong>.</p>
+          <div class="info-box">
+            <strong>📍 Location:</strong> ${data.locationName}<br>
+            <strong>📧 Notification Email:</strong> ${data.email}
+          </div>
+          <p class="message">You will now receive email notifications for bookings, cancellations, and other important updates for this location.</p>
+          <a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a>
+          <div class="divider"></div>
+        </div>
+        <div class="footer">
+          <p class="footer-text">If you didn't make this change, please contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
+          <div class="divider"></div>
+          <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p>
+        </div>
+      </div>
+    </body>
+  </html>`;
+  return {
+    to: data.email,
+    subject,
+    text: `Location Notification Email Updated - This email address has been set as the notification email for ${data.locationName}. You will now receive email notifications for bookings, cancellations, and other important updates for this location.`,
+    html
+  };
 };
