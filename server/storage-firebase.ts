@@ -717,16 +717,26 @@ export class FirebaseStorage {
         const locName = location ? ((location as any).name ?? (location as any).location_name) : undefined;
         const locAddress = location ? ((location as any).address ?? (location as any).location_address) : undefined;
         
+        // Extract image URLs
+        const kitchenImageUrl = (kitchen as any).imageUrl ?? (kitchen as any).image_url;
+        const locationBrandImageUrl = location ? ((location as any).brandImageUrl ?? (location as any).brand_image_url) : null;
+        const locationLogoUrl = location ? ((location as any).logoUrl ?? (location as any).logo_url) : null;
+        
         return {
           ...kitchen,
           // Helpful flattened fields for clients that don't handle nested objects reliably
           locationId: kitchenLocationId,
           locationName: locName,
           locationAddress: locAddress,
+          imageUrl: kitchenImageUrl || null,
+          locationBrandImageUrl: locationBrandImageUrl || null,
+          locationLogoUrl: locationLogoUrl || null,
           location: location ? {
             id: (location as any).id,
             name: locName,
             address: locAddress,
+            brandImageUrl: locationBrandImageUrl || null,
+            logoUrl: locationLogoUrl || null,
           } : null,
           manager: manager ? {
             id: (manager as any).id,
@@ -773,7 +783,7 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string }): Promise<any> {
     try {
       const [updated] = await db
         .update(kitchens)

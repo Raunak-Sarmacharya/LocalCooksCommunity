@@ -3293,7 +3293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid location ID" });
       }
       
-      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone } = req.body;
+      const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone } = req.body;
       
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
@@ -3302,6 +3302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         minimumBookingWindowHours,
         notificationEmail,
         logoUrl,
+        brandImageUrl,
         timezone,
         locationId: locationIdNum
       });
@@ -3412,6 +3413,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           type: typeof processedLogoUrl,
           inUpdates: (updates as any).logoUrl,
           alsoSetAsLogo_url: (updates as any).logo_url
+        });
+      }
+      if (brandImageUrl !== undefined) {
+        // Set to null if empty string, otherwise use the value
+        const processedBrandImageUrl = brandImageUrl && brandImageUrl.trim() !== '' ? brandImageUrl.trim() : null;
+        (updates as any).brandImageUrl = processedBrandImageUrl;
+        (updates as any).brand_image_url = processedBrandImageUrl;
+        console.log('[PUT] Setting brandImageUrl:', {
+          raw: brandImageUrl,
+          processed: processedBrandImageUrl
         });
       }
       if (timezone !== undefined) {
@@ -3588,6 +3599,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
+    }
+  });
+
+  // Update kitchen image (manager)
+  app.put("/api/manager/kitchens/:kitchenId/image", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get the kitchen to verify manager has access to its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const { imageUrl } = req.body;
+      
+      const updated = await firebaseStorage.updateKitchen(kitchenId, { imageUrl: imageUrl || null });
+      
+      console.log(`✅ Kitchen ${kitchenId} image updated by manager ${user.id}`);
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating kitchen image:", error);
+      res.status(500).json({ error: error.message || "Failed to update kitchen image" });
     }
   });
 
@@ -7997,6 +8055,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const locationId = kitchen.locationId || kitchen.location_id;
           const locationName = kitchen.locationName || kitchen.location_name;
           const locationAddress = kitchen.locationAddress || kitchen.location_address;
+          const imageUrl = kitchen.imageUrl || kitchen.image_url || null;
+          const locationBrandImageUrl = kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null;
+          const locationLogoUrl = kitchen.locationLogoUrl || kitchen.location_logo_url || null;
           
           // Log for debugging
           if (locationId && !locationName) {
@@ -8007,9 +8068,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: kitchen.id,
             name: kitchen.name,
             description: kitchen.description,
+            imageUrl: imageUrl,
             locationId: locationId || null,
             locationName: locationName || null,
             locationAddress: locationAddress || null,
+            locationBrandImageUrl: locationBrandImageUrl,
+            locationLogoUrl: locationLogoUrl,
           };
         });
 
@@ -8050,12 +8114,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             (kitchen.locationId || kitchen.location_id) === location.id
           ).length;
           
+          // Get first kitchen image as featured for this location if location doesn't have its own brand image
+          const locationKitchens = activeKitchens.filter((kitchen: any) => 
+            (kitchen.locationId || kitchen.location_id) === location.id
+          );
+          const featuredKitchenImage = locationKitchens.find((k: any) => k.imageUrl || k.image_url)?.imageUrl || 
+                                        locationKitchens.find((k: any) => k.imageUrl || k.image_url)?.image_url || null;
+          
           return {
             id: location.id,
             name: location.name,
             address: location.address,
             kitchenCount: kitchenCount,
             logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+            brandImageUrl: (location as any).brandImageUrl || (location as any).brand_image_url || null,
+            featuredKitchenImage: featuredKitchenImage,
           };
         });
       
