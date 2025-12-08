@@ -1,27 +1,27 @@
 import type {
-    Application,
-    DeliveryPartnerApplication,
-    InsertApplication,
-    InsertDeliveryPartnerApplication,
-    InsertUser,
-    UpdateApplicationDocuments,
-    UpdateApplicationStatus,
-    UpdateDocumentVerification,
-    User
+  Application,
+  DeliveryPartnerApplication,
+  InsertApplication,
+  InsertDeliveryPartnerApplication,
+  InsertUser,
+  UpdateApplicationDocuments,
+  UpdateApplicationStatus,
+  UpdateDocumentVerification,
+  User
 } from "@shared/schema";
 import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles } from "../shared/schema.js.js";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
-import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { DEFAULT_TIMEZONE } from "../shared/timezone-utils.js";
 
 /**
  * Firebase-only storage implementation without session management
  * This is for the pure Firebase Auth → Backend API → Neon Database architecture
  */
 export class FirebaseStorage {
-  
+
   // ===== USER MANAGEMENT =====
-  
+
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
@@ -34,7 +34,7 @@ export class FirebaseStorage {
 
   async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
     if (!pool) return undefined;
-    
+
     try {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
       return result.rows[0] || undefined;
@@ -46,7 +46,7 @@ export class FirebaseStorage {
 
   async updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined> {
     if (!pool) return undefined;
-    
+
     try {
       const result = await pool.query(
         'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
@@ -85,11 +85,11 @@ export class FirebaseStorage {
           await tx.update(locations).set({ managerId: null }).where(eq(locations.managerId, id));
           console.log(`⚠️ Removed manager ${id} from ${managedLocations.length} location(s)`);
         }
-        
+
         // Delete user (must be after updating locations to avoid foreign key constraint violation)
         await tx.delete(users).where(eq(users.id, id));
       });
-      
+
       console.log(`✅ Deleted user ${id}`);
     } catch (error: any) {
       console.error('Error deleting user:', error);
@@ -110,7 +110,7 @@ export class FirebaseStorage {
     if (!insertUser.username) {
       throw new Error("Username is required");
     }
-    
+
     // Use raw query to include firebase_uid, is_verified, and has_seen_welcome
     if (pool && insertUser.firebaseUid) {
       try {
@@ -135,7 +135,7 @@ export class FirebaseStorage {
         throw error;
       }
     }
-    
+
     // Fallback to schema-based insert without firebase_uid
     const [user] = await db
       .insert(users)
@@ -157,7 +157,7 @@ export class FirebaseStorage {
 
   async setUserHasSeenWelcome(userId: number): Promise<void> {
     if (!pool) return;
-    
+
     try {
       await pool.query(
         'UPDATE users SET has_seen_welcome = true WHERE id = $1',
@@ -170,7 +170,7 @@ export class FirebaseStorage {
   }
 
   // ===== APPLICATION MANAGEMENT =====
-  
+
   async getAllApplications(): Promise<Application[]> {
     return await db.select().from(applications);
   }
@@ -244,10 +244,10 @@ export class FirebaseStorage {
   }
 
   // ===== MICROLEARNING =====
-  
+
   async getMicrolearningProgress(userId: number): Promise<any[]> {
     if (!pool) return [];
-    
+
     try {
       const result = await pool.query(
         'SELECT * FROM video_progress WHERE user_id = $1 ORDER BY updated_at DESC',
@@ -262,7 +262,7 @@ export class FirebaseStorage {
 
   async getMicrolearningCompletion(userId: number): Promise<any | undefined> {
     if (!pool) return undefined;
-    
+
     try {
       const result = await pool.query(
         'SELECT * FROM microlearning_completions WHERE user_id = $1',
@@ -277,7 +277,7 @@ export class FirebaseStorage {
 
   async updateVideoProgress(progressData: any): Promise<void> {
     if (!pool) return;
-    
+
     try {
       await pool.query(
         `INSERT INTO video_progress (user_id, video_id, progress, completed, watched_percentage, is_rewatching, updated_at)
@@ -306,7 +306,7 @@ export class FirebaseStorage {
 
   async createMicrolearningCompletion(completionData: any): Promise<any> {
     if (!pool) return null;
-    
+
     try {
       const result = await pool.query(
         `INSERT INTO microlearning_completions (user_id, confirmed, certificate_generated, video_progress, created_at, updated_at)
@@ -327,7 +327,7 @@ export class FirebaseStorage {
   }
 
   // ===== USER APPLICATION TYPE MANAGEMENT =====
-  
+
   async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<void> {
     try {
       await db
@@ -341,7 +341,7 @@ export class FirebaseStorage {
   }
 
   // ===== USER ROLES MANAGEMENT =====
-  
+
   async updateUserRoles(userId: number, roles: { isChef: boolean; isDeliveryPartner: boolean }): Promise<void> {
     try {
       // Determine the main role based on selected roles
@@ -362,13 +362,13 @@ export class FirebaseStorage {
 
       await db
         .update(users)
-        .set({ 
+        .set({
           isChef: roles.isChef,
           isDeliveryPartner: roles.isDeliveryPartner,
           role: mainRole as any // Update main role field too
         })
         .where(eq(users.id, userId));
-        
+
       console.log(`✅ Successfully updated user ${userId} roles in database`);
     } catch (error) {
       console.error('Error updating user roles:', error);
@@ -377,14 +377,14 @@ export class FirebaseStorage {
   }
 
   // ===== DELIVERY PARTNER APPLICATION METHODS =====
-  
+
   async createDeliveryPartnerApplication(applicationData: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
     try {
       const [inserted] = await db
         .insert(deliveryPartnerApplications)
         .values(applicationData)
         .returning();
-      
+
       return inserted;
     } catch (error) {
       console.error('Error creating delivery partner application:', error);
@@ -441,44 +441,44 @@ export class FirebaseStorage {
   }
 
   // ===== LOCATIONS MANAGEMENT =====
-  
+
   async createLocation(locationData: { name: string; address: string; managerId?: number; notificationEmail?: string; notificationPhone?: string }): Promise<any> {
     try {
       console.log('Inserting location into database:', locationData);
-      
+
       // Import phone normalization utility
       const { normalizePhoneForStorage } = await import('./phone-utils');
-      
+
       // Build the insert data, excluding managerId if it's undefined
       const insertData: any = {
         name: locationData.name,
         address: locationData.address,
       };
-      
+
       // Only include managerId if it's provided and valid
       if (locationData.managerId !== undefined && locationData.managerId !== null) {
         insertData.managerId = locationData.managerId;
       }
-      
+
       // Include notificationEmail if provided
       if (locationData.notificationEmail !== undefined && locationData.notificationEmail !== null && locationData.notificationEmail !== '') {
         insertData.notificationEmail = locationData.notificationEmail;
       }
-      
+
       // Include notificationPhone if provided (already normalized by routes)
       if (locationData.notificationPhone !== undefined && locationData.notificationPhone !== null && locationData.notificationPhone !== '') {
         // Double-check normalization (should already be normalized, but ensure it)
         const normalized = normalizePhoneForStorage(locationData.notificationPhone);
         insertData.notificationPhone = normalized || locationData.notificationPhone;
       }
-      
+
       console.log('Insert data:', insertData);
-      
+
       const [location] = await db
         .insert(locations)
         .values(insertData)
         .returning();
-      
+
       console.log('Location created successfully:', location);
       return location;
     } catch (error: any) {
@@ -486,7 +486,7 @@ export class FirebaseStorage {
       console.error('Error message:', error.message);
       console.error('Error code:', error.code);
       console.error('Error detail:', error.detail);
-      
+
       // Provide a more user-friendly error message
       if (error.code === '23503') { // Foreign key constraint violation
         throw new Error('The selected manager does not exist or is invalid.');
@@ -523,7 +523,7 @@ export class FirebaseStorage {
     try {
       const [location] = await db.select().from(locations).where(eq(locations.id, id));
       if (!location) return undefined;
-      
+
       // Map snake_case to camelCase for consistent API (same pattern as getAllLocations)
       return {
         ...location,
@@ -556,7 +556,7 @@ export class FirebaseStorage {
     try {
       // Import phone normalization utility
       const { normalizePhoneForStorage } = await import('./phone-utils');
-      
+
       // Normalize notificationPhone if provided
       const normalizedUpdates = { ...updates };
       if (updates.notificationPhone !== undefined) {
@@ -567,7 +567,7 @@ export class FirebaseStorage {
           normalizedUpdates.notificationPhone = null;
         }
       }
-      
+
       const [updated] = await db
         .update(locations)
         .set({ ...normalizedUpdates, updatedAt: new Date() })
@@ -587,12 +587,12 @@ export class FirebaseStorage {
       if (locationKitchens.length > 0) {
         throw new Error(`Cannot delete location: It has ${locationKitchens.length} kitchen(s). Please delete or reassign kitchens first.`);
       }
-      
+
       // Use transaction for atomicity (best practice per Drizzle ORM)
       await db.transaction(async (tx) => {
         await tx.delete(locations).where(eq(locations.id, id));
       });
-      
+
       console.log(`✅ Deleted location ${id}`);
     } catch (error: any) {
       console.error('Error deleting location:', error);
@@ -601,36 +601,36 @@ export class FirebaseStorage {
   }
 
   // ===== KITCHENS MANAGEMENT =====
-  
+
   async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean }): Promise<any> {
     try {
       console.log('Inserting kitchen into database:', kitchenData);
-      
+
       // Build the insert data, excluding optional fields if undefined
       const insertData: any = {
         locationId: kitchenData.locationId,
         name: kitchenData.name,
       };
-      
+
       // Only include description if provided
       if (kitchenData.description !== undefined && kitchenData.description !== null && kitchenData.description !== '') {
         insertData.description = kitchenData.description;
       }
-      
+
       // Only include isActive if provided, default to true
       if (kitchenData.isActive !== undefined) {
         insertData.isActive = kitchenData.isActive;
       } else {
         insertData.isActive = true;
       }
-      
+
       console.log('Insert data:', insertData);
-      
+
       const [kitchen] = await db
         .insert(kitchens)
         .values(insertData)
         .returning();
-      
+
       console.log('Kitchen created successfully:', kitchen);
       return kitchen;
     } catch (error: any) {
@@ -638,7 +638,7 @@ export class FirebaseStorage {
       console.error('Error message:', error.message);
       console.error('Error code:', error.code);
       console.error('Error detail:', error.detail);
-      
+
       // Provide a more user-friendly error message
       if (error.code === '23503') { // Foreign key constraint violation
         throw new Error('The selected location does not exist or is invalid.');
@@ -676,13 +676,13 @@ export class FirebaseStorage {
       const result = await db.select().from(kitchens);
       console.log('📦 getAllKitchens - Raw result from DB:', JSON.stringify(result, null, 2));
       console.log('📦 Total kitchens in DB:', result.length);
-      
+
       // The drizzle ORM should handle snake_case to camelCase conversion automatically
       // But let's log to verify
       if (result.length > 0) {
         console.log('📦 First kitchen sample:', result[0]);
       }
-      
+
       return result;
     } catch (error) {
       console.error('❌ Error getting all kitchens:', error);
@@ -694,13 +694,13 @@ export class FirebaseStorage {
     try {
       // Get all kitchens
       const allKitchens = await db.select().from(kitchens);
-      
+
       // Get all locations
       const allLocations = await db.select().from(locations);
-      
+
       // Get all users (managers)
       const allUsers = await db.select().from(users);
-      
+
       // Combine the data
       const kitchensWithDetails = allKitchens.map(kitchen => {
         // Handle both camelCase and snake_case just in case
@@ -709,14 +709,14 @@ export class FirebaseStorage {
           const locId = (loc as any).id;
           return locId === kitchenLocationId;
         });
-        
+
         const managerId = location ? ((location as any).managerId ?? (location as any).manager_id) : undefined;
         const manager = managerId ? allUsers.find(user => (user as any).id === managerId) : null;
-        
+
         // Extract location fields with both camelCase and snake_case support
         const locName = location ? ((location as any).name ?? (location as any).location_name) : undefined;
         const locAddress = location ? ((location as any).address ?? (location as any).location_address) : undefined;
-        
+
         return {
           ...kitchen,
           // Helpful flattened fields for clients that don't handle nested objects reliably
@@ -735,7 +735,7 @@ export class FirebaseStorage {
           } : null,
         };
       });
-      
+
       return kitchensWithDetails;
     } catch (error) {
       console.error('Error getting kitchens with location and manager:', error);
@@ -751,16 +751,16 @@ export class FirebaseStorage {
         .select()
         .from(chefLocationAccess)
         .where(eq(chefLocationAccess.chefId, chefId));
-      
+
       if (locationAccessRecords.length === 0) {
         return []; // Chef has no access to any locations
       }
-      
+
       const locationIds = locationAccessRecords.map(access => access.locationId);
-      
+
       // Get all kitchens with location and manager details
       const allKitchensWithDetails = await this.getAllKitchensWithLocationAndManager();
-      
+
       // Filter to only kitchens in locations chef has access to and that are active
       return allKitchensWithDetails.filter(kitchen => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : (kitchen as any).is_active;
@@ -794,19 +794,19 @@ export class FirebaseStorage {
       if (existingBookings.length > 0) {
         throw new Error(`Cannot delete kitchen: It has ${existingBookings.length} booking(s). Please cancel or reassign bookings first.`);
       }
-      
+
       // Use transaction to ensure atomicity - all related data deleted together (best practice per Drizzle ORM)
       await db.transaction(async (tx) => {
         // Delete availability records
         await tx.delete(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, id));
-        
+
         // Delete date overrides
         await tx.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, id));
-        
+
         // Delete kitchen (must be last due to foreign key constraints)
         await tx.delete(kitchens).where(eq(kitchens.id, id));
       });
-      
+
       console.log(`✅ Deleted kitchen ${id} and all related records`);
     } catch (error: any) {
       console.error('Error deleting kitchen:', error);
@@ -815,14 +815,14 @@ export class FirebaseStorage {
   }
 
   // ===== KITCHEN AVAILABILITY MANAGEMENT =====
-  
+
   async setKitchenAvailability(kitchenId: number, availability: { dayOfWeek: number; startTime: string; endTime: string; isAvailable?: boolean }): Promise<any> {
     try {
       console.log('🕒 Setting kitchen availability:', { kitchenId, ...availability });
-      
+
       // Use default value for isAvailable if not provided
       const isAvailable = availability.isAvailable !== undefined ? availability.isAvailable : true;
-      
+
       // Check if availability exists for this kitchen and day
       const existing = await db
         .select()
@@ -833,7 +833,7 @@ export class FirebaseStorage {
         ));
 
       console.log(`🔍 Found ${existing.length} existing availability records for kitchen ${kitchenId}, day ${availability.dayOfWeek}`);
-      
+
       if (existing.length > 0) {
         console.log('🔄 Updating existing availability record:', existing[0].id);
         // Update existing
@@ -861,14 +861,14 @@ export class FirebaseStorage {
           endTime: availability.endTime,
           isAvailable: isAvailable
         };
-        
+
         console.log('📝 Insert data:', insertData);
-        
+
         const [created] = await db
           .insert(kitchenAvailability)
           .values(insertData)
           .returning();
-        
+
         console.log('✅ Availability created successfully:', created);
         return created;
       }
@@ -907,13 +907,13 @@ export class FirebaseStorage {
     }
   }
 
-  async createKitchenDateOverride(overrideData: { 
-    kitchenId: number; 
-    specificDate: Date; 
-    startTime?: string; 
-    endTime?: string; 
-    isAvailable: boolean; 
-    reason?: string 
+  async createKitchenDateOverride(overrideData: {
+    kitchenId: number;
+    specificDate: Date;
+    startTime?: string;
+    endTime?: string;
+    isAvailable: boolean;
+    reason?: string
   }): Promise<any> {
     try {
       const [override] = await db
@@ -936,7 +936,7 @@ export class FirebaseStorage {
 
       // If date range is specified, filter by it
       if (startDate && endDate) {
-        return await query.then(results => 
+        return await query.then(results =>
           results.filter(r => {
             const overrideDate = new Date(r.specificDate);
             return overrideDate >= startDate && overrideDate <= endDate;
@@ -956,16 +956,16 @@ export class FirebaseStorage {
       // Normalize the date to midnight
       const targetDate = new Date(date);
       targetDate.setHours(0, 0, 0, 0);
-      
+
       console.log(`🔍 Looking for date override - kitchen: ${kitchenId}, target date: ${targetDate.toISOString()}`);
-      
+
       const allOverrides = await db
         .select()
         .from(kitchenDateOverrides)
         .where(eq(kitchenDateOverrides.kitchenId, kitchenId));
-      
+
       console.log(`   Found ${allOverrides.length} total overrides for kitchen ${kitchenId}`);
-      
+
       // Find all overrides for the specific date
       const dateOverrides = allOverrides.filter(o => {
         const overrideDate = new Date(o.specificDate);
@@ -976,23 +976,23 @@ export class FirebaseStorage {
         }
         return matches;
       });
-      
+
       if (dateOverrides.length === 0) {
         console.log(`   Result: NO MATCH`);
         return undefined;
       }
-      
+
       // Prioritize available overrides (isAvailable=true) with hours
       // This handles the case where there might be both an "open" override and "closed" override
-      const availableOverride = dateOverrides.find(o => 
+      const availableOverride = dateOverrides.find(o =>
         o.isAvailable === true && o.startTime && o.endTime
       );
-      
+
       if (availableOverride) {
         console.log(`   Result: FOUND AVAILABLE override ID ${availableOverride.id}`);
         return availableOverride;
       }
-      
+
       // If no available override, return the first override (could be closed or incomplete)
       const override = dateOverrides[0];
       console.log(`   Result: FOUND override ID ${override.id} (isAvailable=${override.isAvailable})`);
@@ -1003,11 +1003,11 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchenDateOverride(id: number, updateData: { 
-    startTime?: string; 
-    endTime?: string; 
-    isAvailable?: boolean; 
-    reason?: string 
+  async updateKitchenDateOverride(id: number, updateData: {
+    startTime?: string;
+    endTime?: string;
+    isAvailable?: boolean;
+    reason?: string
   }): Promise<any> {
     try {
       const [updated] = await db
@@ -1034,11 +1034,11 @@ export class FirebaseStorage {
   }
 
   // ===== KITCHEN BOOKINGS MANAGEMENT =====
-  
+
   async createKitchenBooking(bookingData: { chefId: number; kitchenId: number; bookingDate: Date; startTime: string; endTime: string; specialNotes?: string }): Promise<any> {
     try {
       console.log('Inserting kitchen booking into database:', bookingData);
-      
+
       // Build the insert data, excluding optional fields if undefined
       const insertData: any = {
         chefId: bookingData.chefId,
@@ -1047,19 +1047,19 @@ export class FirebaseStorage {
         startTime: bookingData.startTime,
         endTime: bookingData.endTime,
       };
-      
+
       // Only include specialNotes if provided
       if (bookingData.specialNotes !== undefined && bookingData.specialNotes !== null && bookingData.specialNotes !== '') {
         insertData.specialNotes = bookingData.specialNotes;
       }
-      
+
       console.log('Insert data:', insertData);
-      
+
       const [booking] = await db
         .insert(kitchenBookings)
         .values(insertData)
         .returning();
-      
+
       console.log('Kitchen booking created successfully:', booking);
       return booking;
     } catch (error: any) {
@@ -1089,7 +1089,7 @@ export class FirebaseStorage {
   }): Promise<any> {
     try {
       console.log('Creating booking (with external support):', bookingData);
-      
+
       const insertData: any = {
         kitchenId: bookingData.kitchenId,
         bookingDate: bookingData.bookingDate,
@@ -1099,29 +1099,29 @@ export class FirebaseStorage {
         chefId: bookingData.chefId || bookingData.createdBy || null,
         createdBy: bookingData.createdBy || null,
       };
-      
+
       if (bookingData.specialNotes) {
         insertData.specialNotes = bookingData.specialNotes;
       }
-      
+
       if (bookingData.externalContact) {
         insertData.externalContactName = bookingData.externalContact.name;
         insertData.externalContactEmail = bookingData.externalContact.email;
         insertData.externalContactPhone = bookingData.externalContact.phone || null;
         insertData.externalContactCompany = bookingData.externalContact.company || null;
       }
-      
+
       // Get kitchen name for response
       const kitchen = await this.getKitchenById(bookingData.kitchenId);
       const kitchenName = kitchen?.name || 'Kitchen';
-      
+
       const [booking] = await db
         .insert(kitchenBookings)
         .values(insertData)
         .returning();
-      
+
       console.log('Booking created successfully:', booking);
-      
+
       return {
         ...booking,
         kitchenName,
@@ -1196,9 +1196,9 @@ export class FirebaseStorage {
         'SELECT id FROM locations WHERE manager_id = $1',
         [managerId]
       );
-      
+
       const locationIds = locationsResult.rows.map(row => row.id);
-      
+
       if (locationIds.length === 0) {
         return [];
       }
@@ -1208,9 +1208,9 @@ export class FirebaseStorage {
         'SELECT id FROM kitchens WHERE location_id = ANY($1::int[])',
         [locationIds]
       );
-      
+
       const kitchenIds = kitchensResult.rows.map(row => row.id);
-      
+
       if (kitchenIds.length === 0) {
         return [];
       }
@@ -1225,7 +1225,7 @@ export class FirebaseStorage {
         ORDER BY booking_date DESC, start_time ASC`,
         [kitchenIds]
       );
-      
+
       // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
       const enrichedBookings = await Promise.all(
         bookingsResult.rows.map(async (booking) => {
@@ -1238,10 +1238,10 @@ export class FirebaseStorage {
                 [booking.chef_id]
               );
               const chef = chefResult.rows[0];
-              
+
               if (chef) {
                 chefName = chef.username;
-                
+
                 // Try to get chef's full name from their application
                 const appResult = await pool.query(
                   'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
@@ -1255,7 +1255,7 @@ export class FirebaseStorage {
               // Silently handle errors
             }
           }
-          
+
           // Get kitchen details
           let kitchenName = 'Kitchen';
           let locationId = null;
@@ -1274,7 +1274,7 @@ export class FirebaseStorage {
               // Silently handle errors
             }
           }
-          
+
           // Get location details including timezone
           let locationName = null;
           let locationTimezone = DEFAULT_TIMEZONE;
@@ -1293,7 +1293,7 @@ export class FirebaseStorage {
               // Silently handle errors
             }
           }
-          
+
           return {
             id: booking.id,
             chefId: booking.chef_id,
@@ -1312,7 +1312,7 @@ export class FirebaseStorage {
           };
         })
       );
-      
+
       return enrichedBookings;
     } catch (error) {
       console.error('Error getting bookings by manager:', error);
@@ -1394,14 +1394,14 @@ export class FirebaseStorage {
   }>> {
     try {
       console.log(`🕐 Getting all slots with booking info for kitchen ${kitchenId}, date: ${date.toISOString()}`);
-      
+
       // First check if there's a date-specific override
       const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
-      
+
       let startHour: number;
       let endHour: number;
       let capacity: number;
-      
+
       if (dateOverride) {
         // If there's an override and it's closed, return empty array
         if (!dateOverride.isAvailable) {
@@ -1422,9 +1422,9 @@ export class FirebaseStorage {
         // No override, use regular weekly schedule
         const dayOfWeek = date.getDay();
         const availability = await this.getKitchenAvailability(kitchenId);
-        
+
         const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-        
+
         if (!dayAvailability || !dayAvailability.isAvailable) {
           console.log(`❌ Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
           return [];
@@ -1435,43 +1435,43 @@ export class FirebaseStorage {
         capacity = (dayAvailability as any).maxConcurrentBookings ?? (dayAvailability as any).max_concurrent_bookings ?? 1;
         console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00, capacity: ${capacity}`);
       }
-      
+
       // Generate 30-minute interval slots
       const allSlots: string[] = [];
       for (let hour = startHour; hour < endHour; hour++) {
         allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
         allSlots.push(`${hour.toString().padStart(2, '0')}:30`);
       }
-      
+
       // Count bookings per slot
       const bookings = await this.getBookingsByKitchen(kitchenId);
       const dateStr = date.toISOString().split('T')[0];
-      
+
       const dayBookings = bookings.filter(b => {
         const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
         return bookingDateStr === dateStr && b.status !== 'cancelled';
       });
-      
+
       // Count how many bookings overlap each slot
-      const slotBookingCounts = new Map<string, number>();
+      const slotBookingCounts = new Map < string, number> ();
       allSlots.forEach(slot => slotBookingCounts.set(slot, 0));
-      
+
       dayBookings.forEach(booking => {
         const [startHours, startMins] = booking.startTime.split(':').map(Number);
         const [endHours, endMins] = booking.endTime.split(':').map(Number);
         const startTotalMins = startHours * 60 + startMins;
         const endTotalMins = endHours * 60 + endMins;
-        
+
         allSlots.forEach(slot => {
           const [slotHours, slotMins] = slot.split(':').map(Number);
           const slotTotalMins = slotHours * 60 + slotMins;
-          
+
           if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
             slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
           }
         });
       });
-      
+
       // Build result with availability info
       const result = allSlots.map(slot => {
         const bookedCount = slotBookingCounts.get(slot) || 0;
@@ -1482,7 +1482,7 @@ export class FirebaseStorage {
           isFullyBooked: bookedCount >= capacity
         };
       });
-      
+
       console.log(`📅 Generated ${result.length} total slots`);
       return result;
     } catch (error) {
@@ -1494,10 +1494,10 @@ export class FirebaseStorage {
   async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
     try {
       console.log(`🕐 Getting slots for kitchen ${kitchenId}, date: ${date.toISOString()}`);
-      
+
       // First check if there's a date-specific override
       const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
-      
+
       console.log(`📅 Date override found:`, dateOverride ? 'YES' : 'NO');
       if (dateOverride) {
         console.log(`   Override details:`, {
@@ -1507,10 +1507,10 @@ export class FirebaseStorage {
           reason: dateOverride.reason
         });
       }
-      
+
       let startHour: number;
       let endHour: number;
-      
+
       if (dateOverride) {
         // If there's an override and it's closed, return empty slots
         if (!dateOverride.isAvailable) {
@@ -1531,11 +1531,11 @@ export class FirebaseStorage {
         // No override, use regular weekly schedule
         const dayOfWeek = date.getDay();
         const availability = await this.getKitchenAvailability(kitchenId);
-        
+
         console.log(`📆 No override, checking weekly schedule for day ${dayOfWeek}`);
-        
+
         const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-        
+
         if (!dayAvailability || !dayAvailability.isAvailable) {
           console.log(`❌ Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
           return [];
@@ -1545,46 +1545,46 @@ export class FirebaseStorage {
         endHour = parseInt(dayAvailability.endTime.split(':')[0]);
         console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00`);
       }
-      
+
       // Generate 30-minute interval slots (like standard booking platforms)
       const slots: string[] = [];
       for (let hour = startHour; hour < endHour; hour++) {
         slots.push(`${hour.toString().padStart(2, '0')}:00`);
         slots.push(`${hour.toString().padStart(2, '0')}:30`);
       }
-      
+
       // Filter out already booked slots
       const bookings = await this.getBookingsByKitchen(kitchenId);
       const dateStr = date.toISOString().split('T')[0];
-      
+
       const dayBookings = bookings.filter(b => {
         const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
         return bookingDateStr === dateStr && b.status !== 'cancelled';
       });
-      
+
       // More granular time conflict checking
-      const bookedSlots = new Set<string>();
+      const bookedSlots = new Set < string > ();
       dayBookings.forEach(booking => {
         // Convert start and end times to minutes for accurate comparison
         const [startHours, startMins] = booking.startTime.split(':').map(Number);
         const [endHours, endMins] = booking.endTime.split(':').map(Number);
         const startTotalMins = startHours * 60 + startMins;
         const endTotalMins = endHours * 60 + endMins;
-        
+
         // Mark all 30-min slots that conflict with this booking
         for (const slot of slots) {
           const [slotHours, slotMins] = slot.split(':').map(Number);
           const slotTotalMins = slotHours * 60 + slotMins;
-          
+
           // A slot is unavailable if it starts before the booking ends and the next 30min would overlap
           if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
             bookedSlots.add(slot);
           }
         }
       });
-      
+
       console.log(`📅 Generated ${slots.length} total slots, ${bookedSlots.size} booked, returning ${slots.length - bookedSlots.size} available`);
-      
+
       return slots.filter(slot => !bookedSlots.has(slot));
     } catch (error) {
       console.error('Error getting available time slots:', error);
@@ -1626,10 +1626,10 @@ export class FirebaseStorage {
 
       // First check if there's a date-specific override
       const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, bookingDate);
-      
+
       let availabilityStartTime: string;
       let availabilityEndTime: string;
-      
+
       if (dateOverride) {
         // If there's an override and it's closed, can't book
         if (!dateOverride.isAvailable) {
@@ -1646,9 +1646,9 @@ export class FirebaseStorage {
         // No override, use regular weekly schedule
         const dayOfWeek = bookingDate.getDay();
         const availability = await this.getKitchenAvailability(kitchenId);
-        
+
         const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-        
+
         // Check if day is available
         if (!dayAvailability || !dayAvailability.isAvailable) {
           return { valid: false, error: "Kitchen is not available on this day" };
@@ -1667,7 +1667,7 @@ export class FirebaseStorage {
       const startHour = parseInt(startTime.split(':')[0]);
       const availabilityStartHour = parseInt(availabilityStartTime.split(':')[0]);
       const availabilityEndHour = parseInt(availabilityEndTime.split(':')[0]);
-      
+
       if (startHour < availabilityStartHour || startHour >= availabilityEndHour) {
         return { valid: false, error: "Start time must be within manager-set available slot times" };
       }
@@ -1698,7 +1698,7 @@ export class FirebaseStorage {
           }
         }
       }
-      
+
       return false;
     } catch (error) {
       console.error('Error checking booking conflict:', error);
@@ -1710,7 +1710,7 @@ export class FirebaseStorage {
 
   // ===== CHEF LOCATION ACCESS MANAGEMENT (Admin grants access to locations) =====
   // When a chef has access to a location, they can book any kitchen within that location
-  
+
   async grantChefLocationAccess(chefId: number, locationId: number, grantedBy: number): Promise<any> {
     try {
       const [access] = await db
@@ -1722,7 +1722,7 @@ export class FirebaseStorage {
         })
         .onConflictDoNothing()
         .returning();
-      
+
       return access;
     } catch (error) {
       console.error('Error granting chef location access:', error);
@@ -1771,7 +1771,7 @@ export class FirebaseStorage {
           )
         )
         .limit(1);
-      
+
       return access.length > 0;
     } catch (error) {
       console.error('Error checking chef location access:', error);
@@ -1787,7 +1787,7 @@ export class FirebaseStorage {
         .from(kitchens)
         .where(eq(kitchens.id, kitchenId))
         .limit(1);
-      
+
       return kitchen?.locationId ?? null;
     } catch (error) {
       console.error('Error getting kitchen location:', error);
@@ -1807,7 +1807,7 @@ export class FirebaseStorage {
         })
         .onConflictDoNothing()
         .returning();
-      
+
       return access;
     } catch (error) {
       console.error('Error granting chef kitchen access:', error);
@@ -1857,7 +1857,7 @@ export class FirebaseStorage {
             eq(chefKitchenProfiles.kitchenId, kitchenId)
           )
         );
-      
+
       if (existing.length > 0) {
         // Update status back to pending if it was rejected
         if (existing[0].status === 'rejected') {
@@ -1876,7 +1876,7 @@ export class FirebaseStorage {
         }
         return existing[0]; // Already shared
       }
-      
+
       // Create new profile sharing
       const [profile] = await db
         .insert(chefKitchenProfiles)
@@ -1886,7 +1886,7 @@ export class FirebaseStorage {
           status: 'pending',
         })
         .returning();
-      
+
       return profile;
     } catch (error) {
       console.error('Error sharing chef profile with kitchen:', error);
@@ -1911,7 +1911,7 @@ export class FirebaseStorage {
         })
         .where(eq(chefKitchenProfiles.id, profileId))
         .returning();
-      
+
       return updated;
     } catch (error) {
       console.error('Error updating chef kitchen profile status:', error);
@@ -1930,7 +1930,7 @@ export class FirebaseStorage {
             eq(chefKitchenProfiles.kitchenId, kitchenId)
           )
         );
-      
+
       return profile || undefined;
     } catch (error) {
       console.error('Error getting chef kitchen profile:', error);
@@ -1945,19 +1945,19 @@ export class FirebaseStorage {
         .select()
         .from(locations)
         .where(eq(locations.managerId, managerId));
-      
+
       if (managerLocations.length === 0) {
         return [];
       }
-      
+
       const locationIds = managerLocations.map(loc => (loc as any).id);
-      
+
       // Get all chef profiles for these locations (NEW - location-based)
       const profiles = await db
         .select()
         .from(chefLocationProfiles)
         .where(inArray(chefLocationProfiles.locationId, locationIds));
-      
+
       // Enrich with chef, location, and application details
       const enrichedProfiles = await Promise.all(
         profiles.map(async (profile) => {
@@ -1967,7 +1967,7 @@ export class FirebaseStorage {
             .from(locations)
             .where(eq(locations.id, profile.locationId))
             .then(rows => rows[0]);
-          
+
           // Get chef's latest approved application
           const chefApplications = await db
             .select()
@@ -1979,9 +1979,9 @@ export class FirebaseStorage {
               )
             )
             .orderBy(asc(applications.createdAt));
-          
+
           const latestApp = chefApplications.length > 0 ? chefApplications[chefApplications.length - 1] : null;
-          
+
           return {
             ...profile,
             chef: chef ? {
@@ -2004,7 +2004,7 @@ export class FirebaseStorage {
           };
         })
       );
-      
+
       return enrichedProfiles;
     } catch (error) {
       console.error('Error getting chef profiles for manager:', error);
@@ -2026,7 +2026,7 @@ export class FirebaseStorage {
             eq(chefLocationProfiles.locationId, locationId)
           )
         );
-      
+
       if (existing.length > 0) {
         // Update status back to pending if it was rejected
         if (existing[0].status === 'rejected') {
@@ -2045,7 +2045,7 @@ export class FirebaseStorage {
         }
         return existing[0]; // Already shared
       }
-      
+
       // Create new profile sharing
       const [profile] = await db
         .insert(chefLocationProfiles)
@@ -2055,7 +2055,7 @@ export class FirebaseStorage {
           status: 'pending',
         })
         .returning();
-      
+
       return profile;
     } catch (error) {
       console.error('Error sharing chef profile with location:', error);
@@ -2074,7 +2074,7 @@ export class FirebaseStorage {
             eq(chefLocationProfiles.locationId, locationId)
           )
         );
-      
+
       return profile || undefined;
     } catch (error) {
       console.error('Error getting chef location profile:', error);
@@ -2088,7 +2088,7 @@ export class FirebaseStorage {
         .select()
         .from(chefLocationProfiles)
         .where(eq(chefLocationProfiles.chefId, chefId));
-      
+
       return profiles;
     } catch (error) {
       console.error('Error getting chef location profiles:', error);
@@ -2113,7 +2113,7 @@ export class FirebaseStorage {
         })
         .where(eq(chefLocationProfiles.id, profileId))
         .returning();
-      
+
       return updated;
     } catch (error) {
       console.error('Error updating chef location profile status:', error);

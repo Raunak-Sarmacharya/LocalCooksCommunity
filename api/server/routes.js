@@ -19,7 +19,7 @@ import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, users, locations, applications, kitchens } from "../shared/schema.js.js";
 import { eq, inArray, and, desc } from "drizzle-orm";
-import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
+import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "../shared/timezone-utils.js";
 
 // Import portal user applications schema
 import { portalUserApplications, portalUserLocationAccess } from "../shared/schema.js.js";
@@ -116,11 +116,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Application submission endpoint (supports both JSON and multipart form data)
-  app.post("/api/applications", 
+  app.post("/api/applications",
     upload.fields([
       { name: 'foodSafetyLicense', maxCount: 1 },
       { name: 'foodEstablishmentCert', maxCount: 1 }
-    ]), 
+    ]),
     async (req: Request, res: Response) => {
       try {
         // Require authentication to submit an application
@@ -154,7 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
-          
+
           const validationError = fromZodError(parsedData.error);
           return res.status(400).json({
             message: "Validation error",
@@ -195,11 +195,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Handle uploaded files and URL inputs
         const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-        
+
         // Handle file uploads
         if (files) {
           const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-          
+
           if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
             console.log('📄 Uploading food safety license file...');
             if (isProduction) {
@@ -209,7 +209,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             console.log('✅ Food safety license uploaded:', applicationData.foodSafetyLicenseUrl);
           }
-          
+
           if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
             console.log('📄 Uploading food establishment cert file...');
             if (isProduction) {
@@ -226,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
           console.log('📄 Using provided food safety license URL:', applicationData.foodSafetyLicenseUrl);
         }
-        
+
         if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
           applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
           console.log('📄 Using provided food establishment cert URL:', applicationData.foodEstablishmentCertUrl);
@@ -237,7 +237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           applicationData.foodSafetyLicenseStatus = "pending";
           console.log('✅ Food safety license document provided, status set to pending');
         }
-        
+
         if (applicationData.foodEstablishmentCertUrl) {
           applicationData.foodEstablishmentCertStatus = "pending";
           console.log('✅ Food establishment cert document provided, status set to pending');
@@ -267,7 +267,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           if (fullApplication && fullApplication.email) {
             const hasDocuments = !!(fullApplication.foodSafetyLicenseUrl || fullApplication.foodEstablishmentCertUrl);
-            
+
             if (hasDocuments) {
               // Application submitted WITH documents - send combined email
               const emailContent = generateApplicationWithDocumentsEmail({
@@ -303,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(201).json(application);
       } catch (error) {
         console.error("Error creating application:", error);
-        
+
         // Clean up uploaded files on error (development only)
         if (req.files) {
           const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -318,7 +318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
         }
-        
+
         return res.status(500).json({ message: "Internal server error" });
       }
     }
@@ -444,7 +444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await sendEmail(emailContent, {
             trackingId: `status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
           });
-          
+
           console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
@@ -522,7 +522,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await sendEmail(emailContent, {
             trackingId: `delivery_status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
           });
-          
+
           console.log(`Delivery partner status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send status change email for delivery partner application ${updatedApplication.id}: No email address found`);
@@ -597,7 +597,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await sendEmail(emailContent, {
             trackingId: `cancel_${updatedApplication.id}_${Date.now()}`
           });
-          
+
           console.log(`Cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send cancellation email for application ${updatedApplication.id}: No email address found`);
@@ -733,14 +733,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Check if user already exists
       const existingUser = await storage.getUserByUsername(req.body.username);
-      
+
       if (existingUser) {
         return res.status(400).json({ error: "Username already exists" });
       }
-      
+
       // Hash password and create user
       const hashedPassword = await hashPassword(req.body.password);
-      
+
       const user = await storage.createUser({
         username: req.body.username,
         password: hashedPassword,
@@ -750,13 +750,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isManager: false,
         isPortalUser: false
       });
-      
+
       // Log the user in
       req.login(user, (err) => {
         if (err) {
           return res.status(500).json({ error: "Login failed after registration" });
         }
-        
+
         return res.status(201).json({
           id: user.id,
           username: user.username,
@@ -774,16 +774,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (err) {
         return next(err);
       }
-      
+
       if (!user) {
         return res.status(401).json({ error: info?.message || "Authentication failed" });
       }
-      
+
       req.login(user, (err: Error | null) => {
         if (err) {
           return next(err);
         }
-        
+
         return res.json({
           id: user.id,
           username: user.username,
@@ -817,7 +817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error stack:', dbError?.stack);
         console.error('Error code:', dbError?.code);
         console.error('Error detail:', dbError?.detail);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Database connection failed',
           message: dbError instanceof Error ? dbError.message : 'Unknown database error',
           code: dbError?.code
@@ -828,7 +828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('Admin user not found:', username);
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
-      
+
       console.log('User found:', { id: admin.id, username: admin.username, role: admin.role });
 
       // Verify user is admin (only admins can use this endpoint)
@@ -887,8 +887,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Admin login error:', error);
       console.error('Error details:', error instanceof Error ? error.stack : error);
-      res.status(500).json({ 
-        error: 'Admin login failed', 
+      res.status(500).json({
+        error: 'Admin login failed',
         message: error instanceof Error ? error.message : 'Unknown error',
         details: process.env.NODE_ENV === 'development' ? error : undefined
       });
@@ -919,7 +919,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error stack:', dbError?.stack);
         console.error('Error code:', dbError?.code);
         console.error('Error detail:', dbError?.detail);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Database connection failed',
           message: dbError instanceof Error ? dbError.message : 'Unknown database error',
           code: dbError?.code
@@ -930,7 +930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('Manager user not found:', username);
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
-      
+
       console.log('User found:', { id: manager.id, username: manager.username, role: manager.role });
 
       // Verify user is manager (only managers can use this endpoint)
@@ -983,8 +983,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Manager login error:', error);
       console.error('Error details:', error instanceof Error ? error.stack : error);
-      res.status(500).json({ 
-        error: 'Manager login failed', 
+      res.status(500).json({
+        error: 'Manager login failed',
         message: error instanceof Error ? error.message : 'Unknown error',
         details: process.env.NODE_ENV === 'development' ? error : undefined
       });
@@ -1029,7 +1029,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/user-session", async (req: Request, res: Response) => {
     try {
       const user = await getAuthenticatedUser(req);
-      
+
       if (!user) {
         return res.status(401).json({ error: "Not authenticated" });
       }
@@ -1037,7 +1037,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch full user data including has_seen_welcome from database
       const fullUser = await storage.getUser(user.id);
       const { password: _, ...userWithoutPassword } = (fullUser || user) as any;
-      
+
       return res.json({
         ...userWithoutPassword,
         authMethod: req.isAuthenticated?.() ? 'passport-session' : 'session'
@@ -1133,8 +1133,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
 
   // Generic file upload endpoint (for use with new upload components)
-  app.post("/api/upload-file", 
-    upload.single('file'), 
+  app.post("/api/upload-file",
+    upload.single('file'),
     async (req: Request, res: Response) => {
       try {
         // Check if user is authenticated
@@ -1179,7 +1179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } catch (error) {
         console.error("File upload error:", error);
-        
+
         // Clean up uploaded file on error (development only)
         if (req.file && req.file.path) {
           try {
@@ -1188,8 +1188,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error('Error cleaning up file:', e);
           }
         }
-        
-        return res.status(500).json({ 
+
+        return res.status(500).json({
           error: "File upload failed",
           details: error instanceof Error ? error.message : "Unknown error"
         });
@@ -1210,7 +1210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const filename = req.params.filename;
       const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
-      
+
       // Check if file exists
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({ message: "File not found" });
@@ -1218,7 +1218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Extract userId from filename (format: userId_documentType_timestamp_originalname)
       const fileUserId = parseInt(filename.split('_')[0]);
-      
+
       // Allow access if user owns the file or is admin
       if (req.user!.id !== fileUserId && req.user!.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
@@ -1227,7 +1227,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get file info
       const stat = fs.statSync(filePath);
       const ext = path.extname(filename).toLowerCase();
-      
+
       // Set appropriate content type
       let contentType = 'application/octet-stream';
       if (ext === '.pdf') {
@@ -1243,7 +1243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', stat.size);
       res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      
+
       // Stream the file
       const readStream = fs.createReadStream(filePath);
       readStream.pipe(res);
@@ -1258,11 +1258,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
 
   // Update application documents endpoint (for approved applicants)
-  app.patch("/api/applications/:id/documents", 
+  app.patch("/api/applications/:id/documents",
     (req, res, next) => {
       // Check content type to decide whether to use multer
       const contentType = req.get('Content-Type') || '';
-      
+
       if (contentType.includes('multipart/form-data')) {
         // Use multer for file uploads
         const fileUploadMiddleware = upload.fields([
@@ -1333,7 +1333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
-          return res.status(400).json({ 
+          return res.status(400).json({
             message: "Document uploads are not permitted for cancelled or rejected applications",
             applicationStatus: application.status
           });
@@ -1362,7 +1362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 deleteFile(oldFilePath);
               }
             }
-            
+
             if (isProduction) {
               updateData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user!.id);
             } else {
@@ -1381,7 +1381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 deleteFile(oldFilePath);
               }
             }
-            
+
             if (isProduction) {
               updateData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user!.id);
             } else {
@@ -1419,7 +1419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(200).json(updatedApplication);
       } catch (error) {
         console.error("Error updating application documents:", error);
-        
+
         // Clean up uploaded files on error
         if (req.files) {
           const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -1431,7 +1431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
         }
-        
+
         return res.status(500).json({ message: "Internal server error" });
       }
     }
@@ -1484,11 +1484,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Check if both documents are approved, then update user verification status
-      if (updatedApplication.foodSafetyLicenseStatus === "approved" && 
-          (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
+      if (updatedApplication.foodSafetyLicenseStatus === "approved" &&
+        (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
         await storage.updateUserVerificationStatus(updatedApplication.userId!, true);
         console.log(`User ${updatedApplication.userId} has been fully verified`);
-        
+
         // NOTE: Full verification email is handled by api/index.js in production
         // Removed duplicate email logic to prevent double emails
       }
@@ -1499,16 +1499,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if all documents are approved
           const hasFoodSafetyLicense = updatedApplication.foodSafetyLicenseUrl;
           const hasFoodEstablishmentCert = updatedApplication.foodEstablishmentCertUrl;
-          
+
           const foodSafetyApproved = updatedApplication.foodSafetyLicenseStatus === "approved";
           const foodEstablishmentApproved = !hasFoodEstablishmentCert || updatedApplication.foodEstablishmentCertStatus === "approved";
-          
+
           // If all documents are approved, send consolidated email
           if (foodSafetyApproved && foodEstablishmentApproved) {
             const approvedDocuments = [];
             if (hasFoodSafetyLicense) approvedDocuments.push("Food Safety License");
             if (hasFoodEstablishmentCert) approvedDocuments.push("Food Establishment Certificate");
-            
+
             const emailContent = generateChefAllDocumentsApprovedEmail({
               fullName: updatedApplication.fullName || "Applicant",
               email: updatedApplication.email,
@@ -1519,7 +1519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await sendEmail(emailContent, {
               trackingId: `all_docs_approved_chef_${updatedApplication.id}_${Date.now()}`
             });
-            
+
             console.log(`All documents approved email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
           }
         } else {
@@ -1560,7 +1560,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = parseInt(req.params.userId);
-      
+
       // Verify user can access this data (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1569,7 +1569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const progress = await storage.getMicrolearningProgress(userId);
       const completionStatus = await storage.getMicrolearningCompletion(userId);
       const hasApproval = await hasApprovedApplication(userId);
-      
+
       // Admins and completed users have unrestricted access regardless of application status
       const isAdmin = req.user!.role === 'admin';
       const isCompleted = completionStatus?.confirmed || false;
@@ -1598,7 +1598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
-      
+
       // Verify user can update this data (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1610,10 +1610,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isCompleted = completionStatus?.confirmed || false;
       const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
       const isAdmin = req.user!.role === 'admin';
-      
+
       // Admins and completed users have unrestricted access to all videos
       if (!hasApproval && !isAdmin && !isCompleted && videoId !== firstVideoId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'Application approval required to access this video',
           accessLevel: 'limited',
           firstVideoOnly: true
@@ -1653,7 +1653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { userId, completionDate, videoProgress } = req.body;
-      
+
       // Verify user can complete this (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1662,11 +1662,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user has approved application to complete full training
       const hasApproval = await hasApprovedApplication(userId);
       const isAdmin = req.user!.role === 'admin';
-      
+
       // Admins can complete certification without application approval
       // Regular users need approval unless they're completing as admin
       if (!hasApproval && !isAdmin) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'Application approval required to complete full certification',
           accessLevel: 'limited',
           requiresApproval: true
@@ -1688,7 +1688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
 
       if (!allRequired) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'All required videos must be completed before certification',
           missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
         });
@@ -1727,7 +1727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the request, just log the error
         }
       }
-      
+
       res.json({
         success: true,
         message: 'Microlearning completed successfully',
@@ -1750,14 +1750,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = parseInt(req.params.userId);
-      
+
       // Verify user can access this completion (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
       }
 
       const completion = await storage.getMicrolearningCompletion(userId);
-      
+
       if (!completion) {
         return res.status(404).json({ message: 'No completion found' });
       }
@@ -1777,7 +1777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = parseInt(req.params.userId);
-      
+
       // Verify user can access this certificate (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1927,7 +1927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const crypto = await import('crypto');
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
-      
+
       // Store verification token in database directly (bypassing storage interface for now)
       const { pool } = await import('./db.js');
       await pool.query(`
@@ -1954,19 +1954,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (emailSent) {
         console.log(`Email verification sent to ${email}`);
-        return res.status(200).json({ 
-          message: "Verification email sent successfully" 
+        return res.status(200).json({
+          message: "Verification email sent successfully"
         });
       } else {
         console.error(`Failed to send verification email to ${email}`);
-        return res.status(500).json({ 
-          message: "Error sending verification email. Please try again later." 
+        return res.status(500).json({
+          message: "Error sending verification email. Please try again later."
         });
       }
     } catch (error) {
       console.error("Error sending verification email:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
@@ -2003,26 +2003,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
 
       console.log(`Email verified successfully: ${email}`);
-      
+
       // Redirect to success page
       return res.redirect(`${process.env.BASE_URL || 'http://localhost:5000'}/auth?verified=true`);
 
     } catch (error) {
       console.error("Error in email verification:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
 
-    // NOTE: Firebase user sync endpoint has been moved to firebase-routes.ts with proper authentication
+  // NOTE: Firebase user sync endpoint has been moved to firebase-routes.ts with proper authentication
   // This old endpoint has been removed to prevent conflicts
 
   // Admin endpoint to send promo emails
   app.post('/api/admin/send-promo-email', async (req: Request, res: Response) => {
     try {
       console.log(`POST /api/admin/send-promo-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
-      
+
       // Check if user is authenticated
       if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
         console.log('Promo email request - User not authenticated');
@@ -2035,19 +2035,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { 
-        email, 
+      const {
+        email,
         customEmails,
         emailMode,
         recipients,
-        promoCode, 
-        promoCodeLabel, 
-        message, 
-        customMessage, 
+        promoCode,
+        promoCodeLabel,
+        message,
+        customMessage,
         greeting,
-        buttonText, 
-        orderUrl, 
-        subject, 
+        buttonText,
+        orderUrl,
+        subject,
         previewText,
         designSystem,
         isPremium,
@@ -2073,10 +2073,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Determine target emails - support both old and new formats
       let targetEmails: string[] = [];
-      
+
       if (recipients && Array.isArray(recipients) && recipients.length > 0) {
         // New unified format - extract emails from recipients array
-        targetEmails = recipients.map((recipient: any) => 
+        targetEmails = recipients.map((recipient: any) =>
           typeof recipient === 'string' ? recipient : recipient.email
         ).filter(Boolean);
       } else if (emailMode === 'custom' && customEmails && Array.isArray(customEmails)) {
@@ -2100,8 +2100,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (!messageContent || messageContent.length < 10) {
-        console.log('Promo email request - Invalid message:', { 
-          customMessage: customMessage?.substring(0, 50), 
+        console.log('Promo email request - Invalid message:', {
+          customMessage: customMessage?.substring(0, 50),
           message: message?.substring(0, 50),
           messageContent: messageContent?.substring(0, 50)
         });
@@ -2140,31 +2140,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 subtitleColor: '#ffffff',
                 titleFontSize: '32px',
                 subtitleFontSize: '18px',
-                          padding: '24px',
-              borderRadius: '0px',
-              textAlign: 'center'
-            }
-          },
-          footer: footer || {
-            mainText: 'Thank you for being part of the Local Cooks community!',
-            contactText: 'Questions? Contact us at support@localcooks.com',
-            copyrightText: '© 2024 Local Cooks. All rights reserved.',
-            showContact: true,
-            showCopyright: true,
-            styling: {
-              backgroundColor: '#f8fafc',
-              textColor: '#64748b',
-              linkColor: '#F51042',
-              fontSize: '14px',
-              padding: '24px 32px',
-              textAlign: 'center',
-              borderColor: '#e2e8f0'
-            }
-          },
-          usageSteps: usageSteps || {
-            title: '🚀 How to use your promo code:',
-            steps: [
-              `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
+                padding: '24px',
+                borderRadius: '0px',
+                textAlign: 'center'
+              }
+            },
+            footer: footer || {
+              mainText: 'Thank you for being part of the Local Cooks community!',
+              contactText: 'Questions? Contact us at support@localcooks.com',
+              copyrightText: '© 2024 Local Cooks. All rights reserved.',
+              showContact: true,
+              showCopyright: true,
+              styling: {
+                backgroundColor: '#f8fafc',
+                textColor: '#64748b',
+                linkColor: '#F51042',
+                fontSize: '14px',
+                padding: '24px 32px',
+                textAlign: 'center',
+                borderColor: '#e2e8f0'
+              }
+            },
+            usageSteps: usageSteps || {
+              title: '🚀 How to use your promo code:',
+              steps: [
+                `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
                 'Browse our amazing local cooks and their delicious offerings',
                 'Apply your promo code during checkout',
                 'Enjoy your special offer!'
@@ -2234,8 +2234,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Return results
       if (successCount > 0) {
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: `Promo emails sent: ${successCount} successful, ${failureCount} failed`,
           results: results,
           promoCode,
@@ -2246,7 +2246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         });
       } else {
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'All email sending failed',
           message: 'Failed to send promo emails to any recipients.',
           results: results
@@ -2254,7 +2254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error('Error sending promo email:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -2265,7 +2265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/admin/test-email', async (req: Request, res: Response) => {
     try {
       console.log(`POST /api/admin/test-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
-      
+
       // Check if user is authenticated
       if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
         console.log('Test email request - User not authenticated');
@@ -2278,16 +2278,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { 
-        email, 
-        subject, 
-        previewText, 
-        sections, 
-        header, 
+      const {
+        email,
+        subject,
+        previewText,
+        sections,
+        header,
         footer,
         usageSteps,
         emailContainer,
-        customDesign 
+        customDesign
       } = req.body;
 
       // Validate required fields
@@ -2395,21 +2395,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (emailSent) {
         console.log(`Test email sent successfully to ${email}`);
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Test email sent successfully',
           recipient: email
         });
       } else {
         console.error(`Failed to send test email to ${email}`);
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'Failed to send email',
           message: 'Email service unavailable'
         });
       }
     } catch (error) {
       console.error('Error sending test email:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -2437,18 +2437,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, reason, feedback, timestamp } = req.body;
 
       if (!email) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Email address is required' 
+        return res.status(400).json({
+          success: false,
+          message: 'Email address is required'
         });
       }
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Invalid email format' 
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid email format'
         });
       }
 
@@ -2516,9 +2516,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!emailSent) {
         console.error('Failed to send unsubscribe notification email');
-        return res.status(500).json({ 
-          success: false, 
-          message: 'Failed to process unsubscribe request' 
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to process unsubscribe request'
         });
       }
 
@@ -2594,17 +2594,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`✅ Unsubscribe request processed for: ${email}`);
-      
-      res.json({ 
-        success: true, 
-        message: 'Unsubscribe request processed successfully' 
+
+      res.json({
+        success: true,
+        message: 'Unsubscribe request processed successfully'
       });
 
     } catch (error) {
       console.error('Error processing unsubscribe request:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: 'Internal server error' 
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
       });
     }
   });
@@ -2636,15 +2636,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log('🚗 Starting vehicle data preload...');
-      
+
       // Fetch all makes first
       const makesResponse = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
       if (!makesResponse.ok) {
         throw new Error(`NHTSA API error: ${makesResponse.status}`);
       }
-      
+
       const makesData = await makesResponse.json();
-      
+
       // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
       const fourWheeledMakes = makesData.Results.filter((make: any) => {
         // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
@@ -2654,9 +2654,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
           'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
         ];
-        
-        return !excludedMakes.some(excluded => 
-          make.Make_Name.toUpperCase().includes(excluded) || 
+
+        return !excludedMakes.some(excluded =>
+          make.Make_Name.toUpperCase().includes(excluded) ||
           excluded.includes(make.Make_Name.toUpperCase())
         );
       });
@@ -2668,21 +2668,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Cache the makes
       vehicleCache.makes = formattedMakes;
-      
+
       // Preload models for the first 20 most common makes to avoid overwhelming the API
       const commonMakes = formattedMakes.slice(0, 20);
       console.log(`🚗 Preloading models for ${commonMakes.length} common makes...`);
-      
+
       for (const make of commonMakes) {
         try {
           const modelsResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(make.name)}?format=json`);
           if (modelsResponse.ok) {
             const modelsData = await modelsResponse.json();
-            
+
             // Filter for 4-wheeled vehicles only
             const fourWheeledModels = modelsData.Results.filter((model: any) => {
               const modelName = model.Model_Name.toUpperCase();
-              
+
               // Very specific exclusions only for obvious non-4-wheeled vehicles
               const excludedPatterns = [
                 /MOTORCYCLE$/i, /BIKE$/i, /SCOOTER$/i, /MOPED$/i, /ATV$/i, /QUAD$/i, /TRIKE$/i, /SIDECAR$/i,
@@ -2709,18 +2709,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
                 /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
               ];
-              
+
               return !excludedPatterns.some(pattern => pattern.test(modelName));
             });
-            
+
             const formattedModels = fourWheeledModels.map((model: any) => ({
               id: model.Model_ID || model.Model_ID,
               name: model.Model_Name
             }));
-            
+
             vehicleCache.modelsByMake.set(make.id.toString(), formattedModels);
           }
-          
+
           // Small delay to be respectful to the NHTSA API
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
@@ -2728,13 +2728,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Continue with other makes
         }
       }
-      
+
       // Set cache as preloaded
       vehicleCache.isPreloaded = true;
       vehicleCache.lastFetch = Date.now();
-      
+
       console.log('🚗 Vehicle data preload completed successfully');
-      
+
       res.json({
         success: true,
         message: 'Vehicle data preloaded successfully',
@@ -2755,7 +2755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/vehicles/makes', async (req: Request, res: Response) => {
     try {
       const { type } = req.query;
-      
+
       // Check cache first
       if (type && vehicleCache.makesByType.has(type as string) && isCacheValid()) {
         return res.json({
@@ -2763,7 +2763,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           makes: vehicleCache.makesByType.get(type as string)
         });
       }
-      
+
       if (!type && vehicleCache.makes && isCacheValid()) {
         return res.json({
           success: true,
@@ -2784,7 +2784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 makes: vehicleCache.makesByType.get(type as string)
               });
             }
-            
+
             if (!type && vehicleCache.makes) {
               return res.json({
                 success: true,
@@ -2802,9 +2802,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
       const fourWheeledMakes = data.Results.filter((make: any) => {
         // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
@@ -2814,9 +2814,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
           'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
         ];
-        
-        return !excludedMakes.some(excluded => 
-          make.Make_Name.toUpperCase().includes(excluded) || 
+
+        return !excludedMakes.some(excluded =>
+          make.Make_Name.toUpperCase().includes(excluded) ||
           excluded.includes(make.Make_Name.toUpperCase())
         );
       });
@@ -2851,7 +2851,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/vehicles/makes/type/:vehicleType', async (req: Request, res: Response) => {
     try {
       const { vehicleType } = req.params;
-      
+
       // Check cache first
       if (vehicleCache.makesByType.has(vehicleType) && isCacheValid()) {
         return res.json({
@@ -2880,9 +2880,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Filter for 4-wheeled vehicles only
       const fourWheeledMakes = data.Results.filter((make: any) => {
         const excludedMakes = [
@@ -2891,9 +2891,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
           'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
         ];
-        
-        return !excludedMakes.some(excluded => 
-          make.MakeName.toUpperCase().includes(excluded) || 
+
+        return !excludedMakes.some(excluded =>
+          make.MakeName.toUpperCase().includes(excluded) ||
           excluded.includes(make.MakeName.toUpperCase())
         );
       });
@@ -2925,7 +2925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { makeName } = req.params;
       const decodedMakeName = decodeURIComponent(makeName);
-      
+
       // Check cache first (use make name as key)
       if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
         return res.json({
@@ -2933,15 +2933,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           models: vehicleCache.modelsByMake.get(decodedMakeName)
         });
       }
-      
+
       // Direct call to NHTSA API with make name (no need to lookup make ID)
       const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Filter for 4-wheeled vehicles only
       const fourWheeledModels = data.Results.filter((model: any) => {
         const modelName = model.Model_Name.toUpperCase();
@@ -2977,7 +2977,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
     try {
       const { makeId } = req.params;
-      
+
       // Check cache first
       if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
         return res.json({
@@ -2985,7 +2985,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           models: vehicleCache.modelsByMake.get(makeId)
         });
       }
-      
+
       // If not cached, trigger preload first
       if (!vehicleCache.isPreloaded) {
         console.log('🚗 Models not cached, triggering preload...');
@@ -3001,35 +3001,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn('⚠️ Preload failed, falling back to direct API call:', preloadError);
         }
       }
-      
+
       // First get the make name from our makes list
       const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
       if (!makesResponse.ok) {
         throw new Error(`NHTSA API error: ${makesResponse.status}`);
       }
-      
+
       const makesData = await makesResponse.json();
       const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
-      
+
       if (!selectedMake) {
         throw new Error('Make not found');
       }
-      
+
       // Get all models for this make (without year)
       const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
       if (!response.ok) {
         throw new Error(`NHTSA API error: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${selectedMake.Make_Name}`);
-      
+
       // Filter for 4-wheeled vehicles only, but be much less aggressive
       const fourWheeledModels = data.Results.filter((model: any) => {
         // Only exclude very obvious non-4-wheeled vehicle models
         const modelName = model.Model_Name.toUpperCase();
-        
+
         // Very specific exclusions only for obvious non-4-wheeled vehicles
         const excludedPatterns = [
           // Motorcycle patterns
@@ -3041,7 +3041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           /QUAD$/i,
           /TRIKE$/i,
           /SIDECAR$/i,
-          
+
           // Very specific motorcycle model names
           /^HARLEY/i,
           /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
@@ -3067,13 +3067,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
           /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
         ];
-        
+
         // Check if model matches any excluded patterns
         return !excludedPatterns.some(pattern => pattern.test(modelName));
       });
 
       console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${selectedMake.Make_Name}`);
-      
+
       const formattedModels = fourWheeledModels.map((model: any) => ({
         id: model.Model_ID || model.Model_ID, // Use actual NHTSA ID if available
         name: model.Model_Name
@@ -3099,7 +3099,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/vehicles/years/:makeId', async (req: Request, res: Response) => {
     try {
       const { makeId } = req.params;
-      
+
       // Check cache first
       if (vehicleCache.yearsByMake.has(makeId) && isCacheValid()) {
         return res.json({
@@ -3107,23 +3107,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           years: vehicleCache.yearsByMake.get(makeId)
         });
       }
-      
+
       // Get the make name from cache or fallback to a reasonable guess
       let selectedMake = null;
-      
+
       // Try to get from our car makes cache first
       if (vehicleCache.makesByType.has('car') && isCacheValid()) {
         const carMakes = vehicleCache.makesByType.get('car');
         selectedMake = carMakes?.find((make: any) => make.id === parseInt(makeId));
       }
-      
+
       // If not found in cache, try the NHTSA API (with error handling)
       if (!selectedMake) {
         try {
           const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`, {
             signal: AbortSignal.timeout(3000) // 3 second timeout
           });
-          
+
           if (makesResponse.ok) {
             const makesData = await makesResponse.json();
             selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
@@ -3132,37 +3132,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`⚠️ NHTSA GetAllMakes API failed for makeId ${makeId}, using fallback`);
         }
       }
-      
+
       // Final fallback: create a reasonable make object
       if (!selectedMake) {
         // Common make ID to name mappings for popular manufacturers
         const commonMakes: { [key: number]: string } = {
-          441: 'TESLA', 448: 'TOYOTA', 460: 'FORD', 467: 'CHEVROLET', 
+          441: 'TESLA', 448: 'TOYOTA', 460: 'FORD', 467: 'CHEVROLET',
           476: 'DODGE', 478: 'NISSAN', 475: 'ACURA', 515: 'LEXUS',
           582: 'AUDI', 482: 'VOLKSWAGEN', 485: 'VOLVO', 498: 'HYUNDAI',
           499: 'KIA', 449: 'MERCEDES-BENZ', 584: 'PORSCHE', 523: 'SUBARU'
         };
-        
+
         const makeName = commonMakes[parseInt(makeId)] || `MAKE_${makeId}`;
         selectedMake = { Make_ID: parseInt(makeId), Make_Name: makeName };
         console.log(`🚗 Using fallback make name: ${makeName} for ID ${makeId}`);
       }
-      
+
       // Use NHTSA API to find years that actually have vehicle models
       const currentYear = new Date().getFullYear();
       const makeName = selectedMake.Make_Name.toUpperCase();
       console.log(`🚗 Finding actual model years for ${selectedMake.Make_Name} (ID: ${makeId})`);
-      
+
       const years = [];
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      
+
       // Helper function to check if a year has models
       const hasModelsInYear = async (year: number): Promise<boolean> => {
         try {
           const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/${makeId}/${year}?format=json`, {
             signal: AbortSignal.timeout(5000)
           });
-          
+
           if (!response.ok) return false;
           const data = await response.json();
           return data && data.Results && data.Results.length > 0;
@@ -3170,7 +3170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return false;
         }
       };
-      
+
       // Smart sampling strategy: Check key years and find the range
       const currentPlusOne = currentYear + 1;
       const testYears = [
@@ -3180,51 +3180,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currentYear - 5, currentYear - 10, currentYear - 15, currentYear - 20, currentYear - 25,
         // Common milestone years
         2020, 2015, 2010, 2005, 2000, 1995, 1990, 1985
-      ].filter((year, index, arr) => 
+      ].filter((year, index, arr) =>
         // Remove duplicates and keep only reasonable years
         arr.indexOf(year) === index && year >= 1980 && year <= currentPlusOne
       ).sort((a, b) => b - a); // Start with recent years
-      
+
       let earliestFoundYear = currentPlusOne;
       let latestFoundYear = 0;
       let foundCount = 0;
-      
+
       console.log(`🚗 Testing ${testYears.length} sample years for ${selectedMake.Make_Name}...`);
-      
+
       // Test sample years with rate limiting
       for (let i = 0; i < testYears.length && foundCount < 10; i++) {
         const year = testYears[i];
         const hasModels = await hasModelsInYear(year);
-        
+
         if (hasModels) {
           foundCount++;
           earliestFoundYear = Math.min(earliestFoundYear, year);
           latestFoundYear = Math.max(latestFoundYear, year);
           console.log(`🚗 ✅ Found models for ${selectedMake.Make_Name} in ${year}`);
         }
-        
+
         // Add delay between requests to respect rate limits
         if (i < testYears.length - 1) {
           await delay(150); // 150ms delay
         }
       }
-      
+
       if (foundCount > 0) {
         // Generate the full range based on found years
         console.log(`🚗 Found model years range: ${latestFoundYear} to ${earliestFoundYear}`);
-        
+
         // Fill in the range between earliest and latest found years
         for (let year = latestFoundYear; year >= earliestFoundYear; year--) {
           years.push(year);
         }
-        
+
         console.log(`🚗 Generated ${years.length} years with actual models for ${selectedMake.Make_Name}`);
       } else {
         // Fallback: Use intelligent defaults based on manufacturer type
         console.log(`⚠️ No model years found via API for ${selectedMake.Make_Name}, using intelligent fallback`);
-        
+
         let fallbackStartYear = 1995; // Conservative default
-        
+
         // Smart fallbacks based on manufacturer patterns
         if (makeName.includes('TESLA') || makeName.includes('LUCID') || makeName.includes('RIVIAN')) {
           fallbackStartYear = 2010; // Recent EV manufacturers
@@ -3233,13 +3233,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (makeName.includes('SATURN') || makeName.includes('HUMMER')) {
           fallbackStartYear = 1990; // Newer American brands
         }
-        
+
         // Generate reasonable fallback range (last 30 years max)
         const fallbackEndYear = Math.min(currentYear + 1, fallbackStartYear + 35);
         for (let year = fallbackEndYear; year >= fallbackStartYear; year--) {
           years.push(year);
         }
-        
+
         console.log(`🚗 Using fallback range: ${fallbackEndYear} to ${fallbackStartYear}`);
       }
 
@@ -3265,7 +3265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // IMPORTANT: Put route must be defined BEFORE get route with same base path
   // to avoid Express routing conflicts. Specific routes must come before generic ones.
-  
+
   // Update location cancellation policy (manager only)
   app.put("/api/manager/locations/:locationId/cancellation-policy", async (req: Request, res: Response) => {
     console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
@@ -3275,11 +3275,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3287,14 +3287,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { locationId } = req.params;
       const locationIdNum = parseInt(locationId);
-      
+
       if (isNaN(locationIdNum) || locationIdNum <= 0) {
         console.error('[PUT] Invalid locationId:', locationId);
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      
+
       const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone } = req.body;
-      
+
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
         cancellationPolicyMessage,
@@ -3328,7 +3328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .select()
         .from(locations)
         .where(and(eq(locations.id, locationIdNum), eq(locations.managerId, user.id)));
-      
+
       const location = locationResults[0];
 
       if (!location) {
@@ -3339,7 +3339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         return res.status(404).json({ error: "Location not found or access denied" });
       }
-      
+
       console.log('[PUT] Location verified:', {
         locationId: location.id,
         locationName: location.name,
@@ -3351,10 +3351,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update location settings
       // Build updates object with proper field names matching the schema
-      const updates: Partial<typeof locations.$inferInsert> = { 
-        updatedAt: new Date() 
+      const updates: Partial<typeof locations.$inferInsert> = {
+        updatedAt: new Date()
       };
-      
+
       if (cancellationPolicyHours !== undefined) {
         (updates as any).cancellationPolicyHours = cancellationPolicyHours;
       }
@@ -3374,8 +3374,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         // Set to null if empty string, otherwise use the value
         (updates as any).notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
-        console.log('[PUT] Setting notificationEmail:', { 
-          raw: notificationEmail, 
+        console.log('[PUT] Setting notificationEmail:', {
+          raw: notificationEmail,
           processed: (updates as any).notificationEmail,
           oldEmail: oldNotificationEmail
         });
@@ -3385,13 +3385,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (notificationPhone && notificationPhone.trim() !== '') {
           const normalized = normalizePhoneForStorage(notificationPhone);
           if (!normalized) {
-            return res.status(400).json({ 
-              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            return res.status(400).json({
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
             });
           }
           (updates as any).notificationPhone = normalized;
-          console.log('[PUT] Setting notificationPhone:', { 
-            raw: notificationPhone, 
+          console.log('[PUT] Setting notificationPhone:', {
+            raw: notificationPhone,
             normalized: normalized
           });
         } else {
@@ -3440,7 +3440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updates)
         .where(eq(locations.id, locationIdNum))
         .returning();
-      
+
       console.log('[PUT] Updated location from DB (full object):', JSON.stringify(updatedResults[0], null, 2));
       console.log('[PUT] Updated location logoUrl (camelCase):', (updatedResults[0] as any).logoUrl);
       console.log('[PUT] Updated location logo_url (snake_case):', (updatedResults[0] as any).logo_url);
@@ -3462,7 +3462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || 'not set',
         logoUrl: (updated as any).logoUrl || (updated as any).logo_url || 'NOT SET'
       });
-      
+
       // Map snake_case fields to camelCase for the frontend
       const response = {
         ...updated,
@@ -3475,7 +3475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 1,
         timezone: (updated as any).timezone || DEFAULT_TIMEZONE,
       };
-      
+
       // Send email to new notification email if it was changed
       if (notificationEmail !== undefined && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
         try {
@@ -3491,7 +3491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the update if email fails
         }
       }
-      
+
       console.log('[PUT] Sending response with notificationEmail:', response.notificationEmail);
       res.status(200).json(response);
     } catch (error: any) {
@@ -3505,18 +3505,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
       }
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
-      
+
       console.log('[GET] /api/manager/locations - Raw locations from DB:', locations.map(loc => ({
         id: loc.id,
         name: loc.name,
@@ -3524,7 +3524,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logo_url: (loc as any).logo_url,
         allKeys: Object.keys(loc)
       })));
-      
+
       // Map snake_case fields to camelCase for the frontend
       const mappedLocations = locations.map(loc => ({
         ...loc,
@@ -3537,9 +3537,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
         timezone: (loc as any).timezone || DEFAULT_TIMEZONE,
       }));
-      
+
       // Log to verify logoUrl is included in response
-      console.log('[GET] /api/manager/locations - Mapped locations:', 
+      console.log('[GET] /api/manager/locations - Mapped locations:',
         mappedLocations.map(loc => ({
           id: loc.id,
           name: loc.name,
@@ -3547,7 +3547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notificationEmail: loc.notificationEmail || 'not set'
         }))
       );
-      
+
       res.json(mappedLocations);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
@@ -3561,11 +3561,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3597,29 +3597,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
       }
-      
+
       const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
       await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
-      
+
       // Send email notifications to chefs and managers
       try {
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
         if (kitchen) {
           const location = await firebaseStorage.getLocationById(kitchen.locationId);
-          
+
           // Get all chefs who have bookings at this kitchen
           const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
           const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-          
+
           // Send emails to chefs
           for (const chefId of uniqueChefIds) {
             try {
@@ -3627,10 +3627,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (chef) {
                 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 const changeType = isAvailable ? 'Availability Updated' : 'Kitchen Closed';
-                const details = isAvailable 
+                const details = isAvailable
                   ? `The kitchen is now available on ${dayNames[dayOfWeek]} from ${startTime} to ${endTime}.`
                   : `The kitchen is now closed on ${dayNames[dayOfWeek]}.`;
-                
+
                 const email = generateKitchenAvailabilityChangeEmail({
                   chefEmail: chef.username,
                   chefName: (chef as any).displayName || chef.username || 'Chef',
@@ -3645,7 +3645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error(`Error sending email to chef ${chefId}:`, emailError);
             }
           }
-          
+
           // Send email to manager
           if (location?.managerId) {
             try {
@@ -3654,7 +3654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 const changes = `Kitchen availability updated: ${dayNames[dayOfWeek]} ${isAvailable ? `is now available from ${startTime} to ${endTime}` : 'is now closed'}.`;
-                
+
                 const email = generateKitchenSettingsChangeEmail({
                   email: notificationEmail,
                   name: manager.username,
@@ -3674,7 +3674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending availability change emails:", emailError);
         // Don't fail the request if emails fail
       }
-      
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error setting availability:", error);
@@ -3688,16 +3688,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
       }
-      
+
       const kitchenId = parseInt(req.params.kitchenId);
       const availability = await firebaseStorage.getKitchenAvailability(kitchenId);
       res.json(availability);
@@ -3713,11 +3713,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3736,11 +3736,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3759,11 +3759,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3771,23 +3771,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all locations managed by this manager
       const { users } = await import('@shared/schema');
-      
+
       console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
-      
+
       const managedLocations = await db.select()
         .from(locations)
         .where(eq(locations.managerId, user.id));
-      
+
       console.log(`[Manager Portal Applications] Found ${managedLocations.length} managed locations`);
-      
+
       if (managedLocations.length === 0) {
         console.log(`[Manager Portal Applications] No locations found for manager ${user.id}`);
         return res.json([]);
       }
-      
+
       const locationIds = managedLocations.map(loc => loc.id);
       console.log(`[Manager Portal Applications] Location IDs: ${locationIds.join(', ')}`);
-      
+
       // Get ALL portal user applications for these locations (not just inReview)
       const applications = await db.select({
         application: portalUserApplications,
@@ -3800,9 +3800,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(
           inArray(portalUserApplications.locationId, locationIds)
         );
-      
+
       console.log(`[Manager Portal Applications] Found ${applications.length} total applications`);
-      
+
       // Format response
       const formatted = applications.map(app => ({
         id: app.application.id,
@@ -3827,9 +3827,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           username: app.user.username,
         },
       }));
-      
+
       console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
-      
+
       res.json(formatted);
     } catch (error: any) {
       console.error("Error getting portal applications for manager:", error);
@@ -3842,11 +3842,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3854,13 +3854,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const applicationId = parseInt(req.params.id);
       const { status, feedback } = req.body;
-      
+
       if (!status || !['approved', 'rejected'].includes(status)) {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
 
       const { users } = await import('@shared/schema');
-      
+
       // Get application and verify it belongs to a location managed by this manager
       const applicationRecords = await db.select({
         application: portalUserApplications,
@@ -3870,20 +3870,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
         .where(eq(portalUserApplications.id, applicationId))
         .limit(1);
-      
+
       if (applicationRecords.length === 0) {
         return res.status(404).json({ error: "Application not found" });
       }
-      
+
       const applicationData = applicationRecords[0];
       const location = applicationData.location;
       const application = applicationData.application;
-      
+
       // Verify manager owns this location
       if ((location as any).managerId !== user.id) {
         return res.status(403).json({ error: "You don't have permission to manage this application" });
       }
-      
+
       // Update application status
       const updatedApplication = await db.update(portalUserApplications)
         .set({
@@ -3894,7 +3894,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(eq(portalUserApplications.id, applicationId))
         .returning();
-      
+
       // If approved, grant location access
       if (status === 'approved') {
         // Check if access already exists
@@ -3907,7 +3907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             )
           )
           .limit(1);
-        
+
         if (existingAccess.length === 0) {
           // Create location access
           await db.insert(portalUserLocationAccess).values({
@@ -3917,7 +3917,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             applicationId: applicationId,
           });
         }
-        
+
         // Send notification email to portal user
         try {
           const { sendEmail } = await import('./email');
@@ -3928,16 +3928,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               to: userEmail,
               subject: `Portal Access Approved - ${(location as any).name}`,
               text: `Your application for portal access has been approved!\n\n` +
-                    `Location: ${(location as any).name}\n` +
-                    `Address: ${(location as any).address}\n` +
-                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
-                    `\nYou can now log in to the portal and book kitchens at this location.`,
+                `Location: ${(location as any).name}\n` +
+                `Address: ${(location as any).address}\n` +
+                `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                `\nYou can now log in to the portal and book kitchens at this location.`,
               html: `<h2>Portal Access Approved</h2>` +
-                    `<p>Your application for portal access has been approved!</p>` +
-                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                    `<p><strong>Address:</strong> ${(location as any).address}</p>` +
-                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
-                    `<p>You can now log in to the portal and book kitchens at this location.</p>`,
+                `<p>Your application for portal access has been approved!</p>` +
+                `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                `<p><strong>Address:</strong> ${(location as any).address}</p>` +
+                `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                `<p>You can now log in to the portal and book kitchens at this location.</p>`,
             };
             await sendEmail(emailContent);
           }
@@ -3956,16 +3956,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               to: userEmail,
               subject: `Portal Access Application - ${(location as any).name}`,
               text: `Your application for portal access has been reviewed.\n\n` +
-                    `Location: ${(location as any).name}\n` +
-                    `Status: Rejected\n` +
-                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
-                    `\nIf you have questions, please contact the location manager.`,
+                `Location: ${(location as any).name}\n` +
+                `Status: Rejected\n` +
+                `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                `\nIf you have questions, please contact the location manager.`,
               html: `<h2>Portal Access Application</h2>` +
-                    `<p>Your application for portal access has been reviewed.</p>` +
-                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                    `<p><strong>Status:</strong> Rejected</p>` +
-                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
-                    `<p>If you have questions, please contact the location manager.</p>`,
+                `<p>Your application for portal access has been reviewed.</p>` +
+                `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                `<p><strong>Status:</strong> Rejected</p>` +
+                `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                `<p>If you have questions, please contact the location manager.</p>`,
             };
             await sendEmail(emailContent);
           }
@@ -3974,7 +3974,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the rejection if email fails
         }
       }
-      
+
       res.json(updatedApplication[0]);
     } catch (error: any) {
       console.error("Error updating portal application status:", error);
@@ -3987,11 +3987,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3999,7 +3999,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const profileId = parseInt(req.params.id);
       const { status, reviewFeedback } = req.body;
-      
+
       if (!status || !['approved', 'rejected'].includes(status)) {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
@@ -4010,7 +4010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user.id,
         reviewFeedback
       );
-      
+
       // Send email notification to chef when access is approved
       if (status === 'approved') {
         try {
@@ -4044,7 +4044,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the status update if emails fail
         }
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating chef profile status:", error);
@@ -4058,11 +4058,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -4070,10 +4070,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const kitchenId = parseInt(req.params.kitchenId);
       console.log(`📋 Fetching bookings for kitchen ${kitchenId}`);
-      
+
       const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
       console.log(`✅ Found ${bookings.length} bookings for kitchen ${kitchenId}`);
-      
+
       // Return ALL bookings (not just confirmed) so manager can see pending ones too
       res.json(bookings);
     } catch (error: any) {
@@ -4088,36 +4088,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
       }
-      
+
       const id = parseInt(req.params.id);
       const { status } = req.body;
-      
+
       // Get booking details before updating
       const booking = await firebaseStorage.getBookingById(id);
-      
+
       await firebaseStorage.updateKitchenBookingStatus(id, status);
-      
+
       // Send email notifications to chef and manager based on status change
       if (booking) {
         try {
           const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
           const chef = await storage.getUser(booking.chefId);
-          
+
           if (chef && kitchen) {
             // Get location details
             const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
             let location = null;
             let manager = null;
-            
+
             if (kitchenLocationId) {
               location = await firebaseStorage.getLocationById(kitchenLocationId);
               if (location) {
@@ -4128,14 +4128,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               }
             }
-            
+
             // Get chef's full name and phone from application if available (better than just email)
             let chefName = chef.username || 'Chef';
             let chefPhone: string | null = null;
             if (pool && booking.chefId) {
               // Get phone using utility function (from applications table)
               chefPhone = await getChefPhone(booking.chefId, pool);
-              
+
               // Get full name from application
               try {
                 const appResult = await pool.query(
@@ -4150,9 +4150,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.debug(`Could not get full name for chef ${booking.chefId} from applications, using username`);
               }
             }
-            
+
             const chefEmailAddress = chef.username;
-            
+
             if (!chefEmailAddress) {
               console.warn(`⚠️ Chef ${booking.chefId} has no email address, skipping status update email`);
             } else {
@@ -4198,7 +4198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error(`❌ Error sending booking confirmation SMS to chef:`, smsError);
                   }
                 }
-                
+
                 // Send notification email to manager
                 const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
@@ -4232,12 +4232,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   // Check if booking is a portal user booking (has external contact or bookingType is 'external')
                   const bookingData = await firebaseStorage.getBookingById(id);
                   const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
-                  
+
                   if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
                     try {
                       // Get portal user phone using utility function (normalized)
                       const portalUserPhone = await getPortalUserPhone(booking.chefId, kitchenLocationId, pool);
-                      
+
                       if (portalUserPhone) {
                         const smsMessage = generatePortalUserBookingConfirmationSMS({
                           kitchenName: kitchen.name || 'Kitchen',
@@ -4296,7 +4296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error(`❌ Error sending booking cancellation SMS to chef:`, smsError);
                   }
                 }
-                
+
                 // Send notification email to manager
                 const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
@@ -4330,11 +4330,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   // Check if booking is a portal user booking (has external contact or bookingType is 'external')
                   const bookingData = await firebaseStorage.getBookingById(id);
                   const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
-                  
+
                   if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
                     // Get portal user phone using utility function (normalized)
                     const portalUserPhone = await getPortalUserPhone(booking.chefId, kitchenLocationId, pool);
-                    
+
                     if (portalUserPhone) {
                       const smsMessage = generatePortalUserBookingCancellationSMS({
                         kitchenName: kitchen.name || 'Kitchen',
@@ -4360,7 +4360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the status update if email fails
         }
       }
-      
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error updating booking status:", error);
@@ -4374,11 +4374,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -4386,10 +4386,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const kitchenId = parseInt(req.params.kitchenId);
       const { startDate, endDate } = req.query;
-      
+
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
-      
+
       const overrides = await firebaseStorage.getKitchenDateOverrides(kitchenId, start, end);
       res.json(overrides);
     } catch (error: any) {
@@ -4404,11 +4404,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -4416,26 +4416,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const kitchenId = parseInt(req.params.kitchenId);
       const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
-      
+
       // Validate input
       if (!specificDate) {
         return res.status(400).json({ error: "Date is required" });
       }
-      
+
       // Validate time range if kitchen is available
       if (isAvailable) {
         if (!startTime || !endTime) {
-          return res.status(400).json({ 
-            error: "Start time and end time are required when kitchen is available" 
+          return res.status(400).json({
+            error: "Start time and end time are required when kitchen is available"
           });
         }
         if (startTime >= endTime) {
-          return res.status(400).json({ 
-            error: "End time must be after start time" 
+          return res.status(400).json({
+            error: "End time must be after start time"
           });
         }
       }
-      
+
       // If closing the kitchen (isAvailable = false), check for existing bookings
       if (!isAvailable) {
         const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
@@ -4444,16 +4444,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
           return bookingDateStr === dateStr && b.status === 'confirmed';
         });
-        
+
         if (bookingsOnDate.length > 0) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: "Cannot close kitchen on this date",
             message: `There are ${bookingsOnDate.length} confirmed booking(s) on this date. Please cancel or reschedule them first.`,
-            bookings: bookingsOnDate 
+            bookings: bookingsOnDate
           });
         }
       }
-      
+
       const override = await firebaseStorage.createKitchenDateOverride({
         kitchenId,
         specificDate: new Date(specificDate),
@@ -4462,23 +4462,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isAvailable,
         reason,
       });
-      
+
       // Send email notifications to chefs and managers
       try {
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
         if (kitchen) {
           const location = await firebaseStorage.getLocationById(kitchen.locationId);
           const dateStr = new Date(specificDate).toLocaleDateString();
-          
+
           // Get all chefs who have bookings at this kitchen
           const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
           const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-          
+
           const changeType = isAvailable ? 'Special Availability Added' : 'Kitchen Closed for Date';
-          const details = isAvailable 
+          const details = isAvailable
             ? `Special availability on ${dateStr} from ${startTime} to ${endTime}.${reason ? ` Reason: ${reason}` : ''}`
             : `Kitchen will be closed on ${dateStr}.${reason ? ` Reason: ${reason}` : ''}`;
-          
+
           // Send emails to chefs
           for (const chefId of uniqueChefIds) {
             try {
@@ -4498,7 +4498,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error(`Error sending email to chef ${chefId}:`, emailError);
             }
           }
-          
+
           // Send email to manager
           if (location?.managerId) {
             try {
@@ -4506,7 +4506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (manager) {
                 const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                 const changes = `Date override created: ${dateStr} - ${isAvailable ? `special availability from ${startTime} to ${endTime}` : 'kitchen closed'}.${reason ? ` Reason: ${reason}` : ''}`;
-                
+
                 const email = generateKitchenSettingsChangeEmail({
                   email: notificationEmail,
                   name: manager.username,
@@ -4526,7 +4526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending date override emails:", emailError);
         // Don't fail the request if emails fail
       }
-      
+
       res.json(override);
     } catch (error: any) {
       console.error("Error creating date override:", error);
@@ -4540,11 +4540,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -4552,21 +4552,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const id = parseInt(req.params.id);
       const { startTime, endTime, isAvailable, reason } = req.body;
-      
+
       // Validate time range if kitchen is available
       if (isAvailable === true) {
         if (!startTime || !endTime) {
-          return res.status(400).json({ 
-            error: "Start time and end time are required when kitchen is available" 
+          return res.status(400).json({
+            error: "Start time and end time are required when kitchen is available"
           });
         }
         if (startTime >= endTime) {
-          return res.status(400).json({ 
-            error: "End time must be after start time" 
+          return res.status(400).json({
+            error: "End time must be after start time"
           });
         }
       }
-      
+
       // If changing to closed (isAvailable = false), check for existing bookings
       if (isAvailable === false) {
         // Load the specific override to find its kitchen and date
@@ -4579,22 +4579,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return bookingDateStr === dateStr && b.status === 'confirmed';
           });
           if (bookingsOnDate.length > 0) {
-            return res.status(400).json({ 
+            return res.status(400).json({
               error: "Cannot close kitchen on this date",
               message: `There are ${bookingsOnDate.length} confirmed booking(s) on this date. Please cancel or reschedule them first.`,
-              bookings: bookingsOnDate 
+              bookings: bookingsOnDate
             });
           }
         }
       }
-      
+
       const updated = await firebaseStorage.updateKitchenDateOverride(id, {
         startTime,
         endTime,
         isAvailable,
         reason,
       });
-      
+
       // Send email notifications to chefs and managers
       try {
         const override = await firebaseStorage.getKitchenDateOverrideById(id);
@@ -4603,20 +4603,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (kitchen) {
             const location = await firebaseStorage.getLocationById(kitchen.locationId);
             const dateStr = new Date(override.specificDate).toLocaleDateString();
-            
+
             // Get all chefs who have bookings at this kitchen
             const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
             const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-            
-            const changeType = isAvailable !== undefined 
+
+            const changeType = isAvailable !== undefined
               ? (isAvailable ? 'Date Override Updated - Special Availability' : 'Date Override Updated - Kitchen Closed')
               : 'Date Override Updated';
             const details = isAvailable !== undefined
-              ? (isAvailable 
-                  ? `Date override updated: ${dateStr} is now available${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}.${reason ? ` Reason: ${reason}` : ''}`
-                  : `Date override updated: ${dateStr} is now closed.${reason ? ` Reason: ${reason}` : ''}`)
+              ? (isAvailable
+                ? `Date override updated: ${dateStr} is now available${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}.${reason ? ` Reason: ${reason}` : ''}`
+                : `Date override updated: ${dateStr} is now closed.${reason ? ` Reason: ${reason}` : ''}`)
               : `Date override updated for ${dateStr}.${startTime && endTime ? ` Time: ${startTime} to ${endTime}` : ''}${reason ? ` Reason: ${reason}` : ''}`;
-            
+
             // Send emails to chefs
             for (const chefId of uniqueChefIds) {
               try {
@@ -4636,7 +4636,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.error(`Error sending email to chef ${chefId}:`, emailError);
               }
             }
-            
+
             // Send email to manager
             if (location?.managerId) {
               try {
@@ -4644,7 +4644,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (manager) {
                   const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                   const changes = `Date override updated for ${dateStr}.${isAvailable !== undefined ? (isAvailable ? ` Special availability${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}` : ' Kitchen closed') : ''}${reason ? `. Reason: ${reason}` : ''}`;
-                  
+
                   const email = generateKitchenSettingsChangeEmail({
                     email: notificationEmail,
                     name: manager.username,
@@ -4665,7 +4665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending date override update emails:", emailError);
         // Don't fail the request if emails fail
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating date override:", error);
@@ -4679,11 +4679,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -4710,15 +4710,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // First, try Firebase authentication
       const authHeader = req.headers.authorization;
-      
+
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         const decodedToken = await verifyFirebaseToken(token);
-        
+
         if (decodedToken) {
           // Load user from Firebase UID
           const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
-          
+
           if (neonUser && neonUser.isChef) {
             // Set both Firebase and user info on request
             req.firebaseUser = {
@@ -4734,13 +4734,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       // Fall back to session authentication
       if (req.isAuthenticated?.() && req.user?.isChef) {
         console.log(`✅ Chef authenticated via session: ${req.user.username} (ID: ${req.user.id})`);
         return next();
       }
-      
+
       // Neither authentication method worked
       return res.status(401).json({ error: "Authentication required. Please sign in as a chef." });
     } catch (error) {
@@ -4755,15 +4755,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // For marketing purposes, show ALL active kitchens at all locations
       // Chefs can see all available commercial kitchen locations
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       // Filter only active kitchens
       const activeKitchens = allKitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       console.log(`[API] /api/chef/kitchens - Returning ${activeKitchens.length} active kitchens (all locations for marketing)`);
-      
+
       res.json(activeKitchens);
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
@@ -4777,23 +4777,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all locations with active kitchens for marketing purposes
       const allLocations = await firebaseStorage.getAllLocations();
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       // Filter to only locations that have at least one active kitchen
       const activeKitchens = allKitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       const locationIdsWithKitchens = new Set(
         activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
       );
-      
-      const locationsWithKitchens = allLocations.filter((location: any) => 
+
+      const locationsWithKitchens = allLocations.filter((location: any) =>
         locationIdsWithKitchens.has(location.id)
       );
-      
+
       console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
-      
+
       res.json(locationsWithKitchens);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
@@ -4806,26 +4806,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const { date } = req.query;
-      
+
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      
+
       const bookingDate = new Date(date as string);
-      
+
       // Validate date
       if (isNaN(bookingDate.getTime())) {
         return res.status(400).json({ error: "Invalid date format" });
       }
-      
+
       const slotsInfo = await firebaseStorage.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
-      
+
       res.json(slotsInfo);
     } catch (error: any) {
       console.error("Error fetching time slots:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to fetch time slots",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -4835,30 +4835,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const { date } = req.query;
-      
+
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      
+
       const bookingDate = new Date(date as string);
-      
+
       // Validate date
       if (isNaN(bookingDate.getTime())) {
         return res.status(400).json({ error: "Invalid date format" });
       }
-      
+
       console.log(`🔍 Fetching available slots for kitchen ${kitchenId} on ${date}`);
-      
+
       const slots = await firebaseStorage.getAvailableTimeSlots(kitchenId, bookingDate);
-      
+
       console.log(`✅ Returning ${slots.length} available slots`);
-      
+
       res.json(slots);
     } catch (error: any) {
       console.error("Error fetching available slots:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to fetch available slots",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -4868,52 +4868,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
       const chefId = req.user!.id;
-      
+
       // Check if chef has admin-granted access to the location containing this kitchen
       const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
       if (!kitchenLocationId1) {
         return res.status(400).json({ error: "Kitchen location not found" });
       }
-      
+
       const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId1);
-      
+
       if (!hasLocationAccess) {
         return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
       }
-      
+
       // Check if chef has shared their profile with the location and it's been approved by manager
       const profile = await firebaseStorage.getChefLocationProfile(chefId, kitchenLocationId1);
       if (!profile) {
         return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
       }
-      
+
       if (profile.status !== 'approved') {
-        return res.status(403).json({ 
-          error: profile.status === 'pending' 
+        return res.status(403).json({
+          error: profile.status === 'pending'
             ? "Your profile is pending manager approval. Please wait for approval before booking."
             : "Your profile was rejected. Please contact the location manager for more information."
         });
       }
-      
+
       // First validate that the booking is within manager-set availability
       const bookingDateObj = new Date(bookingDate);
       const availabilityCheck = await firebaseStorage.validateBookingAvailability(
-        kitchenId, 
-        bookingDateObj, 
-        startTime, 
+        kitchenId,
+        bookingDateObj,
+        startTime,
         endTime
       );
-      
+
       if (!availabilityCheck.valid) {
         return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
       }
-      
+
       // Get location to get timezone and minimum booking window
       const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
       let location = null;
       let timezone = DEFAULT_TIMEZONE;
       let minimumBookingWindowHours = 1; // Default
-      
+
       if (kitchenLocationId2) {
         location = await firebaseStorage.getLocationById(kitchenLocationId2);
         if (location) {
@@ -4921,27 +4921,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minimumBookingWindowHours = (location as any).minimumBookingWindowHours || 1;
         }
       }
-      
+
       // Extract date string from ISO string to avoid timezone shifts
       // The frontend sends bookingDate as ISO string (e.g., "2025-01-15T00:00:00.000Z")
       // We need to extract the date part (YYYY-MM-DD) before timezone conversion
-      const bookingDateStr = typeof bookingDate === 'string' 
-        ? bookingDate.split('T')[0] 
+      const bookingDateStr = typeof bookingDate === 'string'
+        ? bookingDate.split('T')[0]
         : bookingDateObj.toISOString().split('T')[0];
-      
+
       // Validate booking time using timezone-aware functions
       if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
-      
+
       // Check if booking is within minimum booking window (timezone-aware)
       const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
       if (hoursUntilBooking < minimumBookingWindowHours) {
-        return res.status(400).json({ 
-          error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+        return res.status(400).json({
+          error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
         });
       }
-      
+
       // Check for conflicts with existing bookings
       const hasConflict = await firebaseStorage.checkBookingConflict(kitchenId, bookingDateObj, startTime, endTime);
       if (hasConflict) {
@@ -4951,7 +4951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check daily booking limit
       const { db } = await import('./db');
       const { pool } = db;
-      
+
       // Calculate requested slots
       const [sH, sM] = String(startTime).split(':').map(Number);
       const [eH, eM] = String(endTime).split(':').map(Number);
@@ -4969,7 +4969,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ORDER BY updated_at DESC
             LIMIT 1
           `, [kitchenId, bookingDateStr]);
-          
+
           if (overrideResult.rows.length > 0) {
             const val = Number(overrideResult.rows[0].max_slots_per_chef);
             if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
@@ -4981,7 +4981,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               FROM kitchen_availability
               WHERE kitchen_id = $1 AND day_of_week = $2
             `, [kitchenId, dayOfWeek]);
-            
+
             if (availabilityResult.rows.length > 0) {
               const v = Number(availabilityResult.rows[0].max_slots_per_chef);
               if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
@@ -4993,7 +4993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 INNER JOIN kitchens k ON k.location_id = l.id
                 WHERE k.id = $1
               `, [kitchenId]);
-              
+
               if (locationLimitResult.rows.length > 0) {
                 const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
                 if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
@@ -5026,8 +5026,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Check if booking would exceed daily limit
         if (existingSlots + requestedSlots > maxSlotsPerChef) {
-          return res.status(400).json({ 
-            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
+          return res.status(400).json({
+            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).`
           });
         }
       }
@@ -5046,7 +5046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Step 2: Send email notifications - SEQUENTIAL execution to ensure reliability
       console.log(`📧 STEP 2: Starting sequential email notification process for booking ${booking.id}`);
-      
+
       let emailResults = {
         chefEmailSent: false,
         managerEmailSent: false,
@@ -5064,7 +5064,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.1 COMPLETE: Kitchen found - ${kitchen.name || kitchenId}`);
-        
+
         // Step 2.2: Get location details
         console.log(`📧 STEP 2.2: Fetching location details...`);
         const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
@@ -5075,7 +5075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.2 PROGRESS: Kitchen locationId is ${kitchenLocationId}`);
-        
+
         const location = await firebaseStorage.getLocationById(kitchenLocationId);
         if (!location) {
           const errorMsg = `Location ${kitchenLocationId} not found`;
@@ -5084,7 +5084,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.2 COMPLETE: Location found - ${location.name}, Notification Email: ${location.notificationEmail || (location as any).notification_email || 'NOT SET'}`);
-        
+
         // Step 2.3: Get chef details
         console.log(`📧 STEP 2.3: Fetching chef details...`);
         const chef = await storage.getUser(req.user!.id);
@@ -5095,12 +5095,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.3 COMPLETE: Chef found - ${chef.username || 'unknown'}`);
-        
+
         // Step 2.4: Get manager details (optional - notification email might be set without manager)
         console.log(`📧 STEP 2.4: Fetching manager details...`);
         const managerId = location.managerId || (location as any).manager_id;
         console.log(`📋 STEP 2.4 PROGRESS: Manager ID from location: ${managerId || 'NOT SET'}`);
-        
+
         const manager = managerId ? await storage.getUser(managerId) : null;
         if (!manager && managerId) {
           console.warn(`⚠️ STEP 2.4 WARNING: Manager ${managerId} not found in database, will use notification email only`);
@@ -5158,7 +5158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.6 PROGRESS: Generated chef email - To: ${chefEmail.to}, Subject: ${chefEmail.subject}`);
-            
+
             // CRITICAL: Wait for email to complete before proceeding
             const emailSent = await sendEmail(chefEmail);
             if (emailSent) {
@@ -5176,7 +5176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             emailResults.errors.push(errorMsg);
           }
         }
-        
+
         // Step 2.7: Send manager email (ONLY after chef email completes)
         console.log(`📧 STEP 2.7: Sending booking notification email to manager...`);
         const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager?.username || null);
@@ -5201,7 +5201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.7 PROGRESS: Generated manager email - To: ${managerEmail.to}, Subject: ${managerEmail.subject}`);
-            
+
             // CRITICAL: Wait for email to complete before proceeding
             const emailSent = await sendEmail(managerEmail);
             if (emailSent) {
@@ -5248,7 +5248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`❌ STEP 2.8 ERROR: Exception sending manager SMS:`, smsError);
           // Don't fail the booking if SMS fails
         }
-        
+
         // Final summary
         console.log(`📧 STEP 2 COMPLETE: Email notification process finished for booking ${booking.id}`);
         console.log(`   Chef email: ${emailResults.chefEmailSent ? '✅ SENT' : '❌ FAILED'}`);
@@ -5259,7 +5259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`     ${index + 1}. ${error}`);
           });
         }
-        
+
       } catch (emailError) {
         const errorMsg = emailError instanceof Error ? emailError.message : String(emailError);
         console.error(`❌ STEP 2 CRITICAL ERROR: ${errorMsg}`);
@@ -5268,9 +5268,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         emailResults.errors.push(`Critical error: ${errorMsg}`);
         // Don't fail the booking if emails fail - booking is already created
       }
-      
+
       console.log(`📝 FINAL: Booking ${booking.id} created. Email status: Chef=${emailResults.chefEmailSent ? 'sent' : 'failed'}, Manager=${emailResults.managerEmailSent ? 'sent' : 'failed'}`);
-      
+
       res.status(201).json(booking);
     } catch (error) {
       console.error("Error creating booking:", error);
@@ -5293,20 +5293,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      
+
       // Get booking details before cancelling
       const booking = await firebaseStorage.getBookingById(id);
       if (!booking) {
         return res.status(404).json({ error: "Booking not found" });
       }
-      
+
       // Verify the booking belongs to this chef
       if (booking.chefId !== req.user!.id) {
         return res.status(403).json({ error: "You don't have permission to cancel this booking" });
       }
-      
+
       await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
-      
+
       // Send email notifications to chef and manager
       try {
         // Get kitchen details
@@ -5337,10 +5337,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 // Get chef phone using utility function (from applications table)
                 const chefPhone = await getChefPhone(booking.chefId, pool);
-                
+
                 // Import email functions
                 const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('./email.js');
-                
+
                 // Send email to chef
                 try {
                   const chefEmail = generateBookingCancellationEmail({
@@ -5373,10 +5373,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error("Error sending chef cancellation SMS:", smsError);
                   }
                 }
-                
+
                 // Send email to manager
                 const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null);
-                
+
                 if (notificationEmailAddress) {
                   try {
                     const managerEmail = generateBookingCancellationNotificationEmail({
@@ -5425,7 +5425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending booking cancellation emails:", emailError);
         // Don't fail the cancellation if emails fail
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error cancelling booking:", error);
@@ -5438,14 +5438,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { locationId } = req.body;
       const chefId = req.user!.id;
-      
+
       if (!locationId) {
         return res.status(400).json({ error: "locationId is required" });
       }
 
       // Check if chef has admin-granted access to this location
       const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, locationId);
-      
+
       if (!hasLocationAccess) {
         return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
       }
@@ -5474,19 +5474,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
 
       const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
-      
+
       // Send email to manager if this is a new profile share (status is pending)
       if (profile && profile.status === 'pending') {
         try {
           const managerEmail = (location as any).notificationEmail || (location as any).notification_email;
           if (managerEmail) {
-            const chefName = chefApp.length > 0 && chefApp[0].fullName 
-              ? chefApp[0].fullName 
+            const chefName = chefApp.length > 0 && chefApp[0].fullName
+              ? chefApp[0].fullName
               : (chef as any).username || 'Chef';
-            const chefEmail = chefApp.length > 0 && chefApp[0].email 
-              ? chefApp[0].email 
+            const chefEmail = chefApp.length > 0 && chefApp[0].email
+              ? chefApp[0].email
               : (chef as any).email || (chef as any).username || 'chef@example.com';
-            
+
             const emailContent = generateChefProfileRequestEmail({
               managerEmail: managerEmail,
               chefName: chefName,
@@ -5502,7 +5502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the profile share if email fails
         }
       }
-      
+
       res.status(201).json(profile);
     } catch (error: any) {
       console.error("Error sharing chef profile:", error);
@@ -5514,25 +5514,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/chef/profiles", requireChef, async (req: Request, res: Response) => {
     try {
       const chefId = req.user!.id;
-      
+
       // Get all locations chef has access to via admin-granted access
       const locationAccessRecords = await db
         .select()
         .from(chefLocationAccess)
         .where(eq(chefLocationAccess.chefId, chefId));
-      
+
       const locationIds = locationAccessRecords.map(access => access.locationId);
-      
+
       if (locationIds.length === 0) {
         return res.json([]);
       }
-      
+
       // Get all locations with details
       const allLocations = await db
         .select()
         .from(locations)
         .where(inArray(locations.id, locationIds));
-      
+
       // Get profiles for all accessible locations
       const profiles = await Promise.all(
         locationIds.map(async (locationId) => {
@@ -5541,7 +5541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return { locationId, location, profile };
         })
       );
-      
+
       res.json(profiles);
     } catch (error: any) {
       console.error("Error getting chef profiles:", error);
@@ -5558,24 +5558,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { chefId, locationId } = req.body;
-      
+
       if (!chefId || !locationId) {
         return res.status(400).json({ error: "chefId and locationId are required" });
       }
 
       const access = await firebaseStorage.grantChefLocationAccess(chefId, locationId, user.id);
-      
+
       // Send email notification to chef when access is granted
       try {
         // Get location details
@@ -5607,7 +5607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending chef access emails:", emailError);
         // Don't fail the access grant if emails fail
       }
-      
+
       res.status(201).json(access);
     } catch (error: any) {
       console.error("Error granting chef location access:", error);
@@ -5620,18 +5620,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { chefId, locationId } = req.body;
-      
+
       if (!chefId || !locationId) {
         return res.status(400).json({ error: "chefId and locationId are required" });
       }
@@ -5650,17 +5650,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("[Admin Chef Access] GET request received");
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       console.log("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         console.log("[Admin Chef Access] Not authenticated");
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       console.log("[Admin Chef Access] User:", { id: user.id, role: user.role });
-      
+
       if (user.role !== "admin") {
         console.log("[Admin Chef Access] Not admin");
         return res.status(403).json({ error: "Admin access required" });
@@ -5674,14 +5674,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isChef = (u as any).isChef ?? (u as any).is_chef;
         return role === 'chef' || isChef === true;
       });
-      
+
       console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
       console.log(`[Admin Chef Access] Chefs:`, chefs.map(c => ({ id: c.id, username: c.username, role: (c as any).role, isChef: (c as any).isChef ?? (c as any).is_chef })));
-      
+
       // Get all locations
       const allLocations = await db.select().from(locations);
       console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
-      
+
       // Get all location access records (handle case if table doesn't exist yet)
       let allAccess: any[] = [];
       try {
@@ -5697,7 +5697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw error; // Re-throw if it's a different error
         }
       }
-      
+
       // Build response with chef location access info
       const response = chefs.map(chef => {
         // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
@@ -5709,7 +5709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
           const accessLocationId = (access as any).locationId ?? (access as any).location_id;
           const location = allLocations.find(l => l.id === accessLocationId);
-          
+
           if (location) {
             const grantedAt = (access as any).grantedAt ?? (access as any).granted_at;
             return {
@@ -5721,7 +5721,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           return null;
         }).filter((l): l is NonNullable<typeof l> => l !== null);
-        
+
         return {
           chef: {
             id: chef.id,
@@ -5730,7 +5730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           accessibleLocations,
         };
       });
-      
+
       console.log(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
       res.json(response);
     } catch (error: any) {
@@ -5746,23 +5746,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { username, password, email, name } = req.body;
-      
+
       // Validate required fields
       if (!username || !password) {
         return res.status(400).json({ error: "Username and password are required" });
       }
-      
+
       // Check if user already exists
       const existingUser = await firebaseStorage.getUserByUsername(username);
       if (existingUser) {
@@ -5787,14 +5787,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         // Use email field if provided, otherwise fallback to username
         const managerEmail = email || username;
-        
+
         const welcomeEmail = generateManagerCredentialsEmail({
           email: managerEmail,
           name: name || 'Manager',
           username: username,
           password: password
         });
-        
+
         await sendEmail(welcomeEmail);
         console.log(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
       } catch (emailError) {
@@ -5817,28 +5817,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      
+
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       // Fetch all users with manager role and their managed locations with notification emails
       const { pool, db } = await import('./db');
-      
+
       console.log('🔍 GET /api/admin/managers - Pool available?', !!pool);
       console.log('🔍 GET /api/admin/managers - DB available?', !!db);
-      
+
       // CRITICAL: Always use pool if available (faster SQL aggregation)
       // Only fallback to Drizzle if pool is not available
       if (pool) {
         console.log('✅ Using pool query for GET /api/admin/managers');
-        
+
         // Get managers with their locations and notification emails
         // CRITICAL: Use COALESCE with json_agg to ensure we always get an array (even if empty)
         const result = await pool.query(
@@ -5863,7 +5863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ORDER BY u.username ASC`,
           ['manager']
         );
-        
+
         console.log('📊 Database query executed, rows returned:', result.rows.length);
         if (result.rows.length > 0) {
           console.log('📊 First row from database:', {
@@ -5875,7 +5875,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locationsIsArray: Array.isArray(result.rows[0].locations)
           });
         }
-        
+
         // Transform the result to include notification emails in a flat structure
         console.log(`📊 Raw database result - ${result.rows.length} manager(s) found`);
         if (result.rows.length > 0) {
@@ -5883,15 +5883,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`📊 First row locations property:`, result.rows[0].locations);
           console.log(`📊 First row locations type:`, typeof result.rows[0].locations);
         }
-        
+
         const managersWithEmails = result.rows.map((row: any) => {
           // Parse JSON if it's a string, otherwise use as-is
           // PostgreSQL json_agg returns JSON as a string or object depending on driver
           let locations = row.locations;
-          
+
           console.log(`🔍 Manager ${row.id} (${row.username}): raw locations =`, typeof locations, locations);
           console.log(`🔍 Manager ${row.id}: row object keys:`, Object.keys(row));
-          
+
           // Handle different return types from PostgreSQL
           // COALESCE in SQL should ensure we get []::json, but handle all cases
           if (locations === null || locations === undefined) {
@@ -5916,7 +5916,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Already parsed JSON object/array
             console.log(`✅ Manager ${row.id}: locations is already object, isArray=${Array.isArray(locations)}`);
           }
-          
+
           // Ensure locations is an array (handle case where it's already parsed)
           if (!Array.isArray(locations)) {
             console.warn(`⚠️ Manager ${row.id} locations is not an array after processing:`, typeof locations, locations);
@@ -5927,39 +5927,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locations = [];
             }
           }
-          
+
           console.log(`✅ Manager ${row.id} (${row.username}) FINAL: ${locations.length} location(s):`, JSON.stringify(locations, null, 2));
-          
+
           // Get all notification emails from locations managed by this manager
           // Handle both camelCase (from mapping) and raw snake_case
           const notificationEmails = locations
             .map((loc: any) => loc.notificationEmail || loc.notification_email)
             .filter((email: string) => email && email.trim() !== '');
-          
+
           // STEP 4: Map to consistent structure (camelCase)
           const mappedLocations = locations.map((loc: any) => {
             // Handle both camelCase and snake_case from database
             const locationId = loc.locationId || loc.location_id || loc.id;
             const locationName = loc.locationName || loc.location_name || loc.name;
             const notificationEmail = loc.notificationEmail || loc.notification_email || null;
-            
+
             return {
               locationId: locationId,
               locationName: locationName,
               notificationEmail: notificationEmail
             };
           });
-          
+
           // CRITICAL: Build managerData with explicit locations property
           const managerData: any = {
             id: row.id,
             username: row.username,
             role: row.role,
           };
-          
+
           // EXPLICITLY set locations property - do not rely on object spread
           managerData.locations = mappedLocations;
-          
+
           console.log(`📦 Manager ${row.id} FINAL structure (BEFORE return):`, {
             id: managerData.id,
             username: managerData.username,
@@ -5970,16 +5970,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locationsValue: managerData.locations,
             fullObject: JSON.stringify(managerData, null, 2)
           });
-          
+
           // Verify the object has locations before returning
           if (!('locations' in managerData)) {
             console.error(`❌ CRITICAL ERROR: Manager ${row.id} object missing locations property!`);
             managerData.locations = [];
           }
-          
+
           return managerData;
         });
-        
+
         console.log('📤 GET /api/admin/managers - managersWithEmails.length:', managersWithEmails.length);
         if (managersWithEmails.length > 0) {
           const firstManager = managersWithEmails[0];
@@ -5990,7 +5990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log('📤 managersWithEmails[0].locations is array?', Array.isArray(firstManager.locations));
           console.log('📤 managersWithEmails[0] FULL OBJECT:', JSON.stringify(firstManager, null, 2));
         }
-        
+
         // FINAL VERIFICATION: Ensure every manager has a locations array before sending
         const verifiedManagers = managersWithEmails.map((manager: any) => {
           // CRITICAL: Explicitly check and ensure locations property exists
@@ -6001,7 +6001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn(`⚠️ Manager ${manager.id} has locations but it's not an array (${typeof manager.locations}), converting`);
             manager.locations = Array.isArray(manager.locations) ? manager.locations : [];
           }
-          
+
           // Return a new object with explicit structure to ensure properties are preserved
           return {
             id: manager.id,
@@ -6010,7 +6010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locations: Array.isArray(manager.locations) ? manager.locations : []
           };
         });
-        
+
         console.log('📤 FINAL VERIFIED - First manager structure:', {
           id: verifiedManagers[0]?.id,
           username: verifiedManagers[0]?.username,
@@ -6021,10 +6021,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           locations: verifiedManagers[0]?.locations,
           fullJSON: JSON.stringify(verifiedManagers[0], null, 2)
         });
-        
+
         // CRITICAL: Log what we're actually sending
         console.log('📤 SENDING RESPONSE - Full response array:', JSON.stringify(verifiedManagers, null, 2));
-        
+
         return res.json(verifiedManagers);
       } else {
         // Fallback to Drizzle if pool is not available
@@ -6036,9 +6036,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .select({ id: users.id, username: users.username, role: users.role })
             .from(users)
             .where(eq(users.role as any, 'manager'));
-          
+
           console.log(`Found ${managerRows.length} managers with Drizzle`);
-          
+
           // Get locations for each manager
           const managersWithLocations = await Promise.all(
             managerRows.map(async (manager) => {
@@ -6046,27 +6046,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 .select()
                 .from(locations)
                 .where(eq(locations.managerId, manager.id));
-              
+
               console.log(`Manager ${manager.id} has ${managerLocations.length} locations`);
-              
+
               const notificationEmails = managerLocations
                 .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
                 .filter(email => email && email.trim() !== '');
-              
+
               // CRITICAL: Build managerData with explicit locations property
               const managerData: any = {
                 id: manager.id,
                 username: manager.username,
                 role: manager.role,
               };
-              
+
               // EXPLICITLY set locations property
               managerData.locations = managerLocations.map(loc => ({
                 locationId: loc.id,
                 locationName: (loc as any).name,
                 notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
               }));
-              
+
               console.log(`📤 Drizzle Manager ${manager.id} final structure:`, {
                 id: managerData.id,
                 username: managerData.username,
@@ -6076,11 +6076,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 locations: managerData.locations,
                 fullJSON: JSON.stringify(managerData, null, 2)
               });
-              
+
               return managerData;
             })
           );
-          
+
           console.log('📤 Drizzle fallback returning', managersWithLocations.length, 'managers');
           if (managersWithLocations.length > 0) {
             console.log('📤 Drizzle managersWithLocations[0] FULL:', JSON.stringify(managersWithLocations[0], null, 2));
@@ -6104,11 +6104,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -6170,18 +6170,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const isSessionAuth = req.isAuthenticated?.();
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!isSessionAuth && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : req.user!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const locations = await firebaseStorage.getAllLocations();
-      
+
       // Map snake_case fields to camelCase for the frontend (consistent with manager endpoint)
       // Drizzle ORM may return snake_case depending on configuration, so we ensure camelCase
       const mappedLocations = locations.map((loc: any) => ({
@@ -6194,7 +6194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: loc.createdAt || loc.created_at,
         updatedAt: loc.updatedAt || loc.updated_at,
       }));
-      
+
       res.json(mappedLocations);
     } catch (error) {
       console.error("Error fetching locations:", error);
@@ -6208,18 +6208,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { name, address, managerId } = req.body;
-      
+
       // Convert managerId to number or undefined
       // Handle empty strings, null, undefined, and convert to number
       let managerIdNum: number | undefined = undefined;
@@ -6228,7 +6228,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isNaN(managerIdNum) || managerIdNum <= 0) {
           return res.status(400).json({ error: "Invalid manager ID format" });
         }
-        
+
         // Validate that the manager exists and has manager role
         // Use firebaseStorage to be consistent with location creation
         const manager = await firebaseStorage.getUser(managerIdNum);
@@ -6239,29 +6239,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
         }
       }
-      
+
       // Normalize notification phone if provided
       let normalizedNotificationPhone: string | undefined = undefined;
       if (req.body.notificationPhone && req.body.notificationPhone.trim() !== '') {
         const normalized = normalizePhoneForStorage(req.body.notificationPhone);
         if (!normalized) {
-          return res.status(400).json({ 
-            error: "Invalid notification phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          return res.status(400).json({
+            error: "Invalid notification phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
           });
         }
         normalizedNotificationPhone = normalized;
       }
-      
+
       console.log('Creating location with:', { name, address, managerId: managerIdNum, notificationPhone: normalizedNotificationPhone });
-      
-      const location = await firebaseStorage.createLocation({ 
-        name, 
-        address, 
+
+      const location = await firebaseStorage.createLocation({
+        name,
+        address,
         managerId: managerIdNum,
         notificationEmail: req.body.notificationEmail || undefined,
         notificationPhone: normalizedNotificationPhone
       });
-      
+
       // Map snake_case to camelCase for consistent API response
       const mappedLocation = {
         ...location,
@@ -6274,7 +6274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: (location as any).createdAt || (location as any).created_at,
         updatedAt: (location as any).updatedAt || (location as any).updated_at,
       };
-      
+
       res.status(201).json(mappedLocation);
     } catch (error: any) {
       console.error("Error creating location:", error);
@@ -6289,11 +6289,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -6318,35 +6318,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { locationId, name, description } = req.body;
-      
+
       // Validate required fields
       if (!locationId || !name) {
         return res.status(400).json({ error: "Location ID and name are required" });
       }
-      
+
       // Validate locationId is a valid number
       const locationIdNum = parseInt(locationId.toString());
       if (isNaN(locationIdNum) || locationIdNum <= 0) {
         return res.status(400).json({ error: "Invalid location ID format" });
       }
-      
+
       // Validate that the location exists
       const location = await firebaseStorage.getLocationById(locationIdNum);
       if (!location) {
         return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
       }
-      
+
       const kitchen = await firebaseStorage.createKitchen({ locationId: locationIdNum, name, description, isActive: true });
       res.status(201).json(kitchen);
     } catch (error: any) {
@@ -6366,15 +6366,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log(`📍 PUT /api/admin/locations/:id - Request received for location ID: ${req.params.id}`);
       console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
-      
+
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         console.error('❌ PUT /api/admin/locations/:id - Not authenticated');
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         console.error(`❌ PUT /api/admin/locations/:id - User ${user.id} is not admin (role: ${user.role})`);
@@ -6386,11 +6386,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`❌ Invalid location ID: ${req.params.id}`);
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      
+
       console.log(`✅ Validated - updating location ${locationId} for admin user ${user.id}`);
 
       const { name, address, managerId, notificationEmail, notificationPhone } = req.body;
-      
+
       // Validate managerId if provided
       let managerIdNum: number | undefined | null = undefined;
       if (managerId !== undefined && managerId !== null && managerId !== '') {
@@ -6398,7 +6398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isNaN(managerIdNum) || managerIdNum <= 0) {
           return res.status(400).json({ error: "Invalid manager ID format" });
         }
-        
+
         // Validate that the manager exists and has manager role
         const manager = await firebaseStorage.getUser(managerIdNum);
         if (!manager) {
@@ -6417,14 +6417,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (address !== undefined) updates.address = address;
       if (managerIdNum !== undefined) updates.managerId = managerIdNum;
       if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail || null;
-      
+
       // Normalize phone number if provided
       if (notificationPhone !== undefined) {
         if (notificationPhone && notificationPhone.trim() !== '') {
           const normalized = normalizePhoneForStorage(notificationPhone);
           if (!normalized) {
-            return res.status(400).json({ 
-              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            return res.status(400).json({
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
             });
           }
           updates.notificationPhone = normalized;
@@ -6434,15 +6434,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`💾 Updating location ${locationId} with:`, updates);
-      
+
       const updated = await firebaseStorage.updateLocation(locationId, updates);
       if (!updated) {
         console.error(`❌ Location ${locationId} not found in database`);
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       console.log(`✅ Location ${locationId} updated successfully`);
-      
+
       // Map snake_case to camelCase for consistent API response (matching getAllLocations pattern)
       const mappedLocation = {
         ...updated,
@@ -6454,7 +6454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: (updated as any).createdAt || (updated as any).created_at,
         updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
       };
-      
+
       return res.json(mappedLocation);
     } catch (error: any) {
       console.error("❌ Error updating location:", error);
@@ -6468,11 +6468,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -6496,11 +6496,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -6518,10 +6518,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { name, description, isActive, locationId } = req.body;
-      
+
       const updates: any = {};
       const changesList: string[] = [];
-      
+
       if (name !== undefined && name !== currentKitchen.name) {
         updates.name = name;
         changesList.push(`Name changed to "${name}"`);
@@ -6539,7 +6539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isNaN(locationIdNum) || locationIdNum <= 0) {
           return res.status(400).json({ error: "Invalid location ID format" });
         }
-        
+
         // Validate that the location exists
         const location = await firebaseStorage.getLocationById(locationIdNum);
         if (!location) {
@@ -6560,20 +6560,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updated) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       // Send email notifications to chefs and managers
       if (changesList.length > 0) {
         try {
           const kitchen = await firebaseStorage.getKitchenById(kitchenId);
           if (kitchen) {
             const location = await firebaseStorage.getLocationById(kitchen.locationId);
-            
+
             // Get all chefs who have bookings at this kitchen
             const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
             const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-            
+
             const changes = changesList.join(', ');
-            
+
             // Send emails to chefs
             for (const chefId of uniqueChefIds) {
               try {
@@ -6593,7 +6593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.error(`Error sending email to chef ${chefId}:`, emailError);
               }
             }
-            
+
             // Send email to manager
             if (location?.managerId) {
               try {
@@ -6620,7 +6620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the request if emails fail
         }
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen:", error);
@@ -6633,11 +6633,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -6662,15 +6662,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log(`📍 PUT /api/admin/managers/:id - Request received for manager ID: ${req.params.id}`);
       console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
-      
+
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         console.error('❌ PUT /api/admin/managers/:id - Not authenticated');
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         console.error(`❌ PUT /api/admin/managers/:id - User ${user.id} is not admin (role: ${user.role})`);
@@ -6682,11 +6682,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`❌ Invalid manager ID: ${req.params.id}`);
         return res.status(400).json({ error: "Invalid manager ID" });
       }
-      
+
       console.log(`✅ Validated - updating manager ${managerId} for admin user ${user.id}`);
 
       const { username, role, isManager, locationNotificationEmails } = req.body;
-      
+
       // Verify the user exists and is a manager
       const manager = await firebaseStorage.getUser(managerId);
       if (!manager) {
@@ -6712,19 +6712,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updated) {
         return res.status(404).json({ error: "Failed to update manager" });
       }
-      
+
       // Update notification emails for locations managed by this manager
       if (locationNotificationEmails && Array.isArray(locationNotificationEmails)) {
         const { db } = await import('./db');
         const { locations } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
-        
+
         // Get all locations managed by this manager
         const managedLocations = await db
           .select()
           .from(locations)
           .where(eq(locations.managerId, managerId));
-        
+
         // Update each location's notification email
         for (const emailUpdate of locationNotificationEmails) {
           if (emailUpdate.locationId && emailUpdate.notificationEmail !== undefined) {
@@ -6736,21 +6736,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.warn(`Invalid email format for location ${locationId}: ${email}`);
                 continue; // Skip invalid emails
               }
-              
+
               await db
                 .update(locations)
-                .set({ 
+                .set({
                   notificationEmail: email || null,
                   updatedAt: new Date()
                 })
                 .where(eq(locations.id, locationId));
-              
+
               console.log(`✅ Updated notification email for location ${locationId}: ${email || 'null'}`);
             }
           }
         }
       }
-      
+
       // Return updated manager with location info
       const { locations } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
@@ -6758,11 +6758,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .select()
         .from(locations)
         .where(eq(locations.managerId, managerId));
-      
+
       const notificationEmails = managedLocations
         .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
         .filter(email => email && email.trim() !== '');
-      
+
       const response = {
         ...updated,
         locations: managedLocations.map(loc => ({
@@ -6773,7 +6773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notificationEmails: notificationEmails,
         primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
       };
-      
+
       res.json(response);
     } catch (error: any) {
       console.error("Error updating manager:", error);
@@ -6786,11 +6786,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -6873,11 +6873,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             const { portalUserLocationAccess } = await import('../shared/schema');
             const { eq } = await import('drizzle-orm');
-            
+
             const accessRecords = await db.select()
               .from(portalUserLocationAccess)
               .where(eq(portalUserLocationAccess.portalUserId, portalUser.id));
-            
+
             if (accessRecords.length > 0) {
               return accessRecords[0].locationId;
             }
@@ -6924,7 +6924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already exists
       let user = await firebaseStorage.getUserByUsername(username);
       let isNewUser = false;
-      
+
       if (!user) {
         // Hash password and create user
         const hashedPassword = await hashPassword(password);
@@ -6962,18 +6962,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error checking existing applications:", dbError);
         // If table doesn't exist, provide helpful error message
         if (dbError.message && dbError.message.includes('does not exist')) {
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "Database migration required. Please run the migration to create portal_user_applications table.",
             details: "Run: migrations/0005_add_portal_user_tables.sql"
           });
         }
         throw dbError;
       }
-      
+
       if (existingApplications.length > 0) {
         const existingApp = existingApplications[0];
         if (existingApp.status === 'inReview' || existingApp.status === 'approved') {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: "You already have an application for this location",
             applicationId: existingApp.id,
             status: existingApp.status
@@ -6989,7 +6989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!normalizedPhone) {
           return res.status(400).json({ error: "Invalid phone number format. Please enter a valid phone number." });
         }
-        
+
         application = await db.insert(portalUserApplications).values({
           userId: user.id,
           locationId: parseInt(locationId),
@@ -7003,7 +7003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error creating application:", dbError);
         // If table doesn't exist, provide helpful error message
         if (dbError.message && dbError.message.includes('does not exist')) {
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "Database migration required. Please run the migration to create portal_user_applications table.",
             details: "Run: migrations/0005_add_portal_user_tables.sql"
           });
@@ -7012,21 +7012,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log the user in immediately after registration (for both new and existing users)
-      return new Promise<void>((resolve, reject) => {
+      return new Promise < void> ((resolve, reject) => {
         req.login(user, (err: Error | null) => {
           if (err) {
             console.error("Login error after registration:", err);
             return res.status(500).json({ error: "Login failed after registration" });
           }
-          
+
           // Send notification to manager
           (async () => {
             try {
               const { sendEmail } = await import('./email');
-              
+
               // First, try to get notification_email from location (preferred)
               let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
-              
+
               // If no notification_email, get manager's email from manager_id
               if (!managerEmail) {
                 const managerId = (location as any).managerId || (location as any).manager_id;
@@ -7037,26 +7037,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
               }
-              
+
               // Send email if we have a manager email
               if (managerEmail) {
                 const emailContent = {
                   to: managerEmail,
                   subject: `New Portal User Application - ${(location as any).name}`,
                   text: `A new portal user has applied for access to your location:\n\n` +
-                        `Location: ${(location as any).name}\n` +
-                        `Applicant Name: ${fullName}\n` +
-                        `Email: ${email}\n` +
-                        `Phone: ${phone}\n` +
-                        `${company ? `Company: ${company}\n` : ''}` +
-                        `\nPlease log in to your manager dashboard to review and approve this application.`,
+                    `Location: ${(location as any).name}\n` +
+                    `Applicant Name: ${fullName}\n` +
+                    `Email: ${email}\n` +
+                    `Phone: ${phone}\n` +
+                    `${company ? `Company: ${company}\n` : ''}` +
+                    `\nPlease log in to your manager dashboard to review and approve this application.`,
                   html: `<h2>New Portal User Application</h2>` +
-                        `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                        `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
-                        `<p><strong>Email:</strong> ${email}</p>` +
-                        `<p><strong>Phone:</strong> ${phone}</p>` +
-                        `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
-                        `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                    `<p><strong>Email:</strong> ${email}</p>` +
+                    `<p><strong>Phone:</strong> ${phone}</p>` +
+                    `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                    `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
                 };
                 await sendEmail(emailContent);
                 console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
@@ -7099,46 +7099,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Authentication required. Please sign in." });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
-      
+
       if (!isPortalUser) {
         return res.status(403).json({ error: "Portal user access required" });
       }
-      
+
       // Verify user has approved location access
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, user.id))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         // Check if user has a pending application
         const applications = await db.select()
           .from(portalUserApplications)
           .where(eq(portalUserApplications.userId, user.id))
           .limit(1);
-        
+
         if (applications.length > 0) {
           const app = applications[0];
-          return res.status(403).json({ 
+          return res.status(403).json({
             error: "Access denied. Your application is pending approval by the location manager.",
             applicationStatus: app.status,
             awaitingApproval: true
           });
         }
-        
-        return res.status(403).json({ 
+
+        return res.status(403).json({
           error: "Access denied. Your application is pending approval by the location manager.",
           awaitingApproval: true
         });
       }
-      
+
       // Attach user to request
       req.user = user as any;
       console.log(`✅ Portal user authenticated: ${user.username} (ID: ${user.id})`);
@@ -7153,46 +7153,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/portal/my-location", requirePortalUser, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any).id;
-      
+
       const { portalUserLocationAccess, locations } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       // Get user's location access
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const locationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, locationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       const location = locationRecords[0];
       const slug = (location as any).name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
       res.json({
         id: location.id,
         name: (location as any).name,
         address: (location as any).address,
         logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
-          slug: slug,
+        slug: slug,
       });
     } catch (error: any) {
       console.error("Error fetching portal user location:", error);
@@ -7209,14 +7209,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
-      
+
       if (!isPortalUser) {
         return res.status(403).json({ error: "Portal user access required" });
       }
@@ -7226,9 +7226,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, user.id))
         .limit(1);
-      
+
       if (accessRecords.length > 0) {
-        return res.json({ 
+        return res.json({
           hasAccess: true,
           status: 'approved'
         });
@@ -7240,7 +7240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(portalUserApplications.userId, user.id))
         .orderBy(desc(portalUserApplications.createdAt))
         .limit(1);
-      
+
       if (applications.length > 0) {
         const app = applications[0];
         return res.json({
@@ -7267,40 +7267,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/portal/locations", requirePortalUser, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any).id;
-      
+
       const { portalUserLocationAccess, locations } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       // Get user's location access
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const locationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, locationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       const location = locationRecords[0];
       const slug = (location as any).name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-      
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
       res.json([{
         id: location.id,
         name: (location as any).name,
@@ -7319,28 +7319,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = (req.user as any).id;
       const locationSlug = req.params.locationSlug;
-      
+
       // Get user's assigned location
       const { portalUserLocationAccess, locations } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, userLocationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
@@ -7352,7 +7352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .replace(/[^\w\s-]/g, '')
         .replace(/[\s_-]+/g, '-')
         .replace(/^-+|-+$/g, '');
-      
+
       // Verify the slug matches the user's location
       if (slug !== locationSlug) {
         return res.status(403).json({ error: "Access denied. You can only access your assigned location." });
@@ -7376,36 +7376,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = (req.user as any).id;
       const locationSlug = req.params.locationSlug;
-      
+
       // Get user's assigned location
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, userLocationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       const location = locationRecords[0];
       const slug = (location as any).name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 
       // Verify the slug matches the user's location
       if (slug !== locationSlug) {
@@ -7413,7 +7413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const kitchens = await firebaseStorage.getKitchensByLocation(userLocationId);
-      
+
       // Filter only active kitchens and return info
       const publicKitchens = kitchens
         .filter((kitchen: any) => kitchen.isActive !== false)
@@ -7449,38 +7449,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user's assigned location
       const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Verify kitchen belongs to user's location
       const kitchenRecords = await db.select()
         .from(kitchens)
         .where(eq(kitchens.id, kitchenId))
         .limit(1);
-      
+
       if (kitchenRecords.length === 0) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       const kitchen = kitchenRecords[0];
       const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
-      
+
       if (kitchenLocationId !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
       }
 
       // Get available slots using the same logic as chef bookings
       const slots = await firebaseStorage.getAvailableSlots(kitchenId, date);
-      
+
       res.json({ slots });
     } catch (error: any) {
       console.error("Error fetching portal availability:", error);
@@ -7511,7 +7511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate booking date/time
       const bookingDateObj = new Date(bookingDate);
       const now = new Date();
-      
+
       if (bookingDateObj < now) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
@@ -7539,10 +7539,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const slotTime = new Date(bookingDateObj);
         slotTime.setHours(startHours, startMins, 0, 0);
         const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        
+
         if (hoursUntilBooking < minimumBookingWindowHours) {
-          return res.status(400).json({ 
-            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          return res.status(400).json({
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance`
           });
         }
       }
@@ -7573,30 +7573,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             to: (location as any).notificationEmail,
             subject: `New Third-Party Booking Request - ${(location as any).name}`,
             text: `A new booking request has been submitted:\n\n` +
-                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
-                  `Date: ${bookingDate}\n` +
-                  `Time: ${startTime} - ${endTime}\n\n` +
-                  `Contact Information:\n` +
-                  `Name: ${bookingName}\n` +
-                  `Email: ${bookingEmail}\n` +
-                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
-                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
-                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
-                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+              `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+              `Date: ${bookingDate}\n` +
+              `Time: ${startTime} - ${endTime}\n\n` +
+              `Contact Information:\n` +
+              `Name: ${bookingName}\n` +
+              `Email: ${bookingEmail}\n` +
+              `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+              `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+              `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+              `Please log in to your manager dashboard to confirm or manage this booking.`,
             html: `<h2>New Third-Party Booking Request</h2>` +
-                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
-                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
-                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
-                  `<h3>Contact Information:</h3>` +
-                  `<ul>` +
-                  `<li><strong>Name:</strong> ${bookingName}</li>` +
-                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
-                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
-                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
-                  `</ul>` +
-                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
-                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+              `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+              `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+              `<p><strong>Date:</strong> ${bookingDate}</p>` +
+              `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+              `<h3>Contact Information:</h3>` +
+              `<ul>` +
+              `<li><strong>Name:</strong> ${bookingName}</li>` +
+              `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+              `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+              `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+              `</ul>` +
+              `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+              `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
           };
           await sendEmail(emailContent);
         }
@@ -7646,36 +7646,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user's assigned location
       const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Verify location matches user's assigned location
       if (parseInt(locationId) !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
       }
-      
+
       // Verify kitchen belongs to user's location
       const kitchenRecords = await db.select()
         .from(kitchens)
         .where(eq(kitchens.id, parseInt(kitchenId)))
         .limit(1);
-      
+
       if (kitchenRecords.length === 0) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       const kitchen = kitchenRecords[0];
       const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
-      
+
       if (kitchenLocationId !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
       }
@@ -7683,7 +7683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate booking date/time
       const bookingDateObj = new Date(bookingDate);
       const now = new Date();
-      
+
       if (bookingDateObj < now) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
@@ -7711,10 +7711,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const slotTime = new Date(bookingDateObj);
         slotTime.setHours(startHours, startMins, 0, 0);
         const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        
+
         if (hoursUntilBooking < minimumBookingWindowHours) {
-          return res.status(400).json({ 
-            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          return res.status(400).json({
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance`
           });
         }
       }
@@ -7722,7 +7722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check daily booking limit
       const { db } = await import('./db');
       const { pool } = db;
-      
+
       if (pool) {
         // Calculate requested slots
         const [sH, sM] = startTime.split(':').map(Number);
@@ -7741,7 +7741,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ORDER BY updated_at DESC
             LIMIT 1
           `, [kitchenId, dateStr]);
-          
+
           if (overrideResult.rows.length > 0) {
             const val = Number(overrideResult.rows[0].max_slots_per_chef);
             if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
@@ -7753,7 +7753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               FROM kitchen_availability
               WHERE kitchen_id = $1 AND day_of_week = $2
             `, [kitchenId, dayOfWeek]);
-            
+
             if (availabilityResult.rows.length > 0) {
               const v = Number(availabilityResult.rows[0].max_slots_per_chef);
               if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
@@ -7765,7 +7765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 INNER JOIN kitchens k ON k.location_id = l.id
                 WHERE k.id = $1
               `, [kitchenId]);
-              
+
               if (locationLimitResult.rows.length > 0) {
                 const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
                 if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
@@ -7798,8 +7798,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Check if booking would exceed daily limit
         if (existingSlots + requestedSlots > maxSlotsPerChef) {
-          return res.status(400).json({ 
-            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
+          return res.status(400).json({
+            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).`
           });
         }
       }
@@ -7831,30 +7831,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             to: (location as any).notificationEmail,
             subject: `New Portal User Booking Request - ${(location as any).name}`,
             text: `A new booking request has been submitted by a portal user:\n\n` +
-                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
-                  `Date: ${bookingDate}\n` +
-                  `Time: ${startTime} - ${endTime}\n\n` +
-                  `Contact Information:\n` +
-                  `Name: ${bookingName}\n` +
-                  `Email: ${bookingEmail}\n` +
-                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
-                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
-                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
-                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+              `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+              `Date: ${bookingDate}\n` +
+              `Time: ${startTime} - ${endTime}\n\n` +
+              `Contact Information:\n` +
+              `Name: ${bookingName}\n` +
+              `Email: ${bookingEmail}\n` +
+              `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+              `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+              `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+              `Please log in to your manager dashboard to confirm or manage this booking.`,
             html: `<h2>New Portal User Booking Request</h2>` +
-                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
-                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
-                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
-                  `<h3>Contact Information:</h3>` +
-                  `<ul>` +
-                  `<li><strong>Name:</strong> ${bookingName}</li>` +
-                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
-                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
-                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
-                  `</ul>` +
-                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
-                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+              `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+              `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+              `<p><strong>Date:</strong> ${bookingDate}</p>` +
+              `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+              `<h3>Contact Information:</h3>` +
+              `<ul>` +
+              `<li><strong>Name:</strong> ${bookingName}</li>` +
+              `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+              `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+              `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+              `</ul>` +
+              `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+              `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
           };
           await sendEmail(emailContent);
         }
@@ -7864,10 +7864,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const { db } = await import('./db');
           const { locations } = await import('../shared/schema');
           const { eq } = await import('drizzle-orm');
-          
+
           const locationRecord = await db.select().from(locations).where(eq(locations.id, userLocationId)).limit(1);
           const locationData = locationRecord[0];
-          
+
           // Get manager phone number using utility function (with fallback logic and normalization)
           const managerPhone = await getManagerPhone(locationData, (locationData as any)?.managerId, pool);
 
@@ -7916,29 +7916,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/public/kitchens", async (req: Request, res: Response) => {
     try {
       const kitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       console.log(`[API] /api/public/kitchens - Found ${kitchens.length} total kitchens`);
-      
+
       // Filter only active kitchens (handle both camelCase and snake_case)
       const activeKitchens = kitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       console.log(`[API] /api/public/kitchens - ${activeKitchens.length} active kitchens after filtering`);
-      
+
       // Return public-safe info with location data (no limit - show all for marketing)
       const publicKitchens = activeKitchens
         .map((kitchen: any) => {
           const locationId = kitchen.locationId || kitchen.location_id;
           const locationName = kitchen.locationName || kitchen.location_name;
           const locationAddress = kitchen.locationAddress || kitchen.location_address;
-          
+
           // Log for debugging
           if (locationId && !locationName) {
             console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
           }
-          
+
           return {
             id: kitchen.id,
             name: kitchen.name,
@@ -7965,27 +7965,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const allLocations = await firebaseStorage.getAllLocations();
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       // Filter to only active kitchens
       const activeKitchens = allKitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       // Get unique location IDs that have active kitchens
       const locationIdsWithKitchens = new Set(
         activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
       );
-      
+
       // Filter locations to only those with active kitchens
       const locationsWithKitchens = allLocations
         .filter((location: any) => locationIdsWithKitchens.has(location.id))
         .map((location: any) => {
           // Count kitchens per location
-          const kitchenCount = activeKitchens.filter((kitchen: any) => 
+          const kitchenCount = activeKitchens.filter((kitchen: any) =>
             (kitchen.locationId || kitchen.location_id) === location.id
           ).length;
-          
+
           return {
             id: location.id,
             name: location.name,
@@ -7994,9 +7994,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
           };
         });
-      
+
       console.log(`[API] /api/public/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
-      
+
       res.json(locationsWithKitchens);
     } catch (error: any) {
       console.error("Error fetching public locations:", error);
