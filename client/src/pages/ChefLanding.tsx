@@ -28,6 +28,7 @@ import marketplaceIcon from "@assets/marketplace.png";
 import iosMessagesIcon from "@assets/iosmessages.png";
 import truckIcon from "@assets/truck.png";
 import interacIcon from "@assets/Interac.svg";
+import kitchenTableIcon from "@assets/kitchen-table.png";
 
 // Icon image mapping for the chaos icons section
 const APP_ICON_IMAGES: Record<string, string> = {
@@ -1088,95 +1089,167 @@ export default function ChefLanding() {
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            KITCHEN ACCESS - Brand Cohesive Design
+            KITCHEN ACCESS - DRAMATIC BRAND SECTION with Bold Wave Dividers
+            Inspired by Stripe, Linear, and LocalCooks.ca branding
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="py-20 md:py-28 px-4 bg-gradient-to-b from-white via-[#FFF8F6] to-white">
-          <div className="container mx-auto max-w-6xl">
-            {/* Section Header - Matching Brand Style */}
+        
+        {/* ══════ TOP WAVE DIVIDER - White to Primary Red ══════ */}
+        <div className="relative w-full overflow-hidden" style={{ height: '100px', marginBottom: '-2px' }}>
+          <svg 
+            viewBox="0 0 1440 100" 
+            fill="none" 
+            xmlns="http://www.w3.org/2000/svg" 
+            className="absolute bottom-0 w-full"
+            style={{ height: '100px', minWidth: '100%' }}
+            preserveAspectRatio="none"
+          >
+            <path 
+              d="M0,40 C150,80 350,0 600,50 C850,100 1050,20 1200,60 C1350,100 1440,40 1440,40 L1440,100 L0,100 Z" 
+              fill="#F51042"
+            />
+            <path 
+              d="M0,60 C200,100 400,20 650,70 C900,120 1100,40 1250,80 C1400,120 1440,60 1440,60 L1440,100 L0,100 Z" 
+              fill="#E8103A"
+              opacity="0.7"
+            />
+          </svg>
+        </div>
+
+        {/* ══════ MAIN KITCHEN ACCESS SECTION - Bold Primary Background ══════ */}
+        <section className="relative py-20 md:py-28 px-4 overflow-hidden bg-gradient-to-br from-[#F51042] via-[#E8103A] to-[#D90935]">
+          {/* Animated Background Effects */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {/* Large Floating Orbs */}
+            <motion.div 
+              className="absolute -top-40 -right-40 w-[500px] h-[500px] md:w-[800px] md:h-[800px] rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 60%)' }}
+              animate={{ scale: [1, 1.15, 1], x: [0, 40, 0], y: [0, 20, 0] }}
+              transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.div 
+              className="absolute -bottom-60 -left-40 w-[400px] h-[400px] md:w-[600px] md:h-[600px] rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 60%)' }}
+              animate={{ scale: [1.1, 1, 1.1], x: [0, -30, 0], y: [0, -40, 0] }}
+              transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.div 
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] md:w-[900px] md:h-[900px] rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(255, 107, 107, 0.1) 0%, transparent 50%)' }}
+              animate={{ rotate: [0, 360] }}
+              transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+            />
+            
+            {/* Cross Pattern Overlay */}
+            <div className="absolute inset-0 opacity-[0.05]" style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M20 0v40M0 20h40' stroke='%23fff' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E")`,
+            }} />
+          </div>
+          
+          <div className="container mx-auto max-w-6xl relative z-10">
+            {/* Section Header - White Text on Red */}
             <FadeInSection>
-              <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
-                  Kitchen Access
-                </span>
-                <h2 className="text-[1.4rem] sm:text-2xl md:text-3xl lg:text-4xl xl:text-[2.5rem] font-bold text-[#1A1A1A] leading-[1.35] md:leading-tight mb-2">
+              <div className="text-center mb-12">
+                <motion.div
+                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6 }}
+                  className="mb-4"
+                >
+                  <span className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.3em] text-white/90 px-4 py-2 bg-white/15 backdrop-blur-md rounded-full border border-white/20">
+                    <Building2 className="h-4 w-4" />
+                    Kitchen Access
+                  </span>
+                </motion.div>
+                
+                <motion.h2 
+                  className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight mb-4"
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.7, delay: 0.1 }}
+                >
                   No Kitchen?{" "}
                   <span className="relative inline-block">
-                    <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">No Problem.</span>
+                    <span className="relative z-10">No Problem.</span>
                     <motion.svg 
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
                       viewBox="0 0 300 12" 
                       fill="none"
                       initial={{ pathLength: 0, opacity: 0 }}
                       whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1.2, delay: 0.3 }}
+                      transition={{ duration: 1, delay: 0.5 }}
                       viewport={{ once: true }}
                     >
                       <motion.path 
                         d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
-                        stroke="url(#kitchenUnderlineGradient)" 
+                        stroke="rgba(255,255,255,0.6)"
                         strokeWidth="3" 
                         strokeLinecap="round"
                         initial={{ pathLength: 0 }}
                         whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1.2, delay: 0.3 }}
+                        transition={{ duration: 1, delay: 0.5 }}
                         viewport={{ once: true }}
                       />
-                      <defs>
-                        <linearGradient id="kitchenUnderlineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#F51042" stopOpacity="0.5" />
-                          <stop offset="50%" stopColor="#FF6B7A" stopOpacity="0.7" />
-                          <stop offset="100%" stopColor="#F51042" stopOpacity="0.5" />
-                        </linearGradient>
-                      </defs>
                     </motion.svg>
                   </span>
-                </h2>
-                <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-[#4A5568] leading-relaxed font-medium max-w-2xl mx-auto mt-4">
+                </motion.h2>
+                
+                <motion.p 
+                  className="text-lg md:text-xl text-white/85 leading-relaxed max-w-2xl mx-auto"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.2 }}
+                >
                   Access certified commercial kitchens by the hour. Start small, scale as you grow.
-                </p>
+                </motion.p>
               </div>
             </FadeInSection>
 
-            {/* Kitchen Location Cards */}
+            {/* Kitchen Location Cards - White Cards on Red Background */}
             {!kitchensLoading && uniqueLocations.length > 0 ? (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-12">
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
                 {uniqueLocations.slice(0, 6).map((loc: any, i: number) => (
-                  <FadeInSection key={loc.id} delay={i * 0.1 + 0.5}>
+                  <FadeInSection key={loc.id} delay={i * 0.1 + 0.2}>
                     <motion.div 
                       className="group h-full"
-                      whileHover={{ y: -6 }}
+                      initial={{ opacity: 0, y: 30 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      whileHover={{ y: -8 }}
                       transition={{ duration: 0.3, ease: "easeOut" }}
                     >
-                      <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-500 bg-white overflow-hidden">
+                      <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white overflow-hidden">
                         {/* Kitchen Image */}
-                        <div className="relative h-48 overflow-hidden bg-gradient-to-br from-[#F51042]/10 via-[#FF6B6B]/5 to-[#FFF5F0]">
+                        <div className="relative h-44 overflow-hidden">
                           {loc.brandImageUrl || loc.featuredKitchenImage ? (
                             <>
                               <img 
                                 src={loc.brandImageUrl || loc.featuredKitchenImage}
                                 alt={loc.name}
-                                className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700"
+                                className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                               />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                             </>
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <div className="w-20 h-20 bg-[#F51042]/10 rounded-2xl flex items-center justify-center">
-                                <Building2 className="h-10 w-10 text-[#F51042]/40" />
+                            <div className="w-full h-full bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center">
+                              <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
+                                <Building2 className="h-8 w-8 text-[#F51042]" />
                               </div>
                             </div>
                           )}
                           
                           {/* Kitchen count badge */}
                           {loc.kitchenCount > 1 && (
-                            <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm rounded-full px-3 py-1 shadow-md">
+                            <div className="absolute top-3 right-3 bg-white rounded-full px-3 py-1 shadow-md">
                               <span className="text-xs font-bold text-[#F51042]">{loc.kitchenCount} Kitchens</span>
                             </div>
                           )}
                           
-                          {/* Logo overlay if available */}
+                          {/* Logo overlay */}
                           {loc.logoUrl && (
-                            <div className="absolute top-4 left-4">
+                            <div className="absolute top-3 left-3">
                               <img 
                                 src={loc.logoUrl} 
                                 alt={`${loc.name} logo`}
@@ -1184,141 +1257,279 @@ export default function ChefLanding() {
                               />
                             </div>
                           )}
+                          
+                          {/* Status badge */}
+                          <div className="absolute bottom-3 left-3">
+                            <span className="flex items-center gap-1.5 bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                              Available
+                            </span>
+                          </div>
                         </div>
                         
                         {/* Content */}
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-xl font-bold text-[#2C2C2C] group-hover:text-[#F51042] transition-colors">
+                        <div className="p-5">
+                          <h3 className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
                             {loc.name}
-                          </CardTitle>
+                          </h3>
                           {loc.address && (
-                            <p className="text-sm text-[#6B6B6B] flex items-start gap-2">
+                            <p className="text-sm text-[#6B6B6B] flex items-start gap-1.5 mb-4">
                               <span className="text-[#F51042]">📍</span>
-                              <span>{loc.address}</span>
+                              <span className="leading-relaxed line-clamp-2">{loc.address}</span>
                             </p>
                           )}
-                        </CardHeader>
-                        
-                        <CardContent className="pt-0">
+                          
                           <Button 
-                            className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-xl group/btn"
+                            className="w-full bg-[#1A1A1A] hover:bg-[#F51042] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
                             onClick={() => navigate('/portal/book')}
                           >
-                            <span>View Availability</span>
-                            <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                            <Calendar className="mr-1.5 h-4 w-4" />
+                            View Availability
+                            <ArrowRight className="ml-1.5 h-4 w-4 group-hover/btn:translate-x-0.5 transition-transform" />
                           </Button>
-                        </CardContent>
+                        </div>
                       </Card>
                     </motion.div>
                   </FadeInSection>
                 ))}
               </div>
             ) : !kitchensLoading ? (
-              /* Placeholder when no kitchens */
+              /* Placeholder - Coming Soon Cards */
               <FadeInSection delay={0.3}>
-                <div className="grid md:grid-cols-3 gap-6 mb-12">
-                  {[1, 2, 3].map((i) => (
-                    <Card key={i} className="h-64 border-0 rounded-2xl shadow-md bg-white overflow-hidden">
-                      <div className="h-32 bg-gradient-to-br from-[#F51042]/5 via-[#FFF5F0] to-white flex items-center justify-center">
-                        <div className="w-16 h-16 bg-[#F51042]/10 rounded-xl flex items-center justify-center">
-                          <Building2 className="h-8 w-8 text-[#F51042]/30" />
+                <div className="grid md:grid-cols-3 gap-6 mb-16">
+                  {[
+                    { title: "Downtown Kitchen", area: "St. John's Downtown" },
+                    { title: "East End Kitchen", area: "East End, St. John's" },
+                    { title: "West Side Kitchen", area: "West Side, St. John's" }
+                  ].map((item, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.1 }}
+                      whileHover={{ y: -4 }}
+                    >
+                      <Card className="h-64 border-0 rounded-2xl shadow-lg bg-white overflow-hidden">
+                        <div className="h-36 bg-gradient-to-br from-[#FFE8DD] via-[#FFF5F0] to-white flex items-center justify-center relative">
+                          <div className="w-14 h-14 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
+                            <Building2 className="h-7 w-7 text-[#F51042]" />
+                          </div>
+                          <div className="absolute top-3 right-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+                            Coming Soon
+                          </div>
                         </div>
-                      </div>
-                      <CardHeader>
-                        <div className="h-4 w-32 bg-gray-100 rounded mb-2" />
-                        <div className="h-3 w-48 bg-gray-50 rounded" />
-                      </CardHeader>
-                    </Card>
+                        <div className="p-4">
+                          <h3 className="text-base font-bold text-[#1A1A1A] mb-0.5">{item.title}</h3>
+                          <p className="text-sm text-[#6B6B6B] flex items-center gap-1.5">
+                            <span className="text-[#F51042]">📍</span>
+                            {item.area}
+                          </p>
+                        </div>
+                      </Card>
+                    </motion.div>
                   ))}
                 </div>
               </FadeInSection>
             ) : null}
 
-            {/* Partner CTA - Turn Downtime Into Revenue */}
-            <FadeInSection delay={0.6}>
-              <div className="relative rounded-3xl overflow-hidden">
-                {/* Background */}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#F51042] to-[#FF6B6B]" />
-                <div className="absolute inset-0 opacity-10" style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                }} />
-                
-                <div className="relative z-10 p-8 md:p-12 lg:p-16">
-                  <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-12">
-                    {/* Icon */}
+            {/* Partner CTA - Container Card with Bento Grid Inside */}
+            <FadeInSection delay={0.4}>
+              <motion.div 
+                className="bg-white rounded-2xl shadow-xl overflow-hidden"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4 }}
+              >
+                {/* Bento Grid Content Area */}
+                <div className="p-4 md:p-6">
+                  {/* Header Row with Kitchen Icon */}
+                  <div className="flex items-start gap-4 mb-4">
+                    <img 
+                      src={kitchenTableIcon} 
+                      alt="Kitchen" 
+                      className="w-12 h-12 object-contain"
+                    />
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6B6B6B] block mb-1">
+                        For Kitchen Owners
+                      </span>
+                      <h3 className="text-xl md:text-2xl font-bold text-[#1A1A1A] leading-tight">
+                        Turn Downtime Into{" "}
+                        <span className="relative inline-block">
+                          <span className="text-[#F51042]">Revenue</span>
+                          <motion.svg 
+                            className="absolute -bottom-0.5 left-0 w-full" 
+                            viewBox="0 0 300 12" 
+                            fill="none"
+                            initial={{ pathLength: 0, opacity: 0 }}
+                            whileInView={{ pathLength: 1, opacity: 1 }}
+                            transition={{ duration: 1, delay: 0.3 }}
+                            viewport={{ once: true }}
+                          >
+                            <motion.path 
+                              d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
+                              stroke="#F51042"
+                              strokeWidth="3" 
+                              strokeLinecap="round"
+                              initial={{ pathLength: 0 }}
+                              whileInView={{ pathLength: 1 }}
+                              transition={{ duration: 1, delay: 0.3 }}
+                              viewport={{ once: true }}
+                            />
+                          </motion.svg>
+                        </span>
+                      </h3>
+                    </div>
+                  </div>
+                  
+                  <p className="text-sm text-[#6B6B6B] mb-4 max-w-xl">
+                    Don't let your kitchen sit empty. Rent your underutilized hours to vetted local chefs.
+                  </p>
+
+                  {/* Bento Grid - Award-Winning Card Design with Background Icons */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Weekly Payouts Card */}
                     <motion.div 
-                      className="flex-shrink-0 mx-auto lg:mx-0"
-                      animate={{ rotate: [0, 3, -3, 0] }}
-                      transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                      className="relative bg-gradient-to-br from-[#4A90A4] to-[#2D6A7A] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-2xl flex items-center justify-center shadow-xl">
-                        <Building2 className="h-12 w-12 md:h-14 md:w-14 text-[#F51042]" />
+                      {/* Background Icon */}
+                      <CreditCard className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      
+                      <div className="relative z-10">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
+                          Reliable Income
+                        </span>
+                        <h4 className="text-xl font-bold leading-tight mb-2">
+                          Weekly Payouts
+                        </h4>
+                        <p className="text-xs text-white/80 leading-relaxed">
+                          Get paid every week directly to your account. No waiting.
+                        </p>
                       </div>
                     </motion.div>
-                    
-                    {/* Content */}
-                    <div className="flex-1 text-center lg:text-left">
-                      <h3 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-3">
-                        Turn Downtime Into Revenue.
-                      </h3>
-                      <p className="text-white/90 text-lg mb-6 max-w-2xl leading-relaxed">
-                        Don't let your kitchen sit empty. Rent your underutilized hours to vetted local chefs and offset your overhead costs.
-                      </p>
+
+                    {/* Verified Chefs Card - Rich Violet (complementary to coral) */}
+                    <motion.div 
+                      className="relative bg-gradient-to-br from-[#7C5295] to-[#5D3D70] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {/* Background Icon */}
+                      <Shield className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
                       
-                      {/* Benefits List */}
-                      <div className="grid sm:grid-cols-3 gap-4 mb-8">
-                        <div className="flex items-start gap-3 text-left">
-                          <div className="flex-shrink-0 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center mt-0.5">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                          <div>
-                            <span className="font-bold text-white">Weekly Payouts</span>
-                            <p className="text-white/80 text-sm">Reliable income deposited directly.</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3 text-left">
-                          <div className="flex-shrink-0 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center mt-0.5">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                          <div>
-                            <span className="font-bold text-white">Verified Chefs</span>
-                            <p className="text-white/80 text-sm">Only certified, insured professionals.</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3 text-left">
-                          <div className="flex-shrink-0 w-6 h-6 bg-white/20 rounded-full flex items-center justify-center mt-0.5">
-                            <Check className="h-4 w-4 text-white" />
-                          </div>
-                          <div>
-                            <span className="font-bold text-white">Total Control</span>
-                            <p className="text-white/80 text-sm">You decide the hours and the rules.</p>
-                          </div>
-                        </div>
+                      <div className="relative z-10">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
+                          Verified
+                        </span>
+                        <h4 className="text-xl font-bold leading-tight mb-2">
+                          Food Safety
+                        </h4>
+                        <p className="text-xs text-white/80 leading-relaxed">
+                          All chefs are certified and follow strict standards.
+                        </p>
                       </div>
+                    </motion.div>
+
+                    {/* Total Control Card */}
+                    <motion.div 
+                      className="relative bg-gradient-to-br from-[#F5A623] to-[#E8940D] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {/* Background Icon */}
+                      <Zap className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
                       
-                      <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                        <Button 
-                          onClick={() => window.location.href = 'mailto:partner@localcooks.ca?subject=Kitchen Partnership Inquiry'}
-                          className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-8 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 group"
-                        >
-                          <span>Become a Partner</span>
-                          <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                        </Button>
-                        <Button 
-                          variant="outline"
-                          onClick={() => navigate('/portal/book')}
-                          className="border-2 border-white text-white hover:bg-white/10 font-semibold py-6 px-8 rounded-full"
-                        >
-                          Learn More
-                        </Button>
+                      <div className="relative z-10">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
+                          Your Space
+                        </span>
+                        <h4 className="text-xl font-bold leading-tight mb-2">
+                          Total Control
+                        </h4>
+                        <p className="text-xs text-white/80 leading-relaxed">
+                          Set your own hours, pricing, and kitchen rules.
+                        </p>
                       </div>
+                    </motion.div>
+
+                    {/* No Contracts Card */}
+                    <motion.div 
+                      className="relative bg-gradient-to-br from-[#2D3E50] to-[#1A2530] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {/* Background Icon */}
+                      <Clock className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      
+                      <div className="relative z-10">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
+                          Flexible
+                        </span>
+                        <h4 className="text-xl font-bold leading-tight mb-2">
+                          No Contracts
+                        </h4>
+                        <p className="text-xs text-white/80 leading-relaxed">
+                          Cancel anytime. No long-term commitments required.
+                        </p>
+                      </div>
+                    </motion.div>
+                  </div>
+                </div>
+
+                {/* Bottom Lip with Buttons */}
+                <div className="bg-[#FAFAFA] border-t border-gray-100 px-4 md:px-6 py-4">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                    <p className="text-sm text-[#6B6B6B] hidden sm:block">
+                      Join kitchen partners earning passive income
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button 
+                        onClick={() => window.location.href = 'mailto:partner@localcooks.ca?subject=Kitchen Partnership Inquiry'}
+                        className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300 group"
+                      >
+                        Become a Partner
+                        <ArrowRight className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => window.location.href = 'https://kitchens.localcooks.ca'}
+                        className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300"
+                      >
+                        Learn More
+                      </Button>
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             </FadeInSection>
           </div>
         </section>
+
+        {/* ══════ BOTTOM WAVE DIVIDER - Primary Red to Light ══════ */}
+        <div className="relative w-full overflow-hidden" style={{ height: '100px', marginTop: '-2px' }}>
+          <svg 
+            viewBox="0 0 1440 100" 
+            fill="none" 
+            xmlns="http://www.w3.org/2000/svg" 
+            className="absolute top-0 w-full"
+            style={{ height: '100px', minWidth: '100%' }}
+            preserveAspectRatio="none"
+          >
+            <path 
+              d="M0,60 C150,20 350,100 600,50 C850,0 1050,80 1200,40 C1350,0 1440,60 1440,60 L1440,0 L0,0 Z" 
+              fill="#E8103A"
+              opacity="0.7"
+            />
+            <path 
+              d="M0,40 C200,0 400,80 650,30 C900,-20 1100,60 1250,20 C1400,-20 1440,40 1440,40 L1440,0 L0,0 Z" 
+              fill="#F51042"
+            />
+          </svg>
+        </div>
 
         {/* ═══════════════════════════════════════════════════════════════════════
             WHY LOCAL COOKS - Benefits Grid
