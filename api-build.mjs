@@ -57,25 +57,50 @@ serverFiles.forEach(file => {
       
       if (importPattern.test(content)) {
         console.log('Found timezone-utils import, replacing with dynamic import...');
-          const replacement = `// Dynamic import for timezone-utils to handle Vercel serverless path resolution
+          const replacement = `import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
+
+// Dynamic import for timezone-utils to handle Vercel serverless path resolution
 let createBookingDateTimeCache = null;
 async function getCreateBookingDateTime() {
   if (!createBookingDateTimeCache) {
-    try {
-      // Use new URL() with import.meta.url for proper ESM path resolution
-      // This ensures the path is resolved relative to the current file
-      const timezoneUtilsUrl = new URL('../shared/timezone-utils.js', import.meta.url).href;
-      
-      // Import the module
-      const timezoneUtils = await import(timezoneUtilsUrl);
-      
-      if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
-        throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+    // Get the directory of the current file
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    
+    // Try multiple possible paths for timezone-utils
+    const possiblePaths = [
+      join(__dirname, '../shared/timezone-utils.js'),  // From api/server/email.js to api/shared/timezone-utils.js
+      join(__dirname, '../../shared/timezone-utils.js'),  // Alternative: from server/ to shared/
+      join(__dirname, './shared/timezone-utils.js'),  // If files are in same directory
+      join(__dirname, '../api/shared/timezone-utils.js'),  // Another alternative
+    ];
+    
+    let lastError = null;
+    for (const filePath of possiblePaths) {
+      try {
+        // Convert file path to file:// URL, ensuring .js extension is preserved
+        const timezoneUtilsUrl = pathToFileURL(filePath).href;
+        
+        // Import the module
+        const timezoneUtils = await import(timezoneUtilsUrl);
+        
+        if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
+          throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+        }
+        createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
+        console.log(\`Successfully loaded timezone-utils from: \${timezoneUtilsUrl}\`);
+        break; // Success, exit loop
+      } catch (error) {
+        lastError = error;
+        // Continue to next path
+        continue;
       }
-      
-      createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
-    } catch (error) {
-      console.error('Failed to load timezone-utils, using fallback:', error);
+    }
+    
+    // If all paths failed, use fallback
+    if (!createBookingDateTimeCache) {
+      console.error('Failed to load timezone-utils from all attempted paths, using fallback. Last error:', lastError);
       // Fallback implementation
       createBookingDateTimeCache = (dateStr, timeStr, timezone = 'America/St_Johns') => {
         const [year, month, day] = dateStr.split('-').map(Number);
