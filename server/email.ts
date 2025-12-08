@@ -3,10 +3,27 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 
 // Dynamic import for timezone-utils to handle Vercel serverless path resolution
-let createBookingDateTimeCache: ((dateStr: string, timeStr: string, timezone?: string) => Date) | null = null;
+// Use a cached function that falls back to a local implementation if import fails
 
-async function getCreateBookingDateTime(): Promise<(dateStr: string, timeStr: string, timezone?: string) => Date> {
-  if (!createBookingDateTimeCache) {
+type CreateBookingDateTimeFn = (dateStr: string, timeStr: string, timezone?: string) => Date;
+
+// Local fallback implementation that doesn't require the external module
+function createBookingDateTimeFallback(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return new Date(year, month - 1, day, hours, minutes);
+}
+
+// Cache for the loaded function
+let createBookingDateTimeImpl: CreateBookingDateTimeFn = createBookingDateTimeFallback;
+let loadAttempted = false;
+
+// Eagerly try to load the timezone-utils module (runs once at module load)
+(async () => {
+  if (loadAttempted) return;
+  loadAttempted = true;
+
+  try {
     // Get the directory of the current file
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
@@ -21,46 +38,31 @@ async function getCreateBookingDateTime(): Promise<(dateStr: string, timeStr: st
       '/var/task/api/shared/timezone-utils.js',       // Absolute path for Vercel api structure
     ];
 
-    let lastError: Error | null = null;
     for (const filePath of possiblePaths) {
       try {
-        // Convert file path to file:// URL for dynamic import
         const timezoneUtilsUrl = pathToFileURL(filePath).href;
-
-        // Import the module dynamically
         const timezoneUtils = await import(timezoneUtilsUrl);
 
-        if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
-          throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+        if (timezoneUtils && timezoneUtils.createBookingDateTime) {
+          createBookingDateTimeImpl = timezoneUtils.createBookingDateTime;
+          console.log(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
+          return;
         }
-        createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
-        console.log(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
-        break; // Success, exit loop
-      } catch (error) {
-        lastError = error as Error;
+      } catch {
         // Continue to next path
         continue;
       }
     }
 
-    // If all paths failed, use fallback implementation
-    if (!createBookingDateTimeCache) {
-      console.error('Failed to load timezone-utils from all attempted paths, using fallback. Last error:', lastError);
-      // Fallback implementation that doesn't require the external module
-      createBookingDateTimeCache = (dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Date => {
-        const [year, month, day] = dateStr.split('-').map(Number);
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        return new Date(year, month - 1, day, hours, minutes);
-      };
-    }
+    console.warn('Failed to load timezone-utils from any path, using fallback implementation');
+  } catch (error) {
+    console.error('Error during timezone-utils initialization:', error);
   }
-  return createBookingDateTimeCache;
-}
+})();
 
-// Wrapper function that uses lazy-loaded utility
-async function createBookingDateTime(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Promise<Date> {
-  const fn = await getCreateBookingDateTime();
-  return fn(dateStr, timeStr, timezone);
+// Synchronous wrapper function that uses the cached implementation
+function createBookingDateTime(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Date {
+  return createBookingDateTimeImpl(dateStr, timeStr, timezone);
 }
 
 // Email configuration
