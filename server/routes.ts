@@ -4113,18 +4113,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const chef = await storage.getUser(booking.chefId);
           
           if (chef && kitchen) {
-            // Get location details
+            // Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
             const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
             let location = null;
             let manager = null;
             
-            if (kitchenLocationId) {
-              location = await firebaseStorage.getLocationById(kitchenLocationId);
-              if (location) {
-                // Get manager details if manager_id is set
-                const managerId = location.managerId || (location as any).manager_id;
+            if (kitchenLocationId && pool) {
+              // DIRECT DATABASE QUERY - emails are stored in Neon database
+              const locationData = await pool.query(`
+                SELECT l.id, l.name, l.manager_id, l.notification_email, l.timezone
+                FROM locations l
+                WHERE l.id = $1
+              `, [kitchenLocationId]);
+              
+              if (locationData.rows.length > 0) {
+                location = locationData.rows[0];
+                
+                // Get manager details if manager_id is set (DIRECT DATABASE QUERY)
+                const managerId = location.manager_id;
                 if (managerId) {
-                  manager = await storage.getUser(managerId);
+                  const managerData = await pool.query(`
+                    SELECT id, username
+                    FROM users
+                    WHERE id = $1
+                  `, [managerId]);
+                  
+                  if (managerData.rows.length > 0) {
+                    manager = managerData.rows[0];
+                  }
                 }
               }
             }
@@ -4199,11 +4215,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
                 
-                // Send notification email to manager
-                const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
+                // Send notification email to manager (use notification_email from direct database query)
+                const notificationEmailAddress = location ? (location.notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
                   try {
-                    const locationTimezone = location ? ((location as any).timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
+                    const locationTimezone = location ? (location.timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
                     const locationName = location ? (location.name || kitchen.name) : kitchen.name;
                     const managerEmail = generateBookingStatusChangeNotificationEmail({
                       managerEmail: notificationEmailAddress,
@@ -4297,11 +4313,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
                 
-                // Send notification email to manager
-                const notificationEmailAddress = location ? (location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null)) : null;
+                // Send notification email to manager (use notification_email from direct database query)
+                const notificationEmailAddress = location ? (location.notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
                   try {
-                    const locationTimezone = location ? ((location as any).timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
+                    const locationTimezone = location ? (location.timezone || DEFAULT_TIMEZONE) : DEFAULT_TIMEZONE;
                     const locationName = location ? (location.name || kitchen.name) : kitchen.name;
                     const managerEmail = generateBookingStatusChangeNotificationEmail({
                       managerEmail: notificationEmailAddress,
@@ -5064,8 +5080,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         console.log(`✅ STEP 2.1 COMPLETE: Kitchen found - ${kitchen.name || kitchenId}`);
         
-        // Step 2.2: Get location details
-        console.log(`📧 STEP 2.2: Fetching location details...`);
+        // Step 2.2: Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
+        console.log(`📧 STEP 2.2: Fetching location details from database...`);
         const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
         if (!kitchenLocationId) {
           const errorMsg = `Kitchen ${kitchenId} has no locationId`;
@@ -5075,14 +5091,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         console.log(`✅ STEP 2.2 PROGRESS: Kitchen locationId is ${kitchenLocationId}`);
         
-        const location = await firebaseStorage.getLocationById(kitchenLocationId);
-        if (!location) {
+        // DIRECT DATABASE QUERY - emails are stored in Neon database, not Firebase
+        if (!pool) {
+          const errorMsg = `Database pool not available`;
+          console.error(`❌ STEP 2.2 FAILED: ${errorMsg}`);
+          emailResults.errors.push(errorMsg);
+          throw new Error(errorMsg);
+        }
+        
+        const locationData = await pool.query(`
+          SELECT l.id, l.name, l.manager_id, l.notification_email, l.timezone
+          FROM locations l
+          WHERE l.id = $1
+        `, [kitchenLocationId]);
+        
+        if (locationData.rows.length === 0) {
           const errorMsg = `Location ${kitchenLocationId} not found`;
           console.error(`❌ STEP 2.2 FAILED: ${errorMsg}`);
           emailResults.errors.push(errorMsg);
           throw new Error(errorMsg);
         }
-        console.log(`✅ STEP 2.2 COMPLETE: Location found - ${location.name}, Notification Email: ${location.notificationEmail || (location as any).notification_email || 'NOT SET'}`);
+        
+        const location = locationData.rows[0];
+        console.log(`✅ STEP 2.2 COMPLETE: Location found - ${location.name}, Notification Email: ${location.notification_email || 'NOT SET'}`);
         
         // Step 2.3: Get chef details
         console.log(`📧 STEP 2.3: Fetching chef details...`);
@@ -5095,16 +5126,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         console.log(`✅ STEP 2.3 COMPLETE: Chef found - ${chef.username || 'unknown'}`);
         
-        // Step 2.4: Get manager details (optional - notification email might be set without manager)
-        console.log(`📧 STEP 2.4: Fetching manager details...`);
-        const managerId = location.managerId || (location as any).manager_id;
+        // Step 2.4: Get manager details (DIRECT DATABASE QUERY - managers use session auth)
+        console.log(`📧 STEP 2.4: Fetching manager details from database...`);
+        const managerId = location.manager_id;
         console.log(`📋 STEP 2.4 PROGRESS: Manager ID from location: ${managerId || 'NOT SET'}`);
         
-        const manager = managerId ? await storage.getUser(managerId) : null;
-        if (!manager && managerId) {
-          console.warn(`⚠️ STEP 2.4 WARNING: Manager ${managerId} not found in database, will use notification email only`);
-        } else if (manager) {
-          console.log(`✅ STEP 2.4 COMPLETE: Manager found - ${manager.username || 'unknown'}`);
+        let manager = null;
+        if (managerId) {
+          const managerData = await pool.query(`
+            SELECT id, username
+            FROM users
+            WHERE id = $1
+          `, [managerId]);
+          
+          if (managerData.rows.length > 0) {
+            manager = managerData.rows[0];
+            console.log(`✅ STEP 2.4 COMPLETE: Manager found - ${manager.username || 'unknown'}`);
+          } else {
+            console.warn(`⚠️ STEP 2.4 WARNING: Manager ${managerId} not found in database, will use notification email only`);
+          }
         } else {
           console.log(`✅ STEP 2.4 COMPLETE: No manager ID set, will rely on location notification email`);
         }
@@ -5153,7 +5193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               startTime,
               endTime,
               specialNotes: specialNotes || '',
-              timezone: timezone,
+              timezone: location.timezone || timezone,
               locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.6 PROGRESS: Generated chef email - To: ${chefEmail.to}, Subject: ${chefEmail.subject}`);
@@ -5178,15 +5218,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Step 2.7: Send manager email (ONLY after chef email completes)
         console.log(`📧 STEP 2.7: Sending booking notification email to manager...`);
-        const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager?.username || null);
+        // Use notification_email from direct database query (snake_case from DB)
+        const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
         if (!notificationEmailAddress) {
-          const errorMsg = `No notification email available - location.notificationEmail: ${location.notificationEmail}, location.notification_email: ${(location as any).notification_email}, manager.username: ${manager?.username || 'N/A'}`;
+          const errorMsg = `No notification email available - location.notification_email: ${location.notification_email || 'NOT SET'}, manager.username: ${manager?.username || 'N/A'}`;
           console.error(`❌ STEP 2.7 FAILED: ${errorMsg}`);
           console.error(`   Location ID: ${kitchenLocationId}, Manager ID from location: ${managerId || 'NOT SET'}`);
           emailResults.errors.push(errorMsg);
         } else {
           console.log(`📧 STEP 2.7 PROGRESS: Attempting to send to manager: ${notificationEmailAddress}`);
-          console.log(`   Email source: ${location.notificationEmail ? 'location.notificationEmail' : (location as any).notification_email ? 'location.notification_email' : 'manager.username'}`);
+          console.log(`   Email source: ${location.notification_email ? 'location.notification_email' : 'manager.username'}`);
           try {
             const managerEmail = generateBookingNotificationEmail({
               managerEmail: notificationEmailAddress,
@@ -5196,7 +5237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               startTime,
               endTime,
               specialNotes: specialNotes || '',
-              timezone: timezone,
+              timezone: location.timezone || timezone,
               locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.7 PROGRESS: Generated manager email - To: ${managerEmail.to}, Subject: ${managerEmail.subject}`);
@@ -5224,7 +5265,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`📱 STEP 2.8: Sending booking notification SMS to manager...`);
         try {
           // Get manager phone number using utility function (with fallback logic)
-          const managerPhone = await getManagerPhone(location, managerId, pool);
+          // Convert location to expected format for getManagerPhone
+          const locationForSMS = {
+            ...location,
+            managerId: location.manager_id,
+            notificationEmail: location.notification_email
+          };
+          const managerPhone = await getManagerPhone(locationForSMS, managerId, pool);
 
           if (managerPhone) {
             const smsMessage = generateManagerBookingSMS({
@@ -5313,25 +5360,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!kitchen) {
           console.warn(`⚠️ Kitchen ${booking.kitchenId} not found for email notification`);
         } else {
-          // Get location details
+          // Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
           const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
           if (!kitchenLocationId) {
             console.warn(`⚠️ Kitchen ${booking.kitchenId} has no locationId`);
+          } else if (!pool) {
+            console.warn(`⚠️ Database pool not available for email notification`);
           } else {
-            const location = await firebaseStorage.getLocationById(kitchenLocationId);
-            if (!location) {
+            // DIRECT DATABASE QUERY - emails are stored in Neon database
+            const locationData = await pool.query(`
+              SELECT l.id, l.name, l.manager_id, l.notification_email
+              FROM locations l
+              WHERE l.id = $1
+            `, [kitchenLocationId]);
+            
+            if (locationData.rows.length === 0) {
               console.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
             } else {
+              const location = locationData.rows[0];
+              
               // Get chef details
               const chef = await storage.getUser(booking.chefId);
               if (!chef) {
                 console.warn(`⚠️ Chef ${booking.chefId} not found for email notification`);
               } else {
-                // Get manager details if manager_id is set
-                const managerId = location.managerId || (location as any).manager_id;
+                // Get manager details if manager_id is set (DIRECT DATABASE QUERY)
+                const managerId = location.manager_id;
                 let manager = null;
                 if (managerId) {
-                  manager = await storage.getUser(managerId);
+                  const managerData = await pool.query(`
+                    SELECT id, username
+                    FROM users
+                    WHERE id = $1
+                  `, [managerId]);
+                  
+                  if (managerData.rows.length > 0) {
+                    manager = managerData.rows[0];
+                  }
                 }
 
                 // Get chef phone using utility function (from applications table)
@@ -5373,8 +5438,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
                 
-                // Send email to manager
-                const notificationEmailAddress = location.notificationEmail || (location as any).notification_email || (manager ? manager.username : null);
+                // Send email to manager (use notification_email from direct database query)
+                const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
                 
                 if (notificationEmailAddress) {
                   try {
