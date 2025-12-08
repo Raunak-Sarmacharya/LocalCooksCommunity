@@ -1,21 +1,28 @@
 import nodemailer from 'nodemailer';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
+
 // Dynamic import for timezone-utils to handle Vercel serverless path resolution
 let createBookingDateTimeCache = null;
 async function getCreateBookingDateTime() {
   if (!createBookingDateTimeCache) {
+    // Get the directory of the current file
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    
     // Try multiple possible paths for timezone-utils
     const possiblePaths = [
-      '../shared/timezone-utils.js',  // From api/server/email.js to api/shared/timezone-utils.js
-      '../../api/shared/timezone-utils.js',  // Alternative path structure
-      './shared/timezone-utils.js',  // If files are in same directory
-      '../api/shared/timezone-utils.js',  // Another alternative
+      join(__dirname, '../shared/timezone-utils.js'),  // From api/server/email.js to api/shared/timezone-utils.js
+      join(__dirname, '../../shared/timezone-utils.js'),  // Alternative: from server/ to shared/
+      join(__dirname, './shared/timezone-utils.js'),  // If files are in same directory
+      join(__dirname, '../api/shared/timezone-utils.js'),  // Another alternative
     ];
     
     let lastError = null;
-    for (const relativePath of possiblePaths) {
+    for (const filePath of possiblePaths) {
       try {
-        // Use new URL() with import.meta.url for proper ESM path resolution
-        const timezoneUtilsUrl = new URL(relativePath, import.meta.url).href;
+        // Convert file path to file:// URL, ensuring .js extension is preserved
+        const timezoneUtilsUrl = pathToFileURL(filePath).href;
         
         // Import the module
         const timezoneUtils = await import(timezoneUtilsUrl);
