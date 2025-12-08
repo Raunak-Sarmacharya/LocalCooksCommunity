@@ -15150,6 +15150,72 @@ app.get("/api/public/locations/:locationSlug/kitchens", async (req, res) => {
   }
 });
 
+// Get public kitchen listings for landing pages (all active kitchens for marketing)
+app.get("/api/public/kitchens", async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Get all kitchens with location info
+    const result = await pool.query(`
+      SELECT 
+        k.id,
+        k.name,
+        k.description,
+        k.location_id as "locationId",
+        k.is_active as "isActive",
+        l.name as "locationName",
+        l.address as "locationAddress"
+      FROM kitchens k
+      LEFT JOIN locations l ON k.location_id = l.id
+      WHERE k.is_active != false
+      ORDER BY l.name, k.name
+    `);
+    
+    const kitchens = result.rows;
+    console.log(`[API] /api/public/kitchens - Found ${kitchens.length} total kitchens`);
+    
+    // Filter only active kitchens (handle both camelCase and snake_case)
+    const activeKitchens = kitchens.filter((kitchen) => {
+      const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+      return isActive !== false && isActive !== null;
+    });
+    
+    console.log(`[API] /api/public/kitchens - ${activeKitchens.length} active kitchens after filtering`);
+    
+    // Return public-safe info with location data
+    const publicKitchens = activeKitchens.map((kitchen) => {
+      const locationId = kitchen.locationId || kitchen.location_id;
+      const locationName = kitchen.locationName || kitchen.location_name;
+      const locationAddress = kitchen.locationAddress || kitchen.location_address;
+      
+      // Log for debugging
+      if (locationId && !locationName) {
+        console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
+      }
+      
+      return {
+        id: kitchen.id,
+        name: kitchen.name,
+        description: kitchen.description,
+        locationId: locationId || null,
+        locationName: locationName || null,
+        locationAddress: locationAddress || null,
+      };
+    });
+    
+    console.log(`[API] /api/public/kitchens - Returning ${publicKitchens.length} kitchens`);
+    console.log(`[API] Sample kitchen data:`, publicKitchens[0] || "No kitchens");
+    
+    res.json(publicKitchens);
+  } catch (error) {
+    console.error("Error fetching public kitchens:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
+  }
+});
+
 // Get available slots for a kitchen (public)
 app.get("/api/public/kitchens/:kitchenId/availability", async (req, res) => {
   try {
