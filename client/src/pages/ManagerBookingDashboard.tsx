@@ -32,7 +32,17 @@ interface Location {
   notificationPhone?: string;
   minimumBookingWindowHours?: number;
   logoUrl?: string;
+  brandImageUrl?: string;
   timezone?: string;
+}
+
+interface Kitchen {
+  id: number;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  locationId: number;
+  isActive: boolean;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -117,7 +127,7 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
@@ -126,9 +136,10 @@ export default function ManagerBookingDashboard() {
       notificationEmail?: string;
       notificationPhone?: string;
       logoUrl?: string;
+      brandImageUrl?: string;
       timezone?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone };
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
       console.log('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
@@ -780,6 +791,7 @@ interface SettingsViewProps {
 
 function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
   const [cancellationMessage, setCancellationMessage] = useState(
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
@@ -789,9 +801,31 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
+  const [brandImageUrl, setBrandImageUrl] = useState(location.brandImageUrl || '');
   const [timezone, setTimezone] = useState(location.timezone || DEFAULT_TIMEZONE);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingBrandImage, setIsUploadingBrandImage] = useState(false);
+  const [uploadingKitchenId, setUploadingKitchenId] = useState<number | null>(null);
   const timezoneOptions = getTimezoneOptions();
+
+  // Fetch kitchens for this location
+  const { data: kitchens = [], isLoading: isLoadingKitchens } = useQuery<Kitchen[]>({
+    queryKey: ['managerKitchens', location.id],
+    queryFn: async () => {
+      const token = localStorage.getItem('firebaseToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      };
+      const response = await fetch(`/api/manager/kitchens/${location.id}`, {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error('Failed to fetch kitchens');
+      return response.json();
+    },
+    enabled: !!location.id,
+  });
 
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
@@ -802,6 +836,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
     setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
     setLogoUrl(location.logoUrl || '');
+    setBrandImageUrl(location.brandImageUrl || '');
     setTimezone(location.timezone || DEFAULT_TIMEZONE);
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
@@ -817,7 +852,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setNotificationPhone(savedPhone);
   }, [location]);
 
-  const handleSave = (overrideLogoUrl?: string) => {
+  const handleSave = (overrideLogoUrl?: string, overrideBrandImageUrl?: string) => {
     if (!location.id) return;
     
     const payload = {
@@ -829,12 +864,119 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       notificationEmail: notificationEmail || undefined,
       notificationPhone: notificationPhone || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
+      brandImageUrl: overrideBrandImageUrl !== undefined ? overrideBrandImageUrl : (brandImageUrl || undefined),
       timezone: timezone || DEFAULT_TIMEZONE,
     };
     
     console.log('🚀 Saving location settings:', payload);
     
     onUpdateSettings.mutate(payload);
+  };
+
+  // Handle brand image upload
+  const handleBrandImageUpload = async (file: File) => {
+    setIsUploadingBrandImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload-file', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload brand image');
+      }
+      
+      const result = await response.json();
+      const uploadedUrl = result.url;
+      setBrandImageUrl(uploadedUrl);
+      
+      // Auto-save after upload with the uploaded URL
+      handleSave(undefined, uploadedUrl);
+      
+      toast({
+        title: "Success",
+        description: "Brand image uploaded successfully",
+      });
+      
+      return uploadedUrl;
+    } catch (error: any) {
+      console.error('Brand image upload error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload brand image",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsUploadingBrandImage(false);
+    }
+  };
+
+  // Handle kitchen image upload
+  const handleKitchenImageUpload = async (kitchenId: number, file: File) => {
+    setUploadingKitchenId(kitchenId);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const uploadResponse = await fetch('/api/upload-file', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.error || 'Failed to upload image');
+      }
+      
+      const uploadResult = await uploadResponse.json();
+      const uploadedUrl = uploadResult.url;
+      
+      // Update the kitchen with the new image URL
+      const token = localStorage.getItem('firebaseToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      };
+      
+      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}/image`, {
+        method: 'PUT',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ imageUrl: uploadedUrl }),
+      });
+      
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update kitchen image');
+      }
+      
+      // Refresh the kitchens list
+      queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      
+      toast({
+        title: "Success",
+        description: "Kitchen image uploaded successfully",
+      });
+      
+      return uploadedUrl;
+    } catch (error: any) {
+      console.error('Kitchen image upload error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload kitchen image",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setUploadingKitchenId(null);
+    }
   };
 
   // Handle logo file upload for session-based auth (managers)
@@ -1072,6 +1214,167 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   Logo will appear in the manager header next to Local Cooks logo
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Brand Image Section (for Chef Landing Page) */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <ImageIcon className="h-5 w-5 text-rose-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Brand Image for Chef Landing Page</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Upload a brand image to showcase your kitchen location on the LocalCooks chef landing page. This helps attract chefs to your space.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Brand Image
+                </label>
+                {brandImageUrl ? (
+                  <div className="flex items-center gap-4 mb-4">
+                    <img 
+                      src={brandImageUrl} 
+                      alt="Brand image" 
+                      className="h-24 w-auto object-cover border border-gray-200 rounded-lg bg-white"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600">Current brand image</p>
+                      <button
+                        onClick={() => {
+                          setBrandImageUrl('');
+                          handleSave(undefined, '');
+                        }}
+                        className="text-sm text-red-600 hover:text-red-700 mt-1"
+                      >
+                        Remove image
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleBrandImageUpload(file).catch((error) => {
+                          console.error('Brand image upload failed:', error);
+                        });
+                      }
+                    }}
+                    disabled={isUploadingBrandImage}
+                    className="hidden"
+                    id="brand-image-upload"
+                  />
+                  <label
+                    htmlFor="brand-image-upload"
+                    className="cursor-pointer flex flex-col items-center gap-2"
+                  >
+                    {isUploadingBrandImage ? (
+                      <>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600"></div>
+                        <span className="text-sm text-gray-600">Uploading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 text-gray-400" />
+                        <span className="text-sm font-medium text-rose-600">Click to upload brand image</span>
+                        <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB). Recommended: 800x600px</span>
+                      </>
+                    )}
+                  </label>
+                </div>
+                <p className="text-xs text-gray-600 mt-2">
+                  This image will appear on the chef landing page to showcase your kitchen location
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Kitchen Images Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <ChefHat className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Images</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Upload images for each kitchen space. These will be displayed on the chef landing page to help chefs see your facilities.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-4">
+              {isLoadingKitchens ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                </div>
+              ) : kitchens.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No kitchens found for this location</p>
+              ) : (
+                <div className="space-y-4">
+                  {kitchens.map((kitchen) => (
+                    <div key={kitchen.id} className="bg-white rounded-lg border border-amber-200 p-4">
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900">{kitchen.name}</h4>
+                          {kitchen.description && (
+                            <p className="text-sm text-gray-600 mt-1">{kitchen.description}</p>
+                          )}
+                        </div>
+                        {(kitchen as any).imageUrl ? (
+                          <img 
+                            src={(kitchen as any).imageUrl} 
+                            alt={kitchen.name} 
+                            className="h-20 w-32 object-cover rounded-lg border border-gray-200"
+                          />
+                        ) : (
+                          <div className="h-20 w-32 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
+                            <ImageIcon className="h-8 w-8 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/jpg,image/png,image/webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleKitchenImageUpload(kitchen.id, file).catch((error) => {
+                                console.error('Kitchen image upload failed:', error);
+                              });
+                            }
+                          }}
+                          disabled={uploadingKitchenId === kitchen.id}
+                          className="hidden"
+                          id={`kitchen-image-upload-${kitchen.id}`}
+                        />
+                        <label
+                          htmlFor={`kitchen-image-upload-${kitchen.id}`}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg cursor-pointer transition-colors"
+                        >
+                          {uploadingKitchenId === kitchen.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-700"></div>
+                              <span>Uploading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4" />
+                              <span>{(kitchen as any).imageUrl ? 'Change Image' : 'Upload Image'}</span>
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
