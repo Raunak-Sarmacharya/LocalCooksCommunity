@@ -69,11 +69,14 @@ async function getCreateBookingDateTime() {
     const __dirname = dirname(__filename);
     
     // Try multiple possible paths for timezone-utils
+    // In Vercel, files are at /var/task/api/server/email.js and /var/task/api/shared/timezone-utils.js
     const possiblePaths = [
-      join(__dirname, '../shared/timezone-utils.js'),  // From api/server/email.js to api/shared/timezone-utils.js
-      join(__dirname, '../../shared/timezone-utils.js'),  // Alternative: from server/ to shared/
+      join(__dirname, '../shared/timezone-utils.js'),  // From api/server/email.js to api/shared/timezone-utils.js (CORRECT PATH)
+      join(__dirname, '../../api/shared/timezone-utils.js'),  // Alternative: if __dirname is /var/task/server
       join(__dirname, './shared/timezone-utils.js'),  // If files are in same directory
-      join(__dirname, '../api/shared/timezone-utils.js'),  // Another alternative
+      join(__dirname, '../../shared/timezone-utils.js'),  // Alternative: from server/ to shared/
+      '/var/task/api/shared/timezone-utils.js',  // Absolute path for Vercel
+      '/var/task/shared/timezone-utils.js',  // Alternative absolute path
     ];
     
     let lastError = null;
@@ -228,6 +231,8 @@ async function createBookingDateTime(...args) {
     // Convert TypeScript imports to JavaScript (for all files, after special handling)
     content = content.replace(/from ["'](.+)\.ts["'];/g, 'from "$1.js";');
     content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/schema["'];/g, 'import {$1} from "../shared/schema.js";');
+    // Convert @shared/timezone-utils imports to relative imports
+    content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/timezone-utils["'];/g, 'import {$1} from "../shared/timezone-utils.js";');
     // Fix imports from shared directory (relative paths)
     // Ensure .js extension is always included for ESM compatibility
     content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
@@ -290,6 +295,10 @@ if (fs.existsSync(timezoneUtilsFile)) {
   content = content.replace(/\)\s*:\s*number\s*\{/g, ') {');
   content = content.replace(/\)\s*:\s*string\s*\{/g, ') {');
   content = content.replace(/\)\s*:\s*TZDate\s*\{/g, ') {');
+  // Remove complex return type annotations like Array<{ value: string; label: string }>
+  content = content.replace(/\)\s*:\s*Array<[^>]+>\s*\{/g, ') {');
+  content = content.replace(/\)\s*:\s*Promise<[^>]+>\s*\{/g, ') {');
+  content = content.replace(/\)\s*:\s*Record<[^>]+>\s*\{/g, ') {');
   // Remove standalone type/interface exports
   content = content.replace(/export\s+type\s+\w+[^;]+;/g, '');
   content = content.replace(/export\s+interface\s+\w+[^}]+}/g, '');
