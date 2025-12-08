@@ -1,5 +1,67 @@
 import nodemailer from 'nodemailer';
-import { createBookingDateTime } from '../shared/timezone-utils';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
+
+// Dynamic import for timezone-utils to handle Vercel serverless path resolution
+let createBookingDateTimeCache: ((dateStr: string, timeStr: string, timezone?: string) => Date) | null = null;
+
+async function getCreateBookingDateTime(): Promise<(dateStr: string, timeStr: string, timezone?: string) => Date> {
+  if (!createBookingDateTimeCache) {
+    // Get the directory of the current file
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+
+    // Try multiple possible paths for timezone-utils
+    // In Vercel production, files are at /var/task/server/email.js and /var/task/shared/timezone-utils.js
+    const possiblePaths = [
+      join(__dirname, '../shared/timezone-utils.js'),  // From server/email.js to shared/timezone-utils.js (CORRECT PATH for dist)
+      join(__dirname, '../shared/timezone-utils'),     // Without .js extension
+      join(__dirname, '../../shared/timezone-utils.js'),  // Alternative path
+      '/var/task/shared/timezone-utils.js',           // Absolute path for Vercel dist structure
+      '/var/task/api/shared/timezone-utils.js',       // Absolute path for Vercel api structure
+    ];
+
+    let lastError: Error | null = null;
+    for (const filePath of possiblePaths) {
+      try {
+        // Convert file path to file:// URL for dynamic import
+        const timezoneUtilsUrl = pathToFileURL(filePath).href;
+
+        // Import the module dynamically
+        const timezoneUtils = await import(timezoneUtilsUrl);
+
+        if (!timezoneUtils || !timezoneUtils.createBookingDateTime) {
+          throw new Error('timezone-utils module loaded but createBookingDateTime not found');
+        }
+        createBookingDateTimeCache = timezoneUtils.createBookingDateTime;
+        console.log(`Successfully loaded timezone-utils from: ${timezoneUtilsUrl}`);
+        break; // Success, exit loop
+      } catch (error) {
+        lastError = error as Error;
+        // Continue to next path
+        continue;
+      }
+    }
+
+    // If all paths failed, use fallback implementation
+    if (!createBookingDateTimeCache) {
+      console.error('Failed to load timezone-utils from all attempted paths, using fallback. Last error:', lastError);
+      // Fallback implementation that doesn't require the external module
+      createBookingDateTimeCache = (dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Date => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return new Date(year, month - 1, day, hours, minutes);
+      };
+    }
+  }
+  return createBookingDateTimeCache;
+}
+
+// Wrapper function that uses lazy-loaded utility
+async function createBookingDateTime(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Promise<Date> {
+  const fn = await getCreateBookingDateTime();
+  return fn(dateStr, timeStr, timezone);
+}
 
 // Email configuration
 interface EmailConfig {
@@ -349,27 +411,27 @@ const getSupportEmail = (): string => {
 const detectEmailProvider = (email: string): 'google' | 'outlook' | 'yahoo' | 'apple' | 'generic' => {
   const emailLower = email.toLowerCase();
   const domain = emailLower.split('@')[1] || '';
-  
+
   // Google/Gmail
   if (domain === 'gmail.com' || domain === 'googlemail.com' || domain.endsWith('.google.com')) {
     return 'google';
   }
-  
+
   // Microsoft Outlook/Hotmail
   if (domain === 'outlook.com' || domain === 'hotmail.com' || domain === 'live.com' || domain === 'msn.com' || domain.endsWith('.outlook.com')) {
     return 'outlook';
   }
-  
+
   // Yahoo
   if (domain === 'yahoo.com' || domain === 'yahoo.co.uk' || domain === 'yahoo.ca' || domain.endsWith('.yahoo.com')) {
     return 'yahoo';
   }
-  
+
   // Apple/iCloud
   if (domain === 'icloud.com' || domain === 'me.com' || domain === 'mac.com' || domain.endsWith('.icloud.com')) {
     return 'apple';
   }
-  
+
   // Default to generic (will show multiple options)
   return 'generic';
 };
@@ -403,8 +465,8 @@ const generateEventUid = (
   location: string
 ): string => {
   // Create a deterministic UID based on booking details
-  const dateStr = bookingDate instanceof Date 
-    ? bookingDate.toISOString().split('T')[0] 
+  const dateStr = bookingDate instanceof Date
+    ? bookingDate.toISOString().split('T')[0]
     : bookingDate.split('T')[0];
   // Use date + time + location hash for consistent UID
   const hashInput = `${dateStr}-${startTime}-${location}`;
@@ -436,11 +498,11 @@ const generateIcsFile = (
   const startDateStr = formatDateForCalendar(startDateTime);
   const endDateStr = formatDateForCalendar(endDateTime);
   const now = formatDateForCalendar(new Date());
-  
+
   // Use provided UID or generate a unique one
   // For synchronization, use the same UID for chef and manager
   const uid = eventUid || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}@localcooks.com`;
-  
+
   // RFC 5545 compliant iCalendar format
   const lines = [
     'BEGIN:VCALENDAR',
@@ -460,7 +522,7 @@ const generateIcsFile = (
     'SEQUENCE:0', // Increment on updates for synchronization
     'TRANSP:OPAQUE', // Indicates busy time
   ];
-  
+
   // Add organizer (required for proper calendar integration)
   if (organizerEmail) {
     // CN (Common Name) should be a readable name, not email
@@ -470,7 +532,7 @@ const generateIcsFile = (
     const supportEmail = getSupportEmail();
     lines.push(`ORGANIZER;CN=Local Cooks Community:mailto:${supportEmail}`);
   }
-  
+
   // Add attendees (both chef and manager should be included)
   if (attendeeEmails && attendeeEmails.length > 0) {
     attendeeEmails.forEach(email => {
@@ -481,7 +543,7 @@ const generateIcsFile = (
       }
     });
   }
-  
+
   // Add reminder alarms (15 minutes before and 1 day before)
   lines.push(
     'BEGIN:VALARM',
@@ -497,7 +559,7 @@ const generateIcsFile = (
     'END:VEVENT',
     'END:VCALENDAR'
   );
-  
+
   // RFC 5545 requires CRLF line endings
   return lines.join('\r\n');
 };
@@ -524,17 +586,17 @@ const generateCalendarUrl = (
     } else {
       bookingDateStr = String(bookingDate);
     }
-    
+
     // Create start and end Date objects in the specified timezone
     const startDateTime = createBookingDateTime(bookingDateStr, startTime, timezone);
     const endDateTime = createBookingDateTime(bookingDateStr, endTime, timezone);
-    
+
     const startDateStr = formatDateForCalendar(startDateTime);
     const endDateStr = formatDateForCalendar(endDateTime);
-    
+
     // Detect email provider
     const provider = detectEmailProvider(email);
-    
+
     // Generate URL based on provider
     switch (provider) {
       case 'google':
@@ -552,7 +614,7 @@ const generateCalendarUrl = (
           output: 'xml', // Output format
         });
         return `https://calendar.google.com/calendar/render?${googleParams.toString()}`;
-        
+
       case 'outlook':
         // Outlook Calendar
         const outlookParams = new URLSearchParams({
@@ -563,7 +625,7 @@ const generateCalendarUrl = (
           location: location,
         });
         return `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
-        
+
       case 'yahoo':
         // Yahoo Calendar
         const yahooParams = new URLSearchParams({
@@ -577,7 +639,7 @@ const generateCalendarUrl = (
           in_loc: location,
         });
         return `https://calendar.yahoo.com/?${yahooParams.toString()}`;
-        
+
       case 'apple':
         // Apple Calendar - Use Google Calendar URL as fallback
         // Apple Calendar can open Google Calendar links, and it's more reliable in emails
@@ -590,7 +652,7 @@ const generateCalendarUrl = (
           location: location,
         });
         return `https://calendar.google.com/calendar/render?${appleParams.toString()}`;
-        
+
       case 'generic':
       default:
         // For generic/unknown providers, default to Google Calendar (most common)
@@ -1341,8 +1403,8 @@ export const generateDeliveryPartnerDocumentStatusChangeEmail = (
 ): EmailContent => {
   // Create professional, non-promotional subject line
   const getSubjectLine = (documentType: string, status: string) => {
-    const docName = documentType === 'driversLicense' ? 'Driver\'s License' : 
-                   documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
+    const docName = documentType === 'driversLicense' ? 'Driver\'s License' :
+      documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
     switch (status) {
       case 'approved':
         return `${docName} Approved - Local Cooks Community`;
@@ -1357,8 +1419,8 @@ export const generateDeliveryPartnerDocumentStatusChangeEmail = (
 
   // Generate plain text version for better deliverability
   const generatePlainText = (documentType: string, status: string, fullName: string, adminFeedback?: string) => {
-    const docName = documentType === 'driversLicense' ? 'Driver\'s License' : 
-                   documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
+    const docName = documentType === 'driversLicense' ? 'Driver\'s License' :
+      documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
     const statusMessages = {
       approved: `Great news! Your ${docName} has been approved.`,
       rejected: `Your ${docName} requires some updates before it can be approved.`,
@@ -1384,8 +1446,8 @@ Visit: ${getWebsiteUrl()}
   };
 
   const getMessage = (documentType: string, status: string) => {
-    const docName = documentType === 'driversLicense' ? 'Driver\'s License' : 
-                   documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
+    const docName = documentType === 'driversLicense' ? 'Driver\'s License' :
+      documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
     switch (status) {
       case 'approved':
         return `Congratulations! Your ${docName} has been approved by our verification team. This brings you one step closer to being fully verified as a delivery partner on Local Cooks.`;
@@ -1399,8 +1461,8 @@ Visit: ${getWebsiteUrl()}
   };
 
   const message = getMessage(userData.documentType, userData.status);
-  const docName = userData.documentType === 'driversLicense' ? 'Driver\'s License' : 
-                 userData.documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
+  const docName = userData.documentType === 'driversLicense' ? 'Driver\'s License' :
+    userData.documentType === 'vehicleRegistration' ? 'Vehicle Registration' : 'Vehicle Insurance';
 
   // Use uniform email template with proper styling
   const html = `
@@ -1887,31 +1949,31 @@ export const generateWelcomeEmail = (
 // Helper function to get the correct subdomain URL based on user type
 const getSubdomainUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' | 'main' = 'main'): string => {
   const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
-  
+
   // In development, use localhost
   if (process.env.NODE_ENV !== 'production' && !process.env.BASE_URL) {
     return 'http://localhost:5000';
   }
-  
+
   // Use BASE_URL if explicitly set (for backward compatibility)
   if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
     // Extract subdomain from BASE_URL if it contains one
     const url = new URL(process.env.BASE_URL);
     const hostname = url.hostname;
     const parts = hostname.split('.');
-    
+
     // If BASE_URL already has a subdomain, use it
     if (parts.length >= 3) {
       return process.env.BASE_URL;
     }
-    
+
     // Otherwise, construct subdomain URL
     if (userType === 'main') {
       return process.env.BASE_URL;
     }
     return `https://${userType}.${baseDomain}`;
   }
-  
+
   // Production: construct subdomain URL
   if (userType === 'main') {
     return `https://${baseDomain}`;
@@ -1927,7 +1989,7 @@ const getWebsiteUrl = (): string => {
 // Helper function to get the correct dashboard URL based on user type
 const getDashboardUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' = 'chef'): string => {
   const baseUrl = getSubdomainUrl(userType);
-  
+
   if (userType === 'chef') {
     return `${baseUrl}/auth?redirect=/dashboard`;
   } else if (userType === 'driver') {
@@ -1937,7 +1999,7 @@ const getDashboardUrl = (userType: 'chef' | 'driver' | 'kitchen' | 'admin' = 'ch
   } else if (userType === 'admin') {
     return `${baseUrl}/admin`;
   }
-  
+
   return `${baseUrl}/auth?redirect=/dashboard`;
 };
 
@@ -2913,11 +2975,11 @@ export const generateChefAllDocumentsApprovedEmail = (
   }
 ): EmailContent => {
   const subject = 'All Documents Approved - Welcome to Local Cooks Community!';
-  
+
   // Generate plain text version
   const generatePlainText = (fullName: string, approvedDocuments: string[], adminFeedback?: string) => {
     const docList = approvedDocuments.join(', ');
-    
+
     return `Hello ${fullName},
 
 🎉 Congratulations! All your submitted documents have been approved by our verification team.
@@ -3004,11 +3066,11 @@ export const generateDeliveryPartnerAllDocumentsApprovedEmail = (
   }
 ): EmailContent => {
   const subject = 'All Documents Approved - Welcome to Local Cooks Community!';
-  
+
   // Generate plain text version
   const generatePlainText = (fullName: string, approvedDocuments: string[], adminFeedback?: string) => {
     const docList = approvedDocuments.join(', ');
-    
+
     return `Hello ${fullName},
 
 🎉 Congratulations! All your submitted documents have been approved by our verification team.
@@ -3110,12 +3172,12 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
   const subject = `New Kitchen Booking - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
-  
+
   // Convert bookingDate to Date object for display
-  const bookingDateObj = bookingData.bookingDate instanceof Date 
-    ? bookingData.bookingDate 
+  const bookingDateObj = bookingData.bookingDate instanceof Date
+    ? bookingData.bookingDate
     : new Date(bookingData.bookingDate);
-  
+
   // Generate calendar URL based on email provider - SAME event as chef receives for perfect sync
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.\n\nChef: ${bookingData.chefName}\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Pending Approval${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
@@ -3129,11 +3191,11 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
     calendarDescription,
     timezone
   );
-  const calendarButtonText = detectEmailProvider(bookingData.managerEmail) === 'outlook' ? '📅 Add to Outlook Calendar' : 
-                             detectEmailProvider(bookingData.managerEmail) === 'yahoo' ? '📅 Add to Yahoo Calendar' :
-                             detectEmailProvider(bookingData.managerEmail) === 'apple' ? '📅 Add to Apple Calendar' :
-                             '📅 Add to Calendar';
-  
+  const calendarButtonText = detectEmailProvider(bookingData.managerEmail) === 'outlook' ? '📅 Add to Outlook Calendar' :
+    detectEmailProvider(bookingData.managerEmail) === 'yahoo' ? '📅 Add to Yahoo Calendar' :
+      detectEmailProvider(bookingData.managerEmail) === 'apple' ? '📅 Add to Apple Calendar' :
+        '📅 Add to Calendar';
+
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
@@ -3150,12 +3212,12 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
     [bookingData.managerEmail], // Manager is the primary attendee for this email
     eventUid // Use consistent UID for synchronization
   );
-  
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Booking</h2><p class="message">A chef has made a booking for your kitchen:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${bookingData.chefName}<br><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-  return { 
-    to: bookingData.managerEmail, 
-    subject, 
-    text: `New Kitchen Booking - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Add to calendar: ${calendarUrl}`, 
+  return {
+    to: bookingData.managerEmail,
+    subject,
+    text: `New Kitchen Booking - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Add to calendar: ${calendarUrl}`,
     html,
     attachments: [{
       filename: 'kitchen-booking.ics',
@@ -3179,12 +3241,12 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
   const statusText = bookingData.status === 'confirmed' ? 'Confirmed' : 'Cancelled';
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
-  
+
   // Convert bookingDate to Date object for display
-  const bookingDateObj = bookingData.bookingDate instanceof Date 
-    ? bookingData.bookingDate 
+  const bookingDateObj = bookingData.bookingDate instanceof Date
+    ? bookingData.bookingDate
     : new Date(bookingData.bookingDate);
-  
+
   // Generate calendar URL for confirmed bookings based on email provider - SAME event as chef receives for perfect sync
   let calendarUrl = '';
   let calendarButtonText = '📅 Add to Calendar';
@@ -3202,12 +3264,12 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
       timezone
     );
     const provider = detectEmailProvider(bookingData.managerEmail);
-    calendarButtonText = provider === 'outlook' ? '📅 Add to Outlook Calendar' : 
-                         provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
-                         provider === 'apple' ? '📅 Add to Apple Calendar' :
-                         '📅 Add to Calendar';
+    calendarButtonText = provider === 'outlook' ? '📅 Add to Outlook Calendar' :
+      provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
+        provider === 'apple' ? '📅 Add to Apple Calendar' :
+          '📅 Add to Calendar';
   }
-  
+
   // Generate .ics file for confirmed bookings
   // Use consistent UID for synchronization - both chef and manager will get the same event
   let attachments: EmailContent['attachments'] = [];
@@ -3234,17 +3296,17 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
       contentType: 'text/calendar; charset=utf-8; method=REQUEST'
     }];
   }
-  
+
   const calendarButton = bookingData.status === 'confirmed' && calendarUrl
     ? `<p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div>`
     : `<a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a>`;
-  
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking ${statusText}</h2><p class="message">The booking status has been updated:</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${bookingData.chefName}<br><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span></div>${calendarButton}<div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   const textCalendar = bookingData.status === 'confirmed' && calendarUrl ? ` Add to calendar: ${calendarUrl}` : '';
-  return { 
-    to: bookingData.managerEmail, 
-    subject, 
-    text: `Booking ${statusText} - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}, Status: ${statusText}${textCalendar}`, 
+  return {
+    to: bookingData.managerEmail,
+    subject,
+    text: `Booking ${statusText} - Chef: ${bookingData.chefName}, Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}, Status: ${statusText}${textCalendar}`,
     html,
     attachments
   };
@@ -3254,12 +3316,12 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
   const subject = `Booking Request Received - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
-  
+
   // Convert bookingDate to Date object for display
-  const bookingDateObj = bookingData.bookingDate instanceof Date 
-    ? bookingData.bookingDate 
+  const bookingDateObj = bookingData.bookingDate instanceof Date
+    ? bookingData.bookingDate
     : new Date(bookingData.bookingDate);
-  
+
   // Generate calendar URL based on email provider
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Kitchen booking request for ${bookingData.kitchenName}.\n\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Pending Approval${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
@@ -3274,11 +3336,11 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
     timezone
   );
   const provider = detectEmailProvider(bookingData.chefEmail);
-  const calendarButtonText = provider === 'outlook' ? '📅 Add to Outlook Calendar' : 
-                             provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
-                             provider === 'apple' ? '📅 Add to Apple Calendar' :
-                             '📅 Add to Calendar';
-  
+  const calendarButtonText = provider === 'outlook' ? '📅 Add to Outlook Calendar' :
+    provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
+      provider === 'apple' ? '📅 Add to Apple Calendar' :
+        '📅 Add to Calendar';
+
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
@@ -3295,12 +3357,12 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
     [bookingData.chefEmail], // Chef is the primary attendee
     eventUid // Use consistent UID for synchronization
   );
-  
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">We've received your kitchen booking request! The manager has been notified and will review it shortly.</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Approval</span>${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message">You'll receive a confirmation email once the manager approves your booking.</p><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-  return { 
-    to: bookingData.chefEmail, 
-    subject, 
-    text: `Hello ${bookingData.chefName}, We've received your kitchen booking request! Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Status: Pending Approval. You'll receive a confirmation email once approved. Add to calendar: ${calendarUrl}`, 
+  return {
+    to: bookingData.chefEmail,
+    subject,
+    text: `Hello ${bookingData.chefName}, We've received your kitchen booking request! Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Status: Pending Approval. You'll receive a confirmation email once approved. Add to calendar: ${calendarUrl}`,
     html,
     attachments: [{
       filename: 'kitchen-booking.ics',
@@ -3314,12 +3376,12 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   const subject = `Booking Confirmed - ${bookingData.kitchenName}`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
-  
+
   // Convert bookingDate to Date object for display
-  const bookingDateObj = bookingData.bookingDate instanceof Date 
-    ? bookingData.bookingDate 
+  const bookingDateObj = bookingData.bookingDate instanceof Date
+    ? bookingData.bookingDate
     : new Date(bookingData.bookingDate);
-  
+
   // Generate calendar URL based on email provider
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Confirmed kitchen booking for ${bookingData.kitchenName}.\n\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Confirmed${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
@@ -3334,11 +3396,11 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
     timezone
   );
   const provider = detectEmailProvider(bookingData.chefEmail);
-  const calendarButtonText = provider === 'outlook' ? '📅 Add to Outlook Calendar' : 
-                             provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
-                             provider === 'apple' ? '📅 Add to Apple Calendar' :
-                             '📅 Add to Calendar';
-  
+  const calendarButtonText = provider === 'outlook' ? '📅 Add to Outlook Calendar' :
+    provider === 'yahoo' ? '📅 Add to Yahoo Calendar' :
+      provider === 'apple' ? '📅 Add to Apple Calendar' :
+        '📅 Add to Calendar';
+
   // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
   // Use consistent UID for synchronization - both chef and manager will get the same event
   const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
@@ -3355,12 +3417,12 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
     [bookingData.chefEmail], // Chef is the primary attendee
     eventUid // Use consistent UID for synchronization
   );
-  
+
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${bookingData.chefName},</h2><p class="message">Great news! Your kitchen booking has been <strong style="color: #16a34a;">CONFIRMED</strong> ✅</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${bookingData.kitchenName}<br><strong>📅 Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>⏰ Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Confirmed</span>${bookingData.specialNotes ? `<br><br><strong>📝 Notes:</strong> ${bookingData.specialNotes}` : ''}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>📎 Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View My Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you need to make changes, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
-  return { 
-    to: bookingData.chefEmail, 
-    subject, 
-    text: `Hello ${bookingData.chefName}, Great news! Your kitchen booking has been CONFIRMED! Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Add to calendar: ${calendarUrl}`, 
+  return {
+    to: bookingData.chefEmail,
+    subject,
+    text: `Hello ${bookingData.chefName}, Great news! Your kitchen booking has been CONFIRMED! Kitchen: ${bookingData.kitchenName}, Date: ${bookingDateObj.toLocaleDateString()}, Time: ${bookingData.startTime} - ${bookingData.endTime}. Add to calendar: ${calendarUrl}`,
     html,
     attachments: [{
       filename: 'kitchen-booking.ics',
@@ -3387,7 +3449,7 @@ export const generateKitchenAvailabilityChangeEmail = (data: { chefEmail: string
 export const generateKitchenSettingsChangeEmail = (data: { email: string; name: string; kitchenName: string; changes: string; isChef: boolean }): EmailContent => {
   const subject = `Kitchen Settings Updated - ${data.kitchenName}`;
   const greeting = data.isChef ? `Hello ${data.name},` : `Hello ${data.name},`;
-  const message = data.isChef 
+  const message = data.isChef
     ? `The settings for <strong>${data.kitchenName}</strong> have been updated. This may affect your existing or future bookings.`
     : `The settings for <strong>${data.kitchenName}</strong> have been updated.`;
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">${greeting}</h2><p class="message">${message}</p><div class="info-box"><strong>🏢 Kitchen:</strong> ${data.kitchenName}<br><strong>📝 Changes:</strong> ${data.changes}</div>${data.isChef ? `<p class="message">Please review the updated settings before making your next booking.</p><a href="${getDashboardUrl()}/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Details</a>` : `<a href="${getDashboardUrl()}/manager/booking-dashboard" class="cta-button" style="color: white !important; text-decoration: none !important;">View Kitchen Settings</a>`}<div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
