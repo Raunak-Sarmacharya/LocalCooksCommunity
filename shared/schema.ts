@@ -338,6 +338,8 @@ export const kitchens = pgTable("kitchens", {
   name: text("name").notNull(),
   description: text("description"),
   imageUrl: text("image_url"), // Image URL for the kitchen (displayed on public kitchen listings)
+  galleryImages: jsonb("gallery_images").default([]), // Array of image URLs for kitchen gallery carousel
+  amenities: jsonb("amenities").default([]), // Array of amenities/features for the kitchen
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

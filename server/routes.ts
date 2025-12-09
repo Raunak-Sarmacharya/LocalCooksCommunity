@@ -8142,6 +8142,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get public location details with kitchens (for kitchen preview page - no auth required)
+  // Updated to fix hot reload
+  app.get("/api/public/locations/:locationId/details", async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      // Get location
+      const allLocations = await firebaseStorage.getAllLocations();
+      const location = allLocations.find((loc: any) => loc.id === locationId);
+      
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Get kitchens for this location
+      const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      const locationKitchens = allKitchens
+        .filter((kitchen: any) => {
+          const kitchenLocationId = kitchen.locationId || kitchen.location_id;
+          const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+          return kitchenLocationId === locationId && isActive !== false;
+        })
+        .map((kitchen: any) => ({
+          id: kitchen.id,
+          name: kitchen.name,
+          description: kitchen.description,
+          imageUrl: kitchen.imageUrl || kitchen.image_url || null,
+          galleryImages: kitchen.galleryImages || kitchen.gallery_images || [],
+          amenities: kitchen.amenities || [],
+          locationId: kitchen.locationId || kitchen.location_id,
+          locationName: kitchen.locationName || kitchen.location_name || location.name,
+          locationAddress: kitchen.locationAddress || kitchen.location_address || location.address,
+          locationBrandImageUrl: kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null,
+          locationLogoUrl: kitchen.locationLogoUrl || kitchen.location_logo_url || null,
+        }));
+
+      console.log(`[API] /api/public/locations/${locationId}/details - Found location with ${locationKitchens.length} kitchens`);
+
+      res.json({
+        location: {
+          id: location.id,
+          name: location.name,
+          address: location.address,
+          logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
+          brandImageUrl: (location as any).brandImageUrl || (location as any).brand_image_url || null,
+        },
+        kitchens: locationKitchens,
+      });
+    } catch (error: any) {
+      console.error("Error fetching public location details:", error);
+      res.status(500).json({ error: "Failed to fetch location details", details: error.message });
+    }
+  });
+
+  // Get public kitchen availability preview (limited data for marketing - no auth required)
+  app.get("/api/public/kitchens/:kitchenId/availability-preview", async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      const date = req.query.date as string | undefined;
+
+      if (isNaN(kitchenId)) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get kitchen availability settings
+      const availabilities = await firebaseStorage.getKitchenAvailability(kitchenId);
+      
+      // Get operating days (days of week that have availability set)
+      const operatingDays = [...new Set(availabilities.map((a: any) => a.dayOfWeek))];
+
+      // Generate sample slots for preview (not real-time, just example)
+      // These are illustrative and don't reflect actual bookings
+      const sampleSlots = [];
+      
+      // If a specific date is provided, get the day of week
+      let dayOfWeek = new Date().getDay();
+      if (date) {
+        const [year, month, day] = date.split('-').map(Number);
+        dayOfWeek = new Date(year, month - 1, day).getDay();
+      }
+
+      // Find availability for this day
+      const dayAvailability = availabilities.find((a: any) => a.dayOfWeek === dayOfWeek);
+      
+      if (dayAvailability) {
+        const startTime = dayAvailability.startTime || "08:00";
+        const endTime = dayAvailability.endTime || "18:00";
+        
+        const [startHour] = startTime.split(':').map(Number);
+        const [endHour] = endTime.split(':').map(Number);
+        
+        // Generate hourly slots
+        for (let hour = startHour; hour < endHour; hour++) {
+          const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+          // Generate pseudo-random availability for demo purposes
+          const seed = kitchenId * 100 + hour;
+          const available = (seed % 3) === 0 ? 0 : ((seed % 2) === 0 ? 1 : 2);
+          
+          sampleSlots.push({
+            time: timeStr,
+            available: available,
+            capacity: 2,
+            isFullyBooked: available === 0,
+          });
+        }
+      } else {
+        // Default sample slots if no availability set for this day
+        for (let hour = 8; hour < 18; hour++) {
+          const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+          const seed = kitchenId * 100 + hour;
+          const available = (seed % 3) === 0 ? 0 : ((seed % 2) === 0 ? 1 : 2);
+          
+          sampleSlots.push({
+            time: timeStr,
+            available: available,
+            capacity: 2,
+            isFullyBooked: available === 0,
+          });
+        }
+      }
+
+      console.log(`[API] /api/public/kitchens/${kitchenId}/availability-preview - Returning ${sampleSlots.length} sample slots`);
+
+      res.json({
+        operatingDays,
+        sampleSlots,
+        hasAvailability: availabilities.length > 0,
+      });
+    } catch (error: any) {
+      console.error("Error fetching public kitchen availability preview:", error);
+      res.status(500).json({ error: "Failed to fetch availability preview", details: error.message });
+    }
+  });
+
   // Get public platform statistics for landing pages
   app.get("/api/public/stats", async (req: Request, res: Response) => {
     try {

@@ -1449,7 +1449,7 @@ export default function ChefLanding() {
                           
                           <Button 
                             className="w-full bg-[#1A1A1A] hover:bg-[#F51042] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
-                            onClick={() => navigate('/portal/book')}
+                            onClick={() => navigate(`/kitchen-preview/${loc.id}`)}
                           >
                             <Calendar className="mr-1.5 h-4 w-4" />
                             View Availability
