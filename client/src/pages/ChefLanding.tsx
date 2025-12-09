@@ -1055,34 +1055,202 @@ export default function ChefLanding() {
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            TRIAL BANNER - Strong Emphasis
+            HOW IT WORKS - Clean, Balanced Design
+            Color Theory: Coral red (#F51042) complemented by teal, amber/gold, soft coral
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="py-16 px-4 bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-500 text-white">
-          <div className="container mx-auto max-w-4xl text-center">
+        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-white">
+          <div className="container mx-auto max-w-6xl">
+            {/* Section Header */}
             <FadeInSection>
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <Sparkles className="h-8 w-8" />
-                <h3 className="text-3xl md:text-4xl font-bold">We're in Trial Mode</h3>
-                <Sparkles className="h-8 w-8" />
+              <div className="text-center mb-16">
+                <motion.p
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6 }}
+                  className="text-[#6B6B6B] text-base md:text-lg mb-4"
+                >
+                  Join passionate home cooks earning real money doing what they love.
+                </motion.p>
+                
+                <motion.h2
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.7, delay: 0.1 }}
+                  className="text-4xl md:text-5xl lg:text-6xl font-bold text-[#1A1A1A] leading-tight"
+                >
+                  Three Simple{" "}
+                  <span className="relative inline-block">
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
+                      Steps
+                    </span>
+                    <motion.svg 
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
+                      viewBox="0 0 200 12" 
+                      fill="none"
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      whileInView={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 1.2, delay: 0.6 }}
+                      viewport={{ once: true }}
+                    >
+                      <motion.path 
+                        d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8" 
+                        stroke="#F51042"
+                        strokeWidth="3" 
+                        strokeLinecap="round"
+                        initial={{ pathLength: 0 }}
+                        whileInView={{ pathLength: 1 }}
+                        transition={{ duration: 1.2, delay: 0.6 }}
+                        viewport={{ once: true }}
+                      />
+                    </motion.svg>
+                  </span>
+                </motion.h2>
               </div>
-              <p className="text-xl md:text-2xl mb-8 opacity-95">
-                Join now and <span className="font-bold underline">keep 100% of your sales</span>. 
-                <br className="hidden md:block" />
-                We only charge standard payment processing — no platform fees.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
-                  <Zap className="h-5 w-5" />
-                  <span className="font-semibold">0% Platform Fees</span>
+            </FadeInSection>
+
+            {/* Steps - 3 Column Grid with White Cards */}
+            <div className="grid md:grid-cols-3 gap-6 lg:gap-8 mb-16">
+              
+              {/* Step 1 - Apply (Coral/Red accent) */}
+              <FadeInSection delay={1}>
+                <motion.div
+                  whileHover={{ y: -6 }}
+                  transition={{ duration: 0.3 }}
+                  className="group h-full"
+                >
+                  <div className="relative h-full bg-white rounded-2xl p-6 lg:p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
+                    {/* Step Number Badge */}
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center shadow-md shadow-[#F51042]/20 group-hover:scale-110 transition-transform duration-300">
+                        <span className="text-white font-bold text-sm">1</span>
+                      </div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#F51042]/60">Step One</span>
+                    </div>
+                    
+                    <h3 className="text-2xl font-bold text-[#2C2C2C] mb-1">Apply</h3>
+                    <p className="text-sm font-medium text-[#F51042] mb-3">Less than 5 minutes</p>
+                    
+                    <p className="text-[#6B6B6B] leading-relaxed text-sm">
+                      Tell us about your cooking. Where would you prepare meals—your home kitchen or a commercial kitchen? Answer a few quick questions about regulations and certifications. That's all we need to get started.
+                    </p>
+                    
+                    {/* Decorative accent */}
+                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F51042]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
+                  </div>
+                </motion.div>
+              </FadeInSection>
+
+              {/* Step 2 - We Approve You (Teal accent - complementary to coral) */}
+              <FadeInSection delay={2}>
+                <motion.div
+                  whileHover={{ y: -6 }}
+                  transition={{ duration: 0.3 }}
+                  className="group h-full"
+                >
+                  <div className="relative h-full bg-white rounded-2xl p-6 lg:p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
+                    {/* Step Number Badge */}
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0D9488] to-[#14B8A6] flex items-center justify-center shadow-md shadow-[#0D9488]/20 group-hover:scale-110 transition-transform duration-300">
+                        <span className="text-white font-bold text-sm">2</span>
+                      </div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#0D9488]/60">Step Two</span>
+                    </div>
+                    
+                    <h3 className="text-2xl font-bold text-[#2C2C2C] mb-1">We Get You Live</h3>
+                    <p className="text-sm font-medium text-[#0D9488] mb-3">Approved in 24 hours</p>
+                    
+                    <p className="text-[#6B6B6B] leading-relaxed text-sm">
+                      We review your application and connect with you to help with any regulatory requirements. Already have your documentation ready? You're set. Need guidance? We walk you through it. Either way, you'll be ready to launch.
+                    </p>
+                    
+                    {/* Decorative accent */}
+                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#0D9488]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
+                  </div>
+                </motion.div>
+              </FadeInSection>
+
+              {/* Step 3 - Menu. Price. Sell. (Amber/Gold accent - warm complement) */}
+              <FadeInSection delay={3}>
+                <motion.div
+                  whileHover={{ y: -6 }}
+                  transition={{ duration: 0.3 }}
+                  className="group h-full"
+                >
+                  <div className="relative h-full bg-white rounded-2xl p-6 lg:p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
+                    {/* Step Number Badge */}
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#FBBF24] flex items-center justify-center shadow-md shadow-[#F59E0B]/20 group-hover:scale-110 transition-transform duration-300">
+                        <span className="text-white font-bold text-sm">3</span>
+                      </div>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#F59E0B]/60">Step Three</span>
+                    </div>
+                    
+                    <h3 className="text-2xl font-bold text-[#2C2C2C] mb-1">Build Your Menu & Sell</h3>
+                    <p className="text-sm font-medium text-[#F59E0B] mb-3">Start earning today</p>
+                    
+                    <p className="text-[#6B6B6B] leading-relaxed text-sm">
+                      Create your menu, set your prices, start accepting orders. Payment deposits straight to your bank. Scale from one order to hundreds—it's all in your hands.
+                    </p>
+                    
+                    {/* Decorative accent */}
+                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F59E0B]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
+                  </div>
+                </motion.div>
+              </FadeInSection>
+            </div>
+
+            {/* What You Get - Compact Bento Grid */}
+            <FadeInSection>
+              <div className="mb-12">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
+                  <h3 className="text-xl font-bold text-[#2C2C2C]">What You Get</h3>
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 </div>
-                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
-                  <Shield className="h-5 w-5" />
-                  <span className="font-semibold">Full Support Included</span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {[
+                    { text: "Sell from home or a commercial kitchen — your choice", icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
+                    { text: "We handle compliance — regulations, certifications, partnerships", icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                    { text: "Full control — your hours, your menu, your prices", icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
+                    { text: "Direct payments — weekly payouts to your bank", icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
+                    { text: "Real support — actual people who help you succeed", icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                  ].map((item, i) => (
+                    <motion.div
+                      key={i}
+                      whileHover={{ y: -2, scale: 1.01 }}
+                      className="group"
+                    >
+                      <div className={`h-full bg-white rounded-xl p-4 border ${item.borderColor} hover:shadow-md transition-all duration-300`}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex-shrink-0 mt-0.5">
+                            <item.icon className={`h-4 w-4 ${item.iconColor}`} />
+                          </div>
+                          <p className="text-[#4A5568] text-xs leading-relaxed">
+                            {item.text}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
-                  <Rocket className="h-5 w-5" />
-                  <span className="font-semibold">Perfect Time to Start</span>
-                </div>
+              </div>
+            </FadeInSection>
+
+            {/* CTA Section */}
+            <FadeInSection>
+              <div className="text-center">
+                <p className="text-lg font-semibold text-[#2C2C2C] mb-6">Ready?</p>
+                
+                <Button 
+                  onClick={handleGetStarted} 
+                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-6 px-12 text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+                >
+                  Start Your Application
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
               </div>
             </FadeInSection>
           </div>
@@ -1578,47 +1746,34 @@ export default function ChefLanding() {
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            HOW IT WORKS - Simple Steps
+            TRIAL BANNER - Strong Emphasis
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-white">
-          <div className="container mx-auto max-w-5xl">
+        <section className="py-16 px-4 bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-500 text-white">
+          <div className="container mx-auto max-w-4xl text-center">
             <FadeInSection>
-              <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
-                  Getting Started
-                </span>
-                <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[#F51042] mb-4">
-                  Three Simple Steps
-                </h2>
-                <p className="text-lg text-[#6B6B6B]">From application to your first order</p>
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <Sparkles className="h-8 w-8" />
+                <h3 className="text-3xl md:text-4xl font-bold">We're in Trial Mode</h3>
+                <Sparkles className="h-8 w-8" />
               </div>
-            </FadeInSection>
-
-            <div className="grid md:grid-cols-3 gap-8 md:gap-12">
-              {[
-                { num: "1", title: "Apply", desc: "15 minutes. Share your story, upload food photos, tell us about your cuisine.", color: "#F51042" },
-                { num: "2", title: "Set Up", desc: "Create your menu, set prices, and customize your chef profile.", color: "#10B981" },
-                { num: "3", title: "Start Cooking", desc: "Orders come in, you cook, money goes to your account. Simple.", color: "#8B5CF6" },
-              ].map((step, i) => (
-                <FadeInSection key={i} delay={i + 1}>
-                  <div className="text-center">
-                    <div className="relative inline-flex items-center justify-center w-24 h-24 mb-6 mx-auto">
-                      <div className="absolute inset-0 rounded-full opacity-20" style={{ backgroundColor: step.color }} />
-                      <span className="text-4xl font-bold" style={{ color: step.color }}>{step.num}</span>
-                    </div>
-                    <h3 className="text-2xl font-bold text-[#2C2C2C] mb-3">{step.title}</h3>
-                    <p className="text-[#6B6B6B] leading-relaxed">{step.desc}</p>
-                  </div>
-                </FadeInSection>
-              ))}
-            </div>
-
-            <FadeInSection delay={3}>
-              <div className="text-center mt-12">
-                <Button onClick={handleGetStarted} className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-6 px-12 text-lg rounded-full shadow-lg hover:shadow-xl transition-all">
-                  Start Your Application
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
+              <p className="text-xl md:text-2xl mb-8 opacity-95">
+                Join now and <span className="font-bold underline">keep 100% of your sales</span>. 
+                <br className="hidden md:block" />
+                We only charge standard payment processing — no platform fees.
+              </p>
+              <div className="flex flex-wrap justify-center gap-4">
+                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
+                  <Zap className="h-5 w-5" />
+                  <span className="font-semibold">0% Platform Fees</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
+                  <Shield className="h-5 w-5" />
+                  <span className="font-semibold">Full Support Included</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
+                  <Rocket className="h-5 w-5" />
+                  <span className="font-semibold">Perfect Time to Start</span>
+                </div>
               </div>
             </FadeInSection>
           </div>
