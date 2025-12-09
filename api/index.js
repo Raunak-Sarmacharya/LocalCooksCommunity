@@ -15211,6 +15211,83 @@ app.get("/api/public/locations/:locationSlug/kitchens", async (req, res) => {
   }
 });
 
+// Get public location details with kitchens (for kitchen preview page - no auth required)
+app.get("/api/public/locations/:locationId/details", async (req, res) => {
+  try {
+    const locationId = parseInt(req.params.locationId);
+    
+    if (isNaN(locationId)) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get location
+    const locationResult = await pool.query(`
+      SELECT id, name, address, 
+             logo_url as "logoUrl",
+             brand_image_url as "brandImageUrl"
+      FROM locations 
+      WHERE id = $1
+    `, [locationId]);
+    
+    if (locationResult.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const location = locationResult.rows[0];
+
+    // Get kitchens for this location with all details
+    const kitchensResult = await pool.query(`
+      SELECT k.id, k.name, k.description, 
+             k.image_url as "imageUrl",
+             k.gallery_images as "galleryImages",
+             k.amenities,
+             k.location_id as "locationId",
+             l.name as "locationName",
+             l.address as "locationAddress",
+             l.brand_image_url as "locationBrandImageUrl",
+             l.logo_url as "locationLogoUrl"
+      FROM kitchens k
+      JOIN locations l ON k.location_id = l.id
+      WHERE k.location_id = $1 AND k.is_active != false
+      ORDER BY k.name
+    `, [locationId]);
+
+    const locationKitchens = kitchensResult.rows.map((kitchen) => ({
+      id: kitchen.id,
+      name: kitchen.name,
+      description: kitchen.description,
+      imageUrl: kitchen.imageUrl || null,
+      galleryImages: (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) ? kitchen.galleryImages : [],
+      amenities: (kitchen.amenities && Array.isArray(kitchen.amenities)) ? kitchen.amenities : [],
+      locationId: kitchen.locationId,
+      locationName: kitchen.locationName || location.name,
+      locationAddress: kitchen.locationAddress || location.address,
+      locationBrandImageUrl: kitchen.locationBrandImageUrl || null,
+      locationLogoUrl: kitchen.locationLogoUrl || null,
+    }));
+
+    console.log(`[API] /api/public/locations/${locationId}/details - Found location with ${locationKitchens.length} kitchens`);
+
+    res.json({
+      location: {
+        id: location.id,
+        name: location.name,
+        address: location.address,
+        logoUrl: location.logoUrl || null,
+        brandImageUrl: location.brandImageUrl || null,
+      },
+      kitchens: locationKitchens,
+    });
+  } catch (error) {
+    console.error("Error fetching public location details:", error);
+    res.status(500).json({ error: "Failed to fetch location details", details: error.message });
+  }
+});
+
 // Get public kitchen listings for landing pages (all active kitchens for marketing)
 app.get("/api/public/kitchens", async (req, res) => {
   try {
