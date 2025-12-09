@@ -806,6 +806,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingBrandImage, setIsUploadingBrandImage] = useState(false);
   const [uploadingKitchenId, setUploadingKitchenId] = useState<number | null>(null);
+  const [kitchenDescriptions, setKitchenDescriptions] = useState<Record<number, string>>({});
+  const [updatingKitchenId, setUpdatingKitchenId] = useState<number | null>(null);
   const timezoneOptions = getTimezoneOptions();
 
   // Fetch kitchens for this location
@@ -851,6 +853,17 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setNotificationEmail(savedEmail);
     setNotificationPhone(savedPhone);
   }, [location]);
+
+  // Initialize kitchen descriptions when kitchens are loaded
+  useEffect(() => {
+    if (kitchens.length > 0) {
+      const descriptions: Record<number, string> = {};
+      kitchens.forEach((kitchen) => {
+        descriptions[kitchen.id] = kitchen.description || '';
+      });
+      setKitchenDescriptions(descriptions);
+    }
+  }, [kitchens]);
 
   const handleSave = (overrideLogoUrl?: string, overrideBrandImageUrl?: string) => {
     if (!location.id) return;
@@ -914,6 +927,47 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       throw error;
     } finally {
       setIsUploadingBrandImage(false);
+    }
+  };
+
+  // Handle kitchen description update
+  const handleKitchenDescriptionUpdate = async (kitchenId: number, description: string) => {
+    setUpdatingKitchenId(kitchenId);
+    try {
+      const token = localStorage.getItem('firebaseToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      };
+      
+      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}`, {
+        method: 'PUT',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ description }),
+      });
+      
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update kitchen description');
+      }
+      
+      // Refresh the kitchens list
+      queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      
+      toast({
+        title: "Success",
+        description: "Kitchen description updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Kitchen description update error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update kitchen description",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingKitchenId(null);
     }
   };
 
@@ -1321,10 +1375,37 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <div key={kitchen.id} className="bg-white rounded-lg border border-amber-200 p-4">
                       <div className="flex items-start gap-4">
                         <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900">{kitchen.name}</h4>
-                          {kitchen.description && (
-                            <p className="text-sm text-gray-600 mt-1">{kitchen.description}</p>
-                          )}
+                          <h4 className="font-semibold text-gray-900 mb-2">{kitchen.name}</h4>
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              Description
+                            </label>
+                            <textarea
+                              value={kitchenDescriptions[kitchen.id] !== undefined 
+                                ? kitchenDescriptions[kitchen.id] 
+                                : kitchen.description || ''}
+                              onChange={(e) => {
+                                setKitchenDescriptions(prev => ({
+                                  ...prev,
+                                  [kitchen.id]: e.target.value
+                                }));
+                              }}
+                              onBlur={(e) => {
+                                const newDescription = e.target.value.trim();
+                                const currentDescription = kitchen.description || '';
+                                if (newDescription !== currentDescription) {
+                                  handleKitchenDescriptionUpdate(kitchen.id, newDescription);
+                                }
+                              }}
+                              placeholder="Enter a description for this kitchen (e.g., 'Modern commercial kitchen with professional equipment')"
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                              rows={3}
+                              disabled={updatingKitchenId === kitchen.id}
+                            />
+                            {updatingKitchenId === kitchen.id && (
+                              <p className="text-xs text-amber-600">Saving...</p>
+                            )}
+                          </div>
                         </div>
                         {(kitchen as any).imageUrl ? (
                           <img 

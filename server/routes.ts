@@ -3649,6 +3649,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update kitchen details (manager) - name, description, etc.
+  app.put("/api/manager/kitchens/:kitchenId", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get the kitchen to verify manager has access to its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const { name, description } = req.body;
+      const updates: { name?: string; description?: string } = {};
+      
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description || null;
+      
+      const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
+      
+      console.log(`✅ Kitchen ${kitchenId} details updated by manager ${user.id}`);
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating kitchen details:", error);
+      res.status(500).json({ error: error.message || "Failed to update kitchen details" });
+    }
+  });
+
   // Set kitchen availability
   app.post("/api/manager/availability", async (req: Request, res: Response) => {
     try {

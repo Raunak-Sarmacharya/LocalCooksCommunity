@@ -11790,6 +11790,86 @@ app.put("/api/manager/kitchens/:kitchenId/image", async (req, res) => {
   }
 });
 
+// Update kitchen details (manager) - name, description, etc.
+app.put("/api/manager/kitchens/:kitchenId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the kitchen to verify manager has access to its location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    // Verify the manager has access to this kitchen's location
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    const { name, description } = req.body;
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(description || null);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(kitchenId);
+
+    const updateQuery = `
+      UPDATE kitchens 
+      SET ${updates.join(', ')} 
+      WHERE id = $${paramCount}
+      RETURNING *
+    `;
+
+    const updateResult = await pool.query(updateQuery, values);
+    
+    console.log(`✅ Kitchen ${kitchenId} details updated by manager ${user.id}`);
+    
+    res.json(updateResult.rows[0]);
+  } catch (error) {
+    console.error("Error updating kitchen details:", error);
+    res.status(500).json({ error: error.message || "Failed to update kitchen details" });
+  }
+});
+
 // Get all bookings for manager
 // Manager: Get chef profiles for locations managed by this manager
 app.get("/api/manager/chef-profiles", async (req, res) => {
