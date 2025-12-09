@@ -62,6 +62,7 @@ const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerPortalApplications = lazy(() => import("@/pages/ManagerPortalApplications"));
 const PortalRegister = lazy(() => import("@/pages/PortalRegister"));
 const PortalBookingsPage = lazy(() => import("@/pages/PortalBookingsPage"));
+const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 
 
 // Loading component
@@ -349,6 +350,9 @@ function Router() {
         <Route path="/portal/book" component={PortalBookingPage} />
         <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
         <Route path="/portal" component={PortalLanding} />
+        
+        {/* Kitchen Preview Page - Public, no auth required */}
+        <Route path="/kitchen-preview/:locationId" component={KitchenPreviewPage} />
         
         <Route component={NotFound} />
       </Switch>
