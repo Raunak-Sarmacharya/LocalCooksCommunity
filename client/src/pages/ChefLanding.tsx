@@ -2,20 +2,22 @@ import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import Preloader from "@/components/ui/Preloader";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { 
   ChefHat, Clock, Users, Target, Utensils, 
   Building2, ArrowRight, CheckCircle2, Check, X, Sparkles,
   Heart, Rocket, Star, Zap, Shield, MessageCircle,
-  CreditCard, Truck, Instagram, Phone, Calendar
+  CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from "framer-motion";
+import useEmblaCarousel from "embla-carousel-react";
 import chefImage from "@/assets/chef-cooking.png";
 import logoWhite from "@assets/logo-white.png";
 
@@ -456,6 +458,210 @@ function ChaosNotificationFeed() {
         ))}
       </AnimatePresence>
     </div>
+  );
+}
+
+// Testimonial Carousel Component with Auto-Scroll
+function TestimonialCarouselSection() {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: "start" });
+
+  // Auto-scroll functionality
+  useEffect(() => {
+    if (!emblaApi) return;
+
+    const scrollInterval = setInterval(() => {
+      if (emblaApi.canScrollNext()) {
+        emblaApi.scrollNext();
+      } else {
+        emblaApi.scrollTo(0); // Reset to start if at end
+      }
+    }, 3000); // Scroll every 3 seconds
+
+    return () => clearInterval(scrollInterval);
+  }, [emblaApi]);
+
+  const testimonials = [
+    {
+      text: "LocalCooks gave me the freedom to focus on what I love—cooking. No more juggling DMs and payments. Everything is in one place, and I'm making real money doing what I'm passionate about.",
+      name: "Sarah Martinez",
+      role: "Specializes in authentic Mexican cuisine",
+      color: "#fc7545", // Light Pink/Orange
+      textColor: "#2C2C2C",
+    },
+    {
+      text: "The kitchen access feature is a game-changer. I don't have a commercial kitchen, but I can book certified spaces by the hour. It's flexible, affordable, and perfect for scaling my business.",
+      name: "James Chen",
+      role: "Asian fusion chef",
+      color: "#3a61ae", // Royal Blue
+      textColor: "#ffffff",
+    },
+    {
+      text: "I've tried other platforms, but LocalCooks actually cares about chefs. The support is real, the payments are fast, and I keep 100% during the trial. This is how it should be.",
+      name: "Maria Rodriguez",
+      role: "Mediterranean cuisine specialist",
+      color: "#30524e", // Dark Teal/Green
+      textColor: "#ffffff",
+    },
+    {
+      text: "Starting part-time was the best decision. I can cook when I want, set my own prices, and build my brand. The community of chefs here is incredible—we support each other.",
+      name: "David Thompson",
+      role: "BBQ and comfort food expert",
+      color: "#ff8c42", // Orange
+      textColor: "#2C2C2C",
+    },
+    {
+      text: "The approval process was so fast—approved in 24 hours! And the platform handles everything: orders, payments, delivery coordination. I just focus on creating amazing food.",
+      name: "Emily Park",
+      role: "Korean and Japanese fusion",
+      color: "#ffffff", // White
+      textColor: "#2C2C2C",
+    },
+    {
+      text: "I love that I own my customers. It's my profile, my story, my regulars. LocalCooks gives me the tools to build a real business, not just be another vendor on a marketplace.",
+      name: "Michael O'Brien",
+      role: "Irish and British comfort food",
+      color: "#fc7545", // Light Pink/Orange
+      textColor: "#2C2C2C",
+    },
+  ];
+
+  return (
+    <section id="benefits" className="py-20 md:py-32 px-4 bg-white relative overflow-visible">
+      <div className="container mx-auto max-w-7xl">
+        <FadeInSection>
+          <div className="text-center mb-12 md:mb-16">
+            <motion.h2
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7, delay: 0.1 }}
+              className="text-4xl md:text-5xl lg:text-6xl font-bold text-[#1A1A1A] leading-tight"
+            >
+              Some kind words from our{" "}
+              <span className="relative inline-block">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
+                  chefs
+                </span>
+                <motion.svg 
+                  className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
+                  viewBox="0 0 200 12" 
+                  fill="none"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  whileInView={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 1.2, delay: 0.6 }}
+                  viewport={{ once: true }}
+                >
+                  <motion.path 
+                    d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8" 
+                    stroke="#F51042"
+                    strokeWidth="3" 
+                    strokeLinecap="round"
+                    initial={{ pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    transition={{ duration: 1.2, delay: 0.6 }}
+                    viewport={{ once: true }}
+                  />
+                </motion.svg>
+              </span>
+            </motion.h2>
+          </div>
+        </FadeInSection>
+
+        {/* Testimonial Carousel with Auto-Scroll */}
+        <div className="relative px-4 md:px-8 lg:px-12 py-8 md:py-12">
+          <div className="overflow-hidden" ref={emblaRef}>
+            <div className="flex">
+              {testimonials.map((testimonial, index) => (
+                <div
+                  key={index}
+                  className="flex-[0_0_33.333%] min-w-0 w-full sm:w-[33.333%] px-1.5 md:px-2"
+                >
+                  <motion.div
+                    initial={{ opacity: 0, y: 30 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: index * 0.1 }}
+                    className="h-full py-4 md:py-6"
+                  >
+                    <div
+                      className="relative rounded-2xl p-5 md:p-6 h-full shadow-xl"
+                      style={{
+                        backgroundColor: testimonial.color,
+                        transform: `rotate(${index % 2 === 0 ? '-1.5deg' : '1.5deg'}) translateZ(0)`,
+                        zIndex: 10 - (index % 3),
+                      }}
+                    >
+                      {/* Elegant Quotation Mark */}
+                      <div className="absolute top-3 left-3 md:top-4 md:left-4">
+                        <span 
+                          className="text-6xl md:text-7xl lg:text-8xl font-serif leading-none"
+                          style={{ 
+                            color: testimonial.color === "#ffffff" 
+                              ? "rgba(44, 44, 44, 0.15)" 
+                              : testimonial.textColor === "#ffffff"
+                              ? "rgba(255, 255, 255, 0.3)"
+                              : "rgba(255, 255, 255, 0.4)",
+                            fontFamily: "'Georgia', 'Times New Roman', serif",
+                            lineHeight: "1",
+                          }}
+                        >
+                          &ldquo;
+                        </span>
+                      </div>
+
+                      {/* Content */}
+                      <div className="relative z-10 pt-8 md:pt-10 lg:pt-12">
+                        {/* Testimonial Text */}
+                        <p
+                          className="text-sm md:text-base font-sans leading-relaxed mb-4 md:mb-5"
+                          style={{
+                            color: testimonial.textColor,
+                          }}
+                        >
+                          {testimonial.text}
+                        </p>
+
+                        {/* Horizontal Line */}
+                        <div
+                          className="h-px mb-3 md:mb-4"
+                          style={{
+                            backgroundColor: testimonial.textColor === "#ffffff" 
+                              ? "rgba(255, 255, 255, 0.3)" 
+                              : "rgba(44, 44, 44, 0.2)",
+                          }}
+                        />
+
+                        {/* Chef Name and Role */}
+                        <div>
+                          <p
+                            className="font-bold text-xs md:text-sm lg:text-base mb-1"
+                            style={{
+                              color: testimonial.textColor,
+                            }}
+                          >
+                            {testimonial.name}
+                          </p>
+                          <p
+                            className="text-xs md:text-sm"
+                            style={{
+                              color: testimonial.textColor === "#ffffff" 
+                                ? "rgba(255, 255, 255, 0.8)" 
+                                : "rgba(44, 44, 44, 0.7)",
+                            }}
+                          >
+                            {testimonial.role}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1700,50 +1906,9 @@ export default function ChefLanding() {
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            WHY LOCAL COOKS - Benefits Grid
+            TESTIMONIALS CAROUSEL - Thrive Childcare Centers Style
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="benefits" className="py-20 md:py-28 px-4 bg-[#FAFAFA]">
-          <div className="container mx-auto max-w-6xl">
-            <FadeInSection>
-              <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">
-                  Why Chefs Love Us
-                </span>
-                <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[#F51042] mb-4">
-                  Everything You Need
-                </h2>
-                <p className="text-lg md:text-xl text-[#6B6B6B] max-w-2xl mx-auto">
-                  To build a real culinary business, without the chaos
-                </p>
-              </div>
-            </FadeInSection>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[
-                { icon: Target, title: "Focus on Cooking", desc: "We handle payments, support, and delivery. You do what you love.", color: "from-[#F51042]/10 to-[#F51042]/5", iconColor: "text-[#F51042]" },
-                { icon: Utensils, title: "Your Menu, Your Rules", desc: "Cook what you're passionate about. Set your prices. Build your brand.", color: "from-orange-100 to-orange-50", iconColor: "text-orange-600" },
-                { icon: Building2, title: "Kitchen Access", desc: "No commercial kitchen? Book certified spaces by the hour.", color: "from-purple-100 to-purple-50", iconColor: "text-purple-600" },
-                { icon: Users, title: "Own Your Customers", desc: "Build real relationships. Your profile, your story, your regulars.", color: "from-pink-100 to-pink-50", iconColor: "text-pink-600" },
-                { icon: Heart, title: "Chef Community", desc: "Join fellow chefs. Share tips, get mentorship, grow together.", color: "from-indigo-100 to-indigo-50", iconColor: "text-indigo-600" },
-                { icon: Clock, title: "Flexible Schedule", desc: "Cook when you want. Start part-time. Scale at your pace.", color: "from-teal-100 to-teal-50", iconColor: "text-teal-600" },
-              ].map((item, i) => (
-                <FadeInSection key={i} delay={i < 3 ? 1 : 2}>
-                  <Card className="group h-full border-0 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 bg-white hover:-translate-y-1">
-                    <CardHeader className="pb-2">
-                      <div className={`w-14 h-14 bg-gradient-to-br ${item.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                        <item.icon className={`h-7 w-7 ${item.iconColor}`} />
-                      </div>
-                      <CardTitle className="text-xl font-bold text-[#2C2C2C]">{item.title}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-[#6B6B6B] leading-relaxed">{item.desc}</p>
-                    </CardContent>
-                  </Card>
-                </FadeInSection>
-              ))}
-            </div>
-          </div>
-        </section>
+        <TestimonialCarouselSection />
 
         {/* ═══════════════════════════════════════════════════════════════════════
             TRIAL BANNER - Strong Emphasis
