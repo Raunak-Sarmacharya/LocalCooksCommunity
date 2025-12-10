@@ -8226,12 +8226,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             (kitchen.locationId || kitchen.location_id) === location.id
           );
           
+          // Debug: Log the raw kitchen data structure to understand what fields are available
+          if (locationKitchens.length > 0) {
+            console.log(`[API] Debug - Location ${location.id} (${location.name}) kitchens data structure:`, {
+              kitchenCount: locationKitchens.length,
+              firstKitchenKeys: Object.keys(locationKitchens[0] || {}),
+              firstKitchenSample: {
+                id: locationKitchens[0]?.id,
+                name: locationKitchens[0]?.name,
+                imageUrl: locationKitchens[0]?.imageUrl,
+                image_url: locationKitchens[0]?.image_url,
+                hasImageUrl: !!locationKitchens[0]?.imageUrl,
+                hasImage_url: !!locationKitchens[0]?.image_url,
+                allKeys: Object.keys(locationKitchens[0] || {})
+              }
+            });
+          }
+          
           // Extract and normalize kitchen image - same approach as detail page
           // Try to find the first kitchen with a valid image URL, then normalize it
           let featuredKitchenImage: string | null = null;
           for (const kitchen of locationKitchens) {
             // Check both camelCase and snake_case for image URL
-            const kitchenImage = kitchen.imageUrl || kitchen.image_url;
+            // Also check if the imageUrl was set by getAllKitchensWithLocationAndManager
+            const kitchenImage = kitchen.imageUrl || kitchen.image_url || (kitchen as any).imageUrl || (kitchen as any).image_url;
             if (kitchenImage && typeof kitchenImage === 'string' && kitchenImage.trim() !== '') {
               // Normalize the kitchen image URL immediately (same as detail page does)
               featuredKitchenImage = normalizeImageUrl(kitchenImage, req);
