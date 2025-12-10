@@ -739,12 +739,12 @@ export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
 
-  // Fetch real kitchens data
-  const { data: kitchens = [], isLoading: kitchensLoading } = useQuery({
-    queryKey: ["/api/public/kitchens"],
+  // Fetch locations data (same endpoint structure as preview page uses)
+  const { data: locations = [], isLoading: kitchensLoading } = useQuery({
+    queryKey: ["/api/public/locations"],
     queryFn: async () => {
       try {
-        const response = await fetch("/api/public/kitchens", {
+        const response = await fetch("/api/public/locations", {
           method: "GET",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -753,6 +753,7 @@ export default function ChefLanding() {
         const data = await response.json();
         return Array.isArray(data) ? data : [];
       } catch (error) {
+        console.error("Error fetching locations:", error);
         return [];
       }
     },
@@ -760,40 +761,20 @@ export default function ChefLanding() {
     retry: 2,
   });
 
+  // Use locations data directly (same structure as preview page)
   const uniqueLocations = useMemo(() => {
-    if (!kitchens || kitchens.length === 0) return [];
-    const locationMap = new Map();
-    kitchens.forEach((kitchen: any) => {
-      const locationId = kitchen.locationId || kitchen.location_id;
-      const locationName = kitchen.locationName || kitchen.location_name;
-      const locationAddress = kitchen.locationAddress || kitchen.location_address;
-      const locationBrandImage = kitchen.locationBrandImageUrl || kitchen.location_brand_image_url;
-      const locationLogo = kitchen.locationLogoUrl || kitchen.location_logo_url;
-      const kitchenImage = kitchen.imageUrl || kitchen.image_url;
-      
-      if (locationId && locationName) {
-        if (!locationMap.has(locationId)) {
-          locationMap.set(locationId, { 
-            id: locationId, 
-            name: locationName, 
-            address: locationAddress || "",
-            brandImageUrl: locationBrandImage || null,
-            logoUrl: locationLogo || null,
-            featuredKitchenImage: kitchenImage || null,
-            kitchenCount: 1
-          });
-        } else {
-          const existing = locationMap.get(locationId);
-          existing.kitchenCount++;
-          // Use the first available image
-          if (!existing.featuredKitchenImage && kitchenImage) {
-            existing.featuredKitchenImage = kitchenImage;
-          }
-        }
-      }
-    });
-    return Array.from(locationMap.values());
-  }, [kitchens]);
+    if (!locations || locations.length === 0) return [];
+    // Locations already come with normalized URLs from the API
+    return locations.map((loc: any) => ({
+      id: loc.id,
+      name: loc.name,
+      address: loc.address || "",
+      brandImageUrl: loc.brandImageUrl || loc.featuredKitchenImage || null,
+      logoUrl: loc.logoUrl || null,
+      featuredKitchenImage: loc.featuredKitchenImage || loc.brandImageUrl || null,
+      kitchenCount: loc.kitchenCount || 1
+    }));
+  }, [locations]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -1600,8 +1581,24 @@ export default function ChefLanding() {
                                 src={loc.brandImageUrl || loc.featuredKitchenImage}
                                 alt={loc.name}
                                 className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                                onError={(e) => {
+                                  // If image fails to load, hide it and show placeholder
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  const parent = target.parentElement;
+                                  if (parent) {
+                                    const placeholder = parent.querySelector('.image-placeholder') as HTMLElement;
+                                    if (placeholder) placeholder.style.display = 'flex';
+                                  }
+                                }}
                               />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                              {/* Placeholder that shows if image fails to load */}
+                              <div className="image-placeholder absolute inset-0 bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center" style={{ display: 'none' }}>
+                                <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
+                                  <Building2 className="h-8 w-8 text-[#F51042]" />
+                                </div>
+                              </div>
                             </>
                           ) : (
                             <div className="w-full h-full bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center">
@@ -1625,6 +1622,11 @@ export default function ChefLanding() {
                                 src={loc.logoUrl} 
                                 alt={`${loc.name} logo`}
                                 className="h-10 w-auto object-contain bg-white rounded-lg p-1.5 shadow-md"
+                                onError={(e) => {
+                                  // If logo fails to load, hide it
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
                               />
                             </div>
                           )}
