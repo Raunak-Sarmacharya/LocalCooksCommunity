@@ -1,17 +1,15 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
-import Preloader from "@/components/ui/Preloader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
 import { Building2, Calendar, Lock, ArrowRight, Settings, Users } from "lucide-react";
 import { useLocation } from "wouter";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 export default function KitchenLanding() {
   const [, setLocation] = useLocation();
-  const [showPreloader, setShowPreloader] = useState(true);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -32,12 +30,6 @@ export default function KitchenLanding() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
-      {showPreloader && (
-        <Preloader
-          onComplete={() => setShowPreloader(false)}
-          duration={3000}
-        />
-      )}
       <Header />
       <main className="flex-grow">
         {/* Kitchen-Specific Hero Section */}

@@ -1,6 +1,5 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
-import Preloader from "@/components/ui/Preloader";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
@@ -739,7 +738,6 @@ function LocalCooksNotificationFeed() {
 export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
-  const [showPreloader, setShowPreloader] = useState(true);
 
   // Fetch real kitchens data
   const { data: kitchens = [], isLoading: kitchensLoading } = useQuery({
@@ -813,7 +811,6 @@ export default function ChefLanding() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {showPreloader && <Preloader onComplete={() => setShowPreloader(false)} duration={2500} />}
       <Header />
       
       <main className="flex-grow">

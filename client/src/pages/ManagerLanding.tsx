@@ -2,16 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "lucide-react";
 import Logo from "@/components/ui/logo";
-import Preloader from "@/components/ui/Preloader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
-import { useState } from "react";
 
 export default function ManagerLanding() {
   const [, setLocation] = useLocation();
-  const [showPreloader, setShowPreloader] = useState(true);
 
   // Check if manager is logged in
   const { data: sessionUser, isLoading } = useQuery({
@@ -56,12 +53,6 @@ export default function ManagerLanding() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        {showPreloader && (
-          <Preloader
-            onComplete={() => setShowPreloader(false)}
-            duration={3000}
-          />
-        )}
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-2" />
           <p className="text-sm text-gray-600">Loading...</p>
@@ -74,12 +65,6 @@ export default function ManagerLanding() {
   if (!isManager) {
     return (
       <>
-        {showPreloader && (
-          <Preloader
-            onComplete={() => setShowPreloader(false)}
-            duration={3000}
-          />
-        )}
         <GradientHero variant="cool" className="min-h-screen">
         {/* Header */}
         <header className="bg-white/10 backdrop-blur-sm border-b border-white/20">

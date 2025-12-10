@@ -1,8 +1,7 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
-import Preloader from "@/components/ui/Preloader";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
@@ -16,7 +15,6 @@ import { motion } from "framer-motion";
 export default function DriverLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
-  const [showPreloader, setShowPreloader] = useState(true);
 
   // Fetch real platform statistics
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -56,12 +54,6 @@ export default function DriverLanding() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
-      {showPreloader && (
-        <Preloader
-          onComplete={() => setShowPreloader(false)}
-          duration={3000}
-        />
-      )}
       <Header />
       <main className="flex-grow">
         {/* Driver-Specific Hero Section */}

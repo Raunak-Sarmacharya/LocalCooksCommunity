@@ -5,7 +5,6 @@ import HeroSection from "@/components/home/HeroSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
-import Preloader from "@/components/ui/Preloader";
 import StatusEmailTest from "@/components/test/StatusEmailTest";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useEffect, useState, useCallback } from "react";
@@ -14,7 +13,6 @@ import { useLocation } from "wouter";
 export default function Home() {
   const { user } = useFirebaseAuth();
   const [showTestTool, setShowTestTool] = useState(false);
-  const [showPreloader, setShowPreloader] = useState(true);
   const [location] = useLocation();
 
   // Scroll to section with proper timing
@@ -56,23 +54,12 @@ export default function Home() {
   useEffect(() => {
     const hash = window.location.hash;
     if (hash) {
-      // Wait for preloader to finish if it's showing
-      const delay = showPreloader ? 3500 : 100;
+      // Small delay to ensure DOM is ready
       setTimeout(() => {
         scrollToHash(hash);
-      }, delay);
+      }, 100);
     }
-  }, [location, showPreloader, scrollToHash]);
-
-  // Also handle hash after preloader completes
-  useEffect(() => {
-    if (!showPreloader && window.location.hash) {
-      // Small delay to ensure DOM is fully rendered
-      setTimeout(() => {
-        scrollToHash(window.location.hash);
-      }, 200);
-    }
-  }, [showPreloader, scrollToHash]);
+  }, [location, scrollToHash]);
 
   // Set up hash change event handler
   useEffect(() => {
@@ -92,12 +79,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-light-gray">
-      {showPreloader && (
-        <Preloader
-          onComplete={() => setShowPreloader(false)}
-          duration={3000}
-        />
-      )}
       <Header />
       <main className="flex-grow">
         <HeroSection />
