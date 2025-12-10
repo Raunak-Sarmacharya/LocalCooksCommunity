@@ -512,6 +512,7 @@ export class FirebaseStorage {
         defaultDailyBookingLimit: location.defaultDailyBookingLimit || location.default_daily_booking_limit,
         minimumBookingWindowHours: location.minimumBookingWindowHours || location.minimum_booking_window_hours,
         logoUrl: location.logoUrl || location.logo_url || null,
+        brandImageUrl: location.brandImageUrl || location.brand_image_url || null,
       }));
     } catch (error) {
       console.error('Error getting all locations:', error);
@@ -717,10 +718,11 @@ export class FirebaseStorage {
         const locName = location ? ((location as any).name ?? (location as any).location_name) : undefined;
         const locAddress = location ? ((location as any).address ?? (location as any).location_address) : undefined;
         
-        // Extract image URLs
-        const kitchenImageUrl = (kitchen as any).imageUrl ?? (kitchen as any).image_url;
-        const locationBrandImageUrl = location ? ((location as any).brandImageUrl ?? (location as any).brand_image_url) : null;
-        const locationLogoUrl = location ? ((location as any).logoUrl ?? (location as any).logo_url) : null;
+        // Extract image URLs - check all possible field name variations
+        // Drizzle maps image_url (DB) to imageUrl (TypeScript), but handle both just in case
+        const kitchenImageUrl = (kitchen as any).imageUrl ?? (kitchen as any).image_url ?? null;
+        const locationBrandImageUrl = location ? ((location as any).brandImageUrl ?? (location as any).brand_image_url ?? null) : null;
+        const locationLogoUrl = location ? ((location as any).logoUrl ?? (location as any).logo_url ?? null) : null;
         
         return {
           ...kitchen,
@@ -728,9 +730,10 @@ export class FirebaseStorage {
           locationId: kitchenLocationId,
           locationName: locName,
           locationAddress: locAddress,
-          imageUrl: kitchenImageUrl || null,
-          locationBrandImageUrl: locationBrandImageUrl || null,
-          locationLogoUrl: locationLogoUrl || null,
+          // Ensure imageUrl is always set (even if null) and not undefined
+          imageUrl: kitchenImageUrl,
+          locationBrandImageUrl: locationBrandImageUrl,
+          locationLogoUrl: locationLogoUrl,
           location: location ? {
             id: (location as any).id,
             name: locName,
