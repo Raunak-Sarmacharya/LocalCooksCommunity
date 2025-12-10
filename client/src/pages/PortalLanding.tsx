@@ -1,7 +1,6 @@
 import { useLocation, Redirect } from "wouter";
 import { Building2, ArrowRight, Calendar, Lock, LogOut, Loader2 } from "lucide-react";
 import Logo from "@/components/ui/logo";
-import Preloader from "@/components/ui/Preloader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
@@ -12,7 +11,6 @@ import FadeInSection from "@/components/ui/FadeInSection";
 export default function PortalLanding() {
   const [, setLocation] = useLocation();
   const [isPortalUser, setIsPortalUser] = useState<boolean | null>(null);
-  const [showPreloader, setShowPreloader] = useState(true);
 
   // Check if user is already logged in as portal user
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
@@ -67,12 +65,6 @@ export default function PortalLanding() {
   if (sessionLoading || (sessionUser && isPortalUserForDisplay)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        {showPreloader && (
-          <Preloader
-            onComplete={() => setShowPreloader(false)}
-            duration={3000}
-          />
-        )}
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Redirecting...</p>
@@ -83,12 +75,6 @@ export default function PortalLanding() {
 
   return (
     <>
-      {showPreloader && (
-        <Preloader
-          onComplete={() => setShowPreloader(false)}
-          duration={3000}
-        />
-      )}
       <GradientHero variant="cool" className="min-h-screen">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">

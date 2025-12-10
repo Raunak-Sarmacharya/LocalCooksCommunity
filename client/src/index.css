@@ -514,46 +514,6 @@
     opacity: 0.02;
   }
 
-  /* Preloader Animations */
-  .logo-pulse {
-    animation: logo-pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes logo-pulse {
-    0%, 100% {
-      transform: translate3d(0px, 0px, 0px) scale(1.0425, 1.0425);
-    }
-    50% {
-      transform: translate3d(0px, 0px, 0px) scale(1.05, 1.05);
-    }
-  }
-
-  .orbit-ring {
-    transition: transform 0.1s linear;
-  }
-
-  .orbit-food-item {
-    transition: transform 0.1s linear;
-  }
-
-  .fade-element {
-    animation: fade-in-up 0.8s ease-out;
-  }
-
-  @keyframes fade-in-up {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .preloader-bg {
-    position: relative;
-  }
 }
 
 /* Standardized hover animations */

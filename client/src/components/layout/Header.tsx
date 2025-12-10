@@ -32,9 +32,9 @@ export default function Header() {
     return null;
   }, []);
   
-  // Check if Partner Login should be shown (only for kitchen.* and chef.* subdomains)
+  // Check if Partner Login should be shown (only for kitchen.* subdomain, not chef.*)
   const showPartnerLogin = useMemo(() => {
-    return currentSubdomain === 'kitchen' || currentSubdomain === 'chef';
+    return currentSubdomain === 'kitchen';
   }, [currentSubdomain]);
   
   // Always check for session-based auth, not just for admin routes
@@ -202,7 +202,7 @@ export default function Header() {
     // Try immediately
     if (scrollToElement()) return;
 
-    // If not found, try with delays (for dynamic content or preloader)
+    // If not found, try with delays (for dynamic content)
     const delays = [100, 300, 500, 1000, 2000, 3500];
     delays.forEach((delay) => {
       setTimeout(() => {
@@ -237,18 +237,28 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white/98 backdrop-blur-sm shadow-sm border-b border-gray-100 fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300">
-      <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
-        <Link href="/" className="flex items-center transition-transform duration-300 hover:scale-105">
-          <Logo variant="brand" className="h-12 sm:h-14 lg:h-16 w-auto" />
+    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b border-gray-200/50" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center">
+        <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+          <Logo variant="brand" className="h-10 sm:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110" />
+          <div className="flex flex-col justify-center">
+            <span className="font-logo text-xl sm:text-2xl lg:text-3xl leading-none text-[#F51042] tracking-tight font-normal">
+              LocalCooks
+            </span>
+            {currentSubdomain === 'chef' && (
+              <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+                for chefs
+              </span>
+            )}
+          </div>
         </Link>
 
         <nav className="hidden md:block">
-          <ul className="flex space-x-6 items-center">
+          <ul className="flex space-x-1 items-center">
             <li>
               <a
                 href="#how-it-works"
-                className="text-gray-700 hover:text-[#F51042] transition-colors duration-200 cursor-pointer font-medium"
+                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("how-it-works", e)}
               >
                 How It Works
@@ -257,7 +267,7 @@ export default function Header() {
             <li>
               <a
                 href="#benefits"
-                className="text-gray-700 hover:text-[#F51042] transition-colors duration-200 cursor-pointer font-medium"
+                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("benefits", e)}
               >
                 Benefits
@@ -266,7 +276,7 @@ export default function Header() {
             <li>
               <a
                 href="#about"
-                className="text-gray-700 hover:text-[#F51042] transition-colors duration-200 cursor-pointer font-medium"
+                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("about", e)}
               >
                 About Us
@@ -276,7 +286,7 @@ export default function Header() {
               <li>
                 <Link 
                   href="/microlearning/overview" 
-                  className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors"
+                  className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
                 >
                   <GraduationCap className="h-4 w-4" />
                   Food Safety Training
@@ -289,7 +299,7 @@ export default function Header() {
                   <li>
                     <Link 
                       href="/manager/login"
-                      className="text-gray-700 hover:text-primary transition-colors text-sm flex items-center gap-1 px-3 py-2 rounded-md hover:bg-gray-50"
+                      className="text-gray-700 hover:text-primary transition-all text-sm flex items-center gap-1.5 px-4 py-2 rounded-lg hover:bg-gray-50/80 font-medium"
                     >
                       <Building2 className="h-4 w-4" />
                       Partner Login
@@ -300,7 +310,7 @@ export default function Header() {
                   <Button
                     asChild
                     variant="outline"
-                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-200 rounded-md"
+                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-lg font-medium shadow-sm hover:shadow-md ml-2"
                   >
                     <Link href="/auth">Login / Register</Link>
                   </Button>
@@ -313,7 +323,7 @@ export default function Header() {
                 <li>
                   <Link 
                     href={getDashboardInfo().href}
-                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-3 py-2 rounded-md transition-colors"
+                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
                   >
                     <User className="h-4 w-4" />
                     {getDashboardInfo().text}
@@ -324,7 +334,7 @@ export default function Header() {
                     variant="outline"
                     size="sm"
                     onClick={handleLogout}
-                    className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                    className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 ml-2"
                   >
                     <LogOut className="h-4 w-4" />
                     Logout
@@ -373,8 +383,8 @@ export default function Header() {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden bg-white border-t border-gray-200 shadow-lg mobile-momentum-scroll">
-          <div className="container mx-auto px-3 sm:px-4 py-4">
+        <div className="md:hidden border-t border-gray-200/50 shadow-xl mobile-momentum-scroll" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
+          <div className="container mx-auto px-4 sm:px-6 py-5">
             <ul className="space-y-3">
             <li>
               <a

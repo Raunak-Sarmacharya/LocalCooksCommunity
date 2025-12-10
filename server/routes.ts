@@ -24,6 +24,57 @@ import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shar
 // Import portal user applications schema
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
 
+/**
+ * Normalizes image URLs to ensure they work in both development and production.
+ * Converts relative paths to absolute URLs when needed.
+ * 
+ * @param url - The image URL to normalize (can be null, undefined, or a string)
+ * @param req - Express request object to get the origin/host
+ * @returns Normalized absolute URL or null if input was null/undefined
+ */
+function normalizeImageUrl(url: string | null | undefined, req: Request): string | null {
+  if (!url) return null;
+  
+  // If already an absolute URL (http:// or https://), return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // If it's a relative path, convert to absolute URL
+  if (url.startsWith('/')) {
+    // In production (Vercel), use the x-forwarded-proto and x-forwarded-host headers
+    // In development, use req.protocol and req.get('host')
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+    
+    let protocol: string;
+    let host: string;
+    
+    if (isProduction) {
+      // Vercel sets these headers when behind a proxy
+      protocol = (req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
+      host = req.get('x-forwarded-host') || req.get('host') || req.headers.host || '';
+    } else {
+      protocol = req.protocol || 'http';
+      host = req.get('host') || req.headers.host || 'localhost:3000';
+    }
+    
+    // Ensure protocol is https in production
+    if (isProduction && protocol !== 'https') {
+      protocol = 'https';
+    }
+    
+    if (!host) {
+      console.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
+      return url; // Return as-is if we can't determine host
+    }
+    
+    return `${protocol}://${host}${url}`;
+  }
+  
+  // Return as-is if it doesn't match any pattern (might be a data URL or other format)
+  return url;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   // Set up authentication routes and middleware
@@ -8115,16 +8166,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
           }
           
+          // Normalize image URLs to ensure they work in production
+          const normalizedImageUrl = normalizeImageUrl(imageUrl, req);
+          const normalizedBrandImageUrl = normalizeImageUrl(locationBrandImageUrl, req);
+          const normalizedLogoUrl = normalizeImageUrl(locationLogoUrl, req);
+          
           return {
             id: kitchen.id,
             name: kitchen.name,
             description: kitchen.description,
-            imageUrl: imageUrl,
+            imageUrl: normalizedImageUrl,
             locationId: locationId || null,
             locationName: locationName || null,
             locationAddress: locationAddress || null,
-            locationBrandImageUrl: locationBrandImageUrl,
-            locationLogoUrl: locationLogoUrl,
+            locationBrandImageUrl: normalizedBrandImageUrl,
+            locationLogoUrl: normalizedLogoUrl,
           };
         });
 
@@ -8172,14 +8228,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const featuredKitchenImage = locationKitchens.find((k: any) => k.imageUrl || k.image_url)?.imageUrl || 
                                         locationKitchens.find((k: any) => k.imageUrl || k.image_url)?.image_url || null;
           
+          // Normalize image URLs to ensure they work in production
+          const normalizedLogoUrl = normalizeImageUrl((location as any).logoUrl || (location as any).logo_url || null, req);
+          const normalizedBrandImageUrl = normalizeImageUrl((location as any).brandImageUrl || (location as any).brand_image_url || null, req);
+          const normalizedFeaturedKitchenImage = normalizeImageUrl(featuredKitchenImage, req);
+          
           return {
             id: location.id,
             name: location.name,
             address: location.address,
             kitchenCount: kitchenCount,
-            logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
-            brandImageUrl: (location as any).brandImageUrl || (location as any).brand_image_url || null,
-            featuredKitchenImage: featuredKitchenImage,
+            logoUrl: normalizedLogoUrl,
+            brandImageUrl: normalizedBrandImageUrl,
+            featuredKitchenImage: normalizedFeaturedKitchenImage,
           };
         });
       
@@ -8219,29 +8280,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
           return kitchenLocationId === locationId && isActive !== false;
         })
-        .map((kitchen: any) => ({
-          id: kitchen.id,
-          name: kitchen.name,
-          description: kitchen.description,
-          imageUrl: kitchen.imageUrl || kitchen.image_url || null,
-          galleryImages: kitchen.galleryImages || kitchen.gallery_images || [],
-          amenities: kitchen.amenities || [],
-          locationId: kitchen.locationId || kitchen.location_id,
-          locationName: kitchen.locationName || kitchen.location_name || location.name,
-          locationAddress: kitchen.locationAddress || kitchen.location_address || location.address,
-          locationBrandImageUrl: kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null,
-          locationLogoUrl: kitchen.locationLogoUrl || kitchen.location_logo_url || null,
-        }));
+        .map((kitchen: any) => {
+          // Normalize image URLs
+          const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
+          const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) => 
+            normalizeImageUrl(img, req)
+          ).filter((url: string | null): url is string => url !== null);
+          const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
+          const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
+          
+          return {
+            id: kitchen.id,
+            name: kitchen.name,
+            description: kitchen.description,
+            imageUrl: normalizedImageUrl,
+            galleryImages: normalizedGalleryImages,
+            amenities: kitchen.amenities || [],
+            locationId: kitchen.locationId || kitchen.location_id,
+            locationName: kitchen.locationName || kitchen.location_name || location.name,
+            locationAddress: kitchen.locationAddress || kitchen.location_address || location.address,
+            locationBrandImageUrl: normalizedLocationBrandImageUrl,
+            locationLogoUrl: normalizedLocationLogoUrl,
+          };
+        });
 
       console.log(`[API] /api/public/locations/${locationId}/details - Found location with ${locationKitchens.length} kitchens`);
+
+      // Normalize location image URLs
+      const normalizedLocationLogoUrl = normalizeImageUrl((location as any).logoUrl || (location as any).logo_url || null, req);
+      const normalizedLocationBrandImageUrl = normalizeImageUrl((location as any).brandImageUrl || (location as any).brand_image_url || null, req);
 
       res.json({
         location: {
           id: location.id,
           name: location.name,
           address: location.address,
-          logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
-          brandImageUrl: (location as any).brandImageUrl || (location as any).brand_image_url || null,
+          logoUrl: normalizedLocationLogoUrl,
+          brandImageUrl: normalizedLocationBrandImageUrl,
         },
         kitchens: locationKitchens,
       });
