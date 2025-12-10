@@ -8230,12 +8230,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Try to find the first kitchen with a valid image URL, then normalize it
           let featuredKitchenImage: string | null = null;
           for (const kitchen of locationKitchens) {
+            // Check both camelCase and snake_case for image URL
             const kitchenImage = kitchen.imageUrl || kitchen.image_url;
             if (kitchenImage && typeof kitchenImage === 'string' && kitchenImage.trim() !== '') {
               // Normalize the kitchen image URL immediately (same as detail page does)
               featuredKitchenImage = normalizeImageUrl(kitchenImage, req);
+              console.log(`[API] Found kitchen image for location ${location.id}:`, {
+                raw: kitchenImage,
+                normalized: featuredKitchenImage,
+                kitchenId: kitchen.id,
+                kitchenName: kitchen.name
+              });
               break; // Use the first valid image found
             }
+          }
+          
+          // If no kitchen image found, log it for debugging
+          if (!featuredKitchenImage && locationKitchens.length > 0) {
+            console.warn(`[API] No kitchen image found for location ${location.id} (${location.name}). Kitchens checked:`, 
+              locationKitchens.map((k: any) => ({
+                id: k.id,
+                name: k.name,
+                imageUrl: k.imageUrl || k.image_url || 'none'
+              }))
+            );
           }
           
           // Normalize location image URLs to ensure they work in production

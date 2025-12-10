@@ -751,6 +751,17 @@ export default function ChefLanding() {
         });
         if (!response.ok) throw new Error("Failed to fetch");
         const data = await response.json();
+        // Log the actual data received from API (works in production too)
+        console.log("[ChefLanding] API Response - Locations data:", data);
+        if (Array.isArray(data) && data.length > 0) {
+          console.log("[ChefLanding] First location sample:", {
+            id: data[0].id,
+            name: data[0].name,
+            brandImageUrl: data[0].brandImageUrl,
+            featuredKitchenImage: data[0].featuredKitchenImage,
+            logoUrl: data[0].logoUrl
+          });
+        }
         return Array.isArray(data) ? data : [];
       } catch (error) {
         console.error("Error fetching locations:", error);
@@ -763,22 +774,24 @@ export default function ChefLanding() {
 
   // Use locations data directly (same structure as preview page)
   const uniqueLocations = useMemo(() => {
-    if (!locations || locations.length === 0) return [];
+    if (!locations || locations.length === 0) {
+      console.log("[ChefLanding] No locations data available");
+      return [];
+    }
     // Locations already come with normalized URLs from the API
-    return locations.map((loc: any) => {
+    const mapped = locations.map((loc: any) => {
       // Prioritize featuredKitchenImage over brandImageUrl for the main card image
       // (brandImageUrl is location-level, featuredKitchenImage is from actual kitchens)
       const mainImage = loc.featuredKitchenImage || loc.brandImageUrl || null;
       
-      // Debug logging in development
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[ChefLanding] Location ${loc.id} (${loc.name}):`, {
-          brandImageUrl: loc.brandImageUrl,
-          featuredKitchenImage: loc.featuredKitchenImage,
-          mainImage: mainImage,
-          logoUrl: loc.logoUrl
-        });
-      }
+      // Always log in production to debug
+      console.log(`[ChefLanding] Processing Location ${loc.id} (${loc.name}):`, {
+        brandImageUrl: loc.brandImageUrl,
+        featuredKitchenImage: loc.featuredKitchenImage,
+        mainImage: mainImage,
+        logoUrl: loc.logoUrl,
+        hasMainImage: !!mainImage
+      });
       
       return {
         id: loc.id,
@@ -791,6 +804,8 @@ export default function ChefLanding() {
         kitchenCount: loc.kitchenCount || 1
       };
     });
+    console.log(`[ChefLanding] Processed ${mapped.length} locations`);
+    return mapped;
   }, [locations]);
 
   useEffect(() => {
@@ -1592,45 +1607,58 @@ export default function ChefLanding() {
                       <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white overflow-hidden">
                         {/* Kitchen Image */}
                         <div className="relative h-44 overflow-hidden">
-                          {(loc.mainImage || loc.featuredKitchenImage || loc.brandImageUrl) ? (
-                            <>
-                              <img 
-                                src={loc.mainImage || loc.featuredKitchenImage || loc.brandImageUrl || ''}
-                                alt={loc.name}
-                                className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                                onError={(e) => {
-                                  // If image fails to load, hide it and show placeholder
-                                  const imageUrl = loc.mainImage || loc.featuredKitchenImage || loc.brandImageUrl;
-                                  console.error(`[ChefLanding] Image failed to load for ${loc.name}:`, {
-                                    imageUrl,
-                                    mainImage: loc.mainImage,
-                                    featuredKitchenImage: loc.featuredKitchenImage,
-                                    brandImageUrl: loc.brandImageUrl
-                                  });
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                  const parent = target.parentElement;
-                                  if (parent) {
-                                    const placeholder = parent.querySelector('.image-placeholder') as HTMLElement;
-                                    if (placeholder) placeholder.style.display = 'flex';
-                                  }
-                                }}
-                                onLoad={() => {
-                                  // Debug: log successful image load
-                                  if (process.env.NODE_ENV === 'development') {
-                                    console.log(`[ChefLanding] Image loaded successfully for ${loc.name}:`, loc.mainImage || loc.featuredKitchenImage || loc.brandImageUrl);
-                                  }
-                                }}
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                              {/* Placeholder that shows if image fails to load */}
-                              <div className="image-placeholder absolute inset-0 bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center" style={{ display: 'none' }}>
-                                <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
-                                  <Building2 className="h-8 w-8 text-[#F51042]" />
+                          {(() => {
+                            // Get the image URL, filtering out empty strings
+                            const imageUrl = (loc.mainImage || loc.featuredKitchenImage || loc.brandImageUrl || '').trim();
+                            const hasValidImage = imageUrl && imageUrl.length > 0;
+                            
+                            if (!hasValidImage) {
+                              console.warn(`[ChefLanding] No valid image URL for ${loc.name}:`, {
+                                mainImage: loc.mainImage,
+                                featuredKitchenImage: loc.featuredKitchenImage,
+                                brandImageUrl: loc.brandImageUrl
+                              });
+                            }
+                            
+                            return hasValidImage ? (
+                              <>
+                                <img 
+                                  src={imageUrl}
+                                  alt={loc.name}
+                                  className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                                  onError={(e) => {
+                                    // If image fails to load, hide it and show placeholder
+                                    console.error(`[ChefLanding] ❌ Image failed to load for ${loc.name}:`, {
+                                      imageUrl,
+                                      mainImage: loc.mainImage,
+                                      featuredKitchenImage: loc.featuredKitchenImage,
+                                      brandImageUrl: loc.brandImageUrl,
+                                      allLocationData: loc
+                                    });
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    const parent = target.parentElement;
+                                    if (parent) {
+                                      const placeholder = parent.querySelector('.image-placeholder') as HTMLElement;
+                                      if (placeholder) placeholder.style.display = 'flex';
+                                    }
+                                  }}
+                                  onLoad={() => {
+                                    // Always log successful image load (works in production)
+                                    console.log(`[ChefLanding] ✅ Image loaded successfully for ${loc.name}:`, imageUrl);
+                                  }}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                                {/* Placeholder that shows if image fails to load */}
+                                <div className="image-placeholder absolute inset-0 bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center" style={{ display: 'none' }}>
+                                  <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
+                                    <Building2 className="h-8 w-8 text-[#F51042]" />
+                                  </div>
                                 </div>
-                              </div>
-                            </>
-                          ) : (
+                              </>
+                            ) : null;
+                          })()}
+                          {!loc.mainImage && !loc.featuredKitchenImage && !loc.brandImageUrl && (
                             <div className="w-full h-full bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center">
                               <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
                                 <Building2 className="h-8 w-8 text-[#F51042]" />
