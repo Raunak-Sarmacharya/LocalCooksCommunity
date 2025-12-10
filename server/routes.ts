@@ -8245,6 +8245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Extract and normalize kitchen image - same approach as detail page
           // Try to find the first kitchen with a valid image URL, then normalize it
+          // Also fall back to galleryImages if imageUrl is not set (this matches what the detail page does)
           let featuredKitchenImage: string | null = null;
           for (const kitchen of locationKitchens) {
             // Check both camelCase and snake_case for image URL
@@ -8261,6 +8262,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
               break; // Use the first valid image found
             }
+            
+            // Fall back to galleryImages if no imageUrl - this matches the KitchenPreviewPage behavior
+            const galleryImages = kitchen.galleryImages || kitchen.gallery_images || [];
+            if (Array.isArray(galleryImages) && galleryImages.length > 0) {
+              const firstGalleryImage = galleryImages[0];
+              if (firstGalleryImage && typeof firstGalleryImage === 'string' && firstGalleryImage.trim() !== '') {
+                featuredKitchenImage = normalizeImageUrl(firstGalleryImage, req);
+                console.log(`[API] Found kitchen gallery image for location ${location.id}:`, {
+                  raw: firstGalleryImage,
+                  normalized: featuredKitchenImage,
+                  kitchenId: kitchen.id,
+                  kitchenName: kitchen.name,
+                  source: 'galleryImages'
+                });
+                break; // Use the first valid gallery image found
+              }
+            }
           }
           
           // If no kitchen image found, log it for debugging
@@ -8269,7 +8287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locationKitchens.map((k: any) => ({
                 id: k.id,
                 name: k.name,
-                imageUrl: k.imageUrl || k.image_url || 'none'
+                imageUrl: k.imageUrl || k.image_url || 'none',
+                galleryImagesCount: (k.galleryImages || k.gallery_images || []).length
               }))
             );
           }
