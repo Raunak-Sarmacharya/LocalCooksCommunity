@@ -721,6 +721,7 @@ export class FirebaseStorage {
         // Extract image URLs - check all possible field name variations
         // Drizzle maps image_url (DB) to imageUrl (TypeScript), but handle both just in case
         const kitchenImageUrl = (kitchen as any).imageUrl ?? (kitchen as any).image_url ?? null;
+        const kitchenGalleryImages = (kitchen as any).galleryImages ?? (kitchen as any).gallery_images ?? [];
         const locationBrandImageUrl = location ? ((location as any).brandImageUrl ?? (location as any).brand_image_url ?? null) : null;
         const locationLogoUrl = location ? ((location as any).logoUrl ?? (location as any).logo_url ?? null) : null;
         
@@ -730,8 +731,9 @@ export class FirebaseStorage {
           locationId: kitchenLocationId,
           locationName: locName,
           locationAddress: locAddress,
-          // Ensure imageUrl is always set (even if null) and not undefined
+          // Ensure imageUrl and galleryImages are always set (even if null/empty) and not undefined
           imageUrl: kitchenImageUrl,
+          galleryImages: kitchenGalleryImages,
           locationBrandImageUrl: locationBrandImageUrl,
           locationLogoUrl: locationLogoUrl,
           location: location ? {
