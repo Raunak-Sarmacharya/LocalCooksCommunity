@@ -8225,13 +8225,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const locationKitchens = activeKitchens.filter((kitchen: any) => 
             (kitchen.locationId || kitchen.location_id) === location.id
           );
-          const featuredKitchenImage = locationKitchens.find((k: any) => k.imageUrl || k.image_url)?.imageUrl || 
-                                        locationKitchens.find((k: any) => k.imageUrl || k.image_url)?.image_url || null;
+          
+          // Extract kitchen image - check both camelCase and snake_case, and handle both properties
+          // Try to find the first kitchen with a valid image URL
+          let featuredKitchenImage: string | null = null;
+          for (const kitchen of locationKitchens) {
+            const kitchenImage = kitchen.imageUrl || kitchen.image_url;
+            if (kitchenImage && typeof kitchenImage === 'string' && kitchenImage.trim() !== '') {
+              featuredKitchenImage = kitchenImage;
+              break; // Use the first valid image found
+            }
+          }
           
           // Normalize image URLs to ensure they work in production
           const normalizedLogoUrl = normalizeImageUrl((location as any).logoUrl || (location as any).logo_url || null, req);
           const normalizedBrandImageUrl = normalizeImageUrl((location as any).brandImageUrl || (location as any).brand_image_url || null, req);
           const normalizedFeaturedKitchenImage = normalizeImageUrl(featuredKitchenImage, req);
+          
+          // Debug logging
+          console.log(`[API] Location ${location.id} (${location.name}) images:`, {
+            logoUrl: normalizedLogoUrl,
+            brandImageUrl: normalizedBrandImageUrl,
+            featuredKitchenImage: normalizedFeaturedKitchenImage,
+            rawFeaturedKitchenImage: featuredKitchenImage,
+            locationKitchensCount: locationKitchens.length,
+            firstKitchenImage: locationKitchens[0]?.imageUrl || locationKitchens[0]?.image_url || 'none'
+          });
           
           return {
             id: location.id,

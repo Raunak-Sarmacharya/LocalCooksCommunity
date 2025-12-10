@@ -1575,20 +1575,27 @@ export default function ChefLanding() {
                       <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white overflow-hidden">
                         {/* Kitchen Image */}
                         <div className="relative h-44 overflow-hidden">
-                          {loc.brandImageUrl || loc.featuredKitchenImage ? (
+                          {(loc.brandImageUrl || loc.featuredKitchenImage) ? (
                             <>
                               <img 
-                                src={loc.brandImageUrl || loc.featuredKitchenImage}
+                                src={loc.brandImageUrl || loc.featuredKitchenImage || ''}
                                 alt={loc.name}
                                 className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
                                 onError={(e) => {
                                   // If image fails to load, hide it and show placeholder
+                                  console.error(`[ChefLanding] Image failed to load:`, loc.brandImageUrl || loc.featuredKitchenImage);
                                   const target = e.target as HTMLImageElement;
                                   target.style.display = 'none';
                                   const parent = target.parentElement;
                                   if (parent) {
                                     const placeholder = parent.querySelector('.image-placeholder') as HTMLElement;
                                     if (placeholder) placeholder.style.display = 'flex';
+                                  }
+                                }}
+                                onLoad={() => {
+                                  // Debug: log successful image load
+                                  if (process.env.NODE_ENV === 'development') {
+                                    console.log(`[ChefLanding] Image loaded successfully:`, loc.brandImageUrl || loc.featuredKitchenImage);
                                   }
                                 }}
                               />
