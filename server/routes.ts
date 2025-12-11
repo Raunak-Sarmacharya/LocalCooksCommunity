@@ -8247,10 +8247,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Try to find the first kitchen with a valid image URL, then normalize it
           // Also fall back to galleryImages if imageUrl is not set (this matches what the detail page does)
           let featuredKitchenImage: string | null = null;
+          
           for (const kitchen of locationKitchens) {
             // Check both camelCase and snake_case for image URL
             // Also check if the imageUrl was set by getAllKitchensWithLocationAndManager
             const kitchenImage = kitchen.imageUrl || kitchen.image_url || (kitchen as any).imageUrl || (kitchen as any).image_url;
+            
             if (kitchenImage && typeof kitchenImage === 'string' && kitchenImage.trim() !== '') {
               // Normalize the kitchen image URL immediately (same as detail page does)
               featuredKitchenImage = normalizeImageUrl(kitchenImage, req);
@@ -8265,6 +8267,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Fall back to galleryImages if no imageUrl - this matches the KitchenPreviewPage behavior
             const galleryImages = kitchen.galleryImages || kitchen.gallery_images || [];
+            
             if (Array.isArray(galleryImages) && galleryImages.length > 0) {
               const firstGalleryImage = galleryImages[0];
               if (firstGalleryImage && typeof firstGalleryImage === 'string' && firstGalleryImage.trim() !== '') {
