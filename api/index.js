@@ -15188,9 +15188,79 @@ app.get("/api/admin/chef-location-access", async (req, res) => {
 // ===============================
 
 // Get all public locations for portal landing page
+// Helper function to normalize image URLs (convert relative paths to absolute URLs)
+function normalizeImageUrl(url, req) {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+  
+  // If already an absolute URL (http:// or https://), return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // If it's a relative path, convert to absolute URL
+  if (url.startsWith('/')) {
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+    
+    let protocol;
+    let host;
+    
+    if (isProduction) {
+      // Vercel sets these headers when behind a proxy
+      protocol = (req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
+      host = req.get('x-forwarded-host') || req.get('host') || req.headers.host || '';
+    } else {
+      protocol = req.protocol || 'http';
+      host = req.get('host') || req.headers.host || 'localhost:3000';
+    }
+    
+    // Ensure protocol is https in production
+    if (isProduction && protocol !== 'https') {
+      protocol = 'https';
+    }
+    
+    if (!host) {
+      console.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
+      return url; // Return as-is if we can't determine host
+    }
+    
+    return `${protocol}://${host}${url}`;
+  }
+  
+  // Return as-is if it doesn't match any pattern (might be a data URL or other format)
+  return url;
+}
+
 app.get("/api/public/locations", async (req, res) => {
   try {
-    const allLocations = await getAllLocations();
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get all locations with brand image
+    const locationsResult = await pool.query(`
+      SELECT id, name, address, 
+             logo_url as "logoUrl",
+             brand_image_url as "brandImageUrl"
+      FROM locations 
+      ORDER BY name
+    `);
+    
+    const allLocations = locationsResult.rows;
+
+    // Get all active kitchens with images
+    const kitchensResult = await pool.query(`
+      SELECT k.id, k.name, k.location_id as "locationId",
+             k.image_url as "imageUrl",
+             k.gallery_images as "galleryImages",
+             k.is_active as "isActive"
+      FROM kitchens k
+      WHERE k.is_active != false
+      ORDER BY k.location_id, k.name
+    `);
+    
+    const allKitchens = kitchensResult.rows;
     
     // Return only public info (no sensitive data)
     const publicLocations = allLocations.map((loc) => {
@@ -15201,16 +15271,56 @@ app.get("/api/public/locations", async (req, res) => {
         .replace(/[\s_-]+/g, '-')
         .replace(/^-+|-+$/g, '');
       
+      // Get kitchens for this location
+      const locationKitchens = allKitchens.filter((kitchen) => 
+        kitchen.locationId === loc.id
+      );
+      
+      // Count active kitchens
+      const kitchenCount = locationKitchens.length;
+      
+      // Find the first kitchen image to use as featured image
+      let featuredKitchenImage = null;
+      for (const kitchen of locationKitchens) {
+        // Check if kitchen has imageUrl
+        if (kitchen.imageUrl && typeof kitchen.imageUrl === 'string' && kitchen.imageUrl.trim() !== '') {
+          featuredKitchenImage = normalizeImageUrl(kitchen.imageUrl, req);
+          break;
+        }
+        
+        // Fall back to galleryImages if no imageUrl
+        const galleryImages = kitchen.galleryImages;
+        if (Array.isArray(galleryImages) && galleryImages.length > 0) {
+          const firstGalleryImage = galleryImages[0];
+          if (firstGalleryImage && typeof firstGalleryImage === 'string' && firstGalleryImage.trim() !== '') {
+            featuredKitchenImage = normalizeImageUrl(firstGalleryImage, req);
+            break;
+          }
+        }
+      }
+      
+      // Normalize location image URLs
+      const normalizedLogoUrl = normalizeImageUrl(loc.logoUrl, req);
+      const normalizedBrandImageUrl = normalizeImageUrl(loc.brandImageUrl, req);
+      
       return {
         id: loc.id,
         name: loc.name,
         address: loc.address,
-        logoUrl: loc.logoUrl || loc.logo_url || null,
+        logoUrl: normalizedLogoUrl,
+        brandImageUrl: normalizedBrandImageUrl,
+        featuredKitchenImage: featuredKitchenImage,
+        kitchenCount: kitchenCount,
         slug: slug,
       };
     });
     
-    res.json(publicLocations);
+    // Filter to only locations that have at least one active kitchen
+    const locationsWithKitchens = publicLocations.filter((loc) => loc.kitchenCount > 0);
+    
+    console.log(`[API] /api/public/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
+    
+    res.json(locationsWithKitchens);
   } catch (error) {
     console.error("Error fetching public locations:", error);
     res.status(500).json({ error: error.message || "Failed to fetch locations" });
