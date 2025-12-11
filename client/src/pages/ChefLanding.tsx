@@ -11,7 +11,8 @@ import {
   ChefHat, Clock, Users, Target, Utensils, 
   Building2, ArrowRight, CheckCircle2, Check, X, Sparkles,
   Heart, Rocket, Star, Zap, Shield, MessageCircle,
-  CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight
+  CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight,
+  HeartHandshake, HandCoins
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -462,7 +463,13 @@ function ChaosNotificationFeed() {
 
 // Testimonial Carousel Component with Auto-Scroll
 function TestimonialCarouselSection() {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: "start" });
+  const [emblaRef, emblaApi] = useEmblaCarousel({ 
+    loop: true, 
+    align: "start",
+    duration: 25, // Smooth transition duration in milliseconds
+    dragFree: false,
+    containScroll: "trimSnaps"
+  });
 
   // Auto-scroll functionality
   useEffect(() => {
@@ -567,23 +574,17 @@ function TestimonialCarouselSection() {
         </FadeInSection>
 
         {/* Testimonial Carousel with Auto-Scroll */}
-        <div className="relative px-4 md:px-8 lg:px-12 py-8 md:py-12">
-          <div className="overflow-hidden" ref={emblaRef}>
+        <div className="relative px-4 sm:px-6 md:px-8 lg:px-12 py-8 sm:py-10 md:py-12">
+          <div className="overflow-hidden" ref={emblaRef} style={{ willChange: 'transform' }}>
             <div className="flex">
               {testimonials.map((testimonial, index) => (
                 <div
                   key={index}
-                  className="flex-[0_0_33.333%] min-w-0 w-full sm:w-[33.333%] px-1.5 md:px-2"
+                  className="flex-[0_0_100%] sm:flex-[0_0_50%] lg:flex-[0_0_33.333%] min-w-0 px-2 sm:px-2.5 md:px-3"
                 >
-                  <motion.div
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
-                    className="h-full py-4 md:py-6"
-                  >
+                  <div className="h-full py-4 sm:py-5 md:py-6">
                     <div
-                      className="relative rounded-2xl p-5 md:p-6 h-full shadow-xl"
+                      className="relative rounded-2xl p-4 sm:p-5 md:p-6 h-full shadow-xl transition-transform duration-300 ease-in-out hover:scale-[1.02]"
                       style={{
                         backgroundColor: testimonial.color,
                         transform: `rotate(${index % 2 === 0 ? '-1.5deg' : '1.5deg'}) translateZ(0)`,
@@ -591,9 +592,9 @@ function TestimonialCarouselSection() {
                       }}
                     >
                       {/* Elegant Quotation Mark */}
-                      <div className="absolute top-3 left-3 md:top-4 md:left-4">
+                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3 md:top-4 md:left-4">
                         <span 
-                          className="text-6xl md:text-7xl lg:text-8xl font-serif leading-none"
+                          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif leading-none"
                           style={{ 
                             color: testimonial.color === "#ffffff" 
                               ? "rgba(44, 44, 44, 0.15)" 
@@ -609,10 +610,10 @@ function TestimonialCarouselSection() {
                       </div>
 
                       {/* Content */}
-                      <div className="relative z-10 pt-8 md:pt-10 lg:pt-12">
+                      <div className="relative z-10 pt-6 sm:pt-8 md:pt-10 lg:pt-12">
                         {/* Testimonial Text */}
                         <p
-                          className="text-sm md:text-base font-sans leading-relaxed mb-4 md:mb-5"
+                          className="text-sm sm:text-base md:text-base lg:text-lg font-sans leading-relaxed mb-3 sm:mb-4 md:mb-5"
                           style={{
                             color: testimonial.textColor,
                           }}
@@ -622,7 +623,7 @@ function TestimonialCarouselSection() {
 
                         {/* Horizontal Line */}
                         <div
-                          className="h-px mb-3 md:mb-4"
+                          className="h-px mb-2 sm:mb-3 md:mb-4"
                           style={{
                             backgroundColor: testimonial.textColor === "#ffffff" 
                               ? "rgba(255, 255, 255, 0.3)" 
@@ -633,7 +634,7 @@ function TestimonialCarouselSection() {
                         {/* Chef Name and Role */}
                         <div>
                           <p
-                            className="font-bold text-xs md:text-sm lg:text-base mb-1"
+                            className="font-bold text-xs sm:text-sm md:text-base lg:text-lg mb-0.5 sm:mb-1"
                             style={{
                               color: testimonial.textColor,
                             }}
@@ -641,7 +642,7 @@ function TestimonialCarouselSection() {
                             {testimonial.name}
                           </p>
                           <p
-                            className="text-xs md:text-sm"
+                            className="text-xs sm:text-sm md:text-base"
                             style={{
                               color: testimonial.textColor === "#ffffff" 
                                 ? "rgba(255, 255, 255, 0.8)" 
@@ -653,7 +654,7 @@ function TestimonialCarouselSection() {
                         </div>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -876,15 +877,11 @@ export default function ChefLanding() {
                   transition={{ duration: 0.6, delay: 0.2 }}
                   className="mb-8"
                 >
-                  <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white px-5 py-2.5 rounded-full shadow-lg shadow-emerald-500/25">
-                    <motion.div
-                      animate={{ rotate: [0, 15, -15, 0] }}
-                      transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-                    >
-                      <Sparkles className="h-4 w-4" />
-                    </motion.div>
-                    <span className="font-semibold text-sm tracking-wide">Keep 100% of Your Earnings</span>
-                </div>
+                  <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
+                    <HandCoins className="h-3.5 w-3.5 relative z-10" />
+                    <span className="font-semibold text-xs tracking-wide relative z-10">Keep 100% of Your Earnings</span>
+                  </div>
                 </motion.div>
 
                 {/* Brand Identity */}
@@ -936,7 +933,12 @@ export default function ChefLanding() {
                   </span>
                 </h2>
                   <p className="text-lg md:text-xl text-[#6B6B6B] leading-relaxed max-w-lg">
-                    You focus on creating incredible food. We handle orders, payments, delivery, and growing your customer base.
+                    <span className="block mb-3">
+                      Your passion deserves a platform that keeps up.
+                    </span>
+                    <span className="block">
+                      We handle regulatory guidance, kitchen access, order management, payments, delivery logistics, and fuel your growth — so you can focus entirely on creating exceptional food.
+                    </span>
                   </p>
                 </motion.div>
 
@@ -983,7 +985,7 @@ export default function ChefLanding() {
                   {[
                     { icon: CheckCircle2, text: "Approved in 24 hours" },
                     { icon: Shield, text: "No upfront costs" },
-                    { icon: Star, text: "5-star support" }
+                    { icon: HeartHandshake, text: "Dedicated support every step." }
                   ].map((item, i) => (
                     <motion.span 
                       key={i}
@@ -1000,83 +1002,130 @@ export default function ChefLanding() {
               </div>
 
               {/* Right Image Column */}
-              <div className="order-1 lg:order-2 relative">
+              <div className="order-1 lg:order-2 relative overflow-visible">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9, x: 50 }}
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-                  className="relative"
+                  className="relative overflow-visible"
                 >
                   {/* Decorative background shapes */}
                   <div className="absolute -inset-4 bg-gradient-to-br from-[#F51042]/10 via-[#FFE8DD]/50 to-[#FFD700]/20 rounded-[2.5rem] transform rotate-3" />
                   <div className="absolute -inset-4 bg-gradient-to-tr from-[#FFE8DD]/80 to-white/60 rounded-[2.5rem] transform -rotate-2" />
                   
                   {/* Main Image Container */}
-                  <div className="relative rounded-[2rem] overflow-hidden shadow-2xl shadow-[#F51042]/10">
-                    <img 
-                      src={chefImage} 
-                      alt="Professional home chef cooking with passion" 
-                      className="w-full h-auto object-cover aspect-[4/3]"
-                    />
+                  <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-[#F51042]/10 w-full">
+                    <div className="relative rounded-[2rem] overflow-hidden w-full">
+                      <img 
+                        src={chefImage} 
+                        alt="Professional home chef cooking with passion" 
+                        className="w-full h-auto object-cover aspect-[4/3]"
+                      />
+                      
+                      {/* Gradient Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                    </div>
                     
-                    {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                    
-                    {/* Floating Stats Card */}
+                    {/* Trial Card - Centered Bottom, Partially Inside/Outside */}
                     <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: 1.2 }}
-                      className="absolute bottom-6 left-6 right-6 bg-white/95 backdrop-blur-md rounded-2xl p-5 shadow-xl"
+                      initial={{ opacity: 0, y: 20, x: '-50%' }}
+                      animate={{ opacity: 1, y: '30%', x: '-50%' }}
+                      transition={{ duration: 0.7, delay: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                      className="absolute bottom-0 left-1/2 bg-white rounded-2xl px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)] ring-1 ring-slate-900/5 z-20"
+                      style={{ 
+                        width: 'min(calc(100% - 3rem), 28rem)',
+                        maxWidth: '28rem'
+                      }}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-gradient-to-br from-[#F51042] to-[#FF6B7A] rounded-full flex items-center justify-center">
-                            <ChefHat className="h-6 w-6 text-white" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-[#6B6B6B]">During Trial</p>
-                            <p className="text-xl font-bold text-[#2C2C2C]">0% Platform Fee</p>
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-1">During Trial</p>
+                          <p className="text-base font-bold text-slate-950 leading-tight mb-1.5">0% Platform Fee</p>
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1">
+                              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
+                              <span className="text-[10px] font-semibold text-slate-700">Zero barriers</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
+                              <span className="text-[10px] font-semibold text-slate-700">Zero waiting</span>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm text-[#6B6B6B]">You Keep</p>
-                          <p className="text-2xl font-bold text-emerald-500">100%</p>
+                        <div className="flex-shrink-0 text-right pl-4 border-l border-slate-200">
+                          <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-1">You Keep</p>
+                          <p className="text-xl font-bold text-[#F51042] leading-tight">100%</p>
                         </div>
                       </div>
                     </motion.div>
-                </div>
+                  </div>
                 
-                  {/* Floating Badge - Top Right */}
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5, delay: 1.4, type: "spring", stiffness: 200 }}
-                    className="absolute -top-4 -right-4 bg-white rounded-2xl shadow-xl px-4 py-3 border border-[#F51042]/10"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-[#FFE8DD] rounded-full flex items-center justify-center">
-                        <Heart className="h-4 w-4 text-[#F51042]" />
+                {/* Premium Floating Cards - Positioned to overlap frame significantly */}
+                
+                {/* Premium Floating Tag - Top Right: "Built for Chefs. Powered by community." */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.6, delay: 1.4, type: "spring", stiffness: 200 }}
+                  className="absolute top-0 right-0 lg:top-4 lg:-right-6 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl px-4 py-3 border border-slate-200/50 z-20"
+                  style={{ transform: 'translateY(-20%)' }}
+                >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/30 flex-shrink-0">
+                        <Heart className="h-5 w-5 text-white" />
                       </div>
-                      <div>
-                        <p className="text-xs text-[#6B6B6B]">Made with</p>
-                        <p className="text-sm font-bold text-[#2C2C2C]">Love & Passion</p>
-                      </div>
+                    <div>
+                      <p className="text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Built for Chefs</p>
+                      <p className="text-xs font-bold text-slate-900 leading-tight">Powered by community</p>
                     </div>
-                  </motion.div>
+                  </div>
+                </motion.div>
 
-                  {/* Floating Badge - Left */}
-                  <motion.div
-                    initial={{ opacity: 0, x: -30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.5, delay: 1.6 }}
-                    className="absolute top-1/3 -left-6 bg-white rounded-xl shadow-lg px-3 py-2 border border-emerald-100"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-amber-500" />
-                      <span className="text-sm font-semibold text-[#2C2C2C]">Fast Approval</span>
+                {/* Premium Floating Tag - Top Left: "Fast approval" */}
+                <motion.div
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 1.6, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute top-0 left-0 lg:top-8 lg:-left-10 bg-white rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-3.5 py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
+                  style={{ transform: 'translateY(-30%)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Zap className="h-3.5 w-3.5 text-white" />
                     </div>
-                  </motion.div>
+                    <span className="text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Fast approval</span>
+                  </div>
+                </motion.div>
+
+                {/* Premium Floating Tag - Middle Right: "Join chefs who've already launched" */}
+                <motion.div
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 1.8, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute top-[32%] right-0 lg:top-[28%] lg:-right-12 bg-white rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-3.5 py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Rocket className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Join chefs who've already launched</span>
+                  </div>
+                </motion.div>
+
+                {/* Premium Floating Tag - Middle Left: "More time cooking, less time managing" */}
+                <motion.div
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.6, delay: 2.0, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute top-[40%] left-0 lg:top-[38%] lg:-left-10 bg-white rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-3.5 py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Clock className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">More time cooking, less time managing</span>
+                  </div>
+                </motion.div>
                 </motion.div>
                 </div>
             </div>
@@ -1112,7 +1161,7 @@ export default function ChefLanding() {
                 {/* ═══ MAIN TITLE - Centered with breathing room ═══ */}
                 <div className="relative z-40 max-w-3xl mx-auto px-8 md:px-12">
                   <motion.h2 
-                    className="text-[1.4rem] sm:text-2xl md:text-3xl lg:text-4xl xl:text-[2.5rem] font-bold text-[#1A1A1A] leading-[1.35] md:leading-tight mb-5 md:mb-6"
+                    className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A] leading-[1.35] md:leading-tight mb-5 md:mb-6"
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.7, delay: 0.2 }}
@@ -1170,7 +1219,7 @@ export default function ChefLanding() {
                     transition={{ duration: 0.6, delay: 0.7 }}
                     viewport={{ once: true }}
                   >
-                    Sound familiar?
+                    Sound familiar? Stop juggling. Start creating.
                   </motion.p>
                 </div>
               </div>
@@ -1217,7 +1266,7 @@ export default function ChefLanding() {
                   {/* Label */}
                   <div className="text-center mt-4">
                     <p className="text-sm font-bold text-[#1A1A1A]">Scattered everywhere</p>
-                    <p className="text-xs text-[#64748B] mt-0.5">6 apps. Endless context switching.</p>
+                    <p className="text-xs text-[#64748B] mt-0.5">Fragmented tools. Disconnected workflows.</p>
                   </div>
                 </div>
               </FadeInSection>
@@ -1261,8 +1310,8 @@ export default function ChefLanding() {
                   
                   {/* Label */}
                   <div className="text-center mt-4">
-                    <p className="text-sm font-bold text-[#0D9488]">Powered by LocalCooks</p>
-                    <p className="text-xs text-[#64748B] mt-0.5">One app. Instant payments. Peace of mind.</p>
+                    <p className="text-sm font-bold text-[#0D9488]">Powered by <span className="font-display text-sm text-[#F51042]">LocalCooks</span></p>
+                    <p className="text-xs text-[#64748B] mt-0.5">One unified platform. Seamless operations.</p>
                   </div>
                 </div>
               </FadeInSection>
@@ -1286,7 +1335,7 @@ export default function ChefLanding() {
                   transition={{ duration: 0.6 }}
                   className="text-[#6B6B6B] text-base md:text-lg mb-4"
                 >
-                  Join passionate home cooks earning real money doing what they love.
+                  Join passionate chefs earning real money doing what they love.
                 </motion.p>
                 
                 <motion.h2
@@ -1378,7 +1427,7 @@ export default function ChefLanding() {
                     <p className="text-sm font-medium text-[#0D9488] mb-3">Approved in 24 hours</p>
                     
                     <p className="text-[#6B6B6B] leading-relaxed text-sm">
-                      We review your application and connect with you to help with any regulatory requirements. Already have your documentation ready? You're set. Need guidance? We walk you through it. Either way, you'll be ready to launch.
+                    We review your application against regulatory standards and connect you with everything you need to launch. Documentation ready or not, we've got you covered.
                     </p>
                     
                     {/* Decorative accent */}
@@ -1426,13 +1475,14 @@ export default function ChefLanding() {
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {[
-                    { text: "Sell from home or a commercial kitchen — your choice", icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
-                    { text: "We handle compliance — regulations, certifications, partnerships", icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
-                    { text: "Full control — your hours, your menu, your prices", icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
-                    { text: "Direct payments — weekly payouts to your bank", icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
-                    { text: "Real support — actual people who help you succeed", icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                    { text: "Sell from home or a commercial kitchen — pick what works for you.", icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
+                    { text: "We handle the complexity — regulations, certifications, partnerships taken care of.", icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                    { text: "Smart tools that grow with you — built for chefs, shaped by your needs, evolving constantly.", icon: Sparkles, borderColor: "border-[#8B5CF6]/20", iconColor: "text-[#8B5CF6]" },
+                    { text: "You stay in control — your schedule, your recipes, your profit margins.", icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
+                    { text: "Money flows weekly — fast payouts, direct to your bank.", icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
+                    { text: "Real support behind you — actual people who want you to win.", icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
                   ].map((item, i) => (
                     <motion.div
                       key={i}
