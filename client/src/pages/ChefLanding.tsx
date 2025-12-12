@@ -1528,31 +1528,34 @@ export default function ChefLanding() {
         ═══════════════════════════════════════════════════════════════════════ */}
         
         {/* ══════ TOP WAVE DIVIDER - White to Primary Red ══════ */}
-        <div className="relative w-full overflow-hidden" style={{ height: '100px', marginBottom: '-2px' }}>
+        <div className="relative w-full overflow-hidden" style={{ height: '120px', marginBottom: '-1px' }}>
           <svg 
-            viewBox="0 0 1440 100" 
+            viewBox="0 0 1440 320" 
             fill="none" 
             xmlns="http://www.w3.org/2000/svg" 
             className="absolute bottom-0 w-full"
-            style={{ height: '100px', minWidth: '100%' }}
+            style={{ height: '120px', minWidth: '100%' }}
             preserveAspectRatio="none"
           >
+            {/* Wave pattern - solid brand red, no gradient */}
             <path 
-              d="M0,40 C150,80 350,0 600,50 C850,100 1050,20 1200,60 C1350,100 1440,40 1440,40 L1440,100 L0,100 Z" 
-              fill="#F51042"
-            />
-            <path 
-              d="M0,60 C200,100 400,20 650,70 C900,120 1100,40 1250,80 C1400,120 1440,60 1440,60 L1440,100 L0,100 Z" 
-              fill="#E8103A"
-              opacity="0.7"
+              fill="#F51042" 
+              fillOpacity="1" 
+              d="M0,224L48,224C96,224,192,224,288,213.3C384,203,480,181,576,192C672,203,768,245,864,256C960,267,1056,245,1152,224C1248,203,1344,181,1392,170.7L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
             />
           </svg>
         </div>
 
         {/* ══════ MAIN KITCHEN ACCESS SECTION - Bold Primary Background ══════ */}
         <section className="relative py-20 md:py-28 px-4 overflow-hidden bg-gradient-to-br from-[#F51042] via-[#E8103A] to-[#D90935]">
-          {/* Animated Background Effects */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Animated Background Effects with fade mask to blend into waves */}
+          <div 
+            className="absolute inset-0 overflow-hidden pointer-events-none"
+            style={{
+              maskImage: 'linear-gradient(to bottom, transparent 0%, transparent 5%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, transparent 95%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, transparent 5%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, transparent 95%, transparent 100%)'
+            }}
+          >
             {/* Large Floating Orbs */}
             <motion.div 
               className="absolute -top-40 -right-40 w-[500px] h-[500px] md:w-[800px] md:h-[800px] rounded-full"
@@ -1630,7 +1633,7 @@ export default function ChefLanding() {
                 </motion.h2>
                 
                 <motion.p 
-                  className="text-lg md:text-xl text-white/85 leading-relaxed max-w-2xl mx-auto"
+                  className="text-lg md:text-xl text-white/85 leading-relaxed max-w-5xl mx-auto"
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -1738,14 +1741,6 @@ export default function ChefLanding() {
                               />
                             </div>
                           )}
-                          
-                          {/* Status badge */}
-                          <div className="absolute bottom-3 left-3">
-                            <span className="flex items-center gap-1.5 bg-emerald-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-                              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                              Available
-                            </span>
-                          </div>
                         </div>
                         
                         {/* Content */}
@@ -1761,7 +1756,7 @@ export default function ChefLanding() {
                           )}
                           
                           <Button 
-                            className="w-full bg-[#1A1A1A] hover:bg-[#F51042] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
+                            className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
                             onClick={() => navigate(`/kitchen-preview/${loc.id}`)}
                           >
                             <Calendar className="mr-1.5 h-4 w-4" />
@@ -1870,10 +1865,10 @@ export default function ChefLanding() {
                   </p>
 
                   {/* Bento Grid - Award-Winning Card Design with Background Icons */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    {/* Weekly Payouts Card */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {/* Reliable Weekly Revenue Card */}
                     <motion.div 
-                      className="relative bg-gradient-to-br from-[#4A90A4] to-[#2D6A7A] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      className="relative bg-gradient-to-br from-[#4A90A4] to-[#2D6A7A] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
@@ -1884,18 +1879,18 @@ export default function ChefLanding() {
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Reliable Income
                         </span>
-                        <h4 className="text-xl font-bold leading-tight mb-2">
-                          Weekly Payouts
+                        <h4 className="text-base font-bold leading-tight mb-2">
+                          Weekly Revenue
                         </h4>
                         <p className="text-xs text-white/80 leading-relaxed">
-                          Get paid every week directly to your account. No waiting.
+                          Forget chasing invoices. We process payments automatically and deposit them directly to your bank account every week. Predictable cash flow, zero administrative headaches.
                         </p>
                       </div>
                     </motion.div>
 
-                    {/* Verified Chefs Card - Rich Violet (complementary to coral) */}
+                    {/* Zero Risk, Total Compliance Card - Rich Violet (complementary to coral) */}
                     <motion.div 
-                      className="relative bg-gradient-to-br from-[#7C5295] to-[#5D3D70] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      className="relative bg-gradient-to-br from-[#7C5295] to-[#5D3D70] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
@@ -1904,20 +1899,42 @@ export default function ChefLanding() {
                       
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Verified
+                          Zero Risk
                         </span>
-                        <h4 className="text-xl font-bold leading-tight mb-2">
-                          Food Safety
+                        <h4 className="text-base font-bold leading-tight mb-2">
+                          Total Compliance
                         </h4>
                         <p className="text-xs text-white/80 leading-relaxed">
-                          All chefs are certified and follow strict standards.
+                          Every chef on our platform is verified and certified. We enforce provincial food safety standards so your license—and your reputation—are never at risk.
                         </p>
                       </div>
                     </motion.div>
 
-                    {/* Total Control Card */}
+                    {/* Intelligent Hourly Management Card */}
                     <motion.div 
-                      className="relative bg-gradient-to-br from-[#F5A623] to-[#E8940D] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      className="relative bg-gradient-to-br from-[#0D9488] to-[#0F766E] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {/* Background Icon */}
+                      <Calendar className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      
+                      <div className="relative z-10">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
+                          Automated
+                        </span>
+                        <h4 className="text-base font-bold leading-tight mb-2">
+                          Booking Management
+                        </h4>
+                        <p className="text-xs text-white/80 leading-relaxed">
+                          Our automated booking engine handles the logistics. You set the available slots; our system fills them. Real-time syncing means no double-bookings, ever.
+                        </p>
+                      </div>
+                    </motion.div>
+
+                    {/* Your Kitchen, Your Rules Card */}
+                    <motion.div 
+                      className="relative bg-gradient-to-br from-[#F5A623] to-[#E8940D] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
@@ -1926,20 +1943,20 @@ export default function ChefLanding() {
                       
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
-                          Your Space
+                          Your Control
                         </span>
-                        <h4 className="text-xl font-bold leading-tight mb-2">
-                          Total Control
+                        <h4 className="text-base font-bold leading-tight mb-2">
+                          Your Rules
                         </h4>
                         <p className="text-xs text-white/80 leading-relaxed">
-                          Set your own hours, pricing, and kitchen rules.
+                          Maintain complete operational sovereignty. You determine the hourly rate, the specific equipment access, and the house rules.
                         </p>
                       </div>
                     </motion.div>
 
-                    {/* No Contracts Card */}
+                    {/* Frictionless Flexibility Card */}
                     <motion.div 
-                      className="relative bg-gradient-to-br from-[#2D3E50] to-[#1A2530] rounded-xl p-4 text-white overflow-hidden min-h-[140px]"
+                      className="relative bg-gradient-to-br from-[#2D3E50] to-[#1A2530] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
@@ -1950,11 +1967,11 @@ export default function ChefLanding() {
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Flexible
                         </span>
-                        <h4 className="text-xl font-bold leading-tight mb-2">
-                          No Contracts
+                        <h4 className="text-base font-bold leading-tight mb-2">
+                          Frictionless Flexibility
                         </h4>
                         <p className="text-xs text-white/80 leading-relaxed">
-                          Cancel anytime. No long-term commitments required.
+                          No long-term contracts. No exclusivity clauses. Cancel or pause your listing instantly. You remain the owner; we just bring the revenue.
                         </p>
                       </div>
                     </motion.div>
@@ -1991,23 +2008,20 @@ export default function ChefLanding() {
         </section>
 
         {/* ══════ BOTTOM WAVE DIVIDER - Primary Red to Light ══════ */}
-        <div className="relative w-full overflow-hidden" style={{ height: '100px', marginTop: '-2px' }}>
+        <div className="relative w-full overflow-hidden" style={{ height: '120px', marginTop: '-1px' }}>
           <svg 
-            viewBox="0 0 1440 100" 
+            viewBox="0 0 1440 320" 
             fill="none" 
             xmlns="http://www.w3.org/2000/svg" 
             className="absolute top-0 w-full"
-            style={{ height: '100px', minWidth: '100%' }}
+            style={{ height: '120px', minWidth: '100%' }}
             preserveAspectRatio="none"
           >
+            {/* Inverted wave pattern - solid brand red, no gradient */}
             <path 
-              d="M0,60 C150,20 350,100 600,50 C850,0 1050,80 1200,40 C1350,0 1440,60 1440,60 L1440,0 L0,0 Z" 
-              fill="#E8103A"
-              opacity="0.7"
-            />
-            <path 
-              d="M0,40 C200,0 400,80 650,30 C900,-20 1100,60 1250,20 C1400,-20 1440,40 1440,40 L1440,0 L0,0 Z" 
-              fill="#F51042"
+              fill="#F51042" 
+              fillOpacity="1" 
+              d="M0,96L48,106.7C96,117,192,139,288,149.3C384,160,480,160,576,138.7C672,117,768,75,864,64C960,53,1056,75,1152,96C1248,117,1344,139,1392,149.3L1440,160L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z"
             />
           </svg>
         </div>
