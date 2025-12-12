@@ -736,6 +736,133 @@ function LocalCooksNotificationFeed() {
   );
 }
 
+// Typewriter component - exact implementation from localcooks.ca
+// Source: https://github.com/Raunak-Sarmacharya/LCLanding
+// Modified: Fixed-width container locks word position, only cursor moves
+function TypewriterText() {
+  const words = ["Cooks", "Company", "Community"];
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [currentText, setCurrentText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [cursorX, setCursorX] = useState(0);
+
+  const currentWord = words[currentWordIndex];
+  const typingSpeed = 120;
+  const deletingSpeed = 80;
+  const pauseDuration = 2500;
+
+  // Find longest word and measure its width
+  const longestWord = words.reduce((a, b) => (a.length > b.length ? a : b));
+
+  // Measure longest word to set fixed container width
+  useEffect(() => {
+    if (measureRef.current) {
+      const width = measureRef.current.offsetWidth;
+      setContainerWidth(width);
+    }
+  }, []);
+
+  // Update cursor position as text changes - cursor moves, text stays fixed
+  useEffect(() => {
+    if (textRef.current) {
+      requestAnimationFrame(() => {
+        if (textRef.current) {
+          const textWidth = textRef.current.offsetWidth;
+          setCursorX(textWidth);
+        }
+      });
+    }
+  }, [currentText]);
+
+  const tick = useCallback(() => {
+    if (isPaused) return;
+
+    if (!isDeleting) {
+      // Typing
+      if (currentText.length < currentWord.length) {
+        setCurrentText(currentWord.slice(0, currentText.length + 1));
+      } else {
+        // Word complete, pause before deleting
+        setIsPaused(true);
+        setTimeout(() => {
+          setIsPaused(false);
+          setIsDeleting(true);
+        }, pauseDuration);
+      }
+    } else {
+      // Deleting
+      if (currentText.length > 0) {
+        setCurrentText(currentWord.slice(0, currentText.length - 1));
+      } else {
+        // Word deleted, move to next
+        setIsDeleting(false);
+        setCurrentWordIndex((prev) => (prev + 1) % words.length);
+      }
+    }
+  }, [currentText, currentWord, isDeleting, isPaused, pauseDuration, words.length]);
+
+  useEffect(() => {
+    const speed = isDeleting ? deletingSpeed : typingSpeed;
+    const timer = setTimeout(tick, speed);
+    return () => clearTimeout(timer);
+  }, [tick, isDeleting, deletingSpeed, typingSpeed]);
+
+  return (
+    <span className="inline-flex items-baseline text-3xl md:text-4xl lg:text-5xl">
+      {/* Hidden element to measure longest word width */}
+      <span
+        ref={measureRef}
+        className="font-logo absolute opacity-0 pointer-events-none whitespace-nowrap"
+        style={{ 
+          fontFamily: "'Lobster', cursive",
+          visibility: 'hidden',
+          fontSize: 'inherit'
+        }}
+      >
+        {longestWord}
+      </span>
+      
+      <span 
+        className="font-logo text-white whitespace-nowrap" 
+        style={{ fontFamily: "'Lobster', cursive" }}
+      >
+        Local
+      </span>
+      <span 
+        className="relative ml-3 md:ml-4 inline-block whitespace-nowrap"
+        style={{ 
+          width: containerWidth > 0 ? `${containerWidth + 20}px` : 'auto',
+          textAlign: 'left',
+          minWidth: containerWidth > 0 ? `${containerWidth + 20}px` : 'auto'
+        }}
+      >
+        <span
+          ref={textRef}
+          className="font-logo inline-block text-white whitespace-nowrap"
+          style={{ 
+            fontFamily: "'Lobster', cursive"
+          }}
+        >
+          {currentText}
+        </span>
+        <span 
+          className="typewriter-cursor absolute top-0"
+          style={{
+            backgroundColor: 'white',
+            left: `${cursorX}px`,
+            marginLeft: '4px',
+            height: '1em'
+          }}
+        />
+      </span>
+    </span>
+  );
+}
+
 export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
@@ -880,7 +1007,7 @@ export default function ChefLanding() {
                   <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                     <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">Keep 100% of Your Earnings</span>
+                    <span className="font-semibold text-xs tracking-wide relative z-10">Monetize Your Cooking. Keep 100% During Trial.</span>
                   </div>
                 </motion.div>
 
@@ -1547,7 +1674,7 @@ export default function ChefLanding() {
         </div>
 
         {/* ══════ MAIN KITCHEN ACCESS SECTION - Bold Primary Background ══════ */}
-        <section className="relative py-20 md:py-28 px-4 overflow-hidden bg-gradient-to-br from-[#F51042] via-[#E8103A] to-[#D90935]">
+        <section id="kitchen-access" className="relative py-20 md:py-28 px-4 overflow-hidden bg-[#F51042]">
           {/* Animated Background Effects with fade mask to blend into waves */}
           <div 
             className="absolute inset-0 overflow-hidden pointer-events-none"
@@ -2032,43 +2159,9 @@ export default function ChefLanding() {
         <TestimonialCarouselSection />
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            TRIAL BANNER - Strong Emphasis
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="py-16 px-4 bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-500 text-white">
-          <div className="container mx-auto max-w-4xl text-center">
-            <FadeInSection>
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <Sparkles className="h-8 w-8" />
-                <h3 className="text-3xl md:text-4xl font-bold">We're in Trial Mode</h3>
-                <Sparkles className="h-8 w-8" />
-              </div>
-              <p className="text-xl md:text-2xl mb-8 opacity-95">
-                Join now and <span className="font-bold underline">keep 100% of your sales</span>. 
-                <br className="hidden md:block" />
-                We only charge standard payment processing — no platform fees.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
-                  <Zap className="h-5 w-5" />
-                  <span className="font-semibold">0% Platform Fees</span>
-                </div>
-                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
-                  <Shield className="h-5 w-5" />
-                  <span className="font-semibold">Full Support Included</span>
-                </div>
-                <div className="flex items-center gap-2 bg-white/20 backdrop-blur px-5 py-3 rounded-full">
-                  <Rocket className="h-5 w-5" />
-                  <span className="font-semibold">Perfect Time to Start</span>
-                </div>
-              </div>
-            </FadeInSection>
-          </div>
-        </section>
-
-        {/* ═══════════════════════════════════════════════════════════════════════
             FAQ
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="py-20 md:py-28 px-4 bg-white">
+        <section id="faq" className="py-20 md:py-28 px-4 bg-white">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
@@ -2082,12 +2175,14 @@ export default function ChefLanding() {
             <FadeInSection delay={1}>
               <Accordion type="single" collapsible className="space-y-3">
                 {[
-                  { q: "How long does approval take?", a: "15 minutes to apply. 24 hours to hear back. Most chefs are approved and live the same day." },
-                  { q: "What happens during trial?", a: "You keep 100% of sales. Only standard payment processing (2.9% + 30¢) applies—no platform fees. Full support included." },
-                  { q: "Do I need a commercial kitchen?", a: "No! Access certified kitchens by the hour through our marketplace. Pay only for what you use." },
-                  { q: "Can I do this part-time?", a: "Absolutely. Set your own availability. Many chefs start alongside their day job and scale up gradually." },
-                  { q: "Can I leave anytime?", a: "Yes. No contracts, no commitments. You're an independent business owner." },
-                  { q: "How do I get paid?", a: "Secure payments via Stripe go directly to your bank. Weekly automatic payouts." },
+                  { q: "How do I get paid and how much do I keep?", a: "You keep 100% of your earnings during the trial period—we only deduct Stripe's payment processing fee (2.9% + $0.30 per transaction). Payments hit your bank account every week via direct deposit. No waiting around. No complicated calculations. You cook, customers order, money arrives." },
+                  { q: "What does Local Cooks handle for me?", a: "You focus on what you do best—cooking. We handle everything else. We manage customer orders, process payments securely, coordinate delivery logistics, provide ongoing platform support, and guide you through food safety regulations and certification requirements. We also partner you with verified commercial kitchens if you need them—hourly rentals, no long-term commitments. Think of us as your business operations team. You run the kitchen. We run the rest." },
+                  { q: "How long does approval take?", a: "Most approvals happen within 24 hours. We review your food handler certification, verify your kitchen access, and get you live fast—so you can start earning as soon as possible. Your dedicated onboarding specialist will guide you through the process step-by-step and answer any questions along the way." },
+                  { q: "Do I need a commercial kitchen?", a: "No. You can cook from your licensed home kitchen or rent one of our partner commercial kitchens by the hour. Choose what works for you—no long-term commitments, no hidden fees. We'll guide you through the certification requirements for your setup and help you understand local food safety regulations so you launch with confidence." },
+                  { q: "What happens during the trial?", a: "Your trial is your risk-free window to test the platform without any pressure. You keep 100% of your sales (minus Stripe's processing fee only—zero platform fees). No contracts. No commitments. No strings attached. Use this time to build your menu, connect with your first customers, understand how the platform works, and see if it's the right fit for your culinary business. If it's not, walk away anytime with no penalties." },
+                  { q: "Can I do this part-time?", a: "Yes. Set your own hours, take orders when you want, and pause your availability anytime. Local Cooks works around your schedule—whether you're doing this full-time or alongside other work. Many of our chefs use Local Cooks as a side income stream or test their menu before going full-time. It's completely flexible." },
+                  { q: "Can I leave anytime?", a: "Yes. No contracts. No penalties. No minimum commitment. Pause your profile, take a break, or delete it entirely—your choice, anytime. Your culinary business is yours to control." },
+                  { q: "Can I set my own menu and prices?", a: "Completely. You have full control over your menu, pricing, and availability. Add dishes, remove dishes, adjust prices, update descriptions—all on your terms. Change things anytime based on what your customers love, what's in season, or what you feel like cooking." },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-100 rounded-xl bg-white px-6 shadow-sm">
                     <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">
@@ -2106,34 +2201,110 @@ export default function ChefLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             FINAL CTA
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="relative py-24 md:py-32 px-4 overflow-hidden">
+        <section className="relative py-16 md:py-20 px-4 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-[#F51042] via-[#E8103A] to-[#D90935]" />
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-10 left-10 w-96 h-96 bg-white rounded-full blur-3xl" />
             <div className="absolute bottom-10 right-10 w-80 h-80 bg-white rounded-full blur-3xl" />
           </div>
           
-          <div className="container mx-auto max-w-3xl text-center relative z-10">
+          <div className="container mx-auto max-w-5xl text-center relative z-10">
             <FadeInSection>
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
-                Your Cooking Deserves
-                <br />
-                <span className="text-white/90">More Than This.</span>
-              </h2>
-              <p className="text-xl text-white/90 mb-10 max-w-xl mx-auto">
-                Stop juggling DMs. Stop chasing payments. Start building your culinary business the right way.
-              </p>
-              <Button
-                onClick={handleGetStarted}
-                size="lg"
-                className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-7 px-14 text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
+              {/* Section Title - Styled like other sections with animated underline */}
+              <motion.div 
+                className="mb-8 md:mb-10"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
               >
-                Apply as Chef
-                <ArrowRight className="ml-3 h-6 w-6" />
-              </Button>
-              <p className="text-white/70 mt-6 text-sm">
-                Approved in 24 hours • Keep 100% during trial • No contracts
-              </p>
+                <motion.h2
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.7, delay: 0.1 }}
+                  className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight"
+                >
+                  From Passion to Profit.
+                  <br />
+                  <span className="relative inline-block">
+                    <span className="text-white/95">On Your Terms.</span>
+                    <motion.svg 
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
+                      viewBox="0 0 300 12" 
+                      fill="none"
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      whileInView={{ pathLength: 1, opacity: 1 }}
+                      transition={{ duration: 1.2, delay: 0.6 }}
+                      viewport={{ once: true }}
+                    >
+                      <motion.path 
+                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
+                        stroke="rgba(255,255,255,0.8)"
+                        strokeWidth="3" 
+                        strokeLinecap="round"
+                        initial={{ pathLength: 0 }}
+                        whileInView={{ pathLength: 1 }}
+                        transition={{ duration: 1.2, delay: 0.6 }}
+                        viewport={{ once: true }}
+                      />
+                    </motion.svg>
+                  </span>
+                </motion.h2>
+              </motion.div>
+
+              {/* Subheading - Single line on desktop */}
+              <motion.p 
+                className="text-base md:text-lg lg:text-xl text-white/90 mb-5 md:mb-6 max-w-4xl mx-auto leading-tight font-medium md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+              >
+                You've spent years perfecting your craft. You deserve to keep the rewards.
+              </motion.p>
+
+              {/* Brand Statement - Single line on desktop */}
+              <motion.p 
+                className="text-sm md:text-base lg:text-lg text-white/85 mb-6 md:mb-8 max-w-5xl mx-auto leading-tight md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                LocalCooks is the platform built for passionate chefs—where your cooking becomes your income.
+              </motion.p>
+
+              {/* Three Truths Section - Centered */}
+              <motion.div 
+                className="mb-8"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+              >
+                <p className="text-xs md:text-sm text-white/75 mb-4 font-medium tracking-wider uppercase">
+                  We built LocalCooks around three simple truths:
+                </p>
+                <div className="flex justify-center items-center">
+                  <TypewriterText />
+                </div>
+              </motion.div>
+
+              {/* CTA Button */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
+                <Button
+                  onClick={handleGetStarted}
+                  size="lg"
+                  className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-12 text-lg md:text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
+                >
+                  Join LocalCooks
+                  <ArrowRight className="ml-3 h-5 w-5 md:h-6 md:w-6" />
+                </Button>
+                <p className="text-white/70 mt-5 text-xs md:text-sm">
+                  Approved in 24 hours • Keep 100% during trial • No contracts
+                </p>
+              </motion.div>
             </FadeInSection>
           </div>
         </section>
