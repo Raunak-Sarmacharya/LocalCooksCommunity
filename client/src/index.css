@@ -587,6 +587,22 @@ html {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* Typewriter cursor animation - from localcooks.ca */
+@keyframes typewriter-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typewriter-cursor {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background-color: currentColor;
+  margin-left: 4px;
+  animation: typewriter-cursor 0.8s ease-in-out infinite;
+  vertical-align: middle;
+}
+
 /* Form field enhancements */
 input:focus, select:focus, textarea:focus {
   border-color: hsl(var(--primary));

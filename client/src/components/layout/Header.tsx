@@ -266,20 +266,20 @@ export default function Header() {
             </li>
             <li>
               <a
-                href="#benefits"
+                href="#kitchen-access"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("benefits", e)}
+                onClick={(e) => scrollToSection("kitchen-access", e)}
               >
-                Benefits
+                Kitchen Access
               </a>
             </li>
             <li>
               <a
-                href="#about"
+                href="#faq"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("about", e)}
+                onClick={(e) => scrollToSection("faq", e)}
               >
-                About Us
+                FAQ
               </a>
             </li>
             {user && user.role !== 'admin' && (user as any).isChef && (
@@ -400,26 +400,26 @@ export default function Header() {
             </li>
             <li>
               <a
-                href="#benefits"
+                href="#kitchen-access"
                 className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
-                  scrollToSection("benefits", e);
+                  scrollToSection("kitchen-access", e);
                   closeMenu();
                 }}
               >
-                Benefits
+                Kitchen Access
               </a>
             </li>
             <li>
               <a
-                href="#about"
+                href="#faq"
                 className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
-                  scrollToSection("about", e);
+                  scrollToSection("faq", e);
                   closeMenu();
                 }}
               >
-                About Us
+                FAQ
               </a>
             </li>
             {user && (
