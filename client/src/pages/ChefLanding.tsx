@@ -2132,7 +2132,7 @@ export default function ChefLanding() {
                     </p>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button 
-                        onClick={() => window.location.href = 'mailto:partner@localcooks.ca?subject=Kitchen Partnership Inquiry'}
+                        onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership Inquiry'}
                         className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300 group"
                       >
                         Become a Partner
