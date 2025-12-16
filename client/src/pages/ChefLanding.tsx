@@ -488,51 +488,37 @@ function TestimonialCarouselSection() {
 
   const testimonials = [
     {
-      text: "LocalCooks gave me the freedom to focus on what I love—cooking. No more juggling DMs and payments. Everything is in one place, and I'm making real money doing what I'm passionate about.",
-      name: "Sarah Martinez",
-      role: "Specializes in authentic Mexican cuisine",
+      text: "Local Cooks has been a great partner for Sababa Cafe NL. Orders are handled smoothly, delivery is reliable, and the platform helps us share fresh, homemade Middle Eastern food with more customers across the city.",
+      name: "Dafna",
+      role: "Sababa Cafe NL",
       color: "#fc7545", // Light Pink/Orange
       textColor: "#2C2C2C",
     },
     {
-      text: "The kitchen access feature is a game-changer. I don't have a commercial kitchen, but I can book certified spaces by the hour. It's flexible, affordable, and perfect for scaling my business.",
-      name: "James Chen",
-      role: "Asian fusion chef",
+      text: "Local Cooks has been great at taking any suggestions to the site and implementing them as best they can. The delivery driver always shows up in a timely manner and my customers love to have the delivery option when they are not able to make it in to the market.",
+      name: "Emily",
+      role: "The Waffle Lady",
       color: "#3a61ae", // Royal Blue
       textColor: "#ffffff",
     },
     {
-      text: "I've tried other platforms, but LocalCooks actually cares about chefs. The support is real, the payments are fast, and I keep 100% during the trial. This is how it should be.",
-      name: "Maria Rodriguez",
-      role: "Mediterranean cuisine specialist",
+      text: "Many of our previous customers were unable to receive our sweets because we did not have a delivery system. The local cook delivery system has given us this opportunity at a low price. They don't just deliver, they also promote and support local chefs.",
+      name: "Kanij",
+      role: "Misti Mountain",
       color: "#30524e", // Dark Teal/Green
       textColor: "#ffffff",
     },
     {
-      text: "Starting part-time was the best decision. I can cook when I want, set my own prices, and build my brand. The community of chefs here is incredible—we support each other.",
-      name: "David Thompson",
-      role: "BBQ and comfort food expert",
+      text: "Local Cooks makes it easy for people in St. John’s to get our loaded fries and bold global flavours every Friday. Preorders and delivery run smoothly, and they actively promote Alu Bhaja so more customers can discover our food.",
+      name: "Fardin",
+      role: "Alu Bhaja",
       color: "#ff8c42", // Orange
-      textColor: "#2C2C2C",
-    },
-    {
-      text: "The approval process was so fast—approved in 24 hours! And the platform handles everything: orders, payments, delivery coordination. I just focus on creating amazing food.",
-      name: "Emily Park",
-      role: "Korean and Japanese fusion",
-      color: "#ffffff", // White
-      textColor: "#2C2C2C",
-    },
-    {
-      text: "I love that I own my customers. It's my profile, my story, my regulars. LocalCooks gives me the tools to build a real business, not just be another vendor on a marketplace.",
-      name: "Michael O'Brien",
-      role: "Irish and British comfort food",
-      color: "#fc7545", // Light Pink/Orange
       textColor: "#2C2C2C",
     },
   ];
 
   return (
-    <section id="benefits" className="py-20 md:py-32 px-4 bg-white relative overflow-visible">
+    <section id="testimonials" className="py-20 md:py-32 px-4 bg-white relative overflow-visible">
       <div className="container mx-auto max-w-7xl">
         <FadeInSection>
           <div className="text-center mb-12 md:mb-16">
@@ -1007,7 +993,7 @@ export default function ChefLanding() {
                   <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                     <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">Monetize Your Cooking. Keep 100% During Trial.</span>
+                    <span className="font-semibold text-xs tracking-wide relative z-10">Monetize Your Cooking</span>
                   </div>
                 </motion.div>
 

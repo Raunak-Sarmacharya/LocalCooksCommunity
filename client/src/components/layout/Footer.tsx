@@ -138,6 +138,14 @@ export default function Footer() {
                     </li>
                     <li>
                       <button
+                        onClick={() => handleAnchorClick('#testimonials')}
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2"
+                      >
+                        Testimonials
+                      </button>
+                    </li>
+                    <li>
+                      <button
                         onClick={() => handleAnchorClick('#faq')}
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2"
                       >
