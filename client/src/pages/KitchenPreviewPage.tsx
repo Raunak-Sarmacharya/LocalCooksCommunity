@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import useEmblaCarousel from 'embla-carousel-react';
+import kitchenTableIcon from "@assets/kitchen-table.png";
 
 interface PublicLocation {
   id: number;
@@ -57,7 +58,7 @@ function getMiniCalendarDays(year: number, month: number) {
   return days;
 }
 
-// Compact Kitchen Selection Card
+// Compact Kitchen Selection Card - Mobile Responsive
 function KitchenSelectionCard({ 
   kitchen, 
   isSelected, 
@@ -70,19 +71,20 @@ function KitchenSelectionCard({
   return (
     <motion.button
       onClick={onSelect}
-      whileHover={{ scale: 1.02 }}
+      whileHover={{ scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
       className={`
-        w-full text-left p-3 rounded-xl border-2 transition-all duration-200
+        w-full text-left p-2.5 sm:p-3 rounded-xl border-2 transition-all duration-200
+        touch-manipulation
         ${isSelected 
           ? 'border-[#F51042] bg-[#F51042]/5 shadow-md' 
-          : 'border-gray-200 hover:border-[#F51042]/50 hover:bg-gray-50 bg-white'
+          : 'border-gray-200 hover:border-[#F51042]/50 hover:bg-gray-50 bg-white active:bg-gray-50'
         }
       `}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 sm:gap-3">
         {/* Thumbnail */}
-        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
           {kitchen.imageUrl ? (
             <img 
               src={kitchen.imageUrl} 
@@ -91,23 +93,23 @@ function KitchenSelectionCard({
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-              <Utensils className="w-5 h-5 text-gray-400" />
+              <Utensils className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
             </div>
           )}
         </div>
         
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 text-sm truncate">{kitchen.name}</h3>
+          <h3 className="font-semibold text-gray-900 text-xs sm:text-sm truncate">{kitchen.name}</h3>
           {kitchen.description && (
-            <p className="text-xs text-gray-500 truncate mt-0.5">{kitchen.description}</p>
+            <p className="text-xs text-gray-500 truncate mt-0.5 line-clamp-1">{kitchen.description}</p>
           )}
         </div>
         
         {/* Selected indicator */}
         {isSelected && (
-          <div className="w-6 h-6 rounded-full bg-[#F51042] flex items-center justify-center flex-shrink-0">
-            <Check className="w-3.5 h-3.5 text-white" />
+          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#F51042] flex items-center justify-center flex-shrink-0">
+            <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
           </div>
         )}
       </div>
@@ -115,9 +117,14 @@ function KitchenSelectionCard({
   );
 }
 
-// Image Carousel Component
+// Image Carousel Component - Mobile Optimized
 function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName: string }) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
+  const [emblaRef, emblaApi] = useEmblaCarousel({ 
+    loop: true,
+    dragFree: false,
+    containScroll: 'trimSnaps',
+    slidesToScroll: 1
+  });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [canScrollPrev, setCanScrollPrev] = useState(false);
   const [canScrollNext, setCanScrollNext] = useState(false);
@@ -174,52 +181,55 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
         </div>
       </div>
 
-      {/* Navigation Arrows */}
+      {/* Navigation Arrows - Visible on mobile, hover on desktop */}
       {images.length > 1 && (
         <>
           <button
             onClick={scrollPrev}
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-30"
+            className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-white/95 hover:bg-white active:bg-white rounded-full shadow-lg flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity disabled:opacity-30 touch-manipulation z-10"
             disabled={!canScrollPrev}
+            aria-label="Previous image"
           >
-            <ChevronLeft className="w-5 h-5 text-gray-700" />
+            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
           </button>
           <button
             onClick={scrollNext}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 hover:bg-white rounded-full shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-30"
+            className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 bg-white/95 hover:bg-white active:bg-white rounded-full shadow-lg flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity disabled:opacity-30 touch-manipulation z-10"
             disabled={!canScrollNext}
+            aria-label="Next image"
           >
-            <ChevronRight className="w-5 h-5 text-gray-700" />
+            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
           </button>
         </>
       )}
 
-      {/* Dots Indicator */}
+      {/* Dots Indicator - Larger and more touch-friendly on mobile */}
       {images.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
+        <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 sm:gap-2 z-10">
           {images.map((_, index) => (
             <button
               key={index}
               onClick={() => emblaApi?.scrollTo(index)}
-              className={`w-2 h-2 rounded-full transition-all ${
+              className={`rounded-full transition-all touch-manipulation ${
                 index === selectedIndex 
-                  ? 'bg-white w-6' 
-                  : 'bg-white/50 hover:bg-white/75'
+                  ? 'bg-white w-6 sm:w-6 h-2 sm:h-2' 
+                  : 'bg-white/50 hover:bg-white/75 w-2 h-2 sm:w-2 sm:h-2'
               }`}
+              aria-label={`Go to image ${index + 1}`}
             />
           ))}
         </div>
       )}
 
       {/* Image Counter */}
-      <div className="absolute top-4 right-4 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full">
+      <div className="absolute top-3 sm:top-4 right-3 sm:right-4 bg-black/60 text-white text-xs px-2 sm:px-2.5 py-1 rounded-full z-10">
         {selectedIndex + 1} / {images.length}
       </div>
     </div>
   );
 }
 
-// Mini Calendar Component - Non-interactive preview with clear visibility
+// Mini Calendar Component - Mobile Responsive
 function MiniCalendarPreview() {
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -233,25 +243,25 @@ function MiniCalendarPreview() {
   return (
     <div className="relative">
       {/* Calendar Content - Fully visible */}
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         {/* Month/Year Header */}
-        <div className="text-center mb-4">
-          <h3 className="text-base font-bold text-gray-800">
+        <div className="text-center mb-3 sm:mb-4">
+          <h3 className="text-sm sm:text-base font-bold text-gray-800">
             {monthNames[currentMonth]} {currentYear}
           </h3>
         </div>
         
         {/* Day Headers */}
-        <div className="grid grid-cols-7 gap-1 mb-2">
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1.5 sm:mb-2">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
-            <div key={i} className="text-[10px] text-gray-500 font-semibold text-center py-1">
+            <div key={i} className="text-[9px] sm:text-[10px] text-gray-500 font-semibold text-center py-1">
               {d}
             </div>
           ))}
         </div>
         
         {/* Calendar Days */}
-        <div className="grid grid-cols-7 gap-1">
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
           {days.map((day, index) => {
             if (day === null) {
               return <div key={index} className="aspect-square" />;
@@ -264,7 +274,7 @@ function MiniCalendarPreview() {
               <div 
                 key={index}
                 className={`
-                  aspect-square flex items-center justify-center rounded-md text-xs font-medium
+                  aspect-square flex items-center justify-center rounded-md text-[10px] sm:text-xs font-medium
                   transition-colors
                   ${isPast ? 'text-gray-300 bg-gray-50' : 'text-gray-700 bg-white'}
                   ${isToday 
@@ -282,19 +292,19 @@ function MiniCalendarPreview() {
 
       {/* Overlay - Semi-transparent to show calendar underneath */}
       <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-b-lg">
-        <div className="text-center px-4 py-3 bg-white/90 rounded-xl shadow-lg border border-gray-100">
-          <div className="w-10 h-10 mx-auto mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
-            <Lock className="w-5 h-5 text-[#F51042]" />
+        <div className="text-center px-3 sm:px-4 py-2.5 sm:py-3 bg-white/90 rounded-xl shadow-lg border border-gray-100 mx-2">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1.5 sm:mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
+            <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-[#F51042]" />
           </div>
-          <p className="text-sm font-semibold text-gray-800">Sign in to book</p>
-          <p className="text-xs text-gray-500 mt-1">View availability & reserve</p>
+          <p className="text-xs sm:text-sm font-semibold text-gray-800">Sign in to book</p>
+          <p className="text-[10px] sm:text-xs text-gray-500 mt-1">View availability & reserve</p>
         </div>
       </div>
     </div>
   );
 }
 
-// Kitchen Details Section
+// Kitchen Details Section - Mobile Responsive
 function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
   // Combine main image with gallery images for carousel
   const allImages: string[] = [];
@@ -309,38 +319,38 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.3 }}
-      className="space-y-6"
+      className="space-y-4 sm:space-y-6"
     >
       {/* Image Carousel */}
       <ImageCarousel images={allImages} kitchenName={kitchen.name} />
 
       {/* Kitchen Info Card */}
       <Card className="border-gray-200 overflow-hidden">
-        <CardContent className="p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{kitchen.name}</h2>
+        <CardContent className="p-4 sm:p-6">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-3">{kitchen.name}</h2>
           
           {kitchen.description ? (
-            <p className="text-gray-600 leading-relaxed mb-6">{kitchen.description}</p>
+            <p className="text-sm sm:text-base text-gray-600 leading-relaxed mb-4 sm:mb-6">{kitchen.description}</p>
           ) : (
-            <p className="text-gray-400 italic mb-6">
+            <p className="text-sm sm:text-base text-gray-400 italic mb-4 sm:mb-6">
               Kitchen details will be available soon. Contact us for more information.
             </p>
           )}
 
           {/* Amenities */}
           {kitchen.amenities && Array.isArray(kitchen.amenities) && kitchen.amenities.length > 0 && (
-            <div className="border-t border-gray-100 pt-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+            <div className="border-t border-gray-100 pt-4 sm:pt-5">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
                 Kitchen Amenities
               </h3>
               <div className="flex flex-wrap gap-2">
                 {kitchen.amenities.map((amenity, index) => (
                   <span 
                     key={index}
-                    className="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gray-100 text-gray-700"
+                    className="inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm bg-gray-100 text-gray-700"
                   >
-                    <Check className="w-3.5 h-3.5 text-green-500 mr-1.5" />
-                    {amenity}
+                    <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-green-500 mr-1 sm:mr-1.5 flex-shrink-0" />
+                    <span className="whitespace-nowrap">{amenity}</span>
                   </span>
                 ))}
               </div>
@@ -385,10 +395,10 @@ export default function KitchenPreviewPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center">
-          <Loader2 className="h-10 w-10 animate-spin text-[#F51042] mx-auto mb-3" />
-          <p className="text-gray-600">Loading kitchens...</p>
+          <Loader2 className="h-8 w-8 sm:h-10 sm:w-10 animate-spin text-[#F51042] mx-auto mb-3" />
+          <p className="text-sm sm:text-base text-gray-600">Loading kitchens...</p>
         </div>
       </div>
     );
@@ -398,12 +408,15 @@ export default function KitchenPreviewPage() {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
-          <div className="text-center max-w-md mx-auto px-4">
-            <ImageOff className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Location Not Found</h1>
-            <p className="text-gray-600 mb-6">This kitchen location doesn't exist or has been removed.</p>
-            <Button onClick={() => navigate('/')} className="bg-[#F51042] hover:bg-[#D90E3A]">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-8">
+          <div className="text-center max-w-md mx-auto w-full">
+            <ImageOff className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Location Not Found</h1>
+            <p className="text-sm sm:text-base text-gray-600 mb-6">This kitchen location doesn't exist or has been removed.</p>
+            <Button 
+              onClick={() => navigate('/')} 
+              className="bg-[#F51042] hover:bg-[#D90E3A] w-full sm:w-auto"
+            >
               Back to Home
             </Button>
           </div>
@@ -419,53 +432,54 @@ export default function KitchenPreviewPage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
       
-      <main className="flex-1 pt-20 pb-12">
-        {/* Location Header - Compact */}
-        <div className="bg-white border-b border-gray-200 py-5">
-          <div className="container mx-auto px-4 max-w-7xl">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
+      <main className="flex-1 pt-16 sm:pt-20 pb-8 sm:pb-12">
+        {/* Location Header - Responsive */}
+        <div className="bg-white border-b border-gray-200 py-4 sm:py-5">
+          <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                 {location.logoUrl ? (
                   <img 
                     src={location.logoUrl} 
                     alt={location.name}
-                    className="h-12 w-auto rounded-lg"
+                    className="h-10 w-auto sm:h-12 rounded-lg flex-shrink-0"
                   />
                 ) : (
-                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center">
-                    <Building2 className="h-6 w-6 text-white" />
+                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center flex-shrink-0">
+                    <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                   </div>
                 )}
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">{location.name}</h1>
-                  <div className="flex items-center gap-1.5 text-gray-500 text-sm">
-                    <MapPin className="h-3.5 w-3.5" />
-                    <span>{location.address}</span>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{location.name}</h1>
+                  <div className="flex items-center gap-1.5 text-gray-500 text-xs sm:text-sm">
+                    <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                    <span className="truncate">{location.address}</span>
                   </div>
                 </div>
               </div>
               
               <Button 
                 onClick={handleGetStarted}
-                className="bg-[#F51042] hover:bg-[#D90E3A] text-white"
+                className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
+                size="sm"
               >
                 Sign In to Book
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </div>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="container mx-auto px-4 max-w-7xl py-8">
-          <div className="grid lg:grid-cols-12 gap-8">
+        <div className="container mx-auto px-4 sm:px-6 max-w-7xl py-6 sm:py-8">
+          <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 sm:gap-8">
             {/* Left Sidebar - Kitchen Selection */}
-            <div className="lg:col-span-3 space-y-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <h2 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">
+            <div className="lg:col-span-3 space-y-4 order-2 lg:order-1">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+                <h2 className="text-xs sm:text-sm font-semibold text-gray-900 mb-3 sm:mb-4 uppercase tracking-wide">
                   Select a Kitchen
                 </h2>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:space-y-2.5">
                   {kitchens.map((kitchen) => (
                     <KitchenSelectionCard
                       key={kitchen.id}
@@ -488,8 +502,8 @@ export default function KitchenPreviewPage() {
               <Card className="overflow-hidden border-gray-200">
                 <div className="bg-gradient-to-r from-[#F51042] to-[#FF6B7A] p-3 text-white">
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span className="font-semibold text-sm">Availability</span>
+                    <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="font-semibold text-xs sm:text-sm">Availability</span>
                   </div>
                 </div>
                 <CardContent className="p-0">
@@ -499,23 +513,27 @@ export default function KitchenPreviewPage() {
 
               {/* CTA Card */}
               <Card className="border-gray-200 overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="h-4 w-4 text-[#F51042]" />
-                    <span className="font-semibold text-gray-900 text-sm">Ready to Cook?</span>
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                    <img 
+                      src={kitchenTableIcon} 
+                      alt="Kitchen"
+                      className="h-4 w-auto sm:h-5 flex-shrink-0"
+                    />
+                    <span className="font-semibold text-gray-900 text-xs sm:text-sm leading-tight">Start Cooking at {location.name}</span>
                   </div>
-                  <p className="text-xs text-gray-600 mb-3">
-                    Create a free account to view availability and book.
+                  <p className="text-xs text-gray-600 mb-3 sm:mb-4 leading-relaxed">
+                    Join LocalCooks and get instant access to professional kitchen spaces. Book your slot today and bring your culinary vision to life.
                   </p>
                   <Button 
                     onClick={handleGetStarted}
-                    className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-sm"
+                    className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
                     size="sm"
                   >
-                    Get Started Free
+                    Create Free Account
                     <ArrowRight className="ml-2 h-3.5 w-3.5" />
                   </Button>
-                  <p className="text-center text-xs text-gray-500 mt-2">
+                  <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
                     Already have an account?{' '}
                     <button 
                       onClick={() => navigate('/auth')} 
@@ -529,7 +547,7 @@ export default function KitchenPreviewPage() {
             </div>
 
             {/* Main Content - Selected Kitchen Details */}
-            <div className="lg:col-span-9">
+            <div className="lg:col-span-9 order-1 lg:order-2">
               <AnimatePresence mode="wait">
                 {selectedKitchen ? (
                   <KitchenDetailsSection key={selectedKitchen.id} kitchen={selectedKitchen} />
@@ -537,47 +555,15 @@ export default function KitchenPreviewPage() {
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="flex items-center justify-center h-96 bg-white rounded-xl border border-gray-200"
+                    className="flex items-center justify-center h-64 sm:h-96 bg-white rounded-xl border border-gray-200"
                   >
-                    <div className="text-center">
-                      <Utensils className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">Select a kitchen to view details</p>
+                    <div className="text-center px-4">
+                      <Utensils className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-sm sm:text-base text-gray-500">Select a kitchen to view details</p>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom CTA Banner */}
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 mt-12">
-          <div className="container mx-auto px-4 max-w-7xl py-10">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="text-center md:text-left">
-                <h3 className="text-xl font-bold text-white mb-1">
-                  Start Cooking at {location.name}
-                </h3>
-                <p className="text-gray-400 text-sm">
-                  Join LocalCooks and get access to professional kitchen spaces
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <Button 
-                  onClick={handleGetStarted}
-                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold"
-                >
-                  Create Free Account
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-                <Button 
-                  onClick={() => navigate('/auth')}
-                  variant="outline"
-                  className="border-gray-600 text-white hover:bg-gray-700"
-                >
-                  Log In
-                </Button>
-              </div>
             </div>
           </div>
         </div>
