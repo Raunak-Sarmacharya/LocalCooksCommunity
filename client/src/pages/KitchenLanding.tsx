@@ -541,12 +541,12 @@ export default function KitchenLanding() {
               </div>
 
               {/* Right Image Column - Kitchen with Floating Benefit Cards */}
-              <div className="order-1 lg:order-2 relative overflow-visible flex justify-center lg:block">
+              <div className="order-1 lg:order-2 relative overflow-visible">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9, x: 50 }}
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-                  className="relative overflow-visible w-full max-w-sm sm:max-w-md lg:max-w-none"
+                  className="relative overflow-visible"
                 >
                   {/* Decorative background shapes */}
                   <div className="absolute -inset-4 bg-gradient-to-br from-rose-100/30 via-rose-50/40 to-rose-100/10 rounded-[2.5rem] transform rotate-3" />
