@@ -12,8 +12,14 @@ import {
 import { useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
-import useEmblaCarousel from "embla-carousel-react";
 import emptyKitchenImage from "@assets/emptykitchen.png";
+import DashboardIcon from "../../../attached_assets/Dashboard.svg";
+import BookingIcon from "../../../attached_assets/Booking_k.svg";
+import EarnIcon from "../../../attached_assets/Earn_K.svg";
+import HoursEquipmentIcon from "../../../attached_assets/HoursEquipment_K.svg";
+import RulesIcon from "../../../attached_assets/Rules_K.svg";
+import VerifiedIcon from "../../../attached_assets/Verified_K.svg";
+import WeeklyDepositIcon from "../../../attached_assets/WeekyDeposit_K.svg";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KITCHEN LANDING PAGE - Award-Winning Design for Kitchen Owners
@@ -173,44 +179,44 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
 
-      {/* Mobile Layout */}
+      {/* Mobile Layout - lighter, edge-positioned icons to avoid overlap */}
       <div className="sm:hidden">
         <FloatingIcon
           Icon={DollarSign}
-          position={{ x: 5, y: 8 }}
-          size={36}
+          position={{ x: 6, y: 4 }}
+          size={42}
           depth={1}
           rotation={-10}
-          parallaxY={50}
+          parallaxY={45}
           color="#10B981"
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
           Icon={TrendingUp}
-          position={{ x: 82, y: 12 }}
-          size={32}
+          position={{ x: 86, y: 18 }}
+          size={38}
           depth={1}
-          rotation={7}
-          parallaxY={45}
+          rotation={6}
+          parallaxY={40}
           color="#0D9488"
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
           Icon={Calendar}
-          position={{ x: 3, y: 50 }}
-          size={28}
+          position={{ x: 4, y: 72 }}
+          size={38}
           depth={2}
-          rotation={5}
+          rotation={4}
           parallaxY={35}
           color="#F59E0B"
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
           Icon={Package}
-          position={{ x: 85, y: 55 }}
-          size={26}
+          position={{ x: 88, y: 64 }}
+          size={34}
           depth={2}
-          rotation={-6}
+          rotation={-5}
           parallaxY={30}
           color="#8B5CF6"
           scrollYProgress={scrollYProgress}
@@ -219,183 +225,6 @@ function ScrollLinkedRevenueIcons() {
     </div>
   );
 }
-
-
-// Testimonial Carousel for Kitchen Owners
-function KitchenTestimonialCarousel() {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ 
-    loop: true, 
-    align: "start",
-    duration: 25,
-    dragFree: false,
-    containScroll: "trimSnaps"
-  });
-
-  useEffect(() => {
-    if (!emblaApi) return;
-    const scrollInterval = setInterval(() => {
-      if (emblaApi.canScrollNext()) {
-        emblaApi.scrollNext();
-      } else {
-        emblaApi.scrollTo(0);
-      }
-    }, 4000);
-    return () => clearInterval(scrollInterval);
-  }, [emblaApi]);
-
-  const testimonials = [
-    {
-      text: "Our community kitchen was sitting empty most afternoons. Within weeks of listing on LocalCooks, we're generating $600/month in passive income. The platform handles everything—we just approve bookings.",
-      name: "Sarah M.",
-      role: "Community Kitchen Director",
-      color: "#0D9488",
-      textColor: "#ffffff",
-    },
-    {
-      text: "I was skeptical about renting to unknown chefs. The verification process gave me complete peace of mind. 50+ bookings later, zero issues. This is the easiest income we've ever made.",
-      name: "James K.",
-      role: "Church Kitchen Manager",
-      color: "#7C5295",
-      textColor: "#ffffff",
-    },
-    {
-      text: "Before LocalCooks: 30% kitchen utilization. After: 85%. The automated booking system means I spend maybe 5 minutes per rental. It's truly passive income.",
-      name: "Maria A.",
-      role: "Restaurant Owner",
-      color: "#F59E0B",
-      textColor: "#2C2C2C",
-    },
-    {
-      text: "Our freezer space was costing us money sitting empty. Now it generates $400/month. Equipment rentals add another $200. Why didn't I do this sooner?",
-      name: "David L.",
-      role: "Catering Company Owner",
-      color: "#3B82F6",
-      textColor: "#ffffff",
-    },
-  ];
-
-  return (
-    <section className="py-20 md:py-32 px-4 bg-white relative overflow-visible">
-      <div className="container mx-auto max-w-7xl">
-        <FadeInSection>
-          <div className="text-center mb-12 md:mb-16">
-            <motion.h2
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7, delay: 0.1 }}
-              className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight"
-            >
-              Kitchen Owners{" "}
-              <span className="relative inline-block">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500">
-                  Love the Results
-                </span>
-                <motion.svg 
-                  className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                  viewBox="0 0 200 12" 
-                  fill="none"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  whileInView={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 1.2, delay: 0.6 }}
-                  viewport={{ once: true }}
-                >
-                  <motion.path 
-                    d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8" 
-                    stroke="#10B981"
-                    strokeWidth="3" 
-                    strokeLinecap="round"
-                    initial={{ pathLength: 0 }}
-                    whileInView={{ pathLength: 1 }}
-                    transition={{ duration: 1.2, delay: 0.6 }}
-                    viewport={{ once: true }}
-                  />
-                </motion.svg>
-              </span>
-            </motion.h2>
-          </div>
-        </FadeInSection>
-
-        <div className="relative px-4 sm:px-6 md:px-8 lg:px-12 py-8 sm:py-10 md:py-12">
-          <div className="overflow-hidden" ref={emblaRef} style={{ willChange: 'transform' }}>
-            <div className="flex">
-              {testimonials.map((testimonial, index) => (
-                <div
-                  key={index}
-                  className="flex-[0_0_100%] sm:flex-[0_0_50%] lg:flex-[0_0_33.333%] min-w-0 px-2 sm:px-2.5 md:px-3"
-                >
-                  <div className="h-full py-4 sm:py-5 md:py-6">
-                    <div
-                      className="relative rounded-2xl p-4 sm:p-5 md:p-6 h-full shadow-xl transition-transform duration-300 ease-in-out hover:scale-[1.02]"
-                      style={{
-                        backgroundColor: testimonial.color,
-                        transform: `rotate(${index % 2 === 0 ? '-1.5deg' : '1.5deg'}) translateZ(0)`,
-                        zIndex: 10 - (index % 3),
-                      }}
-                    >
-                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3 md:top-4 md:left-4">
-                        <span 
-                          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif leading-none"
-                          style={{ 
-                            color: testimonial.textColor === "#ffffff"
-                              ? "rgba(255, 255, 255, 0.3)"
-                              : "rgba(255, 255, 255, 0.4)",
-                            fontFamily: "'Georgia', 'Times New Roman', serif",
-                            lineHeight: "1",
-                          }}
-                        >
-                          &ldquo;
-                        </span>
-                      </div>
-
-                      <div className="relative z-10 pt-6 sm:pt-8 md:pt-10 lg:pt-12">
-                        <p
-                          className="text-sm sm:text-base md:text-base lg:text-lg font-sans leading-relaxed mb-3 sm:mb-4 md:mb-5"
-                          style={{ color: testimonial.textColor }}
-                        >
-                          {testimonial.text}
-                        </p>
-
-                        <div
-                          className="h-px mb-2 sm:mb-3 md:mb-4"
-                          style={{
-                            backgroundColor: testimonial.textColor === "#ffffff" 
-                              ? "rgba(255, 255, 255, 0.3)" 
-                              : "rgba(44, 44, 44, 0.2)",
-                          }}
-                        />
-
-                        <div>
-                          <p
-                            className="font-bold text-xs sm:text-sm md:text-base lg:text-lg mb-0.5 sm:mb-1"
-                            style={{ color: testimonial.textColor }}
-                          >
-                            {testimonial.name}
-                          </p>
-                          <p
-                            className="text-xs sm:text-sm md:text-base"
-                            style={{
-                              color: testimonial.textColor === "#ffffff" 
-                                ? "rgba(255, 255, 255, 0.8)" 
-                                : "rgba(44, 44, 44, 0.7)",
-                            }}
-                          >
-                            {testimonial.role}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // Typewriter component for kitchen types
 function KitchenTypewriter() {
   const words = ["Revenue", "Freedom", "Impact"];
@@ -506,6 +335,13 @@ function KitchenTypewriter() {
 export default function KitchenLanding() {
   const [, setLocation] = useLocation();
 
+  const revenueSectionRef = useRef<HTMLDivElement | null>(null);
+  const { scrollYProgress: revenueScrollY } = useScroll({
+    target: revenueSectionRef,
+    offset: ["start end", "end start"],
+  });
+  const dashboardParallaxY = useTransform(revenueScrollY, [0, 1], [30, -20]);
+
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
@@ -535,7 +371,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             HERO SECTION - Premium Split-Screen Design for Kitchen Owners
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="relative min-h-screen flex items-center overflow-hidden">
+        <section id="overview" className="relative min-h-screen flex items-center overflow-hidden">
           {/* Sophisticated Background */}
           <div className="absolute inset-0">
             <div className="absolute inset-0 bg-gradient-to-br from-[#F0FDF9] via-[#F5FFFC] to-white" />
@@ -567,7 +403,7 @@ export default function KitchenLanding() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mb-6 block lg:hidden"
             >
-              <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-4 py-2 rounded-full border border-emerald-500/30">
+              <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full border border-[#F51042]/30">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                 <HandCoins className="h-3.5 w-3.5 relative z-10" />
                 <span className="font-semibold text-xs tracking-wide relative z-10">Turn Idle Hours Into Income</span>
@@ -585,7 +421,7 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.6, delay: 0.2 }}
                   className="mb-8 hidden lg:block"
                 >
-                  <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-4 py-2 rounded-full shadow-xl shadow-emerald-500/40 border border-emerald-500/30">
+                  <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
                     <HandCoins className="h-3.5 w-3.5 relative z-10" />
                     <span className="font-semibold text-xs tracking-wide relative z-10">Turn Idle Hours Into Income</span>
@@ -598,7 +434,7 @@ export default function KitchenLanding() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.7, delay: 0.3 }}
                 >
-                  <h1 className="font-logo text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-emerald-600 leading-none mb-4 md:mb-5 tracking-tight">
+                  <h1 className="font-logo text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[#F51042] leading-none mb-4 md:mb-5 tracking-tight">
                     LocalCooks
                   </h1>
                   <p className="font-mono text-[10px] md:text-[11px] text-[#4A6A5F] uppercase tracking-[0.4em] mb-8">
@@ -617,7 +453,7 @@ export default function KitchenLanding() {
                     Stop Leaving Money
                     <br />
                     <span className="relative inline-block">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500">
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
                         On the Table.
                       </span>
                       <motion.svg 
@@ -630,7 +466,7 @@ export default function KitchenLanding() {
                       >
                         <motion.path 
                           d="M2 8C40 3 80 3 125 6C170 9 210 5 248 8" 
-                          stroke="#10B981" 
+                          stroke="#F51042" 
                           strokeWidth="3" 
                           strokeLinecap="round"
                           initial={{ pathLength: 0 }}
@@ -646,7 +482,7 @@ export default function KitchenLanding() {
                     </span>
                     <span className="block">
                       Rent your underutilized hours, storage, and equipment to verified local chefs. 
-                      Generate $300–$1,000/month passively while supporting the growing local food community.
+                      Generate $500+ /month passively while supporting the growing local food community.
                     </span>
                   </p>
                 </motion.div>
@@ -661,7 +497,7 @@ export default function KitchenLanding() {
                   <Button
                     onClick={handleListKitchen}
                     size="lg"
-                    className="group relative bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-teal-500 hover:to-emerald-600 text-white font-bold py-4 px-4 md:py-7 md:px-12 text-xs md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-emerald-500/30 hover:-translate-y-1 overflow-hidden flex-1"
+                    className="group relative bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white font-bold py-4 px-4 md:py-7 md:px-12 text-xs md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/40 hover:-translate-y-1 overflow-hidden flex-1"
                   >
                     <span className="relative z-10 flex items-center justify-center">
                       List Your Kitchen Now
@@ -671,7 +507,7 @@ export default function KitchenLanding() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 font-semibold py-4 px-4 md:py-7 md:px-10 text-xs md:text-lg rounded-full transition-all duration-300 flex-1"
+                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-rose-50 font-semibold py-4 px-4 md:py-7 md:px-10 text-xs md:text-lg rounded-full transition-all duration-300 flex-1"
                     onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
                   >
                     See How It Works
@@ -697,7 +533,7 @@ export default function KitchenLanding() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.4, delay: 1 + (i * 0.1) }}
                     >
-                      <item.icon className="h-3 w-3 md:h-4 md:w-4 text-emerald-500 flex-shrink-0" />
+                      <item.icon className="h-3 w-3 md:h-4 md:w-4 text-[#F51042] flex-shrink-0" />
                       <span className="leading-tight">{item.text}</span>
                     </motion.span>
                   ))}
@@ -713,11 +549,11 @@ export default function KitchenLanding() {
                   className="relative overflow-visible"
                 >
                   {/* Decorative background shapes */}
-                  <div className="absolute -inset-4 bg-gradient-to-br from-emerald-500/10 via-teal-100/50 to-emerald-200/20 rounded-[2.5rem] transform rotate-3" />
-                  <div className="absolute -inset-4 bg-gradient-to-tr from-teal-100/80 to-white/60 rounded-[2.5rem] transform -rotate-2" />
+                  <div className="absolute -inset-4 bg-gradient-to-br from-rose-100/30 via-rose-50/40 to-rose-100/10 rounded-[2.5rem] transform rotate-3" />
+                  <div className="absolute -inset-4 bg-gradient-to-tr from-rose-50/90 to-white/70 rounded-[2.5rem] transform -rotate-2" />
                   
                   {/* Main Image Container */}
-                  <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-emerald-500/10 w-full">
+                  <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-rose-400/20 w-full">
                     <div className="relative rounded-[2rem] overflow-hidden w-full">
                       <img 
                         src={emptyKitchenImage} 
@@ -742,18 +578,18 @@ export default function KitchenLanding() {
                           <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">0% Platform Fee</p>
                           <div className="flex items-center gap-2 lg:gap-4">
                             <div className="flex items-center gap-0.5 lg:gap-1">
-                              <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-emerald-500"></div>
+                              <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-[#F51042]"></div>
                               <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">100% yours</span>
                             </div>
                             <div className="flex items-center gap-0.5 lg:gap-1">
-                              <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-emerald-500"></div>
+                              <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-[#F51042]"></div>
                               <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">Zero risk</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-right pl-2 lg:pl-4 border-l border-slate-200">
                           <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">You Keep</p>
-                          <p className="text-lg lg:text-xl font-bold text-emerald-600 leading-tight">100%</p>
+                          <p className="text-lg lg:text-xl font-bold text-[#F51042] leading-tight">100%</p>
                         </div>
                       </div>
                     </motion.div>
@@ -770,12 +606,16 @@ export default function KitchenLanding() {
                     style={{ transform: 'translateY(-20%)' }}
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2.5">
-                      <div className="w-6 h-6 lg:w-9 lg:h-9 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/30 flex-shrink-0">
-                        <DollarSign className="h-3.5 w-3.5 lg:h-5 lg:w-5 text-white" />
+                      <div className="w-8 h-8 lg:w-11 lg:h-11 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-[#F51042]/30 flex-shrink-0">
+                        <img
+                          src={EarnIcon}
+                          alt="Earn while you're away"
+                          className="h-6 w-6 lg:h-8 lg:w-8 object-contain"
+                        />
                       </div>
                       <div>
-                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Earn While You Sleep</p>
-                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">$300–$1,000/month</p>
+                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Earn While You're Away</p>
+                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">$500+ per month</p>
                       </div>
                     </div>
                   </motion.div>
@@ -789,8 +629,12 @@ export default function KitchenLanding() {
                     style={{ transform: 'translateY(-30%)' }}
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-violet-500 to-purple-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Calendar className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-violet-500 to-purple-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <img
+                          src={BookingIcon}
+                          alt="Automated booking system"
+                          className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
+                        />
                       </div>
                       <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Automated booking system</span>
                     </div>
@@ -804,8 +648,12 @@ export default function KitchenLanding() {
                     className="absolute top-[32%] -right-3 lg:top-[28%] lg:-right-12 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <BadgeCheck className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <img
+                          src={VerifiedIcon}
+                          alt="Verified chefs"
+                          className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
+                        />
                       </div>
                       <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Every renter verified & insured</span>
                     </div>
@@ -819,8 +667,12 @@ export default function KitchenLanding() {
                     className="absolute top-[40%] -left-3 lg:top-[38%] lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-amber-500 to-orange-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Wallet className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <img
+                          src={WeeklyDepositIcon}
+                          alt="Weekly direct deposits"
+                          className="h-5 w-5 lg:h-6 lg:w-6 object-contain"
+                        />
                       </div>
                       <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Weekly direct deposits</span>
                     </div>
@@ -834,8 +686,12 @@ export default function KitchenLanding() {
                     className="absolute top-[58%] -right-3 lg:top-[55%] lg:-right-8 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-rose-500 to-pink-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Settings className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-rose-500 to-pink-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <img
+                          src={RulesIcon}
+                          alt="Your rules and schedule"
+                          className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
+                        />
                       </div>
                       <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Your rules, your rates, your schedule</span>
                     </div>
@@ -849,8 +705,12 @@ export default function KitchenLanding() {
                     className="absolute top-[65%] -left-3 lg:top-[62%] lg:-left-6 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <TrendingUp className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <img
+                          src={HoursEquipmentIcon}
+                          alt="Hours, storage, and equipment"
+                          className="h-5 w-5 lg:h-6 lg:w-6 object-contain"
+                        />
                       </div>
                       <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Hours + Storage + Equipment</span>
                     </div>
@@ -861,34 +721,16 @@ export default function KitchenLanding() {
           </div>
         </section>
 
-        {/* ══════ WAVE DIVIDER ══════ */}
-        <div className="relative w-full overflow-hidden" style={{ height: '80px', marginTop: '-1px' }}>
-          <svg 
-            viewBox="0 0 1440 320" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg" 
-            className="absolute top-0 w-full"
-            style={{ height: '80px', minWidth: '100%' }}
-            preserveAspectRatio="none"
-          >
-            <path 
-              fill="#10B981" 
-              fillOpacity="0.08" 
-              d="M0,96L48,106.7C96,117,192,139,288,149.3C384,160,480,160,576,138.7C672,117,768,75,864,64C960,53,1056,75,1152,96C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-            />
-          </svg>
-        </div>
-
         {/* ═══════════════════════════════════════════════════════════════════════
             THE PROBLEM - Lost Revenue Section with Floating Icons
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="relative py-20 md:py-28 px-4 bg-gradient-to-b from-emerald-50/50 via-white to-white overflow-hidden">
+        <section id="lost-revenue" className="relative py-20 md:py-28 px-4 bg-gradient-to-b from-rose-50/40 via-white to-white overflow-hidden">
           <ScrollLinkedRevenueIcons />
           
           <div className="container mx-auto max-w-4xl relative z-10">
             <FadeInSection>
               <div className="text-center">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-emerald-600 mb-4 px-4 py-2 bg-emerald-100 rounded-full">
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
                   The Opportunity You're Missing
                 </span>
                 
@@ -897,7 +739,7 @@ export default function KitchenLanding() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-6"
+                  className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-6"
                 >
                   Every empty hour is{" "}
                   <span className="relative inline-block">
@@ -935,11 +777,20 @@ export default function KitchenLanding() {
                   className="max-w-2xl mx-auto"
                 >
                   <p className="text-lg md:text-xl text-[#6B6B6B] leading-relaxed mb-8">
-                    That cold storage sitting quiet overnight? <span className="font-semibold text-[#2C2C2C]">Lost revenue.</span>
+                    That cold storage sitting quiet overnight?{" "}
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
+                      Lost revenue.
+                    </span>
                     <br />
-                    Equipment collecting dust? <span className="font-semibold text-[#2C2C2C]">Depreciating assets.</span>
+                    Equipment collecting dust?{" "}
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
+                      Depreciating assets.
+                    </span>
                     <br />
-                    Empty afternoon shifts? <span className="font-semibold text-[#2C2C2C]">Missed income.</span>
+                    Empty afternoon shifts?{" "}
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
+                      Missed income.
+                    </span>
                   </p>
                   
                   {/* Stats Grid */}
@@ -957,7 +808,7 @@ export default function KitchenLanding() {
                         transition={{ duration: 0.5, delay: 0.4 + (i * 0.1) }}
                         className="text-center"
                       >
-                        <p className="text-3xl md:text-4xl lg:text-5xl font-black text-emerald-600 mb-2">{item.stat}</p>
+                        <p className="text-3xl md:text-4xl lg:text-5xl font-black text-[#F51042] mb-2">{item.stat}</p>
                         <p className="text-xs md:text-sm font-semibold text-[#2C2C2C] mb-1">{item.label}</p>
                         <p className="text-[10px] md:text-xs text-[#6B6B6B]">{item.subtext}</p>
                       </motion.div>
@@ -972,82 +823,109 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             REVENUE STREAMS - Premium Bento Grid Design
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="revenue-streams" className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden">
+        <section
+          id="revenue-streams"
+          ref={revenueSectionRef}
+          className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden"
+        >
           {/* Subtle background decoration */}
           <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/4 right-0 w-[600px] h-[600px] bg-gradient-radial from-emerald-100/40 to-transparent rounded-full blur-3xl" />
+            <div className="absolute top-1/4 right-0 w-[600px] h-[600px] bg-gradient-radial from-rose-100/50 to-transparent rounded-full blur-3xl" />
             <div className="absolute bottom-1/4 left-0 w-[500px] h-[500px] bg-gradient-radial from-teal-100/30 to-transparent rounded-full blur-3xl" />
           </div>
           
           <div className="container mx-auto max-w-6xl relative z-10">
             {/* Section Header */}
             <FadeInSection>
-              <div className="text-center mb-16 md:mb-20">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5 }}
-                  className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200/60 rounded-full px-4 py-2 mb-6"
-                >
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-700 font-medium">
-                    Revenue Streams
-                  </span>
-                </motion.div>
-                
-                <motion.h2
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 leading-tight mb-6"
-                >
-                  Multiple Revenue Streams.
-                  <br />
-                  <span className="relative inline-block mt-2">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500">
-                      One Dashboard.
-                    </span>
-                    <motion.svg 
-                      className="absolute -bottom-2 left-0 w-full" 
-                      viewBox="0 0 280 12" 
-                      fill="none"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1.2, delay: 0.6 }}
+              <div className="mb-16 md:mb-20">
+                <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-8">
+                  <div className="text-center md:text-left max-w-2xl">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
+                      transition={{ duration: 0.5 }}
+                      className="inline-flex items-center gap-2 bg-rose-50 border border-rose-200/60 rounded-full px-4 py-2 mb-6"
                     >
-                      <motion.path 
-                        d="M2 8C45 3 90 3 140 6C190 9 235 5 278 8" 
-                        stroke="url(#gradient-underline)"
-                        strokeWidth="3" 
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0 }}
-                        whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1.2, delay: 0.6 }}
-                        viewport={{ once: true }}
+                      <div className="w-2 h-2 rounded-full bg-[#F51042] animate-pulse" />
+                      <span className="font-mono text-xs uppercase tracking-[0.2em] text-[#F51042] font-medium">
+                        Revenue Streams
+                      </span>
+                    </motion.div>
+                    
+                    <motion.h2
+                      initial={{ opacity: 0, y: 30 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.7, delay: 0.1 }}
+                      className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 leading-tight mb-4"
+                    >
+                      Multiple Revenue Streams.
+                      <br />
+                      <span className="relative inline-block mt-2">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
+                          One Dashboard.
+                        </span>
+                        <motion.svg 
+                          className="absolute -bottom-2 left-0 w-full" 
+                          viewBox="0 0 280 12" 
+                          fill="none"
+                          initial={{ pathLength: 0, opacity: 0 }}
+                          whileInView={{ pathLength: 1, opacity: 1 }}
+                          transition={{ duration: 1.2, delay: 0.6 }}
+                          viewport={{ once: true }}
+                        >
+                          <motion.path 
+                            d="M2 8C45 3 90 3 140 6C190 9 235 5 278 8" 
+                            stroke="url(#gradient-underline-kitchen)"
+                            strokeWidth="3" 
+                            strokeLinecap="round"
+                            initial={{ pathLength: 0 }}
+                            whileInView={{ pathLength: 1 }}
+                            transition={{ duration: 1.2, delay: 0.6 }}
+                            viewport={{ once: true }}
+                          />
+                          <defs>
+                        <linearGradient id="gradient-underline-kitchen" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#F51042" />
+                          <stop offset="50%" stopColor="#FB7185" />
+                          <stop offset="100%" stopColor="#F51042" />
+                            </linearGradient>
+                          </defs>
+                        </motion.svg>
+                      </span>
+                    </motion.h2>
+                    
+                    <motion.p 
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.6, delay: 0.2 }}
+                      className="text-lg md:text-xl text-slate-600 leading-relaxed"
+                    >
+                      Maximize every dollar of kitchen potential with diverse, flexible earning opportunities.
+                    </motion.p>
+                  </div>
+
+                  {/* Dashboard Illustration */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                    whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.8, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+                    style={{ y: dashboardParallaxY }}
+                    className="hidden md:block flex-shrink-0"
+                  >
+                    <div className="relative">
+                    <div className="absolute -inset-10 bg-gradient-to-br from-[#F51042]/20 via-rose-400/15 to-rose-300/20 rounded-full blur-3xl" />
+                      <img
+                        src={DashboardIcon}
+                        alt="LocalCooks revenue dashboard"
+                        className="relative w-64 lg:w-80 h-auto object-contain drop-shadow-[0_18px_40px_rgba(15,118,110,0.25)]"
                       />
-                      <defs>
-                        <linearGradient id="gradient-underline" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#10B981" />
-                          <stop offset="50%" stopColor="#14B8A6" />
-                          <stop offset="100%" stopColor="#10B981" />
-                        </linearGradient>
-                      </defs>
-                    </motion.svg>
-                  </span>
-                </motion.h2>
-                
-                <motion.p 
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed"
-                >
-                  Maximize every dollar of kitchen potential with diverse, flexible earning opportunities.
-                </motion.p>
+                    </div>
+                  </motion.div>
+                </div>
               </div>
             </FadeInSection>
 
@@ -1061,27 +939,27 @@ export default function KitchenLanding() {
                   whileHover={{ y: -8 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(16,185,129,0.15)] hover:border-emerald-200/60 transition-all duration-500 overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#F51042]/20 to-rose-400/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.2)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
                     {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-emerald-400/20 to-teal-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
                     
                     {/* Icon */}
                     <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                      <div className="w-14 h-14 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
                         <Clock className="h-7 w-7 text-white" />
                       </div>
                     </div>
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-3 group-hover:text-emerald-700 transition-colors duration-300">
+                      <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">
                         Hourly Kitchen Rentals
                       </h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-emerald-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-sm font-semibold text-emerald-700">
-                          Typical range: $40–$80/hour
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5">
+                        <span className="text-sm font-semibold text-[#F51042]">
+                          Typical range: $30–$80/hour
                         </span>
                       </div>
                       
@@ -1178,20 +1056,20 @@ export default function KitchenLanding() {
                   whileHover={{ y: -8 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/15 to-teal-500/15 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(16,185,129,0.15)] hover:border-emerald-200/60 transition-all duration-500 overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#F51042]/18 to-rose-400/18 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.18)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
                     {/* Decorative elements */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-emerald-400/20 to-teal-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-emerald-500/5 to-transparent" />
+                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+                    <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#F51042]/8 to-transparent" />
                     
                     {/* Sparkle decoration */}
                     <div className="absolute top-6 right-6">
-                      <Sparkles className="h-6 w-6 text-emerald-400/60" />
+                      <Sparkles className="h-6 w-6 text-rose-300/70" />
                     </div>
                     
                     {/* Icon */}
                     <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                      <div className="w-14 h-14 bg-gradient-to-br from-rose-400 to-[#F51042] rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
                         <Zap className="h-7 w-7 text-white" />
                       </div>
                     </div>
@@ -1202,8 +1080,8 @@ export default function KitchenLanding() {
                         Custom Programs & Premium Uses
                       </h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-emerald-50 rounded-full px-4 py-1.5 mb-5 border border-emerald-100">
-                        <span className="text-sm font-medium text-emerald-700">
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5 border border-rose-100">
+                        <span className="text-sm font-medium text-[#F51042]">
                           From monthly memberships to events and pop-ups – fully tailored
                         </span>
                       </div>
@@ -1230,7 +1108,7 @@ export default function KitchenLanding() {
             preserveAspectRatio="none"
           >
             <path 
-              fill="#0D9488" 
+              fill="#F51042" 
               fillOpacity="1" 
               d="M0,160L48,170.7C96,181,192,203,288,192C384,181,480,139,576,128C672,117,768,139,864,154.7C960,171,1056,181,1152,165.3C1248,149,1344,107,1392,85.3L1440,64L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
             />
@@ -1240,7 +1118,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             HOW IT WORKS - From Idle Space to Active Revenue
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-teal-600 text-white relative overflow-hidden">
+        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-[#F51042] text-white relative overflow-hidden">
           {/* Background decorations */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl" />
@@ -1294,15 +1172,12 @@ export default function KitchenLanding() {
                   whileHover={{ y: -4, backgroundColor: "rgba(255,255,255,0.15)" }}
                   transition={{ duration: 0.2 }}
                 >
-                  <div className="flex items-center gap-4 mb-4">
-                    <span className="text-4xl font-black text-white/30">01</span>
-                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                      <Building2 className="h-6 w-6 text-white" />
-                    </div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-4xl font-black text-white/40">01</span>
                   </div>
                   <h3 className="text-xl font-bold mb-3">List in 15 Minutes.<br/ > Get Your Kitchen Live in 24 hrs.</h3>
                   <p className="text-white/80 leading-relaxed text-sm md:text-base">
-                    Upload photos, define your rules, and set the hours you don’t use. Our team reviews your kitchen details and documentation to ensure everything needed to host professional chefs is in place, then gets your listing live quickly so you can start accepting bookings with confidence.
+                    Upload photos, set your rules, and block out your hours. Our team reviews everything — kitchen details, documents, compliance — to ensure you’re ready for chefs. Once approved, your listing goes live fast so you can start accepting bookings confidently.
                   </p>
                 </motion.div>
               </FadeInSection>
@@ -1314,19 +1189,16 @@ export default function KitchenLanding() {
                   whileHover={{ y: -4, backgroundColor: "rgba(255,255,255,0.15)" }}
                   transition={{ duration: 0.2 }}
                 >
-                  <div className="flex items-center gap-4 mb-4">
-                    <span className="text-4xl font-black text-white/30">02</span>
-                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                      <Shield className="h-6 w-6 text-white" />
-                    </div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-4xl font-black text-white/40">02</span>
                   </div>
                   <h3 className="text-xl font-bold mb-3">Approve Verified Chefs.<br /> Platform Does the Rest.</h3>
                   <div className="space-y-3 text-sm md:text-base text-white/80 leading-relaxed">
                     <p>
-                      Qualified chefs request to book your kitchen. Every renter comes pre-screened with proof of food handler certification, business registration, and appropriate liability coverage in place.
+                      Qualified chefs request to book your kitchen. Every renter is pre-screened with certification, registration, and insurance.
                     </p>
                     <p>
-                      Review their credentials on the platform. Approve the ones that fit your schedule. Done.
+                      Browse their profiles, approve the ones that fit your schedule, and you’re set.
                     </p>
                   </div>
                 </motion.div>
@@ -1339,16 +1211,13 @@ export default function KitchenLanding() {
                   whileHover={{ y: -4, backgroundColor: "rgba(255,255,255,0.15)" }}
                   transition={{ duration: 0.2 }}
                 >
-                  <div className="flex items-center gap-4 mb-4">
-                    <span className="text-4xl font-black text-white/30">03</span>
-                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                      <Wallet className="h-6 w-6 text-white" />
-                    </div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-4xl font-black text-white/40">03</span>
                   </div>
                   <h3 className="text-xl font-bold mb-3">  Earn on Autopilot.<br />
                   Weekly Payouts, Zero Admin.</h3>
                   <p className="text-white/80 leading-relaxed text-sm md:text-base">
-                    Chefs book your space, arrive fully verified, and the platform handles confirmations, reminders, and payments in the background. Your revenue lands in your bank account every week, with a clear dashboard showing exactly who booked and how much you earned—no spreadsheets, no chasing, no confusion.
+                  Chefs book, arrive verified, and cook — while the platform manages confirmations, reminders, and payments. Your revenue lands in your account weekly with a clear dashboard tracking every booking. No spreadsheets, no chasing, no hassle.
                   </p>
                 </motion.div>
               </FadeInSection>
@@ -1358,7 +1227,7 @@ export default function KitchenLanding() {
         </section>
 
         {/* ══════ WAVE DIVIDER ══════ */}
-        <div className="relative w-full overflow-hidden bg-teal-600" style={{ height: '100px' }}>
+        <div className="relative w-full overflow-hidden bg-[#F51042]" style={{ height: '100px' }}>
           <svg 
             viewBox="0 0 1440 320" 
             fill="none" 
@@ -1382,7 +1251,7 @@ export default function KitchenLanding() {
           {/* Sophisticated background elements */}
           <div className="absolute inset-0 pointer-events-none">
             {/* Gradient mesh background */}
-            <div className="absolute top-0 left-1/4 w-[800px] h-[800px] bg-gradient-radial from-emerald-100/60 via-emerald-50/30 to-transparent rounded-full blur-3xl" />
+            <div className="absolute top-0 left-1/4 w-[800px] h-[800px] bg-gradient-radial from-rose-100/60 via-rose-50/30 to-transparent rounded-full blur-3xl" />
             <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-gradient-radial from-teal-100/50 via-cyan-50/20 to-transparent rounded-full blur-3xl" />
             <div className="absolute top-1/2 left-0 w-[400px] h-[400px] bg-gradient-radial from-violet-100/30 to-transparent rounded-full blur-2xl" />
             
@@ -1405,15 +1274,15 @@ export default function KitchenLanding() {
                   className="inline-block mb-8"
                 >
                   <div className="relative">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-full blur-sm opacity-40 animate-pulse" />
-                    <div className="relative inline-flex items-center gap-3 bg-white border border-emerald-200 rounded-full px-5 py-2.5 shadow-lg shadow-emerald-500/10">
+            <div className="absolute -inset-1 bg-gradient-to-r from-[#F51042] via-rose-400 to-pink-400 rounded-full blur-sm opacity-40 animate-pulse" />
+                    <div className="relative inline-flex items-center gap-3 bg-white border border-rose-200 rounded-full px-5 py-2.5 shadow-lg shadow-rose-400/20">
                       <div className="flex items-center gap-1.5">
                         <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F51042]/70 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F51042]" />
                         </span>
                       </div>
-                      <span className="font-semibold text-sm tracking-wide text-emerald-700">
+                      <span className="font-semibold text-sm tracking-wide text-[#F51042]">
                         Everything Included in Your Partnership
                       </span>
                     </div>
@@ -1431,12 +1300,12 @@ export default function KitchenLanding() {
                   <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-slate-900 leading-[1.1] mb-6">
                     <span className="block">Everything You Need to</span>
                     <span className="relative inline-block mt-2">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500">
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
                         Host with Confidence
                       </span>
                       {/* Animated underline */}
                       <motion.div 
-                        className="absolute -bottom-2 left-0 right-0 h-1 md:h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 rounded-full"
+                        className="absolute -bottom-2 left-0 right-0 h-1 md:h-1.5 bg-gradient-to-r from-[#F51042] via-rose-400 to-[#F51042] rounded-full"
                         initial={{ scaleX: 0, originX: 0 }}
                         whileInView={{ scaleX: 1 }}
                         viewport={{ once: true }}
@@ -1473,14 +1342,14 @@ export default function KitchenLanding() {
                   className="relative group"
                 >
                   {/* Card glow effect on hover */}
-                  <div className="absolute -inset-0.5 bg-gradient-to-br from-emerald-500/20 via-teal-500/10 to-cyan-500/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                  <div className="absolute -inset-0.5 bg-gradient-to-br from-[#F51042]/20 via-rose-400/10 to-rose-300/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                   
-                  <div className="relative bg-gradient-to-br from-white via-white to-emerald-50/30 rounded-[2rem] border border-slate-200/80 p-8 md:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(16,185,129,0.12)] transition-all duration-500">
+                  <div className="relative bg-gradient-to-br from-white via-white to-rose-50/40 rounded-[2rem] border border-slate-200/80 p-8 md:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.16)] transition-all duration-500">
                     {/* Column header with icon */}
                     <div className="flex items-center gap-4 mb-8">
                       <div className="relative">
-                        <div className="absolute -inset-2 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-2xl blur-lg" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                        <div className="absolute -inset-2 bg-gradient-to-br from-[#F51042]/20 to-rose-500/20 rounded-2xl blur-lg" />
+                        <div className="relative w-14 h-14 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/30">
                           <Zap className="h-7 w-7 text-white" />
                         </div>
                       </div>
@@ -1509,7 +1378,7 @@ export default function KitchenLanding() {
                           icon: CreditCard,
                           title: "Weekly Payouts, Zero Chasing",
                           description: "Revenue deposits directly to your bank weekly. Transparent dashboard shows every dollar earned. No invoices to send.",
-                          gradient: "from-emerald-500 to-teal-600"
+                          gradient: "from-[#F51042] to-rose-500"
                         },
                         {
                           icon: Settings,
@@ -1533,7 +1402,7 @@ export default function KitchenLanding() {
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-slate-900 text-base md:text-lg mb-1 group-hover/item:text-emerald-700 transition-colors">
+                              <h4 className="font-semibold text-slate-900 text-base md:text-lg mb-1 group-hover/item:text-[#F51042] transition-colors">
                                 {feature.title}
                               </h4>
                               <p className="text-sm text-slate-600 leading-relaxed">
@@ -1591,7 +1460,7 @@ export default function KitchenLanding() {
                           icon: Eye,
                           title: "Full Transparency Before Every Booking",
                           description: "See all credentials before you approve—certs, licenses, coverage. Approve or decline in seconds. You're in complete control.",
-                          gradient: "from-teal-500 to-emerald-600"
+                          gradient: "from-rose-500 to-[#F51042]"
                         },
                         {
                           icon: Lock,
@@ -1651,9 +1520,9 @@ export default function KitchenLanding() {
               >
                 <div className="relative">
                   {/* Glow effect */}
-                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-3xl blur-lg opacity-30" />
+                  <div className="absolute -inset-1 bg-gradient-to-r from-[#F51042] via-rose-500 to-pink-400 rounded-3xl blur-lg opacity-30" />
                   
-                  <div className="relative bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-600 rounded-3xl p-8 md:p-10 overflow-hidden">
+                  <div className="relative bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042] rounded-3xl p-8 md:p-10 overflow-hidden">
                     {/* Decorative elements */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                     <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
@@ -1664,13 +1533,13 @@ export default function KitchenLanding() {
                           Ready to turn idle hours into income?
                         </h3>
                         <p className="text-white/80 text-sm md:text-base">
-                          Join kitchen owners earning $300–$1,000/month • 0% platform fee during trial
+                          Join kitchen owners earning $500+ /month • 0% platform fee during trial
                         </p>
                       </div>
                       <Button
                         onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership - List My Kitchen'}
                         size="lg"
-                        className="bg-white text-emerald-600 hover:bg-gray-100 font-bold py-6 px-10 text-base md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap"
+                        className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-10 text-base md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap"
                       >
                         List Your Kitchen
                         <ArrowRight className="ml-2 h-5 w-5" />
@@ -1684,18 +1553,13 @@ export default function KitchenLanding() {
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            TESTIMONIALS CAROUSEL
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <KitchenTestimonialCarousel />
-
-        {/* ═══════════════════════════════════════════════════════════════════════
             FAQ SECTION
         ═══════════════════════════════════════════════════════════════════════ */}
         <section id="faq" className="py-20 md:py-28 px-4 bg-gray-50">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-emerald-600 mb-4 px-4 py-2 bg-emerald-100 rounded-full">
+                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
                   Questions
                 </span>
                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A]">FAQ</h2>
@@ -1706,40 +1570,40 @@ export default function KitchenLanding() {
               <Accordion type="single" collapsible className="space-y-3">
                 {[
                   { 
-                    q: "How much can I really earn?", 
-                    a: "Most kitchen owners earn $300–$1,000/month from 10–20 hours of rentals. Our top 10% earn $2,000+/month by combining hourly rentals + storage + equipment. During our trial period, you keep 100% of your earnings with zero platform fees." 
+                    q: "What types of kitchens are you looking for?", 
+                    a: "We welcome a wide variety of inspected, commercial-grade kitchen spaces. Whether you run a bustling restaurant with downtime in the mornings, a church with a certified community kitchen, or a dedicated commissary space, your facility is likely a perfect fit. If your kitchen has a valid operating permit and commercial-grade equipment, local chefs are looking for a space just like yours." 
                   },
                   { 
-                    q: "What if someone damages my equipment?", 
-                    a: "Every renter is verified and must sign a liability agreement. We provide comprehensive insurance coverage for all your equipment. Our platform has processed 500+ bookings with zero unresolved disputes." 
+                    q: "How much can I earn by listing my kitchen?", 
+                    a: "Earnings vary based on your kitchen’s size, equipment, and availability, but many of our partners generate significant monthly revenue simply by monetizing their \"dark hours.\" You set your own hourly or daily rates. To help you stay competitive, we can recommend pricing based on similar kitchens in your local area. You keep the majority of the listing fee, turning your overhead costs into a new income stream." 
                   },
                   { 
-                    q: "How fast can I start earning?", 
-                    a: "You can be live and booked within 48 hours. Most new kitchens get their first booking within 2 weeks. Some book within days." 
+                    q: "Do I have control over who uses my space?", 
+                    a: "Absolutely. You always have final say over who cooks in your kitchen. When a chef requests to book your space, you can review their profile, their proposed concept, and their rental history before accepting. We believe in building partnerships, not just transactions, so we ensure you only host professionals you feel comfortable with." 
                   },
                   { 
-                    q: "Isn't this a lot of work?", 
-                    a: "No. We handle: scheduling, payments, renter vetting, compliance, support. You just accept bookings and provide access. It takes about 5 minutes per rental on average." 
+                    q: "How does scheduling work with my existing business?", 
+                    a: "Your business always comes first. Our platform allows you to block out the exact days and hours you need for your own operations. You simply list the \"white space\"—the early mornings, late nights, or closed days when your kitchen sits empty. Our booking system prevents conflicts, ensuring your team never walks in to find a surprise guest." 
                   },
                   { 
-                    q: "What if I'm not sure about my pricing?", 
-                    a: "We provide market data for your area, competitor analysis, and a smart pricing tool. You set your own rates. Most kitchens start at $50–70/hour and adjust based on demand." 
+                    q: "What happens if equipment is damaged?", 
+                    a: "We take the safety of your assets seriously. All chefs on the Local Cooks platform are required to carry valid liability insurance and provide a security deposit before their first booking. We also verify their identity and business registration. In the rare event of an accident, our support team is here to help facilitate a resolution and ensure you are fairly compensated." 
                   },
                   { 
-                    q: "Can I pause or stop anytime?", 
-                    a: "Yes. No contracts. No penalties. No minimum commitment. Pause your listing, take a break, or remove it entirely—your choice, anytime. Your kitchen is yours to control." 
+                    q: "Will my kitchen be left clean?", 
+                    a: "Yes. We enforce a strict \"leave it better than you found it\" policy. Every chef is required to complete a cleaning checklist—verified by photos—at the end of their shift. If a chef fails to meet these standards, they are subject to cleaning fees and removal from the platform. We know that arriving to a clean kitchen is non-negotiable for your business." 
                   },
                   { 
-                    q: "What types of kitchens qualify?", 
-                    a: "Commercial kitchens, restaurant kitchens, community center kitchens, church kitchens, catering facilities, and food production spaces. If it's licensed for commercial food preparation, it qualifies." 
+                    q: "What about health inspections and compliance?", 
+                    a: "We operate with full transparency regarding local health regulations. Since your kitchen is already a permitted facility, \"guest chefs\" generally operate under your existing framework or apply for their own temporary permits depending on the scope of their work. We help ensure all paperwork is in order before a chef ever lights a burner, keeping your facility compliant and your mind at ease." 
                   },
                   { 
-                    q: "What about during the trial period?", 
-                    a: "During our trial, you keep 100% of your earnings with zero platform fees. It's a risk-free way to test the platform and see if it works for your kitchen. No commitment required." 
+                    q: "How and when do I get paid?", 
+                    a: "We handle all the billing so you don’t have to chase invoices. Chefs pay upfront through our secure platform when they book your space. We transfer your earnings directly to your bank account on a consistent schedule (typically weekly or bi-weekly), providing you with a simple dashboard to track your revenue and bookings in real time." 
                   },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-200 rounded-xl bg-white px-6 shadow-sm">
-                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-emerald-600">
+                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">
                       {item.q}
                     </AccordionTrigger>
                     <AccordionContent className="text-[#6B6B6B] pb-5 text-base leading-relaxed">
@@ -1752,103 +1616,6 @@ export default function KitchenLanding() {
           </div>
         </section>
 
-        {/* ═══════════════════════════════════════════════════════════════════════
-            FINAL CTA SECTION
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="relative py-16 md:py-24 px-4 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 via-teal-500 to-emerald-600" />
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-10 left-10 w-96 h-96 bg-white rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-80 h-80 bg-white rounded-full blur-3xl" />
-          </div>
-          
-          <div className="container mx-auto max-w-5xl text-center relative z-10">
-            <FadeInSection>
-              <motion.div 
-                className="mb-8 md:mb-10"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-              >
-                <motion.h2
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight"
-                >
-                  Transform Wasted Hours
-                  <br />
-                  <span className="relative inline-block">
-                    <span className="text-white/95">Into Real Revenue.</span>
-                    <motion.svg 
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                      viewBox="0 0 300 12" 
-                      fill="none"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1.2, delay: 0.6 }}
-                      viewport={{ once: true }}
-                    >
-                      <motion.path 
-                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
-                        stroke="rgba(255,255,255,0.8)"
-                        strokeWidth="3" 
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0 }}
-                        whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1.2, delay: 0.6 }}
-                        viewport={{ once: true }}
-                      />
-                    </motion.svg>
-                  </span>
-                </motion.h2>
-              </motion.div>
-
-              <motion.p 
-                className="text-base md:text-lg lg:text-xl text-white/90 mb-5 md:mb-6 max-w-3xl mx-auto leading-relaxed font-medium"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
-                Your kitchen already has everything it needs to generate passive income. 
-                All it's missing is renters—and we bring those to you.
-              </motion.p>
-
-              <motion.div 
-                className="mb-8"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-              >
-                <p className="text-xs md:text-sm text-white/75 mb-4 font-medium tracking-wider uppercase">
-                  What kitchen owners discover with LocalCooks:
-                </p>
-                <div className="flex justify-center items-center">
-                  <KitchenTypewriter />
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-              >
-                <Button
-                  onClick={handleListKitchen}
-                  size="lg"
-                  className="bg-white text-emerald-600 hover:bg-gray-100 font-bold py-6 px-12 text-lg md:text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
-                >
-                  List Your Kitchen Now
-                  <ArrowRight className="ml-3 h-5 w-5 md:h-6 md:w-6" />
-                </Button>
-                <p className="text-white/70 mt-5 text-xs md:text-sm">
-                  0% platform fee during trial • 100% of earnings are yours • No contracts
-                </p>
-              </motion.div>
-            </FadeInSection>
-          </div>
-        </section>
       </main>
 
       <Footer />

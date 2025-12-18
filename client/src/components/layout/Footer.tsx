@@ -18,8 +18,9 @@ export default function Footer() {
     return null;
   }, []);
   
-  // Check if we're on the chef landing page
+  // Check if we're on specific landing pages
   const isChefLanding = currentSubdomain === 'chef' && location === '/';
+  const isKitchenLanding = currentSubdomain === 'kitchen' && location === '/';
 
   const handleCTAClick = () => {
     navigate(getNavigationPath());
@@ -159,6 +160,41 @@ export default function Footer() {
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isLoading ? "Loading..." : getApplyLinkText()}
+                      </button>
+                    </li>
+                  </>
+                ) : isKitchenLanding ? (
+                  <>
+                    <li>
+                      <button
+                        onClick={() => handleAnchorClick('#revenue-streams')}
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2"
+                      >
+                        Revenue Streams
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => handleAnchorClick('#how-it-works')}
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2"
+                      >
+                        How It Works
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => handleAnchorClick('#everything-included')}
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2"
+                      >
+                        Everything Included
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => handleAnchorClick('#faq')}
+                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm md:text-base font-medium block w-full text-left py-2 hover:translate-x-2"
+                      >
+                        FAQ
                       </button>
                     </li>
                   </>
