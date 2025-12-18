@@ -541,12 +541,12 @@ export default function KitchenLanding() {
               </div>
 
               {/* Right Image Column - Kitchen with Floating Benefit Cards */}
-              <div className="order-1 lg:order-2 relative overflow-visible">
+              <div className="order-1 lg:order-2 relative overflow-visible flex justify-center lg:block">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9, x: 50 }}
                   animate={{ opacity: 1, scale: 1, x: 0 }}
                   transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-                  className="relative overflow-visible"
+                  className="relative overflow-visible w-full max-w-sm sm:max-w-md lg:max-w-none"
                 >
                   {/* Decorative background shapes */}
                   <div className="absolute -inset-4 bg-gradient-to-br from-rose-100/30 via-rose-50/40 to-rose-100/10 rounded-[2.5rem] transform rotate-3" />
@@ -739,7 +739,7 @@ export default function KitchenLanding() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-6"
+                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-6"
                 >
                   Every empty hour is{" "}
                   <span className="relative inline-block">
@@ -776,7 +776,7 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.6, delay: 0.3 }}
                   className="max-w-2xl mx-auto"
                 >
-                  <p className="text-lg md:text-xl text-[#6B6B6B] leading-relaxed mb-8">
+                  <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed mb-8">
                     That cold storage sitting quiet overnight?{" "}
                     <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
                       Lost revenue.
@@ -901,7 +901,7 @@ export default function KitchenLanding() {
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.6, delay: 0.2 }}
-                      className="text-lg md:text-xl text-slate-600 leading-relaxed"
+                      className="text-sm md:text-base lg:text-lg text-slate-600 leading-relaxed"
                     >
                       Maximize every dollar of kitchen potential with diverse, flexible earning opportunities.
                     </motion.p>
@@ -953,17 +953,17 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">
                         Hourly Kitchen Rentals
                       </h3>
                       
                       <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-sm font-semibold text-[#F51042]">
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">
                           Typical range: $30–$80/hour
                         </span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-base">
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
                         Fill your calendar with chefs, bakers, and caterers who book flexible blocks of time. Hourly rentals are the fastest, easiest way to turn quiet hours into predictable income—without changing how you already operate.
                       </p>
                     </div>
@@ -992,17 +992,17 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">
                         Storage That Pays
                       </h3>
                       
                       <div className="inline-flex items-center gap-2 bg-violet-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-sm font-semibold text-violet-700">
+                        <span className="text-xs md:text-sm font-semibold text-violet-700">
                           Typical range: $100–$300/month
                         </span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-base">
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
                         Monetize every shelf, fridge, and freezer door. Offer dry, cold, or freezer storage as add-ons or standalone plans so food businesses can scale production, while your underused storage becomes a steady monthly revenue line.
                       </p>
                     </div>
@@ -1031,17 +1031,17 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">
                         Equipment Rental
                       </h3>
                       
                       <div className="inline-flex items-center gap-2 bg-amber-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-sm font-semibold text-amber-700">
+                        <span className="text-xs md:text-sm font-semibold text-amber-700">
                           Typical add-ons: $5–$15/booking
                         </span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-base">
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
                         Your blast chillers, commercial mixers, and specialty tools are assets—not just overhead. Bundle them into kitchen bookings or charge per use so every piece of gear helps pay for itself faster.
                       </p>
                     </div>
@@ -1076,17 +1076,17 @@ export default function KitchenLanding() {
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-3">
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3">
                         Custom Programs & Premium Uses
                       </h3>
                       
                       <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5 border border-rose-100">
-                        <span className="text-sm font-medium text-[#F51042]">
+                        <span className="text-xs md:text-sm font-medium text-[#F51042]">
                           From monthly memberships to events and pop-ups – fully tailored
                         </span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-base">
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
                         When your space has more potential than a simple hourly rate, we help you tap into it. Offer fixed monthly memberships for serious food businesses, premium-priced workshops and events, or bespoke packages for pop-ups and catering teams. If you can imagine the use case, we can help you price it, structure it, and get it booked.
                       </p>
                     </div>
@@ -1131,7 +1131,7 @@ export default function KitchenLanding() {
                 <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-white/80 mb-4 px-4 py-2 bg-white/10 rounded-full">
                   List Your Kitchen Today
                 </span>
-                <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
+                <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">
                   From Idle Space to Active Revenue in{" "}
                   <span className="relative inline-block">
                     <span className="text-white">3 Steps.</span>
@@ -1157,7 +1157,7 @@ export default function KitchenLanding() {
                     </motion.svg>
                   </span>
                 </h2>
-                <p className="text-base md:text-lg text-white/80 max-w-3xl mx-auto leading-relaxed">
+                <p className="text-sm md:text-base lg:text-lg text-white/80 max-w-3xl mx-auto leading-relaxed">
                   We've stripped away the complexity of commercial leasing. No contracts to chase, no insurance headaches, no admin burden—just a simple platform that works for you.
                 </p>
               </div>
@@ -1175,8 +1175,8 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">01</span>
                   </div>
-                  <h3 className="text-xl font-bold mb-3">List in 15 Minutes.<br/ > Get Your Kitchen Live in 24 hrs.</h3>
-                  <p className="text-white/80 leading-relaxed text-sm md:text-base">
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">List in 15 Minutes.<br/ > Get Your Kitchen Live in 24 hrs.</h3>
+                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">
                     Upload photos, set your rules, and block out your hours. Our team reviews everything — kitchen details, documents, compliance — to ensure you’re ready for chefs. Once approved, your listing goes live fast so you can start accepting bookings confidently.
                   </p>
                 </motion.div>
@@ -1192,12 +1192,12 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">02</span>
                   </div>
-                  <h3 className="text-xl font-bold mb-3">Approve Verified Chefs.<br /> Platform Does the Rest.</h3>
-                  <div className="space-y-3 text-sm md:text-base text-white/80 leading-relaxed">
-                    <p>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">Approve Verified Chefs.<br /> Platform Does the Rest.</h3>
+                  <div className="space-y-3 text-white/80 leading-relaxed">
+                    <p className="text-xs md:text-sm">
                       Qualified chefs request to book your kitchen. Every renter is pre-screened with certification, registration, and insurance.
                     </p>
-                    <p>
+                    <p className="text-xs md:text-sm">
                       Browse their profiles, approve the ones that fit your schedule, and you’re set.
                     </p>
                   </div>
@@ -1214,9 +1214,9 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">03</span>
                   </div>
-                  <h3 className="text-xl font-bold mb-3">  Earn on Autopilot.<br />
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">  Earn on Autopilot.<br />
                   Weekly Payouts, Zero Admin.</h3>
-                  <p className="text-white/80 leading-relaxed text-sm md:text-base">
+                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">
                   Chefs book, arrive verified, and cook — while the platform manages confirmations, reminders, and payments. Your revenue lands in your account weekly with a clear dashboard tracking every booking. No spreadsheets, no chasing, no hassle.
                   </p>
                 </motion.div>
@@ -1320,7 +1320,7 @@ export default function KitchenLanding() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed mt-6"
+                  className="text-sm md:text-base lg:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed mt-6"
                 >
                   Smart automation. Pre-verified professionals. Ironclad protection.
                   <br className="hidden md:block" />
