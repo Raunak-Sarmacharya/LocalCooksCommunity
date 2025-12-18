@@ -2140,7 +2140,7 @@ export default function ChefLanding() {
                       </Button>
                       <Button 
                         variant="outline"
-                        onClick={() => window.location.href = 'https://kitchens.localcooks.ca'}
+                        onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
                         className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300"
                       >
                         Learn More

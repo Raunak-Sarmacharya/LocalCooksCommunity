@@ -250,11 +250,25 @@ export default function Header() {
                 for chefs
               </span>
             )}
+            {currentSubdomain === 'kitchen' && (
+              <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+                for kitchens
+              </span>
+            )}
           </div>
         </Link>
 
         <nav className="hidden md:block">
           <ul className="flex space-x-1 items-center">
+            <li>
+              <a
+                href="#revenue-streams"
+                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                onClick={(e) => scrollToSection("revenue-streams", e)}
+              >
+                Revenue Streams
+              </a>
+            </li>
             <li>
               <a
                 href="#how-it-works"
@@ -266,20 +280,11 @@ export default function Header() {
             </li>
             <li>
               <a
-                href="#kitchen-access"
+                href="#everything-included"
                 className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("kitchen-access", e)}
+                onClick={(e) => scrollToSection("everything-included", e)}
               >
-                Kitchen Access
-              </a>
-            </li>
-            <li>
-              <a
-                href="#testimonials"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("testimonials", e)}
-              >
-                Testimonials
+                Everything Included
               </a>
             </li>
             <li>
@@ -304,24 +309,15 @@ export default function Header() {
             )}
             {!user && (
               <>
-                {showPartnerLogin && (
-                  <li>
-                    <Link 
-                      href="/manager/login"
-                      className="text-gray-700 hover:text-primary transition-all text-sm flex items-center gap-1.5 px-4 py-2 rounded-lg hover:bg-gray-50/80 font-medium"
-                    >
-                      <Building2 className="h-4 w-4" />
-                      Partner Login
-                    </Link>
-                  </li>
-                )}
                 <li>
                   <Button
                     asChild
                     variant="outline"
                     className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-lg font-medium shadow-sm hover:shadow-md ml-2"
                   >
-                    <Link href="/auth">Login / Register</Link>
+                    <Link href={showPartnerLogin ? "/manager/login" : "/auth"}>
+                      {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                    </Link>
                   </Button>
                 </li>
               </>
@@ -397,6 +393,18 @@ export default function Header() {
             <ul className="space-y-3">
             <li>
               <a
+                href="#revenue-streams"
+                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                onClick={(e) => {
+                  scrollToSection("revenue-streams", e);
+                  closeMenu();
+                }}
+              >
+                Revenue Streams
+              </a>
+            </li>
+            <li>
+              <a
                 href="#how-it-works"
                 className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
@@ -409,26 +417,14 @@ export default function Header() {
             </li>
             <li>
               <a
-                href="#kitchen-access"
+                href="#everything-included"
                 className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
                 onClick={(e) => {
-                  scrollToSection("kitchen-access", e);
+                  scrollToSection("everything-included", e);
                   closeMenu();
                 }}
               >
-                Kitchen Access
-              </a>
-            </li>
-            <li>
-              <a
-                href="#testimonials"
-                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                onClick={(e) => {
-                  scrollToSection("testimonials", e);
-                  closeMenu();
-                }}
-              >
-                Testimonials
+                Everything Included
               </a>
             </li>
             <li>
@@ -485,24 +481,14 @@ export default function Header() {
             )}
             {!user && (
               <>
-                {showPartnerLogin && (
-                  <li>
-                    <Link 
-                      href="/manager/login"
-                      className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
-                      onClick={closeMenu}
-                    >
-                      <Building2 className="h-4 w-4" />
-                      Partner Login
-                    </Link>
-                  </li>
-                )}
                 <li className="pt-2">
                   <Button
                     asChild
                     className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                   >
-                    <Link href="/auth" onClick={closeMenu}>Login / Register</Link>
+                    <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
+                      {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                    </Link>
                   </Button>
                 </li>
               </>
