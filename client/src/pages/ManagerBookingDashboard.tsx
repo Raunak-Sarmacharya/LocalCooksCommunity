@@ -32,7 +32,6 @@ interface Location {
   notificationPhone?: string;
   minimumBookingWindowHours?: number;
   logoUrl?: string;
-  brandImageUrl?: string;
   timezone?: string;
 }
 
@@ -127,7 +126,7 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone }: {
+    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone }: {
       locationId: number;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
@@ -136,10 +135,9 @@ export default function ManagerBookingDashboard() {
       notificationEmail?: string;
       notificationPhone?: string;
       logoUrl?: string;
-      brandImageUrl?: string;
       timezone?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone };
+      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone };
       console.log('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       console.log('📡 Request body:', payload);
       console.log('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
@@ -801,10 +799,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
-  const [brandImageUrl, setBrandImageUrl] = useState(location.brandImageUrl || '');
   const [timezone, setTimezone] = useState(location.timezone || DEFAULT_TIMEZONE);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [isUploadingBrandImage, setIsUploadingBrandImage] = useState(false);
   const [uploadingKitchenId, setUploadingKitchenId] = useState<number | null>(null);
   const [kitchenDescriptions, setKitchenDescriptions] = useState<Record<number, string>>({});
   const [updatingKitchenId, setUpdatingKitchenId] = useState<number | null>(null);
@@ -838,7 +834,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
     setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
     setLogoUrl(location.logoUrl || '');
-    setBrandImageUrl(location.brandImageUrl || '');
     setTimezone(location.timezone || DEFAULT_TIMEZONE);
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
@@ -865,7 +860,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     }
   }, [kitchens]);
 
-  const handleSave = (overrideLogoUrl?: string, overrideBrandImageUrl?: string) => {
+  const handleSave = (overrideLogoUrl?: string) => {
     if (!location.id) return;
     
     const payload = {
@@ -877,7 +872,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       notificationEmail: notificationEmail || undefined,
       notificationPhone: notificationPhone || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
-      brandImageUrl: overrideBrandImageUrl !== undefined ? overrideBrandImageUrl : (brandImageUrl || undefined),
       timezone: timezone || DEFAULT_TIMEZONE,
     };
     
@@ -886,49 +880,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     onUpdateSettings.mutate(payload);
   };
 
-  // Handle brand image upload
-  const handleBrandImageUpload = async (file: File) => {
-    setIsUploadingBrandImage(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch('/api/upload-file', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload brand image');
-      }
-      
-      const result = await response.json();
-      const uploadedUrl = result.url;
-      setBrandImageUrl(uploadedUrl);
-      
-      // Auto-save after upload with the uploaded URL
-      handleSave(undefined, uploadedUrl);
-      
-      toast({
-        title: "Success",
-        description: "Brand image uploaded successfully",
-      });
-      
-      return uploadedUrl;
-    } catch (error: any) {
-      console.error('Brand image upload error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload brand image",
-        variant: "destructive",
-      });
-      throw error;
-    } finally {
-      setIsUploadingBrandImage(false);
-    }
-  };
 
   // Handle kitchen description update
   const handleKitchenDescriptionUpdate = async (kitchenId: number, description: string) => {
@@ -1271,84 +1222,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             </div>
           </div>
 
-          {/* Brand Image Section (for Chef Landing Page) */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <ImageIcon className="h-5 w-5 text-rose-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Brand Image for Chef Landing Page</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Upload a brand image to showcase your kitchen location on the LocalCooks chef landing page. This helps attract chefs to your space.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Brand Image
-                </label>
-                {brandImageUrl ? (
-                  <div className="flex items-center gap-4 mb-4">
-                    <img 
-                      src={brandImageUrl} 
-                      alt="Brand image" 
-                      className="h-24 w-auto object-cover border border-gray-200 rounded-lg bg-white"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-600">Current brand image</p>
-                      <button
-                        onClick={() => {
-                          setBrandImageUrl('');
-                          handleSave(undefined, '');
-                        }}
-                        className="text-sm text-red-600 hover:text-red-700 mt-1"
-                      >
-                        Remove image
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        handleBrandImageUpload(file).catch((error) => {
-                          console.error('Brand image upload failed:', error);
-                        });
-                      }
-                    }}
-                    disabled={isUploadingBrandImage}
-                    className="hidden"
-                    id="brand-image-upload"
-                  />
-                  <label
-                    htmlFor="brand-image-upload"
-                    className="cursor-pointer flex flex-col items-center gap-2"
-                  >
-                    {isUploadingBrandImage ? (
-                      <>
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600"></div>
-                        <span className="text-sm text-gray-600">Uploading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-8 w-8 text-gray-400" />
-                        <span className="text-sm font-medium text-rose-600">Click to upload brand image</span>
-                        <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB). Recommended: 800x600px</span>
-                      </>
-                    )}
-                  </label>
-                </div>
-                <p className="text-xs text-gray-600 mt-2">
-                  This image will appear on the chef landing page to showcase your kitchen location
-                </p>
-              </div>
-            </div>
-          </div>
 
           {/* Kitchen Images Section */}
           <div className="space-y-4">

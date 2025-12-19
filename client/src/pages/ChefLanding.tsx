@@ -892,7 +892,6 @@ export default function ChefLanding() {
           console.log("[ChefLanding] First location sample:", {
             id: data[0].id,
             name: data[0].name,
-            brandImageUrl: data[0].brandImageUrl,
             featuredKitchenImage: data[0].featuredKitchenImage,
             logoUrl: data[0].logoUrl
           });
@@ -915,13 +914,11 @@ export default function ChefLanding() {
     }
     // Locations already come with normalized URLs from the API
     const mapped = locations.map((loc: any) => {
-      // Prioritize featuredKitchenImage over brandImageUrl for the main card image
-      // (brandImageUrl is location-level, featuredKitchenImage is from actual kitchens)
-      const mainImage = loc.featuredKitchenImage || loc.brandImageUrl || null;
+      // Use featuredKitchenImage from actual kitchens for the main card image
+      const mainImage = loc.featuredKitchenImage || null;
       
       // Always log in production to debug
       console.log(`[ChefLanding] Processing Location ${loc.id} (${loc.name}):`, {
-        brandImageUrl: loc.brandImageUrl,
         featuredKitchenImage: loc.featuredKitchenImage,
         mainImage: mainImage,
         logoUrl: loc.logoUrl,
@@ -932,7 +929,6 @@ export default function ChefLanding() {
         id: loc.id,
         name: loc.name,
         address: loc.address || "",
-        brandImageUrl: loc.brandImageUrl || null,
         logoUrl: loc.logoUrl || null,
         featuredKitchenImage: loc.featuredKitchenImage || null,
         mainImage: mainImage, // Combined image for display
@@ -1808,14 +1804,13 @@ export default function ChefLanding() {
                         <div className="relative h-44 overflow-hidden">
                           {(() => {
                             // Get the image URL, filtering out empty strings
-                            const imageUrl = (loc.mainImage || loc.featuredKitchenImage || loc.brandImageUrl || '').trim();
+                            const imageUrl = (loc.mainImage || loc.featuredKitchenImage || '').trim();
                             const hasValidImage = imageUrl && imageUrl.length > 0;
                             
                             if (!hasValidImage) {
                               console.warn(`[ChefLanding] No valid image URL for ${loc.name}:`, {
                                 mainImage: loc.mainImage,
-                                featuredKitchenImage: loc.featuredKitchenImage,
-                                brandImageUrl: loc.brandImageUrl
+                                featuredKitchenImage: loc.featuredKitchenImage
                               });
                             }
                             
@@ -1831,7 +1826,6 @@ export default function ChefLanding() {
                                       imageUrl,
                                       mainImage: loc.mainImage,
                                       featuredKitchenImage: loc.featuredKitchenImage,
-                                      brandImageUrl: loc.brandImageUrl,
                                       allLocationData: loc
                                     });
                                     const target = e.target as HTMLImageElement;
@@ -1857,7 +1851,7 @@ export default function ChefLanding() {
                               </>
                             ) : null;
                           })()}
-                          {!loc.mainImage && !loc.featuredKitchenImage && !loc.brandImageUrl && (
+                          {!loc.mainImage && !loc.featuredKitchenImage && (
                             <div className="w-full h-full bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center">
                               <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
                                 <Building2 className="h-8 w-8 text-[#F51042]" />
