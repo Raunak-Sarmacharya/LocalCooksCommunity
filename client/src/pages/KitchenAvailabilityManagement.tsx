@@ -121,13 +121,6 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     maxSlotsPerChef: 2,
   });
 
-  // Block hours state
-  const [showBlockHoursSection, setShowBlockHoursSection] = useState(false);
-  const [blockHoursForm, setBlockHoursForm] = useState({
-    startTime: "11:00",
-    endTime: "13:00",
-    reason: "",
-  });
 
   // Auto-select location if only one exists
   useEffect(() => {
