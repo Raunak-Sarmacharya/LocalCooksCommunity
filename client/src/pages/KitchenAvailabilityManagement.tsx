@@ -111,6 +111,7 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showBlockHoursSection, setShowBlockHoursSection] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -451,7 +452,13 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
           if (/^\d{4}-\d{2}-\d{2}$/.test(specificDate)) {
             return specificDate === dateStr;
           }
-          // Otherwise parse and compare as local YMD
+          // For ISO strings like "2025-12-20T00:00:00.000Z", extract just the date part
+          // This avoids timezone conversion issues
+          if (specificDate.includes('T')) {
+            const isoDatePart = specificDate.split('T')[0];
+            return isoDatePart === dateStr;
+          }
+          // Fallback: parse and compare as local YMD
           const parsed = new Date(specificDate);
           return toLocalYMD(parsed) === dateStr;
         } else {

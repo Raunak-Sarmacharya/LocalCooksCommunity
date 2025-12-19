@@ -4612,10 +4612,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Parse date string (YYYY-MM-DD) correctly to avoid timezone shifting
+      // Setting to noon UTC ensures the date is always correct regardless of timezone
+      const parseDateString = (dateStr: string): Date => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+      };
+      
+      const parsedDate = parseDateString(specificDate);
+      
       // If closing the kitchen (isAvailable = false), check for existing bookings
       if (!isAvailable) {
         const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
-        const dateStr = new Date(specificDate).toISOString().split('T')[0];
+        const dateStr = specificDate; // Already in YYYY-MM-DD format
         const bookingsOnDate = bookings.filter(b => {
           const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
           return bookingDateStr === dateStr && b.status === 'confirmed';
@@ -4632,7 +4641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const override = await firebaseStorage.createKitchenDateOverride({
         kitchenId,
-        specificDate: new Date(specificDate),
+        specificDate: parsedDate,
         startTime,
         endTime,
         isAvailable,
