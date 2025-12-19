@@ -932,6 +932,40 @@ export class FirebaseStorage {
     reason?: string 
   }): Promise<any> {
     try {
+      // Check for existing override on the same date for this kitchen
+      // Extract just the date part (YYYY-MM-DD) for comparison
+      const dateStr = overrideData.specificDate.toISOString().split('T')[0];
+      
+      const existingOverrides = await db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(eq(kitchenDateOverrides.kitchenId, overrideData.kitchenId));
+      
+      // Find if there's already an override for this specific date
+      const existing = existingOverrides.find(o => {
+        const existingDateStr = new Date(o.specificDate).toISOString().split('T')[0];
+        return existingDateStr === dateStr;
+      });
+      
+      if (existing) {
+        // Update existing override instead of creating duplicate
+        console.log(`📝 Updating existing override ID ${existing.id} for date ${dateStr}`);
+        const [updated] = await db
+          .update(kitchenDateOverrides)
+          .set({
+            startTime: overrideData.startTime,
+            endTime: overrideData.endTime,
+            isAvailable: overrideData.isAvailable,
+            reason: overrideData.reason,
+            updatedAt: new Date(),
+          })
+          .where(eq(kitchenDateOverrides.id, existing.id))
+          .returning();
+        return updated;
+      }
+      
+      // No existing override, create new one
+      console.log(`➕ Creating new override for date ${dateStr}`);
       const [override] = await db
         .insert(kitchenDateOverrides)
         .values(overrideData)
