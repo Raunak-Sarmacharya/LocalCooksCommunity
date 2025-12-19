@@ -70,7 +70,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Basic Conditions of HACCP',
     description: 'The practice of HACCP has its analysis and critical control points and gives you seven principles that helps you keeping your food safe. To make our work better, it is important that you follow all seven principles. Watch them in this video.',
     duration: '',
-    url: 'https://streamable.com/e/5wweiz?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/2.%20Food%20Safety%20Basic%20Conditions%20of%20HACCP.mp4',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -80,7 +80,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Reducing Complexity',
     description: 'Learn how to simplify the food processes in your kitchen.',
     duration: '',
-    url: 'https://streamable.com/e/b1siq0?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/3.%20Food%20Safety%20Reducing%20Complexity.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -90,7 +90,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Personal Hygiene',
     description: 'It is very important that all employees follow the rules of personal hygiene. Learn how you can avoid bad bacteria coming into your kitchen.',
     duration: '',
-    url: 'https://streamable.com/e/wqfjm5?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/4.%20Food%20Safety%20Personal%20Hygiene.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -100,7 +100,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Deliveries',
     description: 'Let\'s start thinking about delivery of goods to your kitchen. An important part of food safety is choosing a good supplier that is following all the safety standards.',
     duration: '',
-    url: 'https://streamable.com/e/8wmj23?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/5.%20Food%20Safety%20Deliveries.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -110,7 +110,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Storage',
     description: 'Food safety also includes storage, because each product requires their own way of storaging. Find out more in this video.',
     duration: '',
-    url: 'https://streamable.com/e/wr0jb8?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/6.%20Food%20Safety%20Storage.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -120,7 +120,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Preparation',
     description: 'It is time to wash your hands! Preparation time is important for food safety and so you must follow these steps really carefully.',
     duration: '',
-    url: 'https://streamable.com/e/o3hwlj?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/7.%20Food%20Safety%20Preparation.mp4',
     source: 'NL Health',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -130,7 +130,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Regeneration',
     description: 'Sometimes you need to prepare food before the customer is ordering, so that they don\'t have to wait too long for their food. Learn here what steps we must take to keep this food safety.',
     duration: '',
-    url: 'https://streamable.com/e/rv0ka9?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/8.%20Food%20Safety%20Regeneration.mp4',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -140,7 +140,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'To Start',
     description: 'The care we followed in the preparation process must continue, because they way the dish is served and presented also needs food safety practices. Are you ready to start?',
     duration: '',
-    url: 'https://streamable.com/e/do2odt?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/9.%20Food%20Safety%20To%20start.mp4',
     source: 'NL Health',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -150,7 +150,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'After Service',
     description: 'After the service is finished we still need to take care of food safety practices. Learn more about it in this video.',
     duration: '',
-    url: 'https://streamable.com/e/shprtw?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/10.%20Food%20Safety%20After%20Service.mp4',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -160,7 +160,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Waste Removal',
     description: 'There is always a lot of waste we have after a service. This waste contains a lot of bacteria. Watch how you can best manage waste in this video.',
     duration: '',
-    url: 'https://streamable.com/e/3zueet?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/11.%20Food%20Safety%20Waste%20Removal.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -170,7 +170,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Cleaning and Maintenance',
     description: 'Following the steps in this video is very important and helps you to keep your kitchen clean. Learn more in this video.',
     duration: '',
-    url: 'https://streamable.com/e/dxu2su?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/12.%20Food%20Safety%20Cleaning%20and%20Maintenance.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -180,7 +180,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Weekly Log Sheets',
     description: 'Every thing we see is very important and needs to be recorded. Make sure HACCP is in place and has been logged correctly.',
     duration: '',
-    url: 'https://streamable.com/e/4axpdy?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/13.%20Food%20Safety%20Weekly%20Log%20Sheets.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -190,7 +190,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'Wrap Up',
     description: 'We are almost at the end, well done!',
     duration: '',
-    url: 'https://streamable.com/e/d691km?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/14.%20Food%20Safety%20Wrap%20up.mp4',
     source: 'Health Canada',
     certification: 'Food Safety Basics',
     module: 'basics'
@@ -204,7 +204,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to Wash Your Hands',
     description: 'In this video, we will take you through the steps to correctly and thoroughly wash your hands. Keep watching to learn more.',
     duration: '',
-    url: 'https://streamable.com/e/4isx5j?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/1.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Wash%20Your%20Hands.mp4',
     source: 'Health Canada',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -214,7 +214,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean a food preparation station',
     description: 'Discover the best ways to disinfect, degrease and more to boost health and safety in the kitchen workplace. Includes worksurfaces, sinks, appliances and unseen areas.',
     duration: '',
-    url: 'https://streamable.com/e/qo69ox?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/2.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Food%20Preparation%20Su.mp4',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -224,7 +224,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean kitchen utensils',
     description: 'They\'re the tools of a professional chef\'s trade so keeping them safe and ready for use is a vital part of commercial-kitchen cleaning. A little effort can make a huge difference.',
     duration: '',
-    url: 'https://streamable.com/e/8rvz9d?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/3.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Culinary%20Utensil.mp4',
     source: 'Health Canada',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -234,7 +234,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean a stove',
     description: 'This expert checklist will provide brilliant results and easier kitchen management. Get rid of the likes of chip fat and leftover bits of burnt food.',
     duration: '',
-    url: 'https://streamable.com/e/vxqj7b?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/4.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Stove.mp4',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -244,7 +244,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean a kitchen floor',
     description: 'Try these straightforward cleaning tips. Discover the equipment you\'ll need, how to do the job safely and the right amount of time to scrub away dirt for.',
     duration: '',
-    url: 'https://streamable.com/e/akb6pq?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/5.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Kitchen%20Floor.mp4',
     source: 'CFIA',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -254,7 +254,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean a restaurant floor',
     description: 'Help create a fresh, welcoming front of house with simple skills such as figure-of-eight mopping. A gleaming floor can reassure diners they\'re eating somewhere that really cares about hygiene.',
     duration: '',
-    url: 'https://streamable.com/e/arbfdo?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/6.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Restaurant%20Floor.mp4',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -264,7 +264,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean tables and chairs',
     description: 'Want to know the best techniques for cleaning up after customers and getting things ready for the next setting? Watch this short film.',
     duration: '',
-    url: 'https://streamable.com/e/1gjyiq?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/7.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20Tables%20and%20Chairs.mp4',
     source: 'Health Canada',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
@@ -274,7 +274,7 @@ const safetyHygieneVideos: VideoData[] = [
     title: 'How to clean a washroom',
     description: 'Take responsibility for the cleanliness of even the smallest room in your restaurant. A guide to washing everything from sinks to baby-change tables thoroughly.',
     duration: '',
-    url: 'https://streamable.com/e/r0l74p?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/8.%20Safety%20and%20Hygiene%20How-tos%20How%20to%20Clean%20a%20Washroom.mp4',
     source: 'NL Health',
     certification: 'Safety & Hygiene How-To',
     module: 'hygiene'
