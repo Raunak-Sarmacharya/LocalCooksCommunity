@@ -60,7 +60,7 @@ const foodSafetyBasicsVideos: VideoData[] = [
     title: 'An Introduction',
     description: 'Most of the food poisoning problems we see in our kitchens are caused by food. But it is easy to win the fight against food poisoning and other diseases and to serve food and drinks from the kitchen without food safety problems. Want to know how to win? Watch the videos in this course!',
     duration: '',
-    url: 'https://streamable.com/e/2f5k73?loop=0',
+    url: 'https://pub-dc8137b10b784e3e9f6c75b8d78ca468.r2.dev/1.%20Food%20Safety%20Understanding%20Food%20Safety.mp4',
     source: 'CFIA',
     certification: 'Food Safety Basics',
     module: 'basics'
