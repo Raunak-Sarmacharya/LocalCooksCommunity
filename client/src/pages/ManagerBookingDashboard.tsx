@@ -20,6 +20,7 @@ import ManagerBookingsPanel from "./ManagerBookingsPanel";
 import ManagerChefProfiles from "./ManagerChefProfiles";
 import ManagerPortalApplications from "./ManagerPortalApplications";
 import ChangePassword from "@/components/auth/ChangePassword";
+import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 
 interface Location {
   id: number;
@@ -234,11 +235,13 @@ export default function ManagerBookingDashboard() {
       <ManagerHeader />
       <main className="flex-1 pt-24 pb-8 relative z-10">
         <div className="container mx-auto px-4 py-6 max-w-7xl">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
-            <p className="text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
-          </div>
+          {/* Header - Only show on non-overview pages */}
+          {activeView !== 'overview' && (
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
+              <p className="text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Sidebar - Navigation & Location Selection */}
@@ -279,17 +282,18 @@ export default function ManagerBookingDashboard() {
               <nav className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2 hover:shadow-xl transition-all duration-300">
                 {navItems.map((item) => {
                   const Icon = item.icon;
+                  const isActive = activeView === item.id;
                   return (
                     <button
                       key={item.id}
                       onClick={() => setActiveView(item.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                        activeView === item.id
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'text-gray-700 hover:bg-gray-50'
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg shadow-rose-500/25'
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-rose-600'
                       }`}
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon className={`h-5 w-5 ${isActive ? 'text-white' : ''}`} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -298,23 +302,31 @@ export default function ManagerBookingDashboard() {
 
               {/* Quick Stats (when location selected) */}
               {selectedLocation && activeView === 'overview' && (
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6 hover:shadow-xl transition-all duration-300">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-                    Quick Info
-                  </h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Location:</span>
-                      <span className="font-medium text-gray-900">{selectedLocation.name}</span>
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-4 md:p-5 hover:shadow-xl transition-all duration-300">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-1.5 bg-rose-100 rounded-lg">
+                      <MapPin className="h-4 w-4 text-rose-600" />
                     </div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      {selectedLocation.name}
+                    </h3>
+                  </div>
+                  <div className="space-y-3 text-sm">
                     {locationDetails?.cancellationPolicyHours && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Cancel Policy:</span>
-                        <span className="font-medium text-gray-900">
-                          {locationDetails.cancellationPolicyHours}h
+                      <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                        <span className="text-gray-500">Cancellation</span>
+                        <span className="font-medium text-rose-700 bg-rose-100 px-2 py-0.5 rounded text-xs">
+                          {locationDetails.cancellationPolicyHours}h notice
                         </span>
                       </div>
                     )}
+                    <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                      <span className="text-gray-500">Status</span>
+                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium bg-emerald-50 px-2 py-0.5 rounded">
+                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                        Active
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -324,7 +336,7 @@ export default function ManagerBookingDashboard() {
             {/* Main Content Area */}
             <div className="lg:col-span-9">
               {activeView === 'overview' && (
-                <OverviewView 
+                <KitchenDashboardOverview 
                   selectedLocation={selectedLocation}
                   onNavigate={(view: ViewType) => setActiveView(view)}
                 />
