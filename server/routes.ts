@@ -3751,6 +3751,616 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get kitchen pricing
+  app.get("/api/manager/kitchens/:kitchenId/pricing", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get the kitchen to verify manager has access to its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const pricing = await firebaseStorage.getKitchenPricing(kitchenId);
+      if (!pricing) {
+        return res.status(404).json({ error: "Pricing not found" });
+      }
+
+      // getKitchenPricing already returns hourlyRate in dollars, no need to convert again
+      res.json(pricing);
+    } catch (error: any) {
+      console.error("Error getting kitchen pricing:", error);
+      res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+    }
+  });
+
+  // Update kitchen pricing
+  app.put("/api/manager/kitchens/:kitchenId/pricing", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get the kitchen to verify manager has access to its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const { hourlyRate, currency, minimumBookingHours, pricingModel } = req.body;
+
+      // Validate input
+      if (hourlyRate !== undefined && hourlyRate !== null && (typeof hourlyRate !== 'number' || hourlyRate < 0)) {
+        return res.status(400).json({ error: "Hourly rate must be a positive number or null" });
+      }
+
+      if (currency !== undefined && typeof currency !== 'string') {
+        return res.status(400).json({ error: "Currency must be a string" });
+      }
+
+      if (minimumBookingHours !== undefined && (typeof minimumBookingHours !== 'number' || minimumBookingHours < 1)) {
+        return res.status(400).json({ error: "Minimum booking hours must be at least 1" });
+      }
+
+      if (pricingModel !== undefined && !['hourly', 'daily', 'weekly'].includes(pricingModel)) {
+        return res.status(400).json({ error: "Pricing model must be 'hourly', 'daily', or 'weekly'" });
+      }
+
+      // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
+      const pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string } = {};
+      
+      if (hourlyRate !== undefined) {
+        pricing.hourlyRate = hourlyRate === null ? null : hourlyRate; // Will be converted to cents in storage method
+      }
+      if (currency !== undefined) pricing.currency = currency;
+      if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
+      if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
+
+      const updated = await firebaseStorage.updateKitchenPricing(kitchenId, pricing);
+      
+      console.log(`✅ Kitchen ${kitchenId} pricing updated by manager ${user.id}`);
+      
+      // updateKitchenPricing already returns hourlyRate in dollars, no need to convert again
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating kitchen pricing:", error);
+      res.status(500).json({ error: error.message || "Failed to update kitchen pricing" });
+    }
+  });
+
+  // ===== STORAGE LISTINGS API =====
+
+  // Get storage listings for a kitchen
+  app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const listings = await firebaseStorage.getStorageListingsByKitchen(kitchenId);
+      res.json(listings);
+    } catch (error: any) {
+      console.error("Error getting storage listings:", error);
+      res.status(500).json({ error: error.message || "Failed to get storage listings" });
+    }
+  });
+
+  // Get single storage listing
+  app.get("/api/manager/storage-listings/:listingId", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const listingId = parseInt(req.params.listingId);
+      if (isNaN(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: "Invalid listing ID" });
+      }
+
+      const listing = await firebaseStorage.getStorageListingById(listingId);
+      if (!listing) {
+        return res.status(404).json({ error: "Storage listing not found" });
+      }
+
+      // Verify the manager has access to this listing's kitchen
+      const kitchen = await firebaseStorage.getKitchenById(listing.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this listing" });
+      }
+
+      res.json(listing);
+    } catch (error: any) {
+      console.error("Error getting storage listing:", error);
+      res.status(500).json({ error: error.message || "Failed to get storage listing" });
+    }
+  });
+
+  // Create storage listing
+  app.post("/api/manager/storage-listings", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const { kitchenId, ...listingData } = req.body;
+
+      if (!kitchenId || isNaN(parseInt(kitchenId))) {
+        return res.status(400).json({ error: "Valid kitchen ID is required" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const kitchen = await firebaseStorage.getKitchenById(parseInt(kitchenId));
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      // Validate required fields
+      if (!listingData.name || !listingData.storageType || !listingData.pricingModel || !listingData.basePrice) {
+        return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
+      }
+
+      const created = await firebaseStorage.createStorageListing({
+        kitchenId: parseInt(kitchenId),
+        ...listingData,
+      });
+
+      console.log(`✅ Storage listing created by manager ${user.id}`);
+      res.status(201).json(created);
+    } catch (error: any) {
+      console.error("Error creating storage listing:", error);
+      res.status(500).json({ error: error.message || "Failed to create storage listing" });
+    }
+  });
+
+  // Update storage listing
+  app.put("/api/manager/storage-listings/:listingId", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const listingId = parseInt(req.params.listingId);
+      if (isNaN(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: "Invalid listing ID" });
+      }
+
+      // Verify the manager has access to this listing
+      const existingListing = await firebaseStorage.getStorageListingById(listingId);
+      if (!existingListing) {
+        return res.status(404).json({ error: "Storage listing not found" });
+      }
+
+      const kitchen = await firebaseStorage.getKitchenById(existingListing.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this listing" });
+      }
+
+      const updated = await firebaseStorage.updateStorageListing(listingId, req.body);
+
+      console.log(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating storage listing:", error);
+      res.status(500).json({ error: error.message || "Failed to update storage listing" });
+    }
+  });
+
+  // Delete storage listing
+  app.delete("/api/manager/storage-listings/:listingId", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const listingId = parseInt(req.params.listingId);
+      if (isNaN(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: "Invalid listing ID" });
+      }
+
+      // Verify the manager has access to this listing
+      const existingListing = await firebaseStorage.getStorageListingById(listingId);
+      if (!existingListing) {
+        return res.status(404).json({ error: "Storage listing not found" });
+      }
+
+      const kitchen = await firebaseStorage.getKitchenById(existingListing.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this listing" });
+      }
+
+      await firebaseStorage.deleteStorageListing(listingId);
+
+      console.log(`✅ Storage listing ${listingId} deleted by manager ${user.id}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting storage listing:", error);
+      res.status(500).json({ error: error.message || "Failed to delete storage listing" });
+    }
+  });
+
+  // ===== EQUIPMENT LISTINGS ENDPOINTS =====
+
+  // Get equipment listings by kitchen ID
+  app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const listings = await firebaseStorage.getEquipmentListingsByKitchen(kitchenId);
+      res.json(listings);
+    } catch (error: any) {
+      console.error("Error getting equipment listings:", error);
+      res.status(500).json({ error: error.message || "Failed to get equipment listings" });
+    }
+  });
+
+  // Get equipment listing by ID
+  app.get("/api/manager/equipment-listings/:listingId", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const listingId = parseInt(req.params.listingId);
+      if (isNaN(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: "Invalid listing ID" });
+      }
+
+      const listing = await firebaseStorage.getEquipmentListingById(listingId);
+      if (!listing) {
+        return res.status(404).json({ error: "Equipment listing not found" });
+      }
+
+      // Verify the manager has access to this listing's kitchen
+      const kitchen = await firebaseStorage.getKitchenById(listing.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this listing" });
+      }
+
+      res.json(listing);
+    } catch (error: any) {
+      console.error("Error getting equipment listing:", error);
+      res.status(500).json({ error: error.message || "Failed to get equipment listing" });
+    }
+  });
+
+  // Create equipment listing
+  app.post("/api/manager/equipment-listings", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const { kitchenId, ...listingData } = req.body;
+
+      if (!kitchenId || isNaN(parseInt(kitchenId))) {
+        return res.status(400).json({ error: "Valid kitchen ID is required" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const kitchen = await firebaseStorage.getKitchenById(parseInt(kitchenId));
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      // Validate required fields
+      if (!listingData.equipmentType || !listingData.category || !listingData.condition) {
+        return res.status(400).json({ error: "Equipment type, category, and condition are required" });
+      }
+
+      // Validate availability type
+      if (!listingData.availabilityType || !['included', 'rental'].includes(listingData.availabilityType)) {
+        return res.status(400).json({ error: "Availability type must be 'included' or 'rental'" });
+      }
+
+      // For rental equipment, validate pricing fields
+      if (listingData.availabilityType === 'rental') {
+        if (!listingData.pricingModel) {
+          return res.status(400).json({ error: "Pricing model is required for rental equipment" });
+        }
+
+        // Validate that at least one rate is provided based on pricing model
+        if (listingData.pricingModel === 'hourly' && !listingData.hourlyRate) {
+          return res.status(400).json({ error: "Hourly rate is required for hourly pricing model" });
+        }
+        if (listingData.pricingModel === 'daily' && !listingData.dailyRate) {
+          return res.status(400).json({ error: "Daily rate is required for daily pricing model" });
+        }
+        if (listingData.pricingModel === 'weekly' && !listingData.weeklyRate) {
+          return res.status(400).json({ error: "Weekly rate is required for weekly pricing model" });
+        }
+        if (listingData.pricingModel === 'monthly' && !listingData.monthlyRate) {
+          return res.status(400).json({ error: "Monthly rate is required for monthly pricing model" });
+        }
+      }
+
+      const created = await firebaseStorage.createEquipmentListing({
+        kitchenId: parseInt(kitchenId),
+        ...listingData,
+      });
+
+      console.log(`✅ Equipment listing created by manager ${user.id}`);
+      res.status(201).json(created);
+    } catch (error: any) {
+      console.error("Error creating equipment listing:", error);
+      res.status(500).json({ error: error.message || "Failed to create equipment listing" });
+    }
+  });
+
+  // Update equipment listing
+  app.put("/api/manager/equipment-listings/:listingId", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const listingId = parseInt(req.params.listingId);
+      if (isNaN(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: "Invalid listing ID" });
+      }
+
+      // Verify the manager has access to this listing
+      const existingListing = await firebaseStorage.getEquipmentListingById(listingId);
+      if (!existingListing) {
+        return res.status(404).json({ error: "Equipment listing not found" });
+      }
+
+      const kitchen = await firebaseStorage.getKitchenById(existingListing.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this listing" });
+      }
+
+      const updated = await firebaseStorage.updateEquipmentListing(listingId, req.body);
+
+      console.log(`✅ Equipment listing ${listingId} updated by manager ${user.id}`);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating equipment listing:", error);
+      res.status(500).json({ error: error.message || "Failed to update equipment listing" });
+    }
+  });
+
+  // Delete equipment listing
+  app.delete("/api/manager/equipment-listings/:listingId", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const listingId = parseInt(req.params.listingId);
+      if (isNaN(listingId) || listingId <= 0) {
+        return res.status(400).json({ error: "Invalid listing ID" });
+      }
+
+      // Verify the manager has access to this listing
+      const existingListing = await firebaseStorage.getEquipmentListingById(listingId);
+      if (!existingListing) {
+        return res.status(404).json({ error: "Equipment listing not found" });
+      }
+
+      const kitchen = await firebaseStorage.getKitchenById(existingListing.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this listing" });
+      }
+
+      await firebaseStorage.deleteEquipmentListing(listingId);
+
+      console.log(`✅ Equipment listing ${listingId} deleted by manager ${user.id}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting equipment listing:", error);
+      res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
+    }
+  });
+
   // Set kitchen availability
   app.post("/api/manager/availability", async (req: Request, res: Response) => {
     try {
@@ -4953,6 +5563,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
+    }
+  });
+
+  // Get kitchen pricing (for chefs to see pricing during booking)
+  app.get("/api/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      const pricing = await firebaseStorage.getKitchenPricing(kitchenId);
+      if (!pricing) {
+        return res.status(404).json({ error: "Pricing not found" });
+      }
+
+      // getKitchenPricing already returns hourlyRate in dollars
+      res.json(pricing);
+    } catch (error: any) {
+      console.error("Error getting kitchen pricing:", error);
+      res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
     }
   });
 

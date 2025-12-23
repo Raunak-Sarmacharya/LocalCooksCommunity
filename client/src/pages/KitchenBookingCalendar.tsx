@@ -163,6 +163,19 @@ export default function KitchenBookingCalendar() {
   // Step 4: Booking Details
   const [notes, setNotes] = useState<string>("");
   const [showBookingModal, setShowBookingModal] = useState(false);
+  
+  // Pricing state
+  const [kitchenPricing, setKitchenPricing] = useState<{
+    hourlyRate: number | null;
+    currency: string;
+    minimumBookingHours: number;
+  } | null>(null);
+  const [estimatedPrice, setEstimatedPrice] = useState<{
+    basePrice: number;
+    serviceFee: number;
+    totalPrice: number;
+    durationHours: number;
+  } | null>(null);
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -303,12 +316,58 @@ export default function KitchenBookingCalendar() {
     }
   };
 
-  const handleKitchenSelect = (kitchen: any) => {
+  const handleKitchenSelect = async (kitchen: any) => {
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
     setSelectedSlots([]);
     setAllSlots([]);
     setShowBookingModal(false);
+    setEstimatedPrice(null);
+    
+    // Fetch kitchen pricing
+    try {
+      const token = localStorage.getItem('firebaseToken');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const response = await fetch(`/api/chef/kitchens/${kitchen.id}/pricing`, {
+        credentials: "include",
+        headers,
+      });
+      
+      if (response.ok) {
+        const pricing = await response.json();
+        console.log('✅ Kitchen pricing fetched:', pricing);
+        setKitchenPricing({
+          hourlyRate: pricing.hourlyRate || null,
+          currency: pricing.currency || 'CAD',
+          minimumBookingHours: pricing.minimumBookingHours || 1,
+        });
+      } else if (response.status === 404) {
+        // No pricing set yet - this is expected
+        console.log('ℹ️ No pricing set for kitchen:', kitchen.id);
+        setKitchenPricing({
+          hourlyRate: null,
+          currency: 'CAD',
+          minimumBookingHours: 1,
+        });
+      } else {
+        console.error('❌ Error fetching pricing:', response.status, response.statusText);
+        // Still set pricing state so UI can show message
+        setKitchenPricing({
+          hourlyRate: null,
+          currency: 'CAD',
+          minimumBookingHours: 1,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching kitchen pricing:', error);
+      setKitchenPricing({
+        hourlyRate: null,
+        currency: 'CAD',
+        minimumBookingHours: 1,
+      });
+    }
   };
 
   const handleDateClick = (date: Date) => {
@@ -319,6 +378,54 @@ export default function KitchenBookingCalendar() {
     setSelectedSlots([]);
     setShowBookingModal(false);
   };
+
+  // Calculate estimated price when slots change
+  useEffect(() => {
+    if (!selectedSlots.length || !selectedKitchen || !kitchenPricing) {
+      setEstimatedPrice(null);
+      return;
+    }
+    
+    // Calculate duration from selected slots
+    const sortedSlots = [...selectedSlots].sort();
+    const startTime = sortedSlots[0];
+    const endTime = sortedSlots[sortedSlots.length - 1];
+    
+    // Calculate hours (assuming 30-minute slots)
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    const startTotalMinutes = startH * 60 + startM;
+    const endTotalMinutes = endH * 60 + endM;
+    const durationMinutes = endTotalMinutes - startTotalMinutes + 30; // Add 30 min for last slot
+    const durationHours = Math.max(durationMinutes / 60, kitchenPricing.minimumBookingHours || 1);
+    
+    // Only calculate price if hourly rate is set
+    if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
+      // Calculate prices (convert from cents to dollars)
+      const hourlyRateDollars = kitchenPricing.hourlyRate / 100;
+      const basePrice = hourlyRateDollars * durationHours;
+      const serviceFee = basePrice * 0.05; // 5% commission
+      const totalPrice = basePrice + serviceFee;
+      
+      console.log('💰 Price calculated:', { durationHours, hourlyRateDollars, basePrice, serviceFee, totalPrice });
+      
+      setEstimatedPrice({
+        basePrice,
+        serviceFee,
+        totalPrice,
+        durationHours,
+      });
+    } else {
+      // No pricing set, but still calculate duration for display
+      console.log('ℹ️ No pricing set, duration only:', durationHours);
+      setEstimatedPrice({
+        basePrice: 0,
+        serviceFee: 0,
+        totalPrice: 0,
+        durationHours,
+      });
+    }
+  }, [selectedSlots, selectedKitchen, kitchenPricing]);
 
   const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
     // Don't allow selecting fully booked slots
@@ -547,9 +654,12 @@ export default function KitchenBookingCalendar() {
                                 {kitchen.description && (
                                   <p className="text-sm text-gray-600 mb-3">{kitchen.description}</p>
                                 )}
-                                <div className="flex items-center gap-2 text-sm text-blue-600 font-medium">
-                                  <CalendarIcon className="h-4 w-4" />
-                                  Select Kitchen
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 text-sm text-blue-600 font-medium">
+                                    <CalendarIcon className="h-4 w-4" />
+                                    Select Kitchen
+                                  </div>
+                                  {/* Pricing will be loaded after selection */}
                                 </div>
                               </button>
                             ))}
@@ -570,6 +680,14 @@ export default function KitchenBookingCalendar() {
                           </div>
                           {(selectedKitchen.location?.name || selectedKitchen.locationName) && (
                             <p className="text-sm text-blue-700">📍 {selectedKitchen.location?.name || selectedKitchen.locationName}</p>
+                          )}
+                          {kitchenPricing && kitchenPricing.hourlyRate && (
+                            <p className="text-sm font-semibold text-blue-900 mt-2">
+                              ${(kitchenPricing.hourlyRate / 100).toFixed(2)} {kitchenPricing.currency}/hour
+                            </p>
+                          )}
+                          {kitchenPricing && !kitchenPricing.hourlyRate && (
+                            <p className="text-sm text-blue-600 mt-2 italic">Pricing not set</p>
                           )}
                         </div>
                         <button
@@ -848,6 +966,11 @@ export default function KitchenBookingCalendar() {
                                     <p className="text-xs text-green-700 mt-1">
                                       Duration: {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
                                     </p>
+                                    {estimatedPrice && (
+                                      <p className="text-sm font-semibold text-green-900 mt-2">
+                                        Estimated Total: ${estimatedPrice.totalPrice.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
+                                      </p>
+                                    )}
                                   </div>
                                   <button
                                     onClick={() => setSelectedSlots([])}
@@ -924,7 +1047,12 @@ export default function KitchenBookingCalendar() {
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs text-gray-600 mb-1">Duration</p>
                     <p className="font-medium text-gray-900">
-                      {selectedSlots.length === 1 ? '30 min' : '1 hour'}
+                      {estimatedPrice 
+                        ? `${estimatedPrice.durationHours.toFixed(1)} hour${estimatedPrice.durationHours !== 1 ? 's' : ''}`
+                        : selectedSlots.length === 1 
+                          ? '30 min' 
+                          : `${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''}`
+                      }
                     </p>
                   </div>
                 </div>
@@ -945,6 +1073,51 @@ export default function KitchenBookingCalendar() {
                     ))}
                   </div>
                 </div>
+
+                {/* Pricing Breakdown - Always show when kitchen is selected */}
+                {selectedKitchen && (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Pricing:</h3>
+                    {estimatedPrice && kitchenPricing && kitchenPricing.hourlyRate ? (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Base Price ({estimatedPrice.durationHours.toFixed(1)} hours × ${(kitchenPricing.hourlyRate / 100).toFixed(2)}/hour):</span>
+                          <span className="font-medium">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Service Fee (5%):</span>
+                          <span className="font-medium">${estimatedPrice.serviceFee.toFixed(2)} {kitchenPricing.currency}</span>
+                        </div>
+                        <div className="pt-2 border-t border-gray-300 flex justify-between">
+                          <span className="font-semibold text-gray-900">Total:</span>
+                          <span className="font-bold text-lg text-blue-600">${estimatedPrice.totalPrice.toFixed(2)} {kitchenPricing.currency}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-600">
+                        {!kitchenPricing || !kitchenPricing.hourlyRate ? (
+                          <div className="space-y-2">
+                            <p className="text-amber-600 font-medium flex items-center gap-2">
+                              <Info className="h-4 w-4" />
+                              Pricing not set for this kitchen
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              The manager needs to set an hourly rate in the Manager Dashboard → Pricing tab. 
+                              This booking will be free until pricing is configured.
+                            </p>
+                            {estimatedPrice && (
+                              <p className="text-xs text-gray-600 mt-2">
+                                Duration: {estimatedPrice.durationHours.toFixed(1)} hour{estimatedPrice.durationHours !== 1 ? 's' : ''}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p>Calculating price...</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Special Notes */}
                 <div>

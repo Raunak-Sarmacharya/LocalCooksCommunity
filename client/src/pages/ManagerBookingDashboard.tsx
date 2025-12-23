@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench
 } from "lucide-react";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
@@ -19,6 +19,9 @@ import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
 import ManagerChefProfiles from "./ManagerChefProfiles";
 import ManagerPortalApplications from "./ManagerPortalApplications";
+import KitchenPricingManagement from "./KitchenPricingManagement";
+import StorageListingManagement from "./StorageListingManagement";
+import EquipmentListingManagement from "./EquipmentListingManagement";
 import ChangePassword from "@/components/auth/ChangePassword";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 
@@ -58,7 +61,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles' | 'portal-applications';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles' | 'portal-applications' | 'pricing' | 'storage-listings' | 'equipment-listings';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -224,6 +227,9 @@ export default function ManagerBookingDashboard() {
     { id: 'overview' as ViewType, label: 'Overview', icon: Calendar },
     { id: 'bookings' as ViewType, label: 'Bookings', icon: BookOpen },
     { id: 'availability' as ViewType, label: 'Availability', icon: Clock },
+    { id: 'pricing' as ViewType, label: 'Pricing', icon: DollarSign },
+    { id: 'storage-listings' as ViewType, label: 'Storage Listings', icon: Package },
+    { id: 'equipment-listings' as ViewType, label: 'Equipment Listings', icon: Wrench },
     { id: 'chef-profiles' as ViewType, label: 'Chef Profiles', icon: Users },
     { id: 'portal-applications' as ViewType, label: 'Portal Applications', icon: User },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
@@ -348,6 +354,18 @@ export default function ManagerBookingDashboard() {
               
               {activeView === 'availability' && selectedLocation && (
                 <KitchenAvailabilityManagement embedded={true} />
+              )}
+              
+              {activeView === 'pricing' && (
+                <KitchenPricingManagement embedded={true} />
+              )}
+              
+              {activeView === 'storage-listings' && (
+                <StorageListingManagement embedded={true} />
+              )}
+              
+              {activeView === 'equipment-listings' && (
+                <EquipmentListingManagement embedded={true} />
               )}
               
               {activeView === 'chef-profiles' && (
