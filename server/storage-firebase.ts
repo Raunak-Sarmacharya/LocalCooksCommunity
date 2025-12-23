@@ -9,7 +9,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
@@ -789,16 +789,915 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
     try {
+      // Convert hourlyRate to string for numeric type if provided
+      const dbUpdates: any = { ...updates, updatedAt: new Date() };
+      if (updates.hourlyRate !== undefined) {
+        // Drizzle numeric type expects string representation
+        dbUpdates.hourlyRate = updates.hourlyRate === null ? null : updates.hourlyRate.toString();
+      }
+      
       const [updated] = await db
         .update(kitchens)
-        .set({ ...updates, updatedAt: new Date() })
+        .set(dbUpdates)
         .where(eq(kitchens.id, id))
         .returning();
       return updated;
     } catch (error) {
       console.error('Error updating kitchen:', error);
+      throw error;
+    }
+  }
+
+  // Get kitchen pricing
+  async getKitchenPricing(kitchenId: number): Promise<any | undefined> {
+    try {
+      // Query database directly to avoid Drizzle's numeric type issues
+      if (pool && 'query' in pool) {
+        try {
+          const directQuery = await pool.query(
+            'SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model FROM kitchens WHERE id = $1',
+            [kitchenId]
+          );
+          if (directQuery.rows && directQuery.rows[0]) {
+            const row = directQuery.rows[0];
+            const dbValue = row.hourly_rate;
+            const hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
+            
+            return {
+              hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
+              currency: row.currency || 'CAD',
+              minimumBookingHours: row.minimum_booking_hours || 1,
+              pricingModel: row.pricing_model || 'hourly',
+            };
+          }
+        } catch (error) {
+          console.error('Error getting kitchen pricing:', error);
+        }
+      }
+      
+      // Fallback to Drizzle if direct query fails
+      const kitchen = await this.getKitchenById(kitchenId);
+      if (!kitchen) return undefined;
+      
+      const hourlyRateCents = kitchen.hourlyRate ? parseFloat(kitchen.hourlyRate.toString()) : null;
+      const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
+      
+      return {
+        hourlyRate: hourlyRateDollars,
+        currency: kitchen.currency || 'CAD',
+        minimumBookingHours: kitchen.minimumBookingHours || 1,
+        pricingModel: kitchen.pricingModel || 'hourly',
+      };
+    } catch (error) {
+      console.error('Error getting kitchen pricing:', error);
+      throw error;
+    }
+  }
+
+  // Update kitchen pricing
+  async updateKitchenPricing(kitchenId: number, pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
+    try {
+      // Convert hourlyRate from dollars to cents (cents) if provided
+      const updates: any = {
+        updatedAt: new Date(),
+      };
+      
+      if (pricing.hourlyRate !== undefined) {
+        // Store as numeric in cents (e.g., $50.00 = 5000 cents)
+        // Input is in dollars, convert to cents for storage
+        const hourlyRateCents = pricing.hourlyRate === null ? null : Math.round(pricing.hourlyRate * 100);
+        updates.hourlyRate = hourlyRateCents === null ? null : hourlyRateCents.toString();
+      }
+      
+      if (pricing.currency !== undefined) {
+        updates.currency = pricing.currency;
+      }
+      
+      if (pricing.minimumBookingHours !== undefined) {
+        updates.minimumBookingHours = pricing.minimumBookingHours;
+      }
+      
+      if (pricing.pricingModel !== undefined) {
+        updates.pricingModel = pricing.pricingModel;
+      }
+      
+      const [updated] = await db
+        .update(kitchens)
+        .set(updates)
+        .where(eq(kitchens.id, kitchenId))
+        .returning();
+      
+      // Query database directly to get the actual stored value (in cents)
+      // Drizzle's numeric type may incorrectly interpret the value
+      let hourlyRateCents: number | null = null;
+      if (pool && 'query' in pool) {
+        try {
+          const directQuery = await pool.query(
+            'SELECT hourly_rate::text as hourly_rate FROM kitchens WHERE id = $1',
+            [kitchenId]
+          );
+          if (directQuery.rows && directQuery.rows[0]) {
+            const dbValue = directQuery.rows[0].hourly_rate;
+            hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
+          }
+        } catch (error) {
+          console.error('Error updating kitchen pricing:', error);
+        }
+      }
+      
+      // Convert cents to dollars for API response
+      const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
+      
+      // Return only pricing fields (not the entire kitchen object) for API consistency
+      const result = {
+        hourlyRate: hourlyRateDollars, // Return in dollars for API consistency
+        currency: updated.currency || 'CAD',
+        minimumBookingHours: updated.minimumBookingHours || 1,
+        pricingModel: updated.pricingModel || 'hourly',
+      };
+      console.log('[updateKitchenPricing] Final result:', JSON.stringify(result));
+      return result;
+    } catch (error) {
+      console.error('Error updating kitchen pricing:', error);
+      throw error;
+    }
+  }
+
+  // ===== STORAGE LISTINGS MANAGEMENT =====
+
+  // Get storage listing by ID (using direct SQL for numeric fields)
+  async getStorageListingById(id: number): Promise<any | undefined> {
+    try {
+      if (pool && 'query' in pool) {
+        try {
+          const directQuery = await pool.query(
+            `SELECT 
+              id, kitchen_id, storage_type, name, description,
+              dimensions_length::text as dimensions_length,
+              dimensions_width::text as dimensions_width,
+              dimensions_height::text as dimensions_height,
+              total_volume::text as total_volume,
+              shelf_count, shelf_material, access_type,
+              features, security_features, climate_control,
+              temperature_range, humidity_control, power_outlets,
+              pricing_model,
+              base_price::text as base_price,
+              price_per_cubic_foot::text as price_per_cubic_foot,
+              minimum_booking_duration, booking_duration_unit, currency,
+              status, approved_by, approved_at, rejection_reason,
+              is_active, availability_calendar,
+              certifications, photos, documents,
+              house_rules, prohibited_items, insurance_required,
+              created_at, updated_at
+            FROM storage_listings 
+            WHERE id = $1`,
+            [id]
+          );
+          if (directQuery.rows && directQuery.rows[0]) {
+            const row = directQuery.rows[0];
+            // Convert numeric fields from cents to dollars
+            return {
+              ...row,
+              basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
+              pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
+              dimensionsLength: row.dimensions_length ? parseFloat(String(row.dimensions_length)) : null,
+              dimensionsWidth: row.dimensions_width ? parseFloat(String(row.dimensions_width)) : null,
+              dimensionsHeight: row.dimensions_height ? parseFloat(String(row.dimensions_height)) : null,
+              totalVolume: row.total_volume ? parseFloat(String(row.total_volume)) : null,
+              kitchenId: row.kitchen_id,
+              storageType: row.storage_type,
+              minimumBookingDuration: row.minimum_booking_duration || 1,
+              bookingDurationUnit: row.booking_duration_unit || 'monthly',
+              pricingModel: row.pricing_model,
+              isActive: row.is_active,
+              climateControl: row.climate_control,
+              humidityControl: row.humidity_control,
+              powerOutlets: row.power_outlets,
+              insuranceRequired: row.insurance_required,
+              approvedBy: row.approved_by,
+              approvedAt: row.approved_at,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            };
+          }
+        } catch (error) {
+          console.error('Error getting storage listing by ID (direct query):', error);
+        }
+      }
+      
+      // Fallback to Drizzle
+      const [listing] = await db.select().from(storageListings).where(eq(storageListings.id, id));
+      if (!listing) return undefined;
+      
+      // Convert numeric fields from cents to dollars
+      const basePriceCents = listing.basePrice ? parseFloat(listing.basePrice.toString()) : null;
+      const pricePerCubicFootCents = listing.pricePerCubicFoot ? parseFloat(listing.pricePerCubicFoot.toString()) : null;
+      
+      return {
+        ...listing,
+        basePrice: basePriceCents !== null ? basePriceCents / 100 : null,
+        pricePerCubicFoot: pricePerCubicFootCents !== null ? pricePerCubicFootCents / 100 : null,
+      };
+    } catch (error) {
+      console.error('Error getting storage listing by ID:', error);
+      throw error;
+    }
+  }
+
+  // Get storage listings by kitchen ID
+  async getStorageListingsByKitchen(kitchenId: number): Promise<any[]> {
+    try {
+      if (pool && 'query' in pool) {
+        try {
+          const directQuery = await pool.query(
+            `SELECT 
+              id, kitchen_id, storage_type, name, description,
+              base_price::text as base_price,
+              price_per_cubic_foot::text as price_per_cubic_foot,
+              pricing_model, 
+              COALESCE(minimum_booking_duration, 1) as minimum_booking_duration,
+              COALESCE(booking_duration_unit, 'monthly') as booking_duration_unit,
+              currency,
+              status, is_active, created_at, updated_at
+            FROM storage_listings 
+            WHERE kitchen_id = $1
+            ORDER BY created_at DESC`,
+            [kitchenId]
+          );
+          
+          return directQuery.rows.map(row => ({
+            id: row.id,
+            kitchenId: row.kitchen_id,
+            storageType: row.storage_type,
+            name: row.name,
+            description: row.description,
+            basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
+            pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
+            pricingModel: row.pricing_model,
+            minimumBookingDuration: row.minimum_booking_duration ?? 1,
+            bookingDurationUnit: row.booking_duration_unit ?? 'monthly',
+            currency: row.currency || 'CAD',
+            status: row.status,
+            isActive: row.is_active,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          }));
+        } catch (error) {
+          console.error('Error getting storage listings by kitchen (direct query):', error);
+        }
+      }
+      
+      // Fallback to Drizzle
+      const listings = await db.select().from(storageListings).where(eq(storageListings.kitchenId, kitchenId));
+      return listings.map(listing => {
+        const basePriceCents = listing.basePrice ? parseFloat(listing.basePrice.toString()) : null;
+        const pricePerCubicFootCents = listing.pricePerCubicFoot ? parseFloat(listing.pricePerCubicFoot.toString()) : null;
+        return {
+          ...listing,
+          basePrice: basePriceCents !== null ? basePriceCents / 100 : null,
+          pricePerCubicFoot: pricePerCubicFootCents !== null ? pricePerCubicFootCents / 100 : null,
+          minimumBookingDuration: listing.minimumBookingDuration || 1,
+          bookingDurationUnit: listing.bookingDurationUnit || 'monthly',
+        };
+      });
+    } catch (error) {
+      console.error('Error getting storage listings by kitchen:', error);
+      throw error;
+    }
+  }
+
+  // Create storage listing
+  async createStorageListing(listing: {
+    kitchenId: number;
+    storageType: 'dry' | 'cold' | 'freezer';
+    name: string;
+    description?: string;
+    basePrice: number; // in dollars
+    pricePerCubicFoot?: number; // in dollars
+    pricingModel: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
+    minimumBookingDuration?: number;
+    bookingDurationUnit?: 'hourly' | 'daily' | 'monthly';
+    dimensionsLength?: number;
+    dimensionsWidth?: number;
+    dimensionsHeight?: number;
+    totalVolume?: number;
+    shelfCount?: number;
+    shelfMaterial?: string;
+    accessType?: string;
+    temperatureRange?: string;
+    climateControl?: boolean;
+    humidityControl?: boolean;
+    powerOutlets?: number;
+    features?: string[];
+    securityFeatures?: string[];
+    certifications?: string[];
+    photos?: string[];
+    documents?: string[];
+    houseRules?: string[];
+    prohibitedItems?: string[];
+    insuranceRequired?: boolean;
+    availabilityCalendar?: Record<string, any>;
+  }): Promise<any> {
+    try {
+      // Convert prices from dollars to cents
+      const basePriceCents = Math.round(listing.basePrice * 100);
+      const pricePerCubicFootCents = listing.pricePerCubicFoot ? Math.round(listing.pricePerCubicFoot * 100) : null;
+
+      const insertData: any = {
+        kitchenId: listing.kitchenId,
+        storageType: listing.storageType,
+        name: listing.name,
+        description: listing.description || null,
+        basePrice: basePriceCents.toString(), // Store as string for numeric type
+        pricePerCubicFoot: pricePerCubicFootCents ? pricePerCubicFootCents.toString() : null,
+        pricingModel: listing.pricingModel,
+        minimumBookingDuration: listing.minimumBookingDuration || 1,
+        bookingDurationUnit: listing.bookingDurationUnit || 'monthly',
+        currency: 'CAD', // Always CAD
+        dimensionsLength: listing.dimensionsLength?.toString() || null,
+        dimensionsWidth: listing.dimensionsWidth?.toString() || null,
+        dimensionsHeight: listing.dimensionsHeight?.toString() || null,
+        totalVolume: listing.totalVolume?.toString() || null,
+        shelfCount: listing.shelfCount || null,
+        shelfMaterial: listing.shelfMaterial || null,
+        accessType: listing.accessType || null,
+        temperatureRange: listing.temperatureRange || null,
+        climateControl: listing.climateControl || false,
+        humidityControl: listing.humidityControl || false,
+        powerOutlets: listing.powerOutlets || 0,
+        features: listing.features || [],
+        securityFeatures: listing.securityFeatures || [],
+        certifications: listing.certifications || [],
+        photos: listing.photos || [],
+        documents: listing.documents || [],
+        houseRules: listing.houseRules || [],
+        prohibitedItems: listing.prohibitedItems || [],
+        insuranceRequired: listing.insuranceRequired || false,
+        availabilityCalendar: listing.availabilityCalendar || {},
+        status: 'draft',
+        isActive: true,
+        updatedAt: new Date(),
+      };
+
+      const [created] = await db
+        .insert(storageListings)
+        .values(insertData)
+        .returning();
+
+      // Query directly to get the created listing with proper numeric conversion
+      return await this.getStorageListingById(created.id);
+    } catch (error) {
+      console.error('Error creating storage listing:', error);
+      throw error;
+    }
+  }
+
+  // Update storage listing
+  async updateStorageListing(id: number, updates: {
+    name?: string;
+    description?: string;
+    storageType?: 'dry' | 'cold' | 'freezer';
+    basePrice?: number; // in dollars
+    pricePerCubicFoot?: number; // in dollars
+    pricingModel?: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
+    minimumBookingDuration?: number;
+    bookingDurationUnit?: 'hourly' | 'daily' | 'monthly';
+    dimensionsLength?: number;
+    dimensionsWidth?: number;
+    dimensionsHeight?: number;
+    totalVolume?: number;
+    shelfCount?: number;
+    shelfMaterial?: string;
+    accessType?: string;
+    temperatureRange?: string;
+    climateControl?: boolean;
+    humidityControl?: boolean;
+    powerOutlets?: number;
+    isActive?: boolean;
+    insuranceRequired?: boolean;
+    features?: string[];
+    securityFeatures?: string[];
+    certifications?: string[];
+    photos?: string[];
+    documents?: string[];
+    houseRules?: string[];
+    prohibitedItems?: string[];
+    availabilityCalendar?: Record<string, any>;
+  }): Promise<any> {
+    try {
+      const dbUpdates: any = {
+        updatedAt: new Date(),
+      };
+
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.description !== undefined) dbUpdates.description = updates.description || null;
+      if (updates.storageType !== undefined) dbUpdates.storageType = updates.storageType;
+      if (updates.pricingModel !== undefined) dbUpdates.pricingModel = updates.pricingModel;
+      if (updates.minimumBookingDuration !== undefined) dbUpdates.minimumBookingDuration = updates.minimumBookingDuration;
+      if (updates.bookingDurationUnit !== undefined) dbUpdates.bookingDurationUnit = updates.bookingDurationUnit;
+      // Currency is always CAD, no need to update
+      if (updates.shelfCount !== undefined) dbUpdates.shelfCount = updates.shelfCount;
+      if (updates.shelfMaterial !== undefined) dbUpdates.shelfMaterial = updates.shelfMaterial || null;
+      if (updates.accessType !== undefined) dbUpdates.accessType = updates.accessType || null;
+      if (updates.temperatureRange !== undefined) dbUpdates.temperatureRange = updates.temperatureRange || null;
+      if (updates.climateControl !== undefined) dbUpdates.climateControl = updates.climateControl;
+      if (updates.humidityControl !== undefined) dbUpdates.humidityControl = updates.humidityControl;
+      if (updates.powerOutlets !== undefined) dbUpdates.powerOutlets = updates.powerOutlets;
+      if (updates.isActive !== undefined) dbUpdates.isActive = updates.isActive;
+      if (updates.insuranceRequired !== undefined) dbUpdates.insuranceRequired = updates.insuranceRequired;
+      if (updates.features !== undefined) dbUpdates.features = updates.features;
+      if (updates.securityFeatures !== undefined) dbUpdates.securityFeatures = updates.securityFeatures;
+      if (updates.certifications !== undefined) dbUpdates.certifications = updates.certifications;
+      if (updates.photos !== undefined) dbUpdates.photos = updates.photos;
+      if (updates.documents !== undefined) dbUpdates.documents = updates.documents;
+      if (updates.houseRules !== undefined) dbUpdates.houseRules = updates.houseRules;
+      if (updates.prohibitedItems !== undefined) dbUpdates.prohibitedItems = updates.prohibitedItems;
+      if (updates.availabilityCalendar !== undefined) dbUpdates.availabilityCalendar = updates.availabilityCalendar;
+
+      // Convert numeric dimensions
+      if (updates.dimensionsLength !== undefined) {
+        dbUpdates.dimensionsLength = updates.dimensionsLength?.toString() || null;
+      }
+      if (updates.dimensionsWidth !== undefined) {
+        dbUpdates.dimensionsWidth = updates.dimensionsWidth?.toString() || null;
+      }
+      if (updates.dimensionsHeight !== undefined) {
+        dbUpdates.dimensionsHeight = updates.dimensionsHeight?.toString() || null;
+      }
+      if (updates.totalVolume !== undefined) {
+        dbUpdates.totalVolume = updates.totalVolume?.toString() || null;
+      }
+
+      // Convert prices from dollars to cents
+      if (updates.basePrice !== undefined) {
+        dbUpdates.basePrice = updates.basePrice === null ? null : Math.round(updates.basePrice * 100).toString();
+      }
+      if (updates.pricePerCubicFoot !== undefined) {
+        dbUpdates.pricePerCubicFoot = updates.pricePerCubicFoot === null ? null : Math.round(updates.pricePerCubicFoot * 100).toString();
+      }
+
+      // Tiered pricing removed - no longer supported
+
+      const [updated] = await db
+        .update(storageListings)
+        .set(dbUpdates)
+        .where(eq(storageListings.id, id))
+        .returning();
+
+      // Query directly to get the updated listing with proper numeric conversion
+      return await this.getStorageListingById(id);
+    } catch (error) {
+      console.error('Error updating storage listing:', error);
+      throw error;
+    }
+  }
+
+  // Delete storage listing
+  async deleteStorageListing(id: number): Promise<void> {
+    try {
+      const result = await db.delete(storageListings)
+        .where(eq(storageListings.id, id))
+        .returning({ id: storageListings.id });
+      
+      if (result.length === 0) {
+        throw new Error(`Storage listing with id ${id} not found`);
+      }
+      
+      console.log(`✅ Storage listing ${id} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting storage listing:', error);
+      throw error;
+    }
+  }
+
+  // ===== EQUIPMENT LISTINGS MANAGEMENT =====
+
+  // Get equipment listing by ID
+  async getEquipmentListingById(id: number): Promise<any | undefined> {
+    try {
+      if (pool && 'query' in pool) {
+        try {
+          const directQuery = await pool.query(
+            `SELECT 
+              id, kitchen_id, category, equipment_type, brand, model, description,
+              condition, age, service_history,
+              dimensions::text as dimensions,
+              power_requirements,
+              specifications::text as specifications,
+              certifications, safety_features,
+              pricing_model,
+              hourly_rate::text as hourly_rate,
+              daily_rate::text as daily_rate,
+              weekly_rate::text as weekly_rate,
+              monthly_rate::text as monthly_rate,
+              availability_type,
+              minimum_rental_hours, minimum_rental_days, currency,
+              usage_restrictions, training_required, cleaning_responsibility,
+              status, approved_by, approved_at, rejection_reason,
+              is_active, availability_calendar, prep_time_hours,
+              photos, manuals, maintenance_log,
+              damage_deposit::text as damage_deposit,
+              insurance_required,
+              created_at, updated_at
+            FROM equipment_listings 
+            WHERE id = $1`,
+            [id]
+          );
+          if (directQuery.rows && directQuery.rows[0]) {
+            const row = directQuery.rows[0];
+            // Convert numeric fields from cents to dollars
+            return {
+              ...row,
+              kitchenId: row.kitchen_id,
+              equipmentType: row.equipment_type,
+              powerRequirements: row.power_requirements,
+              serviceHistory: row.service_history,
+              cleaningResponsibility: row.cleaning_responsibility,
+              prepTimeHours: row.prep_time_hours,
+              insuranceRequired: row.insurance_required,
+              trainingRequired: row.training_required,
+              isActive: row.is_active,
+              approvedBy: row.approved_by,
+              approvedAt: row.approved_at,
+              rejectionReason: row.rejection_reason,
+              minimumRentalHours: row.minimum_rental_hours,
+              minimumRentalDays: row.minimum_rental_days,
+              availabilityCalendar: row.availability_calendar,
+              maintenanceLog: row.maintenance_log,
+              availabilityType: row.availability_type || 'rental',
+              // Convert prices from cents to dollars
+              hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+              dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+              weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+              monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+              damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
+              // Parse JSONB fields
+              dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
+              specifications: row.specifications ? JSON.parse(row.specifications) : {},
+            };
+          }
+        } catch (error) {
+          console.error('Error getting equipment listing by ID (direct query):', error);
+        }
+      }
+      
+      // Fallback to Drizzle
+      const [listing] = await db.select().from(equipmentListings).where(eq(equipmentListings.id, id));
+      if (!listing) return undefined;
+      
+      const hourlyRateCents = listing.hourlyRate ? parseFloat(listing.hourlyRate.toString()) : null;
+      const dailyRateCents = listing.dailyRate ? parseFloat(listing.dailyRate.toString()) : null;
+      const weeklyRateCents = listing.weeklyRate ? parseFloat(listing.weeklyRate.toString()) : null;
+      const monthlyRateCents = listing.monthlyRate ? parseFloat(listing.monthlyRate.toString()) : null;
+      const damageDepositCents = listing.damageDeposit ? parseFloat(listing.damageDeposit.toString()) : null;
+      
+      return {
+        ...listing,
+        hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
+        dailyRate: dailyRateCents !== null ? dailyRateCents / 100 : null,
+        weeklyRate: weeklyRateCents !== null ? weeklyRateCents / 100 : null,
+        monthlyRate: monthlyRateCents !== null ? monthlyRateCents / 100 : null,
+        damageDeposit: damageDepositCents !== null ? damageDepositCents / 100 : null,
+      };
+    } catch (error) {
+      console.error('Error getting equipment listing by ID:', error);
+      throw error;
+    }
+  }
+
+  // Get equipment listings by kitchen ID
+  async getEquipmentListingsByKitchen(kitchenId: number): Promise<any[]> {
+    try {
+      if (pool && 'query' in pool) {
+        try {
+          const directQuery = await pool.query(
+            `SELECT 
+              id, kitchen_id, category, equipment_type, brand, model, description,
+              condition, availability_type, pricing_model,
+              hourly_rate::text as hourly_rate,
+              daily_rate::text as daily_rate,
+              weekly_rate::text as weekly_rate,
+              monthly_rate::text as monthly_rate,
+              minimum_rental_hours, currency,
+              status, is_active, created_at, updated_at
+            FROM equipment_listings 
+            WHERE kitchen_id = $1
+            ORDER BY created_at DESC`,
+            [kitchenId]
+          );
+          
+          return directQuery.rows.map(row => ({
+            id: row.id,
+            kitchenId: row.kitchen_id,
+            category: row.category,
+            equipmentType: row.equipment_type,
+            brand: row.brand,
+            model: row.model,
+            description: row.description,
+            condition: row.condition,
+              availabilityType: row.availability_type || 'rental',
+              pricingModel: row.pricing_model,
+              hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+              dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+              weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+              monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+              minimumRentalHours: row.minimum_rental_hours ?? 4,
+              currency: row.currency || 'CAD',
+              status: row.status,
+              isActive: row.is_active,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+          }));
+        } catch (error) {
+          console.error('Error getting equipment listings by kitchen (direct query):', error);
+        }
+      }
+      
+      // Fallback to Drizzle
+      const listings = await db.select().from(equipmentListings).where(eq(equipmentListings.kitchenId, kitchenId));
+      return listings.map(listing => {
+        const hourlyRateCents = listing.hourlyRate ? parseFloat(listing.hourlyRate.toString()) : null;
+        const dailyRateCents = listing.dailyRate ? parseFloat(listing.dailyRate.toString()) : null;
+        const weeklyRateCents = listing.weeklyRate ? parseFloat(listing.weeklyRate.toString()) : null;
+        const monthlyRateCents = listing.monthlyRate ? parseFloat(listing.monthlyRate.toString()) : null;
+        return {
+          ...listing,
+          hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
+          dailyRate: dailyRateCents !== null ? dailyRateCents / 100 : null,
+          weeklyRate: weeklyRateCents !== null ? weeklyRateCents / 100 : null,
+          monthlyRate: monthlyRateCents !== null ? monthlyRateCents / 100 : null,
+        };
+      });
+    } catch (error) {
+      console.error('Error getting equipment listings by kitchen:', error);
+      throw error;
+    }
+  }
+
+  // Create equipment listing
+  async createEquipmentListing(listing: {
+    kitchenId: number;
+    category: 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty';
+    equipmentType: string;
+    brand?: string;
+    model?: string;
+    description?: string;
+    condition: 'excellent' | 'good' | 'fair' | 'needs-repair';
+    age?: number;
+    serviceHistory?: string;
+    dimensions?: Record<string, any>;
+    powerRequirements?: string;
+    specifications?: Record<string, any>;
+    certifications?: string[];
+    safetyFeatures?: string[];
+    availabilityType: 'included' | 'rental'; // NEW: included (free) or rental (paid)
+    pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly'; // Optional - only for rental
+    hourlyRate?: number; // in dollars - only for rental
+    dailyRate?: number; // in dollars - only for rental
+    weeklyRate?: number; // in dollars - only for rental
+    monthlyRate?: number; // in dollars - only for rental
+    minimumRentalHours?: number; // only for rental
+    minimumRentalDays?: number; // only for rental
+    usageRestrictions?: string[];
+    trainingRequired?: boolean;
+    cleaningResponsibility?: 'renter' | 'host' | 'shared';
+    prepTimeHours?: number;
+    photos?: string[];
+    manuals?: string[];
+    maintenanceLog?: any[];
+    damageDeposit?: number; // in dollars - only for rental
+    insuranceRequired?: boolean;
+    availabilityCalendar?: Record<string, any>;
+  }): Promise<any> {
+    try {
+      // Convert prices from dollars to cents (only for rental equipment)
+      const hourlyRateCents = listing.hourlyRate ? Math.round(listing.hourlyRate * 100) : null;
+      const dailyRateCents = listing.dailyRate ? Math.round(listing.dailyRate * 100) : null;
+      const weeklyRateCents = listing.weeklyRate ? Math.round(listing.weeklyRate * 100) : null;
+      const monthlyRateCents = listing.monthlyRate ? Math.round(listing.monthlyRate * 100) : null;
+      const damageDepositCents = listing.damageDeposit ? Math.round(listing.damageDeposit * 100) : 0;
+
+      const insertData: any = {
+        kitchenId: listing.kitchenId,
+        category: listing.category,
+        equipmentType: listing.equipmentType,
+        brand: listing.brand || null,
+        model: listing.model || null,
+        description: listing.description || null,
+        condition: listing.condition,
+        age: listing.age || null,
+        serviceHistory: listing.serviceHistory || null,
+        dimensions: listing.dimensions || {},
+        powerRequirements: listing.powerRequirements || null,
+        specifications: listing.specifications || {},
+        certifications: listing.certifications || [],
+        safetyFeatures: listing.safetyFeatures || [],
+        availabilityType: listing.availabilityType || 'rental',
+        // Pricing fields - only set for rental equipment
+        pricingModel: listing.availabilityType === 'rental' ? (listing.pricingModel || null) : null,
+        hourlyRate: listing.availabilityType === 'rental' ? (hourlyRateCents ? hourlyRateCents.toString() : null) : null,
+        dailyRate: listing.availabilityType === 'rental' ? (dailyRateCents ? dailyRateCents.toString() : null) : null,
+        weeklyRate: listing.availabilityType === 'rental' ? (weeklyRateCents ? weeklyRateCents.toString() : null) : null,
+        monthlyRate: listing.availabilityType === 'rental' ? (monthlyRateCents ? monthlyRateCents.toString() : null) : null,
+        minimumRentalHours: listing.availabilityType === 'rental' ? (listing.minimumRentalHours || 4) : null,
+        minimumRentalDays: listing.availabilityType === 'rental' ? (listing.minimumRentalDays || null) : null,
+        currency: 'CAD', // Always CAD
+        usageRestrictions: listing.usageRestrictions || [],
+        trainingRequired: listing.trainingRequired || false,
+        cleaningResponsibility: listing.cleaningResponsibility || null,
+        prepTimeHours: listing.prepTimeHours || 4,
+        photos: listing.photos || [],
+        manuals: listing.manuals || [],
+        maintenanceLog: listing.maintenanceLog || [],
+        damageDeposit: listing.availabilityType === 'rental' ? damageDepositCents.toString() : '0',
+        insuranceRequired: listing.insuranceRequired || false,
+        availabilityCalendar: listing.availabilityCalendar || {},
+        status: 'draft',
+        isActive: true,
+        updatedAt: new Date(),
+      };
+
+      const [created] = await db
+        .insert(equipmentListings)
+        .values(insertData)
+        .returning();
+
+      // Query directly to get the created listing with proper numeric conversion
+      return await this.getEquipmentListingById(created.id);
+    } catch (error) {
+      console.error('Error creating equipment listing:', error);
+      throw error;
+    }
+  }
+
+  // Update equipment listing
+  async updateEquipmentListing(id: number, updates: {
+    category?: 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty';
+    equipmentType?: string;
+    brand?: string;
+    model?: string;
+    description?: string;
+    condition?: 'excellent' | 'good' | 'fair' | 'needs-repair';
+    age?: number;
+    serviceHistory?: string;
+    dimensions?: Record<string, any>;
+    powerRequirements?: string;
+    specifications?: Record<string, any>;
+    availabilityType?: 'included' | 'rental'; // NEW: included (free) or rental (paid)
+    pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly'; // Optional - only for rental
+    hourlyRate?: number; // in dollars - only for rental
+    dailyRate?: number; // in dollars - only for rental
+    weeklyRate?: number; // in dollars - only for rental
+    monthlyRate?: number; // in dollars - only for rental
+    minimumRentalHours?: number; // only for rental
+    minimumRentalDays?: number; // only for rental
+    usageRestrictions?: string[];
+    trainingRequired?: boolean;
+    cleaningResponsibility?: 'renter' | 'host' | 'shared';
+    isActive?: boolean;
+    prepTimeHours?: number;
+    damageDeposit?: number; // in dollars - only for rental
+    insuranceRequired?: boolean;
+    certifications?: string[];
+    safetyFeatures?: string[];
+    photos?: string[];
+    manuals?: string[];
+    maintenanceLog?: any[];
+    availabilityCalendar?: Record<string, any>;
+  }): Promise<any> {
+    try {
+      const dbUpdates: any = {
+        updatedAt: new Date(),
+      };
+
+      if (updates.category !== undefined) dbUpdates.category = updates.category;
+      if (updates.equipmentType !== undefined) dbUpdates.equipmentType = updates.equipmentType;
+      if (updates.brand !== undefined) dbUpdates.brand = updates.brand || null;
+      if (updates.model !== undefined) dbUpdates.model = updates.model || null;
+      if (updates.description !== undefined) dbUpdates.description = updates.description || null;
+      if (updates.condition !== undefined) dbUpdates.condition = updates.condition;
+      if (updates.age !== undefined) dbUpdates.age = updates.age || null;
+      if (updates.serviceHistory !== undefined) dbUpdates.serviceHistory = updates.serviceHistory || null;
+      if (updates.dimensions !== undefined) dbUpdates.dimensions = updates.dimensions || {};
+      if (updates.powerRequirements !== undefined) dbUpdates.powerRequirements = updates.powerRequirements || null;
+      if (updates.specifications !== undefined) dbUpdates.specifications = updates.specifications || {};
+      if (updates.availabilityType !== undefined) {
+        dbUpdates.availabilityType = updates.availabilityType;
+        // If changing to included, clear pricing fields
+        if (updates.availabilityType === 'included') {
+          dbUpdates.pricingModel = null;
+          dbUpdates.hourlyRate = null;
+          dbUpdates.dailyRate = null;
+          dbUpdates.weeklyRate = null;
+          dbUpdates.monthlyRate = null;
+          dbUpdates.minimumRentalHours = null;
+          dbUpdates.minimumRentalDays = null;
+          dbUpdates.damageDeposit = '0';
+        }
+      }
+      if (updates.pricingModel !== undefined) {
+        // Only set pricing model if it's rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.pricingModel = updates.pricingModel;
+        }
+      }
+      if (updates.minimumRentalHours !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.minimumRentalHours = updates.minimumRentalHours;
+        }
+      }
+      if (updates.minimumRentalDays !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.minimumRentalDays = updates.minimumRentalDays || null;
+        }
+      }
+      if (updates.usageRestrictions !== undefined) dbUpdates.usageRestrictions = updates.usageRestrictions;
+      if (updates.trainingRequired !== undefined) dbUpdates.trainingRequired = updates.trainingRequired;
+      if (updates.cleaningResponsibility !== undefined) dbUpdates.cleaningResponsibility = updates.cleaningResponsibility || null;
+      if (updates.isActive !== undefined) dbUpdates.isActive = updates.isActive;
+      if (updates.prepTimeHours !== undefined) dbUpdates.prepTimeHours = updates.prepTimeHours;
+      if (updates.insuranceRequired !== undefined) dbUpdates.insuranceRequired = updates.insuranceRequired;
+      if (updates.certifications !== undefined) dbUpdates.certifications = updates.certifications;
+      if (updates.safetyFeatures !== undefined) dbUpdates.safetyFeatures = updates.safetyFeatures;
+      if (updates.photos !== undefined) dbUpdates.photos = updates.photos;
+      if (updates.manuals !== undefined) dbUpdates.manuals = updates.manuals;
+      if (updates.maintenanceLog !== undefined) dbUpdates.maintenanceLog = updates.maintenanceLog;
+      if (updates.availabilityCalendar !== undefined) dbUpdates.availabilityCalendar = updates.availabilityCalendar;
+
+      // Convert prices from dollars to cents (only for rental equipment)
+      if (updates.hourlyRate !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.hourlyRate = updates.hourlyRate === null ? null : Math.round(updates.hourlyRate * 100).toString();
+        } else {
+          dbUpdates.hourlyRate = null;
+        }
+      }
+      if (updates.dailyRate !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.dailyRate = updates.dailyRate === null ? null : Math.round(updates.dailyRate * 100).toString();
+        } else {
+          dbUpdates.dailyRate = null;
+        }
+      }
+      if (updates.weeklyRate !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.weeklyRate = updates.weeklyRate === null ? null : Math.round(updates.weeklyRate * 100).toString();
+        } else {
+          dbUpdates.weeklyRate = null;
+        }
+      }
+      if (updates.monthlyRate !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.monthlyRate = updates.monthlyRate === null ? null : Math.round(updates.monthlyRate * 100).toString();
+        } else {
+          dbUpdates.monthlyRate = null;
+        }
+      }
+      if (updates.damageDeposit !== undefined) {
+        // Only set if rental equipment
+        if (updates.availabilityType === 'rental' || !updates.availabilityType) {
+          dbUpdates.damageDeposit = updates.damageDeposit === null ? null : Math.round(updates.damageDeposit * 100).toString();
+        } else {
+          dbUpdates.damageDeposit = '0';
+        }
+      }
+
+      const [updated] = await db
+        .update(equipmentListings)
+        .set(dbUpdates)
+        .where(eq(equipmentListings.id, id))
+        .returning();
+
+      // Query directly to get the updated listing with proper numeric conversion
+      return await this.getEquipmentListingById(id);
+    } catch (error) {
+      console.error('Error updating equipment listing:', error);
+      throw error;
+    }
+  }
+
+  // Delete equipment listing
+  async deleteEquipmentListing(id: number): Promise<void> {
+    try {
+      const result = await db.delete(equipmentListings)
+        .where(eq(equipmentListings.id, id))
+        .returning({ id: equipmentListings.id });
+      
+      if (result.length === 0) {
+        throw new Error(`Equipment listing with id ${id} not found`);
+      }
+      
+      console.log(`✅ Equipment listing ${id} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting equipment listing:', error);
       throw error;
     }
   }
@@ -1089,6 +1988,24 @@ export class FirebaseStorage {
     try {
       console.log('Inserting kitchen booking into database:', bookingData);
       
+      // Calculate pricing using pricing service
+      const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+      const pricing = await calculateKitchenBookingPrice(
+        bookingData.kitchenId,
+        bookingData.startTime,
+        bookingData.endTime
+      );
+      
+      // Calculate service fee (5% commission)
+      const serviceFeeCents = calculatePlatformFee(pricing.totalPriceCents, 0.05);
+      
+      // Calculate total with fees
+      const totalWithFeesCents = calculateTotalWithFees(
+        pricing.totalPriceCents,
+        serviceFeeCents,
+        0 // No damage deposit for kitchen bookings alone
+      );
+      
       // Build the insert data, excluding optional fields if undefined
       const insertData: any = {
         chefId: bookingData.chefId,
@@ -1096,6 +2013,15 @@ export class FirebaseStorage {
         bookingDate: bookingData.bookingDate,
         startTime: bookingData.startTime,
         endTime: bookingData.endTime,
+        // Pricing fields (stored as strings for numeric type)
+        totalPrice: totalWithFeesCents.toString(),
+        hourlyRate: pricing.hourlyRateCents.toString(),
+        durationHours: pricing.durationHours.toString(),
+        serviceFee: serviceFeeCents.toString(),
+        currency: pricing.currency,
+        paymentStatus: 'pending',
+        storageItems: [],
+        equipmentItems: [],
       };
       
       // Only include specialNotes if provided
@@ -1140,6 +2066,24 @@ export class FirebaseStorage {
     try {
       console.log('Creating booking (with external support):', bookingData);
       
+      // Calculate pricing using pricing service
+      const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+      const pricing = await calculateKitchenBookingPrice(
+        bookingData.kitchenId,
+        bookingData.startTime,
+        bookingData.endTime
+      );
+      
+      // Calculate service fee (5% commission)
+      const serviceFeeCents = calculatePlatformFee(pricing.totalPriceCents, 0.05);
+      
+      // Calculate total with fees
+      const totalWithFeesCents = calculateTotalWithFees(
+        pricing.totalPriceCents,
+        serviceFeeCents,
+        0 // No damage deposit for kitchen bookings alone
+      );
+      
       const insertData: any = {
         kitchenId: bookingData.kitchenId,
         bookingDate: bookingData.bookingDate,
@@ -1148,6 +2092,15 @@ export class FirebaseStorage {
         bookingType: bookingData.bookingType || 'chef',
         chefId: bookingData.chefId || bookingData.createdBy || null,
         createdBy: bookingData.createdBy || null,
+        // Pricing fields (stored as strings for numeric type)
+        totalPrice: totalWithFeesCents.toString(),
+        hourlyRate: pricing.hourlyRateCents.toString(),
+        durationHours: pricing.durationHours.toString(),
+        serviceFee: serviceFeeCents.toString(),
+        currency: pricing.currency,
+        paymentStatus: 'pending',
+        storageItems: [],
+        equipmentItems: [],
       };
       
       if (bookingData.specialNotes) {

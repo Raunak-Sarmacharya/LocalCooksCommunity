@@ -27,6 +27,21 @@ export const vehicleTypeEnum = pgEnum('vehicle_type', ['car', 'suv', 'truck', 'v
 // Define an enum for booking status
 export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'cancelled']);
 
+// Define enums for storage listings
+export const storageTypeEnum = pgEnum('storage_type', ['dry', 'cold', 'freezer']);
+export const storagePricingModelEnum = pgEnum('storage_pricing_model', ['monthly-flat', 'per-cubic-foot', 'hourly', 'daily']);
+export const bookingDurationUnitEnum = pgEnum('booking_duration_unit', ['hourly', 'daily', 'monthly']);
+export const listingStatusEnum = pgEnum('listing_status', ['draft', 'pending', 'approved', 'rejected', 'active', 'inactive']);
+
+// Define enums for equipment listings
+export const equipmentCategoryEnum = pgEnum('equipment_category', ['food-prep', 'cooking', 'refrigeration', 'cleaning', 'specialty']);
+export const equipmentConditionEnum = pgEnum('equipment_condition', ['excellent', 'good', 'fair', 'needs-repair']);
+export const equipmentPricingModelEnum = pgEnum('equipment_pricing_model', ['hourly', 'daily', 'weekly', 'monthly']);
+export const equipmentAvailabilityTypeEnum = pgEnum('equipment_availability_type', ['included', 'rental']);
+
+// Define enum for payment status
+export const paymentStatusEnum = pgEnum('payment_status', ['pending', 'paid', 'refunded', 'failed', 'partially_refunded']);
+
 // Define users table (for both admins and users)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -341,6 +356,11 @@ export const kitchens = pgTable("kitchens", {
   galleryImages: jsonb("gallery_images").default([]), // Array of image URLs for kitchen gallery carousel
   amenities: jsonb("amenities").default([]), // Array of amenities/features for the kitchen
   isActive: boolean("is_active").default(true).notNull(),
+  // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
+  hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
+  currency: text("currency").default("CAD").notNull(), // Currency code (ISO 4217)
+  minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
+  pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -384,6 +404,17 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   externalContactEmail: text("external_contact_email"), // For third-party bookings
   externalContactPhone: text("external_contact_phone"), // For third-party bookings
   externalContactCompany: text("external_contact_company"), // For third-party bookings
+  // Pricing fields (all prices stored as integers in cents)
+  totalPrice: numeric("total_price"), // Total booking price in cents
+  hourlyRate: numeric("hourly_rate"), // Rate used for this booking (in cents)
+  durationHours: numeric("duration_hours"), // Calculated duration (decimal for partial hours)
+  storageItems: jsonb("storage_items").default([]), // Array of storage booking IDs: [{storageBookingId: 1, storageListingId: 5}]
+  equipmentItems: jsonb("equipment_items").default([]), // Array of equipment booking IDs: [{equipmentBookingId: 2, equipmentListingId: 8}]
+  paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Payment status
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  damageDeposit: numeric("damage_deposit").default("0"), // Damage deposit amount (in cents)
+  serviceFee: numeric("service_fee").default("0"), // Platform commission (in cents)
+  currency: text("currency").default("CAD").notNull(), // Currency code
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -486,6 +517,10 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   name: z.string().min(1, "Kitchen name is required"),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
+  hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  currency: z.string().min(3).max(3).optional(),
+  minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
+  pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
 }).omit({ 
   id: true, 
   createdAt: true,
@@ -497,6 +532,10 @@ export const updateKitchenSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
+  hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  currency: z.string().min(3).max(3).optional(),
+  minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
+  pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
 });
 
 export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailability, {
@@ -687,3 +726,293 @@ export type UpdatePortalUserApplicationStatus = z.infer<typeof updatePortalUserA
 // Type exports for portal user location access
 export type PortalUserLocationAccess = typeof portalUserLocationAccess.$inferSelect;
 export type InsertPortalUserLocationAccess = z.infer<typeof insertPortalUserLocationAccessSchema>;
+
+// Define storage_listings table
+export const storageListings = pgTable("storage_listings", {
+  id: serial("id").primaryKey(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  storageType: storageTypeEnum("storage_type").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  
+  // Physical specifications
+  dimensionsLength: numeric("dimensions_length"), // feet/meters
+  dimensionsWidth: numeric("dimensions_width"),
+  dimensionsHeight: numeric("dimensions_height"),
+  totalVolume: numeric("total_volume"), // cubic feet/meters (auto-calculated)
+  shelfCount: integer("shelf_count"),
+  shelfMaterial: text("shelf_material"),
+  accessType: text("access_type"), // 'walk-in', 'shelving-unit', 'rack-system'
+  
+  // Features & amenities (JSONB for flexibility - following existing pattern)
+  features: jsonb("features").default([]),
+  securityFeatures: jsonb("security_features").default([]),
+  climateControl: boolean("climate_control").default(false),
+  temperatureRange: text("temperature_range"), // "35-40°F"
+  humidityControl: boolean("humidity_control").default(false),
+  powerOutlets: integer("power_outlets").default(0),
+  
+  // Pricing (all in cents)
+  pricingModel: storagePricingModelEnum("pricing_model").notNull(),
+  basePrice: numeric("base_price").notNull(), // Base price in cents (integer)
+  pricePerCubicFoot: numeric("price_per_cubic_foot"), // For per-cubic-foot model (in cents)
+  // Booking duration (flexible: hourly, daily, or monthly)
+  minimumBookingDuration: integer("minimum_booking_duration").default(1).notNull(), // Minimum booking duration (number)
+  bookingDurationUnit: bookingDurationUnitEnum("booking_duration_unit").default("monthly").notNull(), // Unit: hourly, daily, or monthly
+  currency: text("currency").default("CAD").notNull(), // Locked to CAD
+  
+  // Status & moderation (admin approval workflow)
+  status: listingStatusEnum("status").default("draft").notNull(),
+  approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }), // Admin who approved
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"), // If rejected by admin
+  
+  // Availability
+  isActive: boolean("is_active").default(true).notNull(),
+  availabilityCalendar: jsonb("availability_calendar").default({}), // Blocked dates, maintenance windows
+  
+  // Compliance & documentation
+  certifications: jsonb("certifications").default([]),
+  photos: jsonb("photos").default([]), // Array of image URLs
+  documents: jsonb("documents").default([]), // Array of document URLs
+  
+  // Rules & restrictions
+  houseRules: jsonb("house_rules").default([]),
+  prohibitedItems: jsonb("prohibited_items").default([]),
+  insuranceRequired: boolean("insurance_required").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for storage listings
+export const insertStorageListingSchema = createInsertSchema(storageListings, {
+  kitchenId: z.number(),
+  name: z.string().min(3, "Name must be at least 3 characters"),
+  storageType: z.enum(["dry", "cold", "freezer"]),
+  pricingModel: z.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
+  basePrice: z.number().int().positive("Base price must be positive"),
+  pricePerCubicFoot: z.number().int().positive("Price per cubic foot must be positive").optional(),
+  minimumBookingDuration: z.number().int().positive("Minimum booking duration must be positive").optional(),
+  bookingDurationUnit: z.enum(["hourly", "daily", "monthly"]).optional(),
+  dimensionsLength: z.number().positive().optional(),
+  dimensionsWidth: z.number().positive().optional(),
+  dimensionsHeight: z.number().positive().optional(),
+  totalVolume: z.number().positive().optional(),
+  shelfCount: z.number().int().min(0).optional(),
+  temperatureRange: z.string().optional(),
+  features: z.array(z.string()).optional(),
+  securityFeatures: z.array(z.string()).optional(),
+  certifications: z.array(z.string()).optional(),
+  photos: z.array(z.string()).optional(),
+  documents: z.array(z.string()).optional(),
+  houseRules: z.array(z.string()).optional(),
+  prohibitedItems: z.array(z.string()).optional(),
+  availabilityCalendar: z.record(z.any()).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  approvedBy: true,
+  approvedAt: true,
+  rejectionReason: true,
+  currency: true, // Always CAD, not user-selectable
+});
+
+export const updateStorageListingSchema = z.object({
+  id: z.number(),
+  name: z.string().min(3).optional(),
+  description: z.string().optional(),
+  storageType: z.enum(["dry", "cold", "freezer"]).optional(),
+  pricingModel: z.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]).optional(),
+  basePrice: z.number().int().positive().optional(),
+  pricePerCubicFoot: z.number().int().positive().optional(),
+  minimumBookingDuration: z.number().int().positive().optional(),
+  bookingDurationUnit: z.enum(["hourly", "daily", "monthly"]).optional(),
+  dimensionsLength: z.number().positive().optional(),
+  dimensionsWidth: z.number().positive().optional(),
+  dimensionsHeight: z.number().positive().optional(),
+  totalVolume: z.number().positive().optional(),
+  shelfCount: z.number().int().min(0).optional(),
+  shelfMaterial: z.string().optional(),
+  accessType: z.string().optional(),
+  temperatureRange: z.string().optional(),
+  climateControl: z.boolean().optional(),
+  humidityControl: z.boolean().optional(),
+  powerOutlets: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+  insuranceRequired: z.boolean().optional(),
+  features: z.array(z.string()).optional(),
+  securityFeatures: z.array(z.string()).optional(),
+  certifications: z.array(z.string()).optional(),
+  photos: z.array(z.string()).optional(),
+  documents: z.array(z.string()).optional(),
+  houseRules: z.array(z.string()).optional(),
+  prohibitedItems: z.array(z.string()).optional(),
+  availabilityCalendar: z.record(z.any()).optional(),
+});
+
+export const updateStorageListingStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["draft", "pending", "approved", "rejected", "active", "inactive"]),
+  rejectionReason: z.string().optional(),
+});
+
+// Type exports for storage listings
+export type StorageListing = typeof storageListings.$inferSelect;
+export type InsertStorageListing = z.infer<typeof insertStorageListingSchema>;
+export type UpdateStorageListing = z.infer<typeof updateStorageListingSchema>;
+export type UpdateStorageListingStatus = z.infer<typeof updateStorageListingStatusSchema>;
+
+// Define equipment_listings table
+export const equipmentListings = pgTable("equipment_listings", {
+  id: serial("id").primaryKey(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  
+  // Category & type
+  category: equipmentCategoryEnum("category").notNull(),
+  equipmentType: text("equipment_type").notNull(), // 'mixer', 'oven', 'fryer', etc.
+  brand: text("brand"),
+  model: text("model"),
+  
+  // Specifications
+  description: text("description"),
+  condition: equipmentConditionEnum("condition").notNull(),
+  age: integer("age"), // years
+  serviceHistory: text("service_history"),
+  dimensions: jsonb("dimensions").default({}), // {width, depth, height, weight}
+  powerRequirements: text("power_requirements"), // '110V', '208V', '240V', '3-phase'
+  
+  // Equipment-specific fields (JSONB for flexibility)
+  specifications: jsonb("specifications").default({}),
+  certifications: jsonb("certifications").default([]),
+  safetyFeatures: jsonb("safety_features").default([]),
+  
+  // Availability type: included (free with kitchen) or rental (paid addon)
+  availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
+  
+  // Pricing (all in cents) - only required for rental equipment
+  pricingModel: equipmentPricingModelEnum("pricing_model"), // Nullable for included equipment
+  hourlyRate: numeric("hourly_rate"), // For hourly model (in cents) - only for rental
+  dailyRate: numeric("daily_rate"), // For daily model (in cents) - only for rental
+  weeklyRate: numeric("weekly_rate"), // For weekly model (in cents) - only for rental
+  monthlyRate: numeric("monthly_rate"), // For monthly model (in cents) - only for rental
+  minimumRentalHours: integer("minimum_rental_hours"), // Only for rental (nullable for included)
+  minimumRentalDays: integer("minimum_rental_days"), // Only for rental
+  currency: text("currency").default("CAD").notNull(),
+  
+  // Usage terms
+  usageRestrictions: jsonb("usage_restrictions").default([]),
+  trainingRequired: boolean("training_required").default(false),
+  cleaningResponsibility: text("cleaning_responsibility"), // 'renter', 'host', 'shared'
+  
+  // Status & moderation (admin approval workflow)
+  status: listingStatusEnum("status").default("draft").notNull(), // Reuse same enum
+  approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  
+  // Availability
+  isActive: boolean("is_active").default(true).notNull(),
+  availabilityCalendar: jsonb("availability_calendar").default({}),
+  prepTimeHours: integer("prep_time_hours").default(4), // Cleaning time between rentals
+  
+  // Visuals & documentation
+  photos: jsonb("photos").default([]),
+  manuals: jsonb("manuals").default([]), // PDF URLs
+  maintenanceLog: jsonb("maintenance_log").default([]),
+  
+  // Damage & liability (deposits in cents)
+  damageDeposit: numeric("damage_deposit").default(0), // Refundable deposit (in cents)
+  insuranceRequired: boolean("insurance_required").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for equipment listings
+export const insertEquipmentListingSchema = createInsertSchema(equipmentListings, {
+  kitchenId: z.number(),
+  category: z.enum(["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]),
+  equipmentType: z.string().min(1, "Equipment type is required"),
+  condition: z.enum(["excellent", "good", "fair", "needs-repair"]),
+  availabilityType: z.enum(["included", "rental"]),
+  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]).optional(), // Optional for included equipment
+  hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  dailyRate: z.number().int().positive("Daily rate must be positive").optional(),
+  weeklyRate: z.number().int().positive("Weekly rate must be positive").optional(),
+  monthlyRate: z.number().int().positive("Monthly rate must be positive").optional(),
+  minimumRentalHours: z.number().int().min(1).optional(),
+  minimumRentalDays: z.number().int().min(1).optional(),
+  damageDeposit: z.number().int().min(0).optional(),
+  age: z.number().int().min(0).optional(),
+  prepTimeHours: z.number().int().min(0).optional(),
+  dimensions: z.record(z.any()).optional(),
+  specifications: z.record(z.any()).optional(),
+  certifications: z.array(z.string()).optional(),
+  safetyFeatures: z.array(z.string()).optional(),
+  usageRestrictions: z.array(z.string()).optional(),
+  photos: z.array(z.string()).optional(),
+  manuals: z.array(z.string()).optional(),
+  maintenanceLog: z.array(z.any()).optional(),
+  availabilityCalendar: z.record(z.any()).optional(),
+  cleaningResponsibility: z.enum(["renter", "host", "shared"]).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  approvedBy: true,
+  approvedAt: true,
+  rejectionReason: true,
+  currency: true, // Always CAD, not user-selectable
+});
+
+export const updateEquipmentListingSchema = z.object({
+  id: z.number(),
+  category: z.enum(["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]).optional(),
+  equipmentType: z.string().min(1).optional(),
+  brand: z.string().optional(),
+  model: z.string().optional(),
+  description: z.string().optional(),
+  condition: z.enum(["excellent", "good", "fair", "needs-repair"]).optional(),
+  age: z.number().int().min(0).optional(),
+  serviceHistory: z.string().optional(),
+  dimensions: z.record(z.any()).optional(),
+  powerRequirements: z.string().optional(),
+  specifications: z.record(z.any()).optional(),
+  availabilityType: z.enum(["included", "rental"]).optional(),
+  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]).optional(),
+  hourlyRate: z.number().int().positive().optional(),
+  dailyRate: z.number().int().positive().optional(),
+  weeklyRate: z.number().int().positive().optional(),
+  monthlyRate: z.number().int().positive().optional(),
+  minimumRentalHours: z.number().int().min(1).optional(),
+  minimumRentalDays: z.number().int().min(1).optional(),
+  usageRestrictions: z.array(z.string()).optional(),
+  trainingRequired: z.boolean().optional(),
+  cleaningResponsibility: z.enum(["renter", "host", "shared"]).optional(),
+  isActive: z.boolean().optional(),
+  prepTimeHours: z.number().int().min(0).optional(),
+  damageDeposit: z.number().int().min(0).optional(),
+  insuranceRequired: z.boolean().optional(),
+  certifications: z.array(z.string()).optional(),
+  safetyFeatures: z.array(z.string()).optional(),
+  photos: z.array(z.string()).optional(),
+  manuals: z.array(z.string()).optional(),
+  maintenanceLog: z.array(z.any()).optional(),
+  availabilityCalendar: z.record(z.any()).optional(),
+});
+
+export const updateEquipmentListingStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["draft", "pending", "approved", "rejected", "active", "inactive"]),
+  rejectionReason: z.string().optional(),
+});
+
+// Type exports for equipment listings
+export type EquipmentListing = typeof equipmentListings.$inferSelect;
+export type InsertEquipmentListing = z.infer<typeof insertEquipmentListingSchema>;
+export type UpdateEquipmentListing = z.infer<typeof updateEquipmentListingSchema>;
+export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListingStatusSchema>;

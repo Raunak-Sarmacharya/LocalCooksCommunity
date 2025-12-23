@@ -11870,6 +11870,1616 @@ app.put("/api/manager/kitchens/:kitchenId", async (req, res) => {
   }
 });
 
+// Get kitchen pricing
+app.get("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the kitchen to verify manager has access to its location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    // Verify the manager has access to this kitchen's location
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Convert hourlyRate from cents to dollars for API response
+    const hourlyRateCents = kitchen.hourly_rate ? parseFloat(kitchen.hourly_rate.toString()) : null;
+    const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
+
+    const pricing = {
+      hourlyRate: hourlyRateDollars,
+      currency: kitchen.currency || 'CAD',
+      minimumBookingHours: kitchen.minimum_booking_hours || 1,
+      pricingModel: kitchen.pricing_model || 'hourly',
+    };
+
+    res.json(pricing);
+  } catch (error) {
+    console.error("Error getting kitchen pricing:", error);
+    res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+  }
+});
+
+// Update kitchen pricing
+app.put("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the kitchen to verify manager has access to its location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    // Verify the manager has access to this kitchen's location
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    const { hourlyRate, currency, minimumBookingHours, pricingModel } = req.body;
+
+    // Validate input
+    if (hourlyRate !== undefined && hourlyRate !== null && (typeof hourlyRate !== 'number' || hourlyRate < 0)) {
+      return res.status(400).json({ error: "Hourly rate must be a positive number or null" });
+    }
+
+    if (currency !== undefined && typeof currency !== 'string') {
+      return res.status(400).json({ error: "Currency must be a string" });
+    }
+
+    if (minimumBookingHours !== undefined && (typeof minimumBookingHours !== 'number' || minimumBookingHours < 1)) {
+      return res.status(400).json({ error: "Minimum booking hours must be at least 1" });
+    }
+
+    if (pricingModel !== undefined && !['hourly', 'daily', 'weekly'].includes(pricingModel)) {
+      return res.status(400).json({ error: "Pricing model must be 'hourly', 'daily', or 'weekly'" });
+    }
+
+    // Build update query
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (hourlyRate !== undefined) {
+      // Convert dollars to cents for storage
+      const hourlyRateCents = hourlyRate === null ? null : Math.round(hourlyRate * 100);
+      updates.push(`hourly_rate = $${paramCount++}`);
+      values.push(hourlyRateCents);
+    }
+
+    if (currency !== undefined) {
+      updates.push(`currency = $${paramCount++}`);
+      values.push(currency);
+    }
+
+    if (minimumBookingHours !== undefined) {
+      updates.push(`minimum_booking_hours = $${paramCount++}`);
+      values.push(minimumBookingHours);
+    }
+
+    if (pricingModel !== undefined) {
+      updates.push(`pricing_model = $${paramCount++}`);
+      values.push(pricingModel);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(kitchenId);
+
+    const updateQuery = `
+      UPDATE kitchens 
+      SET ${updates.join(', ')} 
+      WHERE id = $${paramCount}
+      RETURNING *
+    `;
+
+    const updateResult = await pool.query(updateQuery, values);
+    const updated = updateResult.rows[0];
+    
+    console.log(`✅ Kitchen ${kitchenId} pricing updated by manager ${user.id}`);
+    
+    // Convert hourlyRate from cents to dollars for response
+    const hourlyRateCents = updated.hourly_rate ? parseFloat(updated.hourly_rate.toString()) : null;
+    const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
+
+    const response = {
+      hourlyRate: hourlyRateDollars,
+      currency: updated.currency || 'CAD',
+      minimumBookingHours: updated.minimum_booking_hours || 1,
+      pricingModel: updated.pricing_model || 'hourly',
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error("Error updating kitchen pricing:", error);
+    res.status(500).json({ error: error.message || "Failed to update kitchen pricing" });
+  }
+});
+
+// ===== STORAGE LISTINGS API =====
+
+// Get storage listings for a kitchen
+app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this kitchen's location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    // Verify the manager has access to this kitchen's location
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Query storage listings with direct SQL for numeric fields
+    // Use COALESCE to handle NULL values for new columns (backward compatibility)
+    const listingsResult = await pool.query(
+      `SELECT 
+        id, kitchen_id, storage_type, name, description,
+        base_price::text as base_price,
+        price_per_cubic_foot::text as price_per_cubic_foot,
+        pricing_model, 
+        COALESCE(minimum_booking_duration, 1) as minimum_booking_duration,
+        COALESCE(booking_duration_unit, 'monthly') as booking_duration_unit,
+        currency,
+        status, is_active, created_at, updated_at
+      FROM storage_listings
+      WHERE kitchen_id = $1
+      ORDER BY created_at DESC`,
+      [kitchenId]
+    );
+
+    const listings = listingsResult.rows.map(row => ({
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      storageType: row.storage_type,
+      name: row.name,
+      description: row.description,
+      basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
+      pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
+      pricingModel: row.pricing_model,
+      minimumBookingDuration: row.minimum_booking_duration ?? 1,
+      bookingDurationUnit: row.booking_duration_unit ?? 'monthly',
+      currency: row.currency || 'CAD',
+      status: row.status,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+
+    res.json(listings);
+  } catch (error) {
+    console.error("Error getting storage listings:", error);
+    res.status(500).json({ error: error.message || "Failed to get storage listings" });
+  }
+});
+
+// Get equipment listings by kitchen ID
+app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this kitchen's location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Get equipment listings with proper numeric conversion
+    const result = await pool.query(`
+      SELECT 
+        id, kitchen_id, category, equipment_type, brand, model, description,
+        condition, availability_type, pricing_model,
+        hourly_rate::text as hourly_rate,
+        daily_rate::text as daily_rate,
+        weekly_rate::text as weekly_rate,
+        monthly_rate::text as monthly_rate,
+        minimum_rental_hours, currency,
+        status, is_active, created_at, updated_at
+      FROM equipment_listings 
+      WHERE kitchen_id = $1
+      ORDER BY created_at DESC
+    `, [kitchenId]);
+    
+    const listings = result.rows.map(row => ({
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      category: row.category,
+      equipmentType: row.equipment_type,
+      brand: row.brand,
+      model: row.model,
+      description: row.description,
+      condition: row.condition,
+      availabilityType: row.availability_type || 'rental',
+      pricingModel: row.pricing_model,
+      hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+      dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+      weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+      monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+      minimumRentalHours: row.minimum_rental_hours ?? 4,
+      currency: row.currency || 'CAD',
+      status: row.status,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+
+    res.json(listings);
+  } catch (error) {
+    console.error("Error getting equipment listings:", error);
+    res.status(500).json({ error: error.message || "Failed to get equipment listings" });
+  }
+});
+
+// Get single storage listing
+app.get("/api/manager/storage-listings/:listingId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const listingId = parseInt(req.params.listingId);
+    if (isNaN(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: "Invalid listing ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Query listing with direct SQL for numeric fields
+    const listingResult = await pool.query(
+      `SELECT 
+        id, kitchen_id, storage_type, name, description,
+        dimensions_length::text as dimensions_length,
+        dimensions_width::text as dimensions_width,
+        dimensions_height::text as dimensions_height,
+        total_volume::text as total_volume,
+        shelf_count, shelf_material, access_type,
+        features, security_features, climate_control,
+        temperature_range, humidity_control, power_outlets,
+        pricing_model,
+        base_price::text as base_price,
+        price_per_cubic_foot::text as price_per_cubic_foot,
+        minimum_booking_duration, booking_duration_unit, currency,
+        status, approved_by, approved_at, rejection_reason,
+        is_active, availability_calendar,
+        certifications, photos, documents,
+        house_rules, prohibited_items, insurance_required,
+        created_at, updated_at
+      FROM storage_listings 
+      WHERE id = $1`,
+      [listingId]
+    );
+
+    if (listingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Storage listing not found" });
+    }
+
+    const row = listingResult.rows[0];
+
+    // Verify the manager has access to this listing's kitchen
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [row.kitchen_id]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this listing" });
+    }
+
+    // Convert numeric fields from cents to dollars
+    const listing = {
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      storageType: row.storage_type,
+      name: row.name,
+      description: row.description,
+      basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
+      pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
+      dimensionsLength: row.dimensions_length ? parseFloat(String(row.dimensions_length)) : null,
+      dimensionsWidth: row.dimensions_width ? parseFloat(String(row.dimensions_width)) : null,
+      dimensionsHeight: row.dimensions_height ? parseFloat(String(row.dimensions_height)) : null,
+      totalVolume: row.total_volume ? parseFloat(String(row.total_volume)) : null,
+      shelfCount: row.shelf_count,
+      shelfMaterial: row.shelf_material,
+      accessType: row.access_type,
+      temperatureRange: row.temperature_range,
+      climateControl: row.climate_control,
+      humidityControl: row.humidity_control,
+      powerOutlets: row.power_outlets,
+      pricingModel: row.pricing_model,
+      minimumBookingDuration: row.minimum_booking_duration || 1,
+      bookingDurationUnit: row.booking_duration_unit || 'monthly',
+      currency: row.currency,
+      status: row.status,
+      isActive: row.is_active,
+      insuranceRequired: row.insurance_required,
+      features: row.features || [],
+      securityFeatures: row.security_features || [],
+      certifications: row.certifications || [],
+      photos: row.photos || [],
+      documents: row.documents || [],
+      houseRules: row.house_rules || [],
+      prohibitedItems: row.prohibited_items || [],
+      minimumBookingDuration: row.minimum_booking_duration || 1,
+      bookingDurationUnit: row.booking_duration_unit || 'monthly',
+      availabilityCalendar: row.availability_calendar || {},
+      approvedBy: row.approved_by,
+      approvedAt: row.approved_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+
+    res.json(listing);
+  } catch (error) {
+    console.error("Error getting storage listing:", error);
+    res.status(500).json({ error: error.message || "Failed to get storage listing" });
+  }
+});
+
+// Create storage listing
+app.post("/api/manager/storage-listings", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { kitchenId, ...listingData } = req.body;
+
+    if (!kitchenId || isNaN(parseInt(kitchenId))) {
+      return res.status(400).json({ error: "Valid kitchen ID is required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this kitchen's location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [parseInt(kitchenId)]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Validate required fields
+    if (!listingData.name || !listingData.storageType || !listingData.pricingModel || !listingData.basePrice) {
+      return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
+    }
+
+    // Convert prices from dollars to cents
+    const basePriceCents = Math.round(listingData.basePrice * 100);
+    const pricePerCubicFootCents = listingData.pricePerCubicFoot ? Math.round(listingData.pricePerCubicFoot * 100) : null;
+    
+    // Booking duration (defaults if not provided)
+    const minimumBookingDuration = listingData.minimumBookingDuration || 1;
+    const bookingDurationUnit = listingData.bookingDurationUnit || 'monthly';
+
+    // Build insert query
+    const insertQuery = `
+      INSERT INTO storage_listings (
+        kitchen_id, storage_type, name, description,
+        base_price, price_per_cubic_foot, pricing_model,
+        minimum_booking_duration, booking_duration_unit, currency,
+        dimensions_length, dimensions_width, dimensions_height, total_volume,
+        shelf_count, shelf_material, access_type,
+        temperature_range, climate_control, humidity_control, power_outlets,
+        features, security_features, certifications, photos, documents,
+        house_rules, prohibited_items, insurance_required,
+        availability_calendar,
+        status, is_active, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW(), NOW()
+      ) RETURNING id
+    `;
+
+    const insertValues = [
+      parseInt(kitchenId),
+      listingData.storageType,
+      listingData.name,
+      listingData.description || null,
+      basePriceCents,
+      pricePerCubicFootCents,
+      listingData.pricingModel,
+      minimumBookingDuration,
+      bookingDurationUnit,
+      'CAD', // Always CAD
+      listingData.dimensionsLength || null,
+      listingData.dimensionsWidth || null,
+      listingData.dimensionsHeight || null,
+      listingData.totalVolume || null,
+      listingData.shelfCount || null,
+      listingData.shelfMaterial || null,
+      listingData.accessType || null,
+      listingData.temperatureRange || null,
+      listingData.climateControl || false,
+      listingData.humidityControl || false,
+      listingData.powerOutlets || 0,
+      JSON.stringify(listingData.features || []),
+      JSON.stringify(listingData.securityFeatures || []),
+      JSON.stringify(listingData.certifications || []),
+      JSON.stringify(listingData.photos || []),
+      JSON.stringify(listingData.documents || []),
+      JSON.stringify(listingData.houseRules || []),
+      JSON.stringify(listingData.prohibitedItems || []),
+      listingData.insuranceRequired || false,
+      JSON.stringify(listingData.availabilityCalendar || {}),
+      'draft',
+      true,
+    ];
+
+    const insertResult = await pool.query(insertQuery, insertValues);
+    const newListingId = insertResult.rows[0].id;
+
+    // Fetch the created listing with proper conversion
+    const fetchResult = await pool.query(
+      `SELECT 
+        id, kitchen_id, storage_type, name, description,
+        base_price::text as base_price,
+        price_per_cubic_foot::text as price_per_cubic_foot,
+        pricing_model, minimum_booking_duration, booking_duration_unit, currency,
+        status, is_active, created_at, updated_at
+      FROM storage_listings
+      WHERE id = $1`,
+      [newListingId]
+    );
+
+    const row = fetchResult.rows[0];
+    const created = {
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      storageType: row.storage_type,
+      name: row.name,
+      description: row.description,
+      basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
+      pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
+      pricingModel: row.pricing_model,
+      minimumBookingDuration: row.minimum_booking_duration || 1,
+      bookingDurationUnit: row.booking_duration_unit || 'monthly',
+      currency: row.currency,
+      status: row.status,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+
+    console.log(`✅ Storage listing created by manager ${user.id}`);
+    res.status(201).json(created);
+  } catch (error) {
+    console.error("Error creating storage listing:", error);
+    res.status(500).json({ error: error.message || "Failed to create storage listing" });
+  }
+});
+
+// Update storage listing
+app.put("/api/manager/storage-listings/:listingId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const listingId = parseInt(req.params.listingId);
+    if (isNaN(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: "Invalid listing ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this listing
+    const existingResult = await pool.query(
+      `SELECT kitchen_id FROM storage_listings WHERE id = $1`,
+      [listingId]
+    );
+
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Storage listing not found" });
+    }
+
+    const kitchenId = existingResult.rows[0].kitchen_id;
+
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this listing" });
+    }
+
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    // Build update query dynamically
+    if (req.body.name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(req.body.name);
+    }
+    if (req.body.description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(req.body.description || null);
+    }
+    if (req.body.storageType !== undefined) {
+      updates.push(`storage_type = $${paramCount++}`);
+      values.push(req.body.storageType);
+    }
+    if (req.body.pricingModel !== undefined) {
+      updates.push(`pricing_model = $${paramCount++}`);
+      values.push(req.body.pricingModel);
+    }
+    if (req.body.basePrice !== undefined) {
+      updates.push(`base_price = $${paramCount++}`);
+      values.push(Math.round(req.body.basePrice * 100)); // Convert to cents
+    }
+    if (req.body.pricePerCubicFoot !== undefined) {
+      updates.push(`price_per_cubic_foot = $${paramCount++}`);
+      values.push(req.body.pricePerCubicFoot ? Math.round(req.body.pricePerCubicFoot * 100) : null);
+    }
+    if (req.body.minimumBookingDuration !== undefined) {
+      updates.push(`minimum_booking_duration = $${paramCount++}`);
+      values.push(req.body.minimumBookingDuration);
+    }
+    if (req.body.bookingDurationUnit !== undefined) {
+      updates.push(`booking_duration_unit = $${paramCount++}`);
+      values.push(req.body.bookingDurationUnit);
+    }
+    // Currency is always CAD, no need to update
+    if (req.body.dimensionsLength !== undefined) {
+      updates.push(`dimensions_length = $${paramCount++}`);
+      values.push(req.body.dimensionsLength || null);
+    }
+    if (req.body.dimensionsWidth !== undefined) {
+      updates.push(`dimensions_width = $${paramCount++}`);
+      values.push(req.body.dimensionsWidth || null);
+    }
+    if (req.body.dimensionsHeight !== undefined) {
+      updates.push(`dimensions_height = $${paramCount++}`);
+      values.push(req.body.dimensionsHeight || null);
+    }
+    if (req.body.totalVolume !== undefined) {
+      updates.push(`total_volume = $${paramCount++}`);
+      values.push(req.body.totalVolume || null);
+    }
+    if (req.body.shelfCount !== undefined) {
+      updates.push(`shelf_count = $${paramCount++}`);
+      values.push(req.body.shelfCount || null);
+    }
+    if (req.body.shelfMaterial !== undefined) {
+      updates.push(`shelf_material = $${paramCount++}`);
+      values.push(req.body.shelfMaterial || null);
+    }
+    if (req.body.accessType !== undefined) {
+      updates.push(`access_type = $${paramCount++}`);
+      values.push(req.body.accessType || null);
+    }
+    if (req.body.temperatureRange !== undefined) {
+      updates.push(`temperature_range = $${paramCount++}`);
+      values.push(req.body.temperatureRange || null);
+    }
+    if (req.body.climateControl !== undefined) {
+      updates.push(`climate_control = $${paramCount++}`);
+      values.push(req.body.climateControl);
+    }
+    if (req.body.humidityControl !== undefined) {
+      updates.push(`humidity_control = $${paramCount++}`);
+      values.push(req.body.humidityControl);
+    }
+    if (req.body.powerOutlets !== undefined) {
+      updates.push(`power_outlets = $${paramCount++}`);
+      values.push(req.body.powerOutlets);
+    }
+    if (req.body.isActive !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(req.body.isActive);
+    }
+    if (req.body.insuranceRequired !== undefined) {
+      updates.push(`insurance_required = $${paramCount++}`);
+      values.push(req.body.insuranceRequired);
+    }
+    if (req.body.features !== undefined) {
+      updates.push(`features = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.features));
+    }
+    if (req.body.securityFeatures !== undefined) {
+      updates.push(`security_features = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.securityFeatures));
+    }
+    if (req.body.certifications !== undefined) {
+      updates.push(`certifications = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.certifications));
+    }
+    if (req.body.photos !== undefined) {
+      updates.push(`photos = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.photos));
+    }
+    if (req.body.documents !== undefined) {
+      updates.push(`documents = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.documents));
+    }
+    if (req.body.houseRules !== undefined) {
+      updates.push(`house_rules = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.houseRules));
+    }
+    if (req.body.prohibitedItems !== undefined) {
+      updates.push(`prohibited_items = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.prohibitedItems));
+    }
+    // Tiered pricing removed - no longer supported
+    if (req.body.availabilityCalendar !== undefined) {
+      updates.push(`availability_calendar = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.availabilityCalendar));
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(listingId);
+
+    const updateQuery = `
+      UPDATE storage_listings 
+      SET ${updates.join(', ')} 
+      WHERE id = $${paramCount}
+      RETURNING id
+    `;
+
+    await pool.query(updateQuery, values);
+
+    // Fetch the updated listing with proper conversion
+    const fetchResult = await pool.query(
+      `SELECT 
+        id, kitchen_id, storage_type, name, description,
+        base_price::text as base_price,
+        price_per_cubic_foot::text as price_per_cubic_foot,
+        pricing_model, minimum_booking_duration, booking_duration_unit, currency,
+        status, is_active, created_at, updated_at
+      FROM storage_listings
+      WHERE id = $1`,
+      [listingId]
+    );
+
+    const row = fetchResult.rows[0];
+    const updated = {
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      storageType: row.storage_type,
+      name: row.name,
+      description: row.description,
+      basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
+      pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
+      pricingModel: row.pricing_model,
+      minimumBookingDuration: row.minimum_booking_duration || 1,
+      bookingDurationUnit: row.booking_duration_unit || 'monthly',
+      currency: row.currency,
+      status: row.status,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+
+    console.log(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating storage listing:", error);
+    res.status(500).json({ error: error.message || "Failed to update storage listing" });
+  }
+});
+
+// Delete storage listing
+app.delete("/api/manager/storage-listings/:listingId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const listingId = parseInt(req.params.listingId);
+    if (isNaN(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: "Invalid listing ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this listing
+    const existingResult = await pool.query(
+      `SELECT kitchen_id FROM storage_listings WHERE id = $1`,
+      [listingId]
+    );
+
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Storage listing not found" });
+    }
+
+    const kitchenId = existingResult.rows[0].kitchen_id;
+
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this listing" });
+    }
+
+    const deleteResult = await pool.query('DELETE FROM storage_listings WHERE id = $1 RETURNING id', [listingId]);
+
+    if (deleteResult.rows.length === 0) {
+      return res.status(404).json({ error: "Storage listing not found or already deleted" });
+    }
+
+    console.log(`✅ Storage listing ${listingId} deleted by manager ${user.id}`);
+    res.json({ success: true, message: "Storage listing deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting storage listing:", error);
+    res.status(500).json({ error: error.message || "Failed to delete storage listing" });
+  }
+});
+
+// ===== EQUIPMENT LISTINGS ENDPOINTS =====
+
+// Get equipment listing by ID
+app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const listingId = parseInt(req.params.listingId);
+    if (isNaN(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: "Invalid listing ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get equipment listing with proper numeric conversion
+    const result = await pool.query(`
+      SELECT 
+        id, kitchen_id, category, equipment_type, brand, model, description,
+        condition, age, service_history,
+        dimensions::text as dimensions,
+        power_requirements,
+        specifications::text as specifications,
+        certifications, safety_features,
+        pricing_model,
+        hourly_rate::text as hourly_rate,
+        daily_rate::text as daily_rate,
+        weekly_rate::text as weekly_rate,
+        monthly_rate::text as monthly_rate,
+        minimum_rental_hours, minimum_rental_days, currency,
+        delivery_available, delivery_fee::text as delivery_fee,
+        setup_fee::text as setup_fee, pickup_required,
+        usage_restrictions, training_required, cleaning_responsibility,
+        status, approved_by, approved_at, rejection_reason,
+        is_active, availability_calendar, prep_time_hours,
+        photos, manuals, maintenance_log,
+        damage_deposit::text as damage_deposit,
+        insurance_required,
+        created_at, updated_at
+      FROM equipment_listings 
+      WHERE id = $1
+    `, [listingId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Equipment listing not found" });
+    }
+
+    const row = result.rows[0];
+
+    // Verify manager access
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [row.kitchen_id]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this listing" });
+    }
+
+    // Convert numeric fields from cents to dollars
+    const listing = {
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      category: row.category,
+      equipmentType: row.equipment_type,
+      brand: row.brand,
+      model: row.model,
+      description: row.description,
+      condition: row.condition,
+      age: row.age,
+      serviceHistory: row.service_history,
+      dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
+      powerRequirements: row.power_requirements,
+      specifications: row.specifications ? JSON.parse(row.specifications) : {},
+      certifications: row.certifications || [],
+      safetyFeatures: row.safety_features || [],
+      pricingModel: row.pricing_model,
+      hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+      dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+      weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+      monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+      minimumRentalHours: row.minimum_rental_hours || 4,
+      minimumRentalDays: row.minimum_rental_days,
+      currency: row.currency || 'CAD',
+      deliveryAvailable: row.delivery_available,
+      deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
+      setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
+      pickupRequired: row.pickup_required,
+      usageRestrictions: row.usage_restrictions || [],
+      trainingRequired: row.training_required,
+      cleaningResponsibility: row.cleaning_responsibility,
+      status: row.status,
+      isActive: row.is_active,
+      availabilityCalendar: row.availability_calendar || {},
+      prepTimeHours: row.prep_time_hours || 4,
+      photos: row.photos || [],
+      manuals: row.manuals || [],
+      maintenanceLog: row.maintenance_log || [],
+      damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
+      insuranceRequired: row.insurance_required,
+      approvedBy: row.approved_by,
+      approvedAt: row.approved_at,
+      rejectionReason: row.rejection_reason,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+
+    res.json(listing);
+  } catch (error) {
+    console.error("Error getting equipment listing:", error);
+    res.status(500).json({ error: error.message || "Failed to get equipment listing" });
+  }
+});
+
+// Create equipment listing
+app.post("/api/manager/equipment-listings", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { kitchenId, ...listingData } = req.body;
+
+    if (!kitchenId || isNaN(parseInt(kitchenId))) {
+      return res.status(400).json({ error: "Valid kitchen ID is required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this kitchen's location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [parseInt(kitchenId)]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    // Validate required fields
+    if (!listingData.equipmentType || !listingData.category || !listingData.condition) {
+      return res.status(400).json({ error: "Equipment type, category, and condition are required" });
+    }
+
+    // Validate availability type
+    if (!listingData.availabilityType || !['included', 'rental'].includes(listingData.availabilityType)) {
+      return res.status(400).json({ error: "Availability type must be 'included' or 'rental'" });
+    }
+
+    // For rental equipment, validate pricing fields
+    let hourlyRateCents = null;
+    let dailyRateCents = null;
+    let weeklyRateCents = null;
+    let monthlyRateCents = null;
+    let damageDepositCents = 0;
+
+    if (listingData.availabilityType === 'rental') {
+      if (!listingData.pricingModel) {
+        return res.status(400).json({ error: "Pricing model is required for rental equipment" });
+      }
+
+      // Validate that at least one rate is provided based on pricing model
+      if (listingData.pricingModel === 'hourly' && !listingData.hourlyRate) {
+        return res.status(400).json({ error: "Hourly rate is required for hourly pricing model" });
+      }
+      if (listingData.pricingModel === 'daily' && !listingData.dailyRate) {
+        return res.status(400).json({ error: "Daily rate is required for daily pricing model" });
+      }
+      if (listingData.pricingModel === 'weekly' && !listingData.weeklyRate) {
+        return res.status(400).json({ error: "Weekly rate is required for weekly pricing model" });
+      }
+      if (listingData.pricingModel === 'monthly' && !listingData.monthlyRate) {
+        return res.status(400).json({ error: "Monthly rate is required for monthly pricing model" });
+      }
+
+      // Convert prices from dollars to cents (only for rental)
+      hourlyRateCents = listingData.hourlyRate ? Math.round(listingData.hourlyRate * 100) : null;
+      dailyRateCents = listingData.dailyRate ? Math.round(listingData.dailyRate * 100) : null;
+      weeklyRateCents = listingData.weeklyRate ? Math.round(listingData.weeklyRate * 100) : null;
+      monthlyRateCents = listingData.monthlyRate ? Math.round(listingData.monthlyRate * 100) : null;
+      damageDepositCents = listingData.damageDeposit ? Math.round(listingData.damageDeposit * 100) : 0;
+    }
+
+    // Insert equipment listing
+    const insertResult = await pool.query(`
+      INSERT INTO equipment_listings (
+        kitchen_id, category, equipment_type, brand, model, description,
+        condition, age, service_history, dimensions, power_requirements,
+        specifications, certifications, safety_features,
+        availability_type,
+        pricing_model, hourly_rate, daily_rate, weekly_rate, monthly_rate,
+        minimum_rental_hours, minimum_rental_days, currency,
+        usage_restrictions, training_required, cleaning_responsibility,
+        prep_time_hours, photos, manuals, maintenance_log,
+        damage_deposit, insurance_required, availability_calendar,
+        status, is_active
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+        $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
+        $27, $28, $29, $30, $31, $32, $33, $34, $35
+      ) RETURNING id
+    `, [
+      parseInt(kitchenId),
+      listingData.category,
+      listingData.equipmentType,
+      listingData.brand || null,
+      listingData.model || null,
+      listingData.description || null,
+      listingData.condition,
+      listingData.age || null,
+      listingData.serviceHistory || null,
+      JSON.stringify(listingData.dimensions || {}),
+      listingData.powerRequirements || null,
+      JSON.stringify(listingData.specifications || {}),
+      JSON.stringify(listingData.certifications || []),
+      JSON.stringify(listingData.safetyFeatures || []),
+      listingData.availabilityType || 'rental',
+      listingData.availabilityType === 'rental' ? listingData.pricingModel : null,
+      listingData.availabilityType === 'rental' ? (hourlyRateCents ? hourlyRateCents.toString() : null) : null,
+      listingData.availabilityType === 'rental' ? (dailyRateCents ? dailyRateCents.toString() : null) : null,
+      listingData.availabilityType === 'rental' ? (weeklyRateCents ? weeklyRateCents.toString() : null) : null,
+      listingData.availabilityType === 'rental' ? (monthlyRateCents ? monthlyRateCents.toString() : null) : null,
+      listingData.availabilityType === 'rental' ? (listingData.minimumRentalHours || 4) : null, // null for included equipment
+      listingData.availabilityType === 'rental' ? (listingData.minimumRentalDays || null) : null,
+      'CAD',
+      JSON.stringify(listingData.usageRestrictions || []),
+      listingData.trainingRequired || false,
+      listingData.cleaningResponsibility || null,
+      listingData.prepTimeHours || 4,
+      JSON.stringify(listingData.photos || []),
+      JSON.stringify(listingData.manuals || []),
+      JSON.stringify(listingData.maintenanceLog || []),
+      listingData.availabilityType === 'rental' ? (damageDepositCents.toString()) : '0',
+      listingData.insuranceRequired || false,
+      JSON.stringify(listingData.availabilityCalendar || {}),
+      'draft',
+      true,
+    ]);
+
+    const createdId = insertResult.rows[0].id;
+
+    // Fetch the created listing
+    const getResult = await pool.query(`
+      SELECT 
+        id, kitchen_id, category, equipment_type, brand, model, description,
+        condition, age, service_history,
+        dimensions::text as dimensions,
+        power_requirements,
+        specifications::text as specifications,
+        certifications, safety_features,
+        pricing_model,
+        hourly_rate::text as hourly_rate,
+        daily_rate::text as daily_rate,
+        weekly_rate::text as weekly_rate,
+        monthly_rate::text as monthly_rate,
+        minimum_rental_hours, minimum_rental_days, currency,
+        delivery_available, delivery_fee::text as delivery_fee,
+        setup_fee::text as setup_fee, pickup_required,
+        usage_restrictions, training_required, cleaning_responsibility,
+        status, is_active, availability_calendar, prep_time_hours,
+        photos, manuals, maintenance_log,
+        damage_deposit::text as damage_deposit,
+        insurance_required,
+        created_at, updated_at
+      FROM equipment_listings 
+      WHERE id = $1
+    `, [createdId]);
+
+    const row = getResult.rows[0];
+    const created = {
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      category: row.category,
+      equipmentType: row.equipment_type,
+      brand: row.brand,
+      model: row.model,
+      description: row.description,
+      condition: row.condition,
+      age: row.age,
+      serviceHistory: row.service_history,
+      dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
+      powerRequirements: row.power_requirements,
+      specifications: row.specifications ? JSON.parse(row.specifications) : {},
+      certifications: row.certifications || [],
+      safetyFeatures: row.safety_features || [],
+      pricingModel: row.pricing_model,
+      hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+      dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+      weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+      monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+      minimumRentalHours: row.minimum_rental_hours || 4,
+      minimumRentalDays: row.minimum_rental_days,
+      currency: row.currency || 'CAD',
+      deliveryAvailable: row.delivery_available,
+      deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
+      setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
+      pickupRequired: row.pickup_required,
+      usageRestrictions: row.usage_restrictions || [],
+      trainingRequired: row.training_required,
+      cleaningResponsibility: row.cleaning_responsibility,
+      status: row.status,
+      isActive: row.is_active,
+      availabilityCalendar: row.availability_calendar || {},
+      prepTimeHours: row.prep_time_hours || 4,
+      photos: row.photos || [],
+      manuals: row.manuals || [],
+      maintenanceLog: row.maintenance_log || [],
+      damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
+      insuranceRequired: row.insurance_required,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+
+    console.log(`✅ Equipment listing created by manager ${user.id}`);
+    res.status(201).json(created);
+  } catch (error) {
+    console.error("Error creating equipment listing:", error);
+    res.status(500).json({ error: error.message || "Failed to create equipment listing" });
+  }
+});
+
+// Update equipment listing
+app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const listingId = parseInt(req.params.listingId);
+    if (isNaN(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: "Invalid listing ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this listing
+    const existingResult = await pool.query(`
+      SELECT e.*, k.location_id, l.manager_id
+      FROM equipment_listings e
+      JOIN kitchens k ON e.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      WHERE e.id = $1
+    `, [listingId]);
+
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Equipment listing not found" });
+    }
+
+    const existing = existingResult.rows[0];
+    if (existing.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this listing" });
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (req.body.category !== undefined) {
+      updates.push(`category = $${paramCount++}`);
+      values.push(req.body.category);
+    }
+    if (req.body.equipmentType !== undefined) {
+      updates.push(`equipment_type = $${paramCount++}`);
+      values.push(req.body.equipmentType);
+    }
+    if (req.body.brand !== undefined) {
+      updates.push(`brand = $${paramCount++}`);
+      values.push(req.body.brand);
+    }
+    if (req.body.model !== undefined) {
+      updates.push(`model = $${paramCount++}`);
+      values.push(req.body.model);
+    }
+    if (req.body.description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(req.body.description);
+    }
+    if (req.body.condition !== undefined) {
+      updates.push(`condition = $${paramCount++}`);
+      values.push(req.body.condition);
+    }
+    if (req.body.age !== undefined) {
+      updates.push(`age = $${paramCount++}`);
+      values.push(req.body.age);
+    }
+    if (req.body.serviceHistory !== undefined) {
+      updates.push(`service_history = $${paramCount++}`);
+      values.push(req.body.serviceHistory);
+    }
+    if (req.body.dimensions !== undefined) {
+      updates.push(`dimensions = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.dimensions));
+    }
+    if (req.body.powerRequirements !== undefined) {
+      updates.push(`power_requirements = $${paramCount++}`);
+      values.push(req.body.powerRequirements);
+    }
+    if (req.body.specifications !== undefined) {
+      updates.push(`specifications = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.specifications));
+    }
+    if (req.body.pricingModel !== undefined) {
+      updates.push(`pricing_model = $${paramCount++}`);
+      values.push(req.body.pricingModel);
+    }
+    if (req.body.hourlyRate !== undefined) {
+      updates.push(`hourly_rate = $${paramCount++}`);
+      values.push(req.body.hourlyRate ? Math.round(req.body.hourlyRate * 100) : null);
+    }
+    if (req.body.dailyRate !== undefined) {
+      updates.push(`daily_rate = $${paramCount++}`);
+      values.push(req.body.dailyRate ? Math.round(req.body.dailyRate * 100) : null);
+    }
+    if (req.body.weeklyRate !== undefined) {
+      updates.push(`weekly_rate = $${paramCount++}`);
+      values.push(req.body.weeklyRate ? Math.round(req.body.weeklyRate * 100) : null);
+    }
+    if (req.body.monthlyRate !== undefined) {
+      updates.push(`monthly_rate = $${paramCount++}`);
+      values.push(req.body.monthlyRate ? Math.round(req.body.monthlyRate * 100) : null);
+    }
+    if (req.body.minimumRentalHours !== undefined) {
+      updates.push(`minimum_rental_hours = $${paramCount++}`);
+      values.push(req.body.minimumRentalHours);
+    }
+    if (req.body.minimumRentalDays !== undefined) {
+      updates.push(`minimum_rental_days = $${paramCount++}`);
+      values.push(req.body.minimumRentalDays);
+    }
+    if (req.body.deliveryAvailable !== undefined) {
+      updates.push(`delivery_available = $${paramCount++}`);
+      values.push(req.body.deliveryAvailable);
+    }
+    if (req.body.deliveryFee !== undefined) {
+      updates.push(`delivery_fee = $${paramCount++}`);
+      values.push(req.body.deliveryFee ? Math.round(req.body.deliveryFee * 100) : null);
+    }
+    if (req.body.setupFee !== undefined) {
+      updates.push(`setup_fee = $${paramCount++}`);
+      values.push(req.body.setupFee ? Math.round(req.body.setupFee * 100) : null);
+    }
+    if (req.body.pickupRequired !== undefined) {
+      updates.push(`pickup_required = $${paramCount++}`);
+      values.push(req.body.pickupRequired);
+    }
+    if (req.body.usageRestrictions !== undefined) {
+      updates.push(`usage_restrictions = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.usageRestrictions));
+    }
+    if (req.body.trainingRequired !== undefined) {
+      updates.push(`training_required = $${paramCount++}`);
+      values.push(req.body.trainingRequired);
+    }
+    if (req.body.cleaningResponsibility !== undefined) {
+      updates.push(`cleaning_responsibility = $${paramCount++}`);
+      values.push(req.body.cleaningResponsibility);
+    }
+    if (req.body.isActive !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(req.body.isActive);
+    }
+    if (req.body.prepTimeHours !== undefined) {
+      updates.push(`prep_time_hours = $${paramCount++}`);
+      values.push(req.body.prepTimeHours);
+    }
+    if (req.body.damageDeposit !== undefined) {
+      updates.push(`damage_deposit = $${paramCount++}`);
+      values.push(req.body.damageDeposit ? Math.round(req.body.damageDeposit * 100) : null);
+    }
+    if (req.body.insuranceRequired !== undefined) {
+      updates.push(`insurance_required = $${paramCount++}`);
+      values.push(req.body.insuranceRequired);
+    }
+    if (req.body.certifications !== undefined) {
+      updates.push(`certifications = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.certifications));
+    }
+    if (req.body.safetyFeatures !== undefined) {
+      updates.push(`safety_features = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.safetyFeatures));
+    }
+    if (req.body.photos !== undefined) {
+      updates.push(`photos = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.photos));
+    }
+    if (req.body.manuals !== undefined) {
+      updates.push(`manuals = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.manuals));
+    }
+    if (req.body.maintenanceLog !== undefined) {
+      updates.push(`maintenance_log = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.maintenanceLog));
+    }
+    if (req.body.availabilityCalendar !== undefined) {
+      updates.push(`availability_calendar = $${paramCount++}`);
+      values.push(JSON.stringify(req.body.availabilityCalendar));
+    }
+
+    updates.push(`updated_at = now()`);
+    values.push(listingId);
+
+    if (updates.length === 1) {
+      // Only updated_at, nothing to update
+      return res.json(existing);
+    }
+
+    const updateQuery = `
+      UPDATE equipment_listings 
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING id
+    `;
+
+    await pool.query(updateQuery, values);
+
+    // Fetch updated listing
+    const getResult = await pool.query(`
+      SELECT 
+        id, kitchen_id, category, equipment_type, brand, model, description,
+        condition, age, service_history,
+        dimensions::text as dimensions,
+        power_requirements,
+        specifications::text as specifications,
+        certifications, safety_features,
+        pricing_model,
+        hourly_rate::text as hourly_rate,
+        daily_rate::text as daily_rate,
+        weekly_rate::text as weekly_rate,
+        monthly_rate::text as monthly_rate,
+        minimum_rental_hours, minimum_rental_days, currency,
+        delivery_available, delivery_fee::text as delivery_fee,
+        setup_fee::text as setup_fee, pickup_required,
+        usage_restrictions, training_required, cleaning_responsibility,
+        status, is_active, availability_calendar, prep_time_hours,
+        photos, manuals, maintenance_log,
+        damage_deposit::text as damage_deposit,
+        insurance_required,
+        created_at, updated_at
+      FROM equipment_listings 
+      WHERE id = $1
+    `, [listingId]);
+
+    const row = getResult.rows[0];
+    const updated = {
+      id: row.id,
+      kitchenId: row.kitchen_id,
+      category: row.category,
+      equipmentType: row.equipment_type,
+      brand: row.brand,
+      model: row.model,
+      description: row.description,
+      condition: row.condition,
+      age: row.age,
+      serviceHistory: row.service_history,
+      dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
+      powerRequirements: row.power_requirements,
+      specifications: row.specifications ? JSON.parse(row.specifications) : {},
+      certifications: row.certifications || [],
+      safetyFeatures: row.safety_features || [],
+      pricingModel: row.pricing_model,
+      hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+      dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+      weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+      monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+      minimumRentalHours: row.minimum_rental_hours || 4,
+      minimumRentalDays: row.minimum_rental_days,
+      currency: row.currency || 'CAD',
+      deliveryAvailable: row.delivery_available,
+      deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
+      setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
+      pickupRequired: row.pickup_required,
+      usageRestrictions: row.usage_restrictions || [],
+      trainingRequired: row.training_required,
+      cleaningResponsibility: row.cleaning_responsibility,
+      status: row.status,
+      isActive: row.is_active,
+      availabilityCalendar: row.availability_calendar || {},
+      prepTimeHours: row.prep_time_hours || 4,
+      photos: row.photos || [],
+      manuals: row.manuals || [],
+      maintenanceLog: row.maintenance_log || [],
+      damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
+      insuranceRequired: row.insurance_required,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+
+    console.log(`✅ Equipment listing ${listingId} updated by manager ${user.id}`);
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating equipment listing:", error);
+    res.status(500).json({ error: error.message || "Failed to update equipment listing" });
+  }
+});
+
+// Delete equipment listing
+app.delete("/api/manager/equipment-listings/:listingId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const listingId = parseInt(req.params.listingId);
+    if (isNaN(listingId) || listingId <= 0) {
+      return res.status(400).json({ error: "Invalid listing ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this listing
+    const existingResult = await pool.query(`
+      SELECT e.*, k.location_id, l.manager_id
+      FROM equipment_listings e
+      JOIN kitchens k ON e.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      WHERE e.id = $1
+    `, [listingId]);
+
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Equipment listing not found" });
+    }
+
+    const existing = existingResult.rows[0];
+    if (existing.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this listing" });
+    }
+
+    const deleteResult = await pool.query('DELETE FROM equipment_listings WHERE id = $1 RETURNING id', [listingId]);
+
+    if (deleteResult.rows.length === 0) {
+      return res.status(404).json({ error: "Equipment listing not found or already deleted" });
+    }
+
+    console.log(`✅ Equipment listing ${listingId} deleted by manager ${user.id}`);
+    res.json({ success: true, message: "Equipment listing deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting equipment listing:", error);
+    res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
+  }
+});
+
 // Get all bookings for manager
 // Manager: Get chef profiles for locations managed by this manager
 app.get("/api/manager/chef-profiles", async (req, res) => {
@@ -13340,6 +14950,47 @@ app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => 
 });
 
 // Per-kitchen policy: max slots per chef per day
+// Get kitchen pricing (for chefs to see pricing during booking)
+app.get("/api/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get kitchen pricing using direct SQL (following numeric type pattern)
+    const result = await pool.query(`
+      SELECT 
+        hourly_rate::text as hourly_rate,
+        currency,
+        minimum_booking_hours
+      FROM kitchens
+      WHERE id = $1
+    `, [kitchenId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const row = result.rows[0];
+    const hourlyRateCents = row.hourly_rate ? parseFloat(row.hourly_rate) : 0;
+    const hourlyRateDollars = hourlyRateCents / 100;
+
+    res.json({
+      hourlyRate: hourlyRateDollars,
+      currency: row.currency || 'CAD',
+      minimumBookingHours: row.minimum_booking_hours || 1,
+    });
+  } catch (error) {
+    console.error("Error getting kitchen pricing:", error);
+    res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+  }
+});
+
 app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -13577,12 +15228,67 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       return res.status(409).json({ error: "Time slot is not available" });
     }
     
-    // Create booking (pending)
+    // Calculate pricing
+    const [sH, sM] = String(startTime).split(':').map(Number);
+    const [eH, eM] = String(endTime).split(':').map(Number);
+    const startTotalMinutes = sH * 60 + sM;
+    const endTotalMinutes = eH * 60 + eM;
+    const durationMinutes = endTotalMinutes - startTotalMinutes;
+    const durationHours = Math.max(0, durationMinutes / 60);
+    
+    // Get kitchen pricing
+    const kitchenPricingResult = await pool.query(`
+      SELECT 
+        hourly_rate::text as hourly_rate,
+        currency,
+        minimum_booking_hours
+      FROM kitchens
+      WHERE id = $1
+    `, [kitchenId]);
+    
+    let totalPriceCents = 0;
+    let hourlyRateCents = 0;
+    let effectiveDuration = durationHours;
+    let currency = 'CAD';
+    
+    if (kitchenPricingResult.rows.length > 0) {
+      const pricing = kitchenPricingResult.rows[0];
+      hourlyRateCents = pricing.hourly_rate ? parseFloat(pricing.hourly_rate) : 0;
+      currency = pricing.currency || 'CAD';
+      const minimumHours = pricing.minimum_booking_hours || 1;
+      effectiveDuration = Math.max(durationHours, minimumHours);
+      
+      if (hourlyRateCents > 0) {
+        totalPriceCents = Math.round(hourlyRateCents * effectiveDuration);
+      }
+    }
+    
+    // Calculate service fee (5% commission)
+    const serviceFeeCents = Math.round(totalPriceCents * 0.05);
+    const totalWithFeesCents = totalPriceCents + serviceFeeCents;
+    
+    // Create booking (pending) with pricing
     const result = await pool.query(`
-      INSERT INTO kitchen_bookings (chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status)
-      VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending')
+      INSERT INTO kitchen_bookings (
+        chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status,
+        total_price, hourly_rate, duration_hours, service_fee, currency, payment_status,
+        storage_items, equipment_items
+      )
+      VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending', $7, $8, $9, $10, $11, 'pending', '[]'::jsonb, '[]'::jsonb)
       RETURNING *
-    `, [req.user.id, kitchenId, bookingDate, startTime, endTime, specialNotes || null]);
+    `, [
+      req.user.id, 
+      kitchenId, 
+      bookingDate, 
+      startTime, 
+      endTime, 
+      specialNotes || null,
+      totalWithFeesCents.toString(),
+      hourlyRateCents.toString(),
+      effectiveDuration.toString(),
+      serviceFeeCents.toString(),
+      currency
+    ]);
     
     const booking = result.rows[0];
     
@@ -15754,6 +17460,45 @@ app.post("/api/public/bookings", async (req, res) => {
       return res.status(400).json({ error: "Time slot is already booked" });
     }
 
+    // Calculate pricing
+    const [sH, sM] = String(startTime).split(':').map(Number);
+    const [eH, eM] = String(endTime).split(':').map(Number);
+    const startTotalMinutes = sH * 60 + sM;
+    const endTotalMinutes = eH * 60 + eM;
+    const durationMinutes = endTotalMinutes - startTotalMinutes;
+    const durationHours = Math.max(0, durationMinutes / 60);
+    
+    // Get kitchen pricing
+    const kitchenPricingResult = await pool.query(`
+      SELECT 
+        hourly_rate::text as hourly_rate,
+        currency,
+        minimum_booking_hours
+      FROM kitchens
+      WHERE id = $1
+    `, [kitchenId]);
+    
+    let totalPriceCents = 0;
+    let hourlyRateCents = 0;
+    let effectiveDuration = durationHours;
+    let currency = 'CAD';
+    
+    if (kitchenPricingResult.rows.length > 0) {
+      const pricing = kitchenPricingResult.rows[0];
+      hourlyRateCents = pricing.hourly_rate ? parseFloat(pricing.hourly_rate) : 0;
+      currency = pricing.currency || 'CAD';
+      const minimumHours = pricing.minimum_booking_hours || 1;
+      effectiveDuration = Math.max(durationHours, minimumHours);
+      
+      if (hourlyRateCents > 0) {
+        totalPriceCents = Math.round(hourlyRateCents * effectiveDuration);
+      }
+    }
+    
+    // Calculate service fee (5% commission)
+    const serviceFeeCents = Math.round(totalPriceCents * 0.05);
+    const totalWithFeesCents = totalPriceCents + serviceFeeCents;
+
     // Create booking
     const bookingNotes = specialNotes || `Third-party booking from ${bookingName}${bookingCompany ? ` (${bookingCompany})` : ''}. Email: ${bookingEmail}${bookingPhone ? `, Phone: ${bookingPhone}` : ''}`;
 
@@ -15761,9 +17506,11 @@ app.post("/api/public/bookings", async (req, res) => {
       INSERT INTO kitchen_bookings (
         kitchen_id, booking_date, start_time, end_time,
         special_notes, booking_type, status,
-        external_contact_name, external_contact_email, external_contact_phone, external_contact_company
+        external_contact_name, external_contact_email, external_contact_phone, external_contact_company,
+        total_price, hourly_rate, duration_hours, service_fee, currency, payment_status,
+        storage_items, equipment_items
       )
-      VALUES ($1, $2, $3, $4, $5, 'external', 'pending', $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, 'external', 'pending', $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', '[]'::jsonb, '[]'::jsonb)
       RETURNING *
     `, [
       kitchenId,
@@ -15774,7 +17521,12 @@ app.post("/api/public/bookings", async (req, res) => {
       bookingName,
       bookingEmail,
       bookingPhone || null,
-      bookingCompany || null
+      bookingCompany || null,
+      totalWithFeesCents.toString(),
+      hourlyRateCents.toString(),
+      effectiveDuration.toString(),
+      serviceFeeCents.toString(),
+      currency
     ]);
 
     const booking = insertResult.rows[0];
@@ -17145,10 +18897,53 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     const portalUser = userResult.rows[0];
     const username = portalUser?.username || `User ${userId}`;
 
-    // Create booking (same table as chef bookings)
+    // Calculate pricing
+    const [sHP, sMP] = String(startTime).split(':').map(Number);
+    const [eHP, eMP] = String(endTime).split(':').map(Number);
+    const startTotalMinutesP = sHP * 60 + sMP;
+    const endTotalMinutesP = eHP * 60 + eMP;
+    const durationMinutesP = endTotalMinutesP - startTotalMinutesP;
+    const durationHoursP = Math.max(0, durationMinutesP / 60);
+    
+    // Get kitchen pricing
+    const kitchenPricingResultP = await pool.query(`
+      SELECT 
+        hourly_rate::text as hourly_rate,
+        currency,
+        minimum_booking_hours
+      FROM kitchens
+      WHERE id = $1
+    `, [kitchenId]);
+    
+    let totalPriceCentsP = 0;
+    let hourlyRateCentsP = 0;
+    let effectiveDurationP = durationHoursP;
+    let currencyP = 'CAD';
+    
+    if (kitchenPricingResultP.rows.length > 0) {
+      const pricing = kitchenPricingResultP.rows[0];
+      hourlyRateCentsP = pricing.hourly_rate ? parseFloat(pricing.hourly_rate) : 0;
+      currencyP = pricing.currency || 'CAD';
+      const minimumHours = pricing.minimum_booking_hours || 1;
+      effectiveDurationP = Math.max(durationHoursP, minimumHours);
+      
+      if (hourlyRateCentsP > 0) {
+        totalPriceCentsP = Math.round(hourlyRateCentsP * effectiveDurationP);
+      }
+    }
+    
+    // Calculate service fee (5% commission)
+    const serviceFeeCentsP = Math.round(totalPriceCentsP * 0.05);
+    const totalWithFeesCentsP = totalPriceCentsP + serviceFeeCentsP;
+
+    // Create booking (same table as chef bookings) with pricing
     const bookingResult = await pool.query(`
-      INSERT INTO kitchen_bookings (chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status)
-      VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending')
+      INSERT INTO kitchen_bookings (
+        chef_id, kitchen_id, booking_date, start_time, end_time, special_notes, status,
+        total_price, hourly_rate, duration_hours, service_fee, currency, payment_status,
+        storage_items, equipment_items
+      )
+      VALUES ($1, $2, $3::timestamp, $4, $5, $6, 'pending', $7, $8, $9, $10, $11, 'pending', '[]'::jsonb, '[]'::jsonb)
       RETURNING id, kitchen_id, booking_date, start_time, end_time, status
     `, [
       userId,
@@ -17156,7 +18951,12 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
       bookingDate,
       startTime,
       endTime,
-      specialNotes || `Portal user booking from ${username}`
+      specialNotes || `Portal user booking from ${username}`,
+      totalWithFeesCentsP.toString(),
+      hourlyRateCentsP.toString(),
+      effectiveDurationP.toString(),
+      serviceFeeCentsP.toString(),
+      currencyP
     ]);
 
     const booking = bookingResult.rows[0];
