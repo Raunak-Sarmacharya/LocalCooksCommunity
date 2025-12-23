@@ -999,6 +999,9 @@ app.post('/api/admin-login', async (req, res) => {
 // Manager login endpoint (for commercial kitchen managers)
 app.post('/api/manager-login', async (req, res) => {
   try {
+    // Ensure JSON response
+    res.setHeader('Content-Type', 'application/json');
+    
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -1007,21 +1010,27 @@ app.post('/api/manager-login', async (req, res) => {
 
     console.log('Manager login attempt for:', username);
 
+    // Check database connection
+    if (!pool) {
+      console.error('❌ Database connection not available');
+      return res.status(500).json({ 
+        error: 'Database error', 
+        message: 'Database connection not available'
+      });
+    }
+
     // Get manager user
     let manager;
     try {
       manager = await getUserByUsername(username);
     } catch (dbError) {
       console.error('❌ Database error fetching manager:', dbError);
-      console.error('Error stack:', dbError.stack);
-      if (!res.headersSent) {
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: dbError.message || 'Failed to fetch user from database',
-          ...(process.env.NODE_ENV === 'development' && { stack: dbError.stack })
-        });
-      }
-      return;
+      console.error('Error stack:', dbError?.stack);
+      return res.status(500).json({ 
+        error: 'Database error', 
+        message: dbError?.message || 'Failed to fetch user from database',
+        ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
+      });
     }
 
     if (!manager) {
@@ -1042,15 +1051,22 @@ app.post('/api/manager-login', async (req, res) => {
       id: manager.id,
       username: manager.username,
       role: manager.role,
-      passwordLength: manager.password ? manager.password.length : 0
+      hasPassword: !!manager.password
     });
-    console.log('Provided password:', password);
 
     try {
+      if (!manager.password) {
+        console.error('Manager has no password set');
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
       passwordMatches = await comparePasswords(password, manager.password);
       console.log('Password compared with database:', passwordMatches);
     } catch (error) {
       console.error('Error comparing passwords:', error);
+      return res.status(500).json({ 
+        error: 'Authentication error', 
+        message: 'Failed to verify password'
+      });
     }
 
     if (!passwordMatches) {
@@ -1063,6 +1079,11 @@ app.post('/api/manager-login', async (req, res) => {
     const { password: _, ...managerWithoutPassword } = manager;
 
     // Set session with full user data
+    if (!req.session) {
+      console.error('Session not available');
+      return res.status(500).json({ error: 'Session creation failed' });
+    }
+
     req.session.userId = manager.id;
     req.session.user = managerWithoutPassword; // Store full user object (without password)
 
@@ -1072,52 +1093,44 @@ app.post('/api/manager-login', async (req, res) => {
       userData: { id: managerWithoutPassword.id, username: managerWithoutPassword.username, role: managerWithoutPassword.role }
     });
 
-    // Force session regeneration to ensure fresh session
-    req.session.regenerate((err) => {
-      if (err) {
-        console.error('Session regeneration error:', err);
-        return res.status(500).json({ error: 'Session creation failed' });
-      }
-      
-      // Set session data again after regeneration
-      req.session.userId = manager.id;
-      req.session.user = managerWithoutPassword;
-      
-      // Save session explicitly
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error('Error saving session:', saveErr);
-          return res.status(500).json({ error: 'Session save failed' });
-        } else {
-          console.log('Session saved successfully with userId:', manager.id);
-          console.log('Final session ID:', req.session.id);
-          console.log('Session user data cached:', { id: managerWithoutPassword.id, username: managerWithoutPassword.username, role: managerWithoutPassword.role });
-        }
-        
-        // Return user data with session info
-        return res.status(200).json({
-          ...managerWithoutPassword,
-          sessionId: req.session.id // Include session ID for debugging
+    // Save session explicitly
+    try {
+      await new Promise((resolve, reject) => {
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('Error saving session:', saveErr);
+            reject(saveErr);
+          } else {
+            console.log('Session saved successfully with userId:', manager.id);
+            console.log('Final session ID:', req.session.id);
+            resolve();
+          }
         });
       });
-    });
+    } catch (saveError) {
+      console.error('Error saving session:', saveError);
+      return res.status(500).json({ error: 'Session save failed' });
+    }
+    
+    // Return user data
+    return res.status(200).json(managerWithoutPassword);
   } catch (error) {
     console.error('❌ Manager login error:', error);
-    console.error('Error stack:', error.stack);
+    console.error('Error stack:', error?.stack);
     console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      code: error.code
+      message: error?.message,
+      name: error?.name,
+      code: error?.code
     });
     
     // Make sure we haven't already sent a response
     if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(500).json({ 
         error: 'Manager login failed', 
-        message: error.message || 'Unknown error',
+        message: error?.message || 'Unknown error',
         ...(process.env.NODE_ENV === 'development' && { 
-          stack: error.stack,
-          details: error 
+          stack: error?.stack
         })
       });
     } else {
@@ -1843,72 +1856,101 @@ app.post('/api/manager/reset-password', async (req, res) => {
 });
 
 // 🔥 Firebase-Compatible Get Current User (for auth page)
-app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
+// Supports both Firebase Auth (Bearer token) and Session Auth (fallback)
+app.get('/api/user', async (req, res) => {
   try {
-    if (!req.firebaseUser) {
-      console.error('❌ /api/user - No firebaseUser on request');
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const firebaseUid = req.firebaseUser.uid;
-    console.log('🔥 FIREBASE /api/user route hit for UID:', firebaseUid);
-
-    // Get user from database by Firebase UID
-    let user = null;
-    if (pool) {
+    // First, try Firebase authentication if token is provided
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ') && firebaseAdmin) {
       try {
-        const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
-        user = result.rows[0] || null;
-        console.log('📊 Database query result:', user ? `Found user ${user.id}` : 'No user found');
-      } catch (dbError) {
-        console.error('❌ Database query error:', dbError);
-        throw dbError;
-      }
-    } else {
-      console.warn('⚠️ No database pool available, using in-memory fallback');
-      // In-memory fallback
-      for (const u of users.values()) {
-        if (u.firebase_uid === firebaseUid) {
-          user = u;
-          break;
+        const token = authHeader.substring(7);
+        if (token && token.trim()) {
+          const decodedToken = await verifyFirebaseToken(token);
+          if (decodedToken && decodedToken.uid) {
+            const firebaseUid = decodedToken.uid;
+            console.log('🔥 FIREBASE /api/user route hit for UID:', firebaseUid);
+
+            // Get user from database by Firebase UID
+            let user = null;
+            if (pool) {
+              try {
+                const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
+                user = result.rows[0] || null;
+                console.log('📊 Database query result:', user ? `Found user ${user.id}` : 'No user found');
+              } catch (dbError) {
+                console.error('❌ Database query error:', dbError);
+                throw dbError;
+              }
+            } else {
+              console.warn('⚠️ No database pool available, using in-memory fallback');
+              // In-memory fallback
+              for (const u of users.values()) {
+                if (u.firebase_uid === firebaseUid) {
+                  user = u;
+                  break;
+                }
+              }
+            }
+            
+            if (!user) {
+              console.log('❌ Firebase user not found in database for UID:', firebaseUid);
+              return res.status(404).json({ error: 'User not found' });
+            }
+
+            console.log('✅ Firebase user found:', {
+              id: user.id,
+              username: user.username,
+              is_verified: user.is_verified,
+              has_seen_welcome: user.has_seen_welcome
+            });
+
+            const response = {
+              id: user.id,
+              username: user.username,
+              role: user.role,
+              is_verified: user.is_verified,
+              has_seen_welcome: user.has_seen_welcome,
+              firebaseUid: user.firebase_uid
+            };
+
+            return res.json(response);
+          }
         }
+      } catch (firebaseError) {
+        console.error('❌ Firebase token verification failed:', firebaseError.message);
+        // Fall through to session auth
       }
     }
-    
-    if (!user) {
-      console.log('❌ Firebase user not found in database for UID:', firebaseUid);
-      return res.status(404).json({ error: 'User not found' });
+
+    // Fallback to session authentication
+    const rawUserId = req.session?.userId || req.headers['x-user-id'];
+    if (rawUserId) {
+      console.log('📋 /api/user - Using session auth for user ID:', rawUserId);
+      
+      let user;
+      try {
+        user = await getUser(rawUserId);
+      } catch (dbError) {
+        console.error('❌ Database error fetching user:', dbError);
+        return res.status(500).json({ 
+          error: 'Database error', 
+          message: dbError.message || 'Failed to fetch user from database'
+        });
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const { password: _, ...userWithoutPassword } = user;
+      return res.json(userWithoutPassword);
     }
 
-    console.log('✅ Firebase user found:', {
-      id: user.id,
-      username: user.username,
-      is_verified: user.is_verified,
-      has_seen_welcome: user.has_seen_welcome
-    });
-
-    const response = {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      is_verified: user.is_verified,
-      has_seen_welcome: user.has_seen_welcome,
-      firebaseUid: user.firebase_uid
-    };
-
-    if (!res.headersSent) {
-      return res.json(response);
-    } else {
-      console.error('⚠️ Response already sent in /api/user, cannot send response');
-    }
+    // No authentication method worked
+    return res.status(401).json({ error: 'Not authenticated' });
   } catch (error) {
-    console.error('❌ Error getting Firebase user:', error);
+    console.error('❌ Error getting user:', error);
     console.error('Error stack:', error.stack);
-    console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      code: error.code
-    });
     
     // Make sure we haven't already sent a response
     if (!res.headersSent) {
@@ -2164,6 +2206,9 @@ app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
 
 app.get('/api/user-session', async (req, res) => {
   try {
+    // Ensure JSON response
+    res.setHeader('Content-Type', 'application/json');
+    
     // Debug session info
     const sessionId = req.session?.id || null;
     const sessionUserId = req.session?.userId || null;
@@ -2173,15 +2218,12 @@ app.get('/api/user-session', async (req, res) => {
       role: req.session.user.role 
     } : null;
     
-    console.log('GET /api/user - Request details:', {
+    console.log('GET /api/user-session - Request details:', {
       sessionId: sessionId,
       userId: sessionUserId,
       sessionUser: sessionUser,
-      cookies: req.headers.cookie || 'No cookies',
-      headers: {
-        'x-user-id': req.headers['x-user-id'] || null,
-        'user-agent': req.headers['user-agent'] || null
-      }
+      hasCookies: !!req.headers.cookie,
+      hasSession: !!req.session
     });
 
     // Get user ID from session or header
@@ -2189,14 +2231,9 @@ app.get('/api/user-session', async (req, res) => {
 
     if (!rawUserId) {
       console.log('No userId in session or header, returning 401');
-      console.log('Session object:', req.session ? JSON.stringify(req.session, null, 2) : 'No session');
       return res.status(401).json({ 
-        error: 'Not authenticated', 
-        debug: { 
-          sessionId: sessionId, 
-          hasCookies: !!req.headers.cookie,
-          hasSession: !!req.session
-        } 
+        error: 'Not authenticated',
+        message: 'No active session found'
       });
     }
 
@@ -2204,40 +2241,50 @@ app.get('/api/user-session', async (req, res) => {
     if (req.session && !req.session.userId && rawUserId) {
       console.log('Storing userId in session from header:', rawUserId);
       req.session.userId = rawUserId;
-      await new Promise((resolve, reject) => {
-        req.session.save((err) => {
-          if (err) {
-            console.error('Error saving session:', err);
-            reject(err);
-          } else {
-            resolve();
-          }
+      try {
+        await new Promise((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) {
+              console.error('Error saving session:', err);
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
         });
-      });
+      } catch (saveErr) {
+        console.error('Error saving session during user-session fetch:', saveErr);
+        // Continue - we can still fetch the user
+      }
     }
+    
     console.log('Fetching user with ID:', rawUserId);
 
     // Always fetch fresh data from database to ensure has_seen_welcome is up to date
     let user;
     try {
+      if (!pool) {
+        throw new Error('Database connection not available');
+      }
       user = await getUser(rawUserId);
     } catch (dbError) {
       console.error('❌ Database error fetching user:', dbError);
-      console.error('Error stack:', dbError.stack);
-      if (!res.headersSent) {
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: dbError.message || 'Failed to fetch user from database',
-          ...(process.env.NODE_ENV === 'development' && { stack: dbError.stack })
-        });
-      }
-      return;
+      console.error('Error stack:', dbError?.stack);
+      return res.status(500).json({ 
+        error: 'Database error', 
+        message: dbError?.message || 'Failed to fetch user from database',
+        ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
+      });
     }
 
     if (!user) {
       console.log('User not found in database, destroying session');
       if (req.session) {
-        req.session.destroy(() => { });
+        try {
+          req.session.destroy(() => { });
+        } catch (destroyErr) {
+          console.error('Error destroying session:', destroyErr);
+        }
       }
       return res.status(401).json({ error: 'User not found' });
     }
@@ -2271,14 +2318,15 @@ app.get('/api/user-session', async (req, res) => {
 
     return res.status(200).json(userWithoutPassword);
   } catch (error) {
-    console.error('❌ Get user error:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Get user-session error:', error);
+    console.error('Error stack:', error?.stack);
     // Ensure we always send a JSON response
     if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(500).json({ 
         error: 'Failed to get user data', 
-        message: error.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        message: error?.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
       });
     } else {
       console.error('⚠️ Response already sent, cannot send error response');
@@ -6114,51 +6162,72 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
 
 // Initialize Firebase Admin SDK for enhanced auth with service account credentials
 let firebaseAdmin;
+let firebaseAdminInitialized = false;
 try {
   // Prefer service account credentials (production)
   if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
     console.log('🔥 Initializing Firebase Admin with service account credentials...');
     
-    const { initializeApp, getApps, cert } = await import('firebase-admin/app');
-    
-    if (getApps().length === 0) {
-      firebaseAdmin = initializeApp({
-        credential: cert({
-          projectId: process.env.FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-        }),
-        projectId: process.env.FIREBASE_PROJECT_ID,
-      });
+    try {
+      const { initializeApp, getApps, cert } = await import('firebase-admin/app');
       
-      console.log('✅ Firebase Admin SDK initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
-    } else {
-      firebaseAdmin = getApps()[0];
-      console.log('✅ Using existing Firebase Admin app');
+      if (getApps().length === 0) {
+        firebaseAdmin = initializeApp({
+          credential: cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+          }),
+          projectId: process.env.FIREBASE_PROJECT_ID,
+        });
+        
+        firebaseAdminInitialized = true;
+        console.log('✅ Firebase Admin SDK initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
+      } else {
+        firebaseAdmin = getApps()[0];
+        firebaseAdminInitialized = true;
+        console.log('✅ Using existing Firebase Admin app');
+      }
+    } catch (initError) {
+      console.error('❌ Failed to initialize Firebase Admin with service account:', initError.message);
+      firebaseAdmin = null;
     }
   }
-  // Fallback to VITE variables (development/basic mode)
-  else if (process.env.VITE_FIREBASE_PROJECT_ID) {
+  
+  // Fallback to VITE variables (development/basic mode) if service account failed
+  if (!firebaseAdminInitialized && process.env.VITE_FIREBASE_PROJECT_ID) {
     console.log('🔄 Falling back to basic Firebase Admin initialization...');
     
-    const { initializeApp, getApps } = await import('firebase-admin/app');
-    
-    if (getApps().length === 0) {
-      firebaseAdmin = initializeApp({
-        projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-      });
+    try {
+      const { initializeApp, getApps } = await import('firebase-admin/app');
       
-      console.log('✅ Firebase Admin SDK initialized with basic config for project:', process.env.VITE_FIREBASE_PROJECT_ID);
-      console.warn('⚠️ Using basic credentials - password reset may not work. Consider setting up service account credentials.');
-    } else {
-      firebaseAdmin = getApps()[0];
-      console.log('✅ Using existing Firebase Admin app');
+      if (getApps().length === 0) {
+        firebaseAdmin = initializeApp({
+          projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+        });
+        
+        firebaseAdminInitialized = true;
+        console.log('✅ Firebase Admin SDK initialized with basic config for project:', process.env.VITE_FIREBASE_PROJECT_ID);
+        console.warn('⚠️ Using basic credentials - password reset may not work. Consider setting up service account credentials.');
+      } else {
+        firebaseAdmin = getApps()[0];
+        firebaseAdminInitialized = true;
+        console.log('✅ Using existing Firebase Admin app');
+      }
+    } catch (initError) {
+      console.error('❌ Failed to initialize Firebase Admin with basic config:', initError.message);
+      firebaseAdmin = null;
     }
-  } else {
-    console.log('❌ Firebase Admin SDK configuration missing - no service account or VITE variables found');
+  }
+  
+  if (!firebaseAdminInitialized) {
+    console.warn('⚠️ Firebase Admin SDK not initialized - Firebase auth endpoints will return errors. Please configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY environment variables.');
   }
 } catch (error) {
-  console.error('❌ Firebase Admin SDK initialization failed:', error);
+  console.error('❌ Firebase Admin SDK initialization failed with unexpected error:', error);
+  console.error('Error stack:', error.stack);
+  firebaseAdmin = null;
+  firebaseAdminInitialized = false;
 }
 
 // Enhanced Firebase token verification
@@ -6357,33 +6426,36 @@ async function requireFirebaseAuthWithUser(req, res, next) {
 
     // Load Neon user from Firebase UID
     let neonUser = null;
-    if (pool) {
-      try {
-        const result = await pool.query(
-          'SELECT * FROM users WHERE firebase_uid = $1',
-          [req.firebaseUser.uid]
-        );
-        neonUser = result.rows[0] || null;
-      } catch (dbError) {
-        console.error('❌ requireFirebaseAuthWithUser: Database query error:', dbError);
-        if (!res.headersSent) {
-          return res.status(500).json({ 
-            error: 'Database error', 
-            message: 'Failed to fetch user from database',
-            ...(process.env.NODE_ENV === 'development' && { stack: dbError.stack })
-          });
-        }
-        return;
+    if (!pool) {
+      console.error('❌ requireFirebaseAuthWithUser: Database pool not available');
+      if (!res.headersSent) {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(500).json({ 
+          error: 'Database error', 
+          message: 'Database connection not available' 
+        });
       }
-    } else {
-      console.warn('⚠️ No database pool available, using in-memory fallback');
-      // In-memory fallback
-      for (const user of users.values()) {
-        if (user.firebase_uid === req.firebaseUser.uid) {
-          neonUser = user;
-          break;
-        }
+      return;
+    }
+    
+    try {
+      const result = await pool.query(
+        'SELECT * FROM users WHERE firebase_uid = $1',
+        [req.firebaseUser.uid]
+      );
+      neonUser = result.rows[0] || null;
+    } catch (dbError) {
+      console.error('❌ requireFirebaseAuthWithUser: Database query error:', dbError);
+      console.error('Error stack:', dbError?.stack);
+      if (!res.headersSent) {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(500).json({ 
+          error: 'Database error', 
+          message: dbError?.message || 'Failed to fetch user from database',
+          ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
+        });
       }
+      return;
     }
     
     if (!neonUser) {
@@ -6455,6 +6527,9 @@ function requireAdmin(req, res, next) {
 // Enhanced Get Current User Profile (Firebase + Hybrid Support)
 app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
   try {
+    // Ensure JSON response
+    res.setHeader('Content-Type', 'application/json');
+    
     if (!req.neonUser || !req.firebaseUser) {
       console.error('❌ /api/user/profile - Missing neonUser or firebaseUser');
       return res.status(401).json({ error: 'Not authenticated' });
@@ -6477,12 +6552,13 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
     return res.json(response);
   } catch (error) {
     console.error('❌ Error getting enhanced user profile:', error);
-    console.error('Error stack:', error.stack);
+    console.error('Error stack:', error?.stack);
     if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json');
       return res.status(500).json({ 
         error: 'Failed to get user profile',
-        message: error.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        message: error?.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
       });
     } else {
       console.error('⚠️ Response already sent, cannot send error response');
@@ -19330,17 +19406,34 @@ app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
 });
 
 // Global error handler to ensure JSON responses
+// This must be after all routes but before 404 handler
 app.use((err, req, res, next) => {
   console.error('Global error handler caught error:', err);
-  console.error('Error stack:', err.stack);
+  console.error('Error stack:', err?.stack);
+  console.error('Error details:', {
+    message: err?.message,
+    name: err?.name,
+    code: err?.code,
+    path: req.path,
+    method: req.method
+  });
   
   // Ensure we always send JSON responses
   if (!res.headersSent) {
     res.setHeader('Content-Type', 'application/json');
-    res.status(500).json({
+    
+    // Determine status code
+    const statusCode = err.statusCode || err.status || 500;
+    
+    res.status(statusCode).json({
       error: err.message || 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      ...(process.env.NODE_ENV === 'development' && { 
+        stack: err?.stack,
+        details: err 
+      })
     });
+  } else {
+    console.error('⚠️ Response already sent, cannot send error response');
   }
 });
 
