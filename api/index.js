@@ -1858,38 +1858,56 @@ app.post('/api/manager/reset-password', async (req, res) => {
 // 🔥 Firebase-Compatible Get Current User (for auth page)
 // Supports both Firebase Auth (Bearer token) and Session Auth (fallback)
 app.get('/api/user', async (req, res) => {
+  // Ensure JSON response from the start
+  res.setHeader('Content-Type', 'application/json');
+  
   try {
-    // First, try Firebase authentication if token is provided
+    // Check for Bearer token (Firebase Auth)
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ') && firebaseAdmin) {
-      try {
-        const token = authHeader.substring(7);
-        if (token && token.trim()) {
+    const hasBearerToken = authHeader && authHeader.startsWith('Bearer ');
+    
+    if (hasBearerToken) {
+      const token = authHeader.substring(7)?.trim();
+      
+      if (!token) {
+        console.warn('⚠️ Empty Bearer token provided');
+        // Fall through to session auth
+      } else if (!firebaseAdmin) {
+        // Firebase Admin not initialized - return clear error
+        console.error('❌ Firebase Admin SDK not initialized - cannot verify Firebase tokens');
+        return res.status(503).json({ 
+          error: 'Service unavailable',
+          message: 'Firebase authentication service is not configured. Please contact support.',
+          code: 'FIREBASE_NOT_CONFIGURED'
+        });
+      } else {
+        // Try Firebase token verification
+        try {
           const decodedToken = await verifyFirebaseToken(token);
+          
           if (decodedToken && decodedToken.uid) {
             const firebaseUid = decodedToken.uid;
-            console.log('🔥 FIREBASE /api/user route hit for UID:', firebaseUid);
+            console.log('🔥 FIREBASE /api/user - Verified token for UID:', firebaseUid);
 
             // Get user from database by Firebase UID
-            let user = null;
-            if (pool) {
-              try {
-                const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
-                user = result.rows[0] || null;
-                console.log('📊 Database query result:', user ? `Found user ${user.id}` : 'No user found');
-              } catch (dbError) {
-                console.error('❌ Database query error:', dbError);
-                throw dbError;
-              }
-            } else {
-              console.warn('⚠️ No database pool available, using in-memory fallback');
-              // In-memory fallback
-              for (const u of users.values()) {
-                if (u.firebase_uid === firebaseUid) {
-                  user = u;
-                  break;
-                }
-              }
+            if (!pool) {
+              return res.status(500).json({ 
+                error: 'Database error', 
+                message: 'Database connection not available'
+              });
+            }
+
+            let user;
+            try {
+              const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
+              user = result.rows[0] || null;
+              console.log('📊 Database query result:', user ? `Found user ${user.id}` : 'No user found');
+            } catch (dbError) {
+              console.error('❌ Database query error:', dbError);
+              return res.status(500).json({ 
+                error: 'Database error', 
+                message: dbError?.message || 'Failed to fetch user from database'
+              });
             }
             
             if (!user) {
@@ -1914,19 +1932,38 @@ app.get('/api/user', async (req, res) => {
             };
 
             return res.json(response);
+          } else {
+            // Token verification failed - invalid token
+            console.warn('⚠️ Firebase token verification failed - invalid token');
+            return res.status(401).json({ 
+              error: 'Unauthorized',
+              message: 'Invalid authentication token'
+            });
           }
+        } catch (verifyError) {
+          // Token verification threw an error
+          console.error('❌ Firebase token verification error:', verifyError?.message);
+          return res.status(401).json({ 
+            error: 'Unauthorized',
+            message: 'Token verification failed',
+            ...(process.env.NODE_ENV === 'development' && { details: verifyError?.message })
+          });
         }
-      } catch (firebaseError) {
-        console.error('❌ Firebase token verification failed:', firebaseError.message);
-        // Fall through to session auth
       }
     }
 
-    // Fallback to session authentication
+    // Fallback to session authentication (for managers/admins)
     const rawUserId = req.session?.userId || req.headers['x-user-id'];
     if (rawUserId) {
       console.log('📋 /api/user - Using session auth for user ID:', rawUserId);
       
+      if (!pool) {
+        return res.status(500).json({ 
+          error: 'Database error', 
+          message: 'Database connection not available'
+        });
+      }
+
       let user;
       try {
         user = await getUser(rawUserId);
@@ -1934,7 +1971,7 @@ app.get('/api/user', async (req, res) => {
         console.error('❌ Database error fetching user:', dbError);
         return res.status(500).json({ 
           error: 'Database error', 
-          message: dbError.message || 'Failed to fetch user from database'
+          message: dbError?.message || 'Failed to fetch user from database'
         });
       }
 
@@ -1946,21 +1983,20 @@ app.get('/api/user', async (req, res) => {
       return res.json(userWithoutPassword);
     }
 
-    // No authentication method worked
+    // No authentication provided
     return res.status(401).json({ error: 'Not authenticated' });
-  } catch (error) {
-    console.error('❌ Error getting user:', error);
-    console.error('Error stack:', error.stack);
     
-    // Make sure we haven't already sent a response
+  } catch (error) {
+    // Catch-all for any unexpected errors
+    console.error('❌ Unexpected error in /api/user:', error);
+    console.error('Error stack:', error?.stack);
+    
     if (!res.headersSent) {
       return res.status(500).json({ 
-        error: 'Failed to get user data',
-        message: error.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        error: 'Internal server error',
+        message: error?.message || 'An unexpected error occurred',
+        ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
       });
-    } else {
-      console.error('⚠️ Response already sent, cannot send error response');
     }
   }
 });
@@ -6161,74 +6197,81 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
 }
 
 // Initialize Firebase Admin SDK for enhanced auth with service account credentials
-let firebaseAdmin;
+// This is wrapped in an IIFE to handle async initialization safely
+let firebaseAdmin = null;
 let firebaseAdminInitialized = false;
-try {
-  // Prefer service account credentials (production)
-  if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-    console.log('🔥 Initializing Firebase Admin with service account credentials...');
-    
-    try {
-      const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+let firebaseAdminInitPromise = null;
+
+(async function initializeFirebaseAdmin() {
+  try {
+    // Prefer service account credentials (production)
+    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      console.log('🔥 Initializing Firebase Admin with service account credentials...');
       
-      if (getApps().length === 0) {
-        firebaseAdmin = initializeApp({
-          credential: cert({
+      try {
+        const { initializeApp, getApps, cert } = await import('firebase-admin/app');
+        
+        if (getApps().length === 0) {
+          firebaseAdmin = initializeApp({
+            credential: cert({
+              projectId: process.env.FIREBASE_PROJECT_ID,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+            }),
             projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-          }),
-          projectId: process.env.FIREBASE_PROJECT_ID,
-        });
-        
-        firebaseAdminInitialized = true;
-        console.log('✅ Firebase Admin SDK initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
-      } else {
-        firebaseAdmin = getApps()[0];
-        firebaseAdminInitialized = true;
-        console.log('✅ Using existing Firebase Admin app');
+          });
+          
+          firebaseAdminInitialized = true;
+          console.log('✅ Firebase Admin SDK initialized with service account for project:', process.env.FIREBASE_PROJECT_ID);
+        } else {
+          firebaseAdmin = getApps()[0];
+          firebaseAdminInitialized = true;
+          console.log('✅ Using existing Firebase Admin app');
+        }
+      } catch (initError) {
+        console.error('❌ Failed to initialize Firebase Admin with service account:', initError?.message || 'Unknown error');
+        console.error('Init error stack:', initError?.stack);
+        firebaseAdmin = null;
       }
-    } catch (initError) {
-      console.error('❌ Failed to initialize Firebase Admin with service account:', initError.message);
-      firebaseAdmin = null;
     }
-  }
-  
-  // Fallback to VITE variables (development/basic mode) if service account failed
-  if (!firebaseAdminInitialized && process.env.VITE_FIREBASE_PROJECT_ID) {
-    console.log('🔄 Falling back to basic Firebase Admin initialization...');
     
-    try {
-      const { initializeApp, getApps } = await import('firebase-admin/app');
+    // Fallback to VITE variables (development/basic mode) if service account failed
+    if (!firebaseAdminInitialized && process.env.VITE_FIREBASE_PROJECT_ID) {
+      console.log('🔄 Falling back to basic Firebase Admin initialization...');
       
-      if (getApps().length === 0) {
-        firebaseAdmin = initializeApp({
-          projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-        });
+      try {
+        const { initializeApp, getApps } = await import('firebase-admin/app');
         
-        firebaseAdminInitialized = true;
-        console.log('✅ Firebase Admin SDK initialized with basic config for project:', process.env.VITE_FIREBASE_PROJECT_ID);
-        console.warn('⚠️ Using basic credentials - password reset may not work. Consider setting up service account credentials.');
-      } else {
-        firebaseAdmin = getApps()[0];
-        firebaseAdminInitialized = true;
-        console.log('✅ Using existing Firebase Admin app');
+        if (getApps().length === 0) {
+          firebaseAdmin = initializeApp({
+            projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+          });
+          
+          firebaseAdminInitialized = true;
+          console.log('✅ Firebase Admin SDK initialized with basic config for project:', process.env.VITE_FIREBASE_PROJECT_ID);
+          console.warn('⚠️ Using basic credentials - password reset may not work. Consider setting up service account credentials.');
+        } else {
+          firebaseAdmin = getApps()[0];
+          firebaseAdminInitialized = true;
+          console.log('✅ Using existing Firebase Admin app');
+        }
+      } catch (initError) {
+        console.error('❌ Failed to initialize Firebase Admin with basic config:', initError?.message || 'Unknown error');
+        console.error('Init error stack:', initError?.stack);
+        firebaseAdmin = null;
       }
-    } catch (initError) {
-      console.error('❌ Failed to initialize Firebase Admin with basic config:', initError.message);
-      firebaseAdmin = null;
     }
+    
+    if (!firebaseAdminInitialized) {
+      console.warn('⚠️ Firebase Admin SDK not initialized - Firebase auth endpoints will return 503 errors. Please configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY environment variables in Vercel.');
+    }
+  } catch (error) {
+    console.error('❌ Firebase Admin SDK initialization failed with unexpected error:', error);
+    console.error('Error stack:', error?.stack);
+    firebaseAdmin = null;
+    firebaseAdminInitialized = false;
   }
-  
-  if (!firebaseAdminInitialized) {
-    console.warn('⚠️ Firebase Admin SDK not initialized - Firebase auth endpoints will return errors. Please configure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY environment variables.');
-  }
-} catch (error) {
-  console.error('❌ Firebase Admin SDK initialization failed with unexpected error:', error);
-  console.error('Error stack:', error.stack);
-  firebaseAdmin = null;
-  firebaseAdminInitialized = false;
-}
+})();
 
 // Enhanced Firebase token verification
 async function verifyFirebaseToken(token) {
@@ -6240,26 +6283,37 @@ async function verifyFirebaseToken(token) {
     }
 
     if (!firebaseAdmin) {
-      throw new Error('Enhanced Firebase Admin SDK not initialized');
-    }
-    
-    const { getAuth } = await import('firebase-admin/auth');
-    const auth = getAuth(firebaseAdmin);
-    const decodedToken = await auth.verifyIdToken(token.trim());
-    
-    if (!decodedToken || !decodedToken.uid) {
-      console.error('❌ verifyFirebaseToken: Invalid decoded token - missing UID');
+      console.warn('⚠️ verifyFirebaseToken: Firebase Admin SDK not initialized, cannot verify token');
       return null;
     }
     
-    return decodedToken;
+    try {
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth(firebaseAdmin);
+      const decodedToken = await auth.verifyIdToken(token.trim());
+      
+      if (!decodedToken || !decodedToken.uid) {
+        console.error('❌ verifyFirebaseToken: Invalid decoded token - missing UID');
+        return null;
+      }
+      
+      return decodedToken;
+    } catch (authError) {
+      console.error('❌ Firebase Admin Auth error:', authError);
+      console.error('Auth error details:', {
+        message: authError?.message,
+        name: authError?.name,
+        code: authError?.code
+      });
+      return null;
+    }
   } catch (error) {
     console.error('❌ Enhanced token verification error:', error);
     console.error('Token verification error details:', {
-      message: error.message,
-      name: error.name,
-      code: error.code,
-      stack: error.stack
+      message: error?.message,
+      name: error?.name,
+      code: error?.code,
+      stack: error?.stack
     });
     return null;
   }
@@ -6368,13 +6422,17 @@ async function verifyFirebaseAuth(req, res, next) {
 // Enhanced Firebase Auth with User Loading Middleware
 async function requireFirebaseAuthWithUser(req, res, next) {
   try {
+    // Ensure JSON response
+    res.setHeader('Content-Type', 'application/json');
+    
     // Check if Firebase Admin is initialized
     if (!firebaseAdmin) {
       console.error('❌ requireFirebaseAuthWithUser: Firebase Admin SDK not initialized');
       if (!res.headersSent) {
-        return res.status(500).json({ 
-          error: 'Server configuration error', 
-          message: 'Firebase Admin SDK not initialized. Please check server configuration.' 
+        return res.status(503).json({ 
+          error: 'Service unavailable', 
+          message: 'Authentication service is temporarily unavailable. Please try again later.',
+          code: 'FIREBASE_NOT_INITIALIZED'
         });
       }
       return;
@@ -19403,6 +19461,21 @@ app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
       res.status(500).json({ error: "Failed to fetch bookings" });
     }
   }
+});
+
+// Process-level error handlers to catch unhandled errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Promise Rejection:', reason);
+  console.error('Promise:', promise);
+  if (reason instanceof Error) {
+    console.error('Error stack:', reason.stack);
+  }
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  console.error('Error stack:', error.stack);
+  // Don't exit in serverless - let Vercel handle it
 });
 
 // Global error handler to ensure JSON responses
