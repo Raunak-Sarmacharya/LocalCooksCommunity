@@ -6200,8 +6200,8 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
 // This is wrapped in an IIFE to handle async initialization safely
 let firebaseAdmin = null;
 let firebaseAdminInitialized = false;
-let firebaseAdminInitPromise = null;
 
+// Initialize Firebase Admin asynchronously and safely
 (async function initializeFirebaseAdmin() {
   try {
     // Prefer service account credentials (production)
@@ -6271,7 +6271,13 @@ let firebaseAdminInitPromise = null;
     firebaseAdmin = null;
     firebaseAdminInitialized = false;
   }
-})();
+})().catch((unhandledError) => {
+  // Catch any unhandled promise rejections from the IIFE
+  console.error('❌ UNHANDLED ERROR in Firebase Admin initialization IIFE:', unhandledError);
+  console.error('Unhandled error stack:', unhandledError?.stack);
+  firebaseAdmin = null;
+  firebaseAdminInitialized = false;
+});
 
 // Enhanced Firebase token verification
 async function verifyFirebaseToken(token) {
@@ -6420,142 +6426,189 @@ async function verifyFirebaseAuth(req, res, next) {
   }
 }
 // Enhanced Firebase Auth with User Loading Middleware
-async function requireFirebaseAuthWithUser(req, res, next) {
-  try {
-    // Ensure JSON response
-    res.setHeader('Content-Type', 'application/json');
-    
-    // Check if Firebase Admin is initialized
-    if (!firebaseAdmin) {
-      console.error('❌ requireFirebaseAuthWithUser: Firebase Admin SDK not initialized');
-      if (!res.headersSent) {
-        return res.status(503).json({ 
-          error: 'Service unavailable', 
-          message: 'Authentication service is temporarily unavailable. Please try again later.',
-          code: 'FIREBASE_NOT_INITIALIZED'
-        });
-      }
-      return;
-    }
-
-    // Check for auth token
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      if (!res.headersSent) {
-        return res.status(401).json({ 
-          error: 'Unauthorized', 
-          message: 'No auth token provided' 
-        });
-      }
-      return;
-    }
-
-    const token = authHeader.substring(7);
-    let decodedToken;
+// Wrapped in a factory function to ensure it's always safe
+function requireFirebaseAuthWithUser(req, res, next) {
+  // Wrap everything in a promise to catch any async errors
+  (async () => {
     try {
-      decodedToken = await verifyFirebaseToken(token);
-    } catch (tokenError) {
-      console.error('❌ requireFirebaseAuthWithUser: Token verification threw error:', tokenError);
-      if (!res.headersSent) {
-        return res.status(401).json({ 
-          error: 'Unauthorized', 
-          message: 'Token verification failed' 
-        });
-      }
-      return;
-    }
-
-    if (!decodedToken) {
-      if (!res.headersSent) {
-        return res.status(401).json({ 
-          error: 'Unauthorized', 
-          message: 'Invalid auth token' 
-        });
-      }
-      return;
-    }
-
-    req.firebaseUser = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      email_verified: decodedToken.email_verified,
-    };
-
-    // Load Neon user from Firebase UID
-    let neonUser = null;
-    if (!pool) {
-      console.error('❌ requireFirebaseAuthWithUser: Database pool not available');
+      // Ensure JSON response from the start
       if (!res.headersSent) {
         res.setHeader('Content-Type', 'application/json');
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: 'Database connection not available' 
-        });
       }
-      return;
-    }
-    
-    try {
-      const result = await pool.query(
-        'SELECT * FROM users WHERE firebase_uid = $1',
-        [req.firebaseUser.uid]
-      );
-      neonUser = result.rows[0] || null;
-    } catch (dbError) {
-      console.error('❌ requireFirebaseAuthWithUser: Database query error:', dbError);
-      console.error('Error stack:', dbError?.stack);
-      if (!res.headersSent) {
-        res.setHeader('Content-Type', 'application/json');
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: dbError?.message || 'Failed to fetch user from database',
-          ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
-        });
+      
+      // Check if Firebase Admin is initialized
+      if (!firebaseAdmin) {
+        console.error('❌ requireFirebaseAuthWithUser: Firebase Admin SDK not initialized');
+        if (!res.headersSent) {
+          return res.status(503).json({ 
+            error: 'Service unavailable', 
+            message: 'Authentication service is temporarily unavailable. Please try again later.',
+            code: 'FIREBASE_NOT_INITIALIZED'
+          });
+        }
+        return;
       }
-      return;
-    }
-    
-    if (!neonUser) {
-      if (!res.headersSent) {
-        return res.status(404).json({ 
-          error: 'User not found', 
-          message: 'No matching user in database. Please complete registration.' 
-        });
-      }
-      return;
-    }
 
-    req.neonUser = {
-      id: neonUser.id,
-      username: neonUser.username,
-      role: neonUser.role,
-      firebaseUid: neonUser.firebase_uid || undefined,
-      isVerified: neonUser.is_verified !== undefined ? neonUser.is_verified : true,
-      hasSeenWelcome: neonUser.has_seen_welcome !== undefined ? neonUser.has_seen_welcome : false,
-      isChef: neonUser.is_chef || false,
-      isDeliveryPartner: neonUser.is_delivery_partner || false,
-    };
+      // Check for auth token
+      const authHeader = req.headers?.authorization;
+      
+      if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+        if (!res.headersSent) {
+          return res.status(401).json({ 
+            error: 'Unauthorized', 
+            message: 'No auth token provided' 
+          });
+        }
+        return;
+      }
 
-    console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
-    
-    // Call next() safely
-    if (typeof next === 'function') {
-      next();
-    }
-  } catch (error) {
-    console.error('❌ Enhanced Firebase auth with user verification error:', error);
-    console.error('Error stack:', error.stack);
-    if (!res.headersSent) {
-      return res.status(500).json({ 
-        error: 'Internal server error', 
-        message: 'Authentication verification failed',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      const token = authHeader.substring(7)?.trim();
+      if (!token) {
+        if (!res.headersSent) {
+          return res.status(401).json({ 
+            error: 'Unauthorized', 
+            message: 'Invalid auth token format' 
+          });
+        }
+        return;
+      }
+
+      let decodedToken = null;
+      try {
+        decodedToken = await verifyFirebaseToken(token);
+      } catch (tokenError) {
+        console.error('❌ requireFirebaseAuthWithUser: Token verification threw error:', tokenError);
+        console.error('Token error details:', {
+          message: tokenError?.message,
+          name: tokenError?.name,
+          stack: tokenError?.stack
+        });
+        if (!res.headersSent) {
+          return res.status(401).json({ 
+            error: 'Unauthorized', 
+            message: 'Token verification failed' 
+          });
+        }
+        return;
+      }
+
+      if (!decodedToken || !decodedToken.uid) {
+        if (!res.headersSent) {
+          return res.status(401).json({ 
+            error: 'Unauthorized', 
+            message: 'Invalid auth token' 
+          });
+        }
+        return;
+      }
+
+      req.firebaseUser = {
+        uid: decodedToken.uid,
+        email: decodedToken.email || null,
+        email_verified: decodedToken.email_verified || false,
+      };
+
+      // Load Neon user from Firebase UID
+      if (!pool) {
+        console.error('❌ requireFirebaseAuthWithUser: Database pool not available');
+        if (!res.headersSent) {
+          return res.status(500).json({ 
+            error: 'Database error', 
+            message: 'Database connection not available' 
+          });
+        }
+        return;
+      }
+      
+      let neonUser = null;
+      try {
+        const result = await pool.query(
+          'SELECT * FROM users WHERE firebase_uid = $1',
+          [req.firebaseUser.uid]
+        );
+        neonUser = result?.rows?.[0] || null;
+      } catch (dbError) {
+        console.error('❌ requireFirebaseAuthWithUser: Database query error:', dbError);
+        console.error('Error stack:', dbError?.stack);
+        if (!res.headersSent) {
+          return res.status(500).json({ 
+            error: 'Database error', 
+            message: dbError?.message || 'Failed to fetch user from database',
+            ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
+          });
+        }
+        return;
+      }
+      
+      if (!neonUser) {
+        if (!res.headersSent) {
+          return res.status(404).json({ 
+            error: 'User not found', 
+            message: 'No matching user in database. Please complete registration.' 
+          });
+        }
+        return;
+      }
+
+      req.neonUser = {
+        id: neonUser.id,
+        username: neonUser.username || '',
+        role: neonUser.role || null,
+        firebaseUid: neonUser.firebase_uid || undefined,
+        isVerified: neonUser.is_verified !== undefined ? neonUser.is_verified : true,
+        hasSeenWelcome: neonUser.has_seen_welcome !== undefined ? neonUser.has_seen_welcome : false,
+        isChef: neonUser.is_chef || false,
+        isDeliveryPartner: neonUser.is_delivery_partner || false,
+      };
+
+      console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
+      
+      // Call next() safely
+      if (typeof next === 'function' && !res.headersSent) {
+        next();
+      }
+    } catch (error) {
+      console.error('❌ CRITICAL ERROR in requireFirebaseAuthWithUser:', error);
+      console.error('Error stack:', error?.stack);
+      console.error('Error details:', {
+        message: error?.message,
+        name: error?.name,
+        code: error?.code
       });
-    } else {
-      console.error('⚠️ Response already sent in requireFirebaseAuthWithUser, cannot send error response');
+      
+      if (!res.headersSent) {
+        try {
+          res.setHeader('Content-Type', 'application/json');
+          res.status(500).json({ 
+            error: 'Internal server error', 
+            message: 'Authentication verification failed',
+            ...(process.env.NODE_ENV === 'development' && { 
+              details: error?.message,
+              stack: error?.stack 
+            })
+          });
+        } catch (sendError) {
+          console.error('❌ Failed to send error response:', sendError);
+        }
+      } else {
+        console.error('⚠️ Response already sent in requireFirebaseAuthWithUser, cannot send error response');
+      }
     }
-  }
+  })().catch((unhandledError) => {
+    // Catch any unhandled promise rejections
+    console.error('❌ UNHANDLED ERROR in requireFirebaseAuthWithUser promise:', unhandledError);
+    if (!res.headersSent) {
+      try {
+        res.setHeader('Content-Type', 'application/json');
+        res.status(500).json({ 
+          error: 'Internal server error', 
+          message: 'An unexpected error occurred during authentication'
+        });
+      } catch (sendError) {
+        console.error('❌ Failed to send error response for unhandled error:', sendError);
+      }
+    }
+  });
 }
 
 // Enhanced Admin Role Verification
@@ -6584,40 +6637,54 @@ function requireAdmin(req, res, next) {
 
 // Enhanced Get Current User Profile (Firebase + Hybrid Support)
 app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
+  // Double-wrap in try-catch to ensure we never crash
   try {
     // Ensure JSON response
-    res.setHeader('Content-Type', 'application/json');
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json');
+    }
     
+    // Check if middleware set the user objects
     if (!req.neonUser || !req.firebaseUser) {
       console.error('❌ /api/user/profile - Missing neonUser or firebaseUser');
-      return res.status(401).json({ error: 'Not authenticated' });
+      if (!res.headersSent) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      return;
     }
 
     const response = {
       id: req.neonUser.id,
-      username: req.neonUser.username,
-      role: req.neonUser.role,
-      is_verified: req.neonUser.isVerified,
-      has_seen_welcome: req.neonUser.hasSeenWelcome,
-      isChef: req.neonUser.isChef,
-      isDeliveryPartner: req.neonUser.isDeliveryPartner,
-      firebaseUid: req.firebaseUser.uid,
-      email: req.firebaseUser.email,
-      emailVerified: req.firebaseUser.email_verified
+      username: req.neonUser.username || '',
+      role: req.neonUser.role || null,
+      is_verified: req.neonUser.isVerified !== undefined ? req.neonUser.isVerified : true,
+      has_seen_welcome: req.neonUser.hasSeenWelcome !== undefined ? req.neonUser.hasSeenWelcome : false,
+      isChef: req.neonUser.isChef || false,
+      isDeliveryPartner: req.neonUser.isDeliveryPartner || false,
+      firebaseUid: req.firebaseUser.uid || null,
+      email: req.firebaseUser.email || null,
+      emailVerified: req.firebaseUser.email_verified || false
     };
 
     console.log('✅ /api/user/profile - Returning profile for user:', req.neonUser.id);
-    return res.json(response);
+    
+    if (!res.headersSent) {
+      return res.json(response);
+    }
   } catch (error) {
     console.error('❌ Error getting enhanced user profile:', error);
     console.error('Error stack:', error?.stack);
     if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(500).json({ 
-        error: 'Failed to get user profile',
-        message: error?.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
-      });
+      try {
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(500).json({ 
+          error: 'Failed to get user profile',
+          message: error?.message || 'Unknown error',
+          ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
+        });
+      } catch (sendError) {
+        console.error('❌ Failed to send error response:', sendError);
+      }
     } else {
       console.error('⚠️ Response already sent, cannot send error response');
     }
@@ -15499,6 +15566,10 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     const [sH, sM] = String(startTime).split(':').map(Number);
     const [eH, eM] = String(endTime).split(':').map(Number);
     const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
+    
+    // Store time components for later use in pricing calculation
+    const startTotalMinutes = sH * 60 + sM;
+    const endTotalMinutes = eH * 60 + eM;
 
     // Find maxSlotsPerChef for this kitchen/date
     let maxSlotsPerChef = 2;
@@ -15608,11 +15679,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       return res.status(409).json({ error: "Time slot is not available" });
     }
     
-    // Calculate pricing
-    const [sH, sM] = String(startTime).split(':').map(Number);
-    const [eH, eM] = String(endTime).split(':').map(Number);
-    const startTotalMinutes = sH * 60 + sM;
-    const endTotalMinutes = eH * 60 + eM;
+    // Calculate pricing (reuse time components calculated above)
     const durationMinutes = endTotalMinutes - startTotalMinutes;
     const durationHours = Math.max(0, durationMinutes / 60);
     
@@ -17774,6 +17841,12 @@ app.post("/api/public/bookings", async (req, res) => {
       return res.status(500).json({ error: "Database not available" });
     }
 
+    // Validate booking date format
+    const bookingDateObj = new Date(bookingDate);
+    if (isNaN(bookingDateObj.getTime())) {
+      return res.status(400).json({ error: "Invalid booking date format" });
+    }
+
     // Get location to get timezone and minimum booking window
     const locationResult = await pool.query(`
       SELECT id, name, address, timezone, minimum_booking_window_hours, notification_email
@@ -19183,6 +19256,10 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     const [sH, sM] = String(startTime).split(':').map(Number);
     const [eH, eM] = String(endTime).split(':').map(Number);
     const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
+    
+    // Store time components for later use in pricing calculation
+    const startTotalMinutes = sH * 60 + sM;
+    const endTotalMinutes = eH * 60 + eM;
 
     const dateStr = bookingDateObj.toISOString().split('T')[0];
 
@@ -19277,12 +19354,8 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     const portalUser = userResult.rows[0];
     const username = portalUser?.username || `User ${userId}`;
 
-    // Calculate pricing
-    const [sHP, sMP] = String(startTime).split(':').map(Number);
-    const [eHP, eMP] = String(endTime).split(':').map(Number);
-    const startTotalMinutesP = sHP * 60 + sMP;
-    const endTotalMinutesP = eHP * 60 + eMP;
-    const durationMinutesP = endTotalMinutesP - startTotalMinutesP;
+    // Calculate pricing (reuse time components calculated above)
+    const durationMinutesP = endTotalMinutes - startTotalMinutes;
     const durationHoursP = Math.max(0, durationMinutesP / 60);
     
     // Get kitchen pricing
@@ -19470,12 +19543,14 @@ process.on('unhandledRejection', (reason, promise) => {
   if (reason instanceof Error) {
     console.error('Error stack:', reason.stack);
   }
+  // Don't crash - log and continue (Vercel will handle it)
 });
 
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
   console.error('Error stack:', error.stack);
   // Don't exit in serverless - let Vercel handle it
+  // In serverless, we want to log but not crash the process
 });
 
 // Global error handler to ensure JSON responses
