@@ -97,3 +97,4 @@ COMMENT ON COLUMN "storage_listings"."base_price" IS 'Base price in cents (e.g.,
 COMMENT ON COLUMN "storage_listings"."price_per_cubic_foot" IS 'Price per cubic foot in cents (for per-cubic-foot pricing model)';
 COMMENT ON COLUMN "storage_listings"."tiered_pricing" IS 'Tiered pricing structure: [{months: "1-3", price: 15000}, ...] - prices in cents';
 
+

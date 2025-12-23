@@ -31,3 +31,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS "kitchen_bookings_payment_intent_id_unique"
 CREATE INDEX IF NOT EXISTS "kitchen_bookings_payment_status_idx" 
   ON "kitchen_bookings" ("payment_status");
 
+

@@ -9,3 +9,4 @@ ALTER TABLE "equipment_listings"
 -- Add comment explaining the nullable constraint
 COMMENT ON COLUMN "equipment_listings"."pricing_model" IS 'Pricing model for rental equipment. NULL for included (free) equipment.';
 
+

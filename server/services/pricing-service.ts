@@ -152,3 +152,4 @@ export function calculateTotalWithFees(
   return basePriceCents + serviceFeeCents + damageDepositCents;
 }
 
+

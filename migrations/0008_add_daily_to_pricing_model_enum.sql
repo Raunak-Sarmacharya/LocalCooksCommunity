@@ -17,3 +17,4 @@ BEGIN
     RAISE NOTICE '''daily'' already exists in storage_pricing_model enum';
   END IF;
 END $$;
+

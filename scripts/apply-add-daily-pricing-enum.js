@@ -68,3 +68,4 @@ async function applyMigration() {
 }
 
 applyMigration();
+

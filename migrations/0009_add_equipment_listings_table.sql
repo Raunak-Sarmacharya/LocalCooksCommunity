@@ -113,3 +113,4 @@ COMMENT ON COLUMN "equipment_listings"."delivery_fee" IS 'Delivery fee in cents'
 COMMENT ON COLUMN "equipment_listings"."setup_fee" IS 'Setup fee in cents';
 COMMENT ON COLUMN "equipment_listings"."damage_deposit" IS 'Refundable damage deposit in cents';
 
+
