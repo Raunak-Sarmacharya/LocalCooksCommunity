@@ -338,11 +338,25 @@ export default function KitchenBookingCalendar() {
       if (response.ok) {
         const pricing = await response.json();
         console.log('✅ Kitchen pricing fetched:', pricing);
+        console.log('✅ Parsed hourlyRate:', pricing.hourlyRate, 'Type:', typeof pricing.hourlyRate);
+        
+        // Convert to number if it's a string, and handle cents vs dollars
+        let hourlyRate = pricing.hourlyRate;
+        if (typeof hourlyRate === 'string') {
+          hourlyRate = parseFloat(hourlyRate);
+        }
+        // If hourlyRate is in cents (large number), convert to dollars
+        if (hourlyRate && hourlyRate > 100) {
+          console.warn('⚠️ Hourly rate appears to be in cents, converting to dollars:', hourlyRate);
+          hourlyRate = hourlyRate / 100;
+        }
+        
         setKitchenPricing({
-          hourlyRate: pricing.hourlyRate || null,
+          hourlyRate: hourlyRate || null,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours || 1,
         });
+        console.log('✅ Set kitchenPricing state:', { hourlyRate, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
       } else if (response.status === 404) {
         // No pricing set yet - this is expected
         console.log('ℹ️ No pricing set for kitchen:', kitchen.id);
@@ -352,7 +366,8 @@ export default function KitchenBookingCalendar() {
           minimumBookingHours: 1,
         });
       } else {
-        console.error('❌ Error fetching pricing:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ Error fetching pricing:', response.status, response.statusText, errorText);
         // Still set pricing state so UI can show message
         setKitchenPricing({
           hourlyRate: null,
@@ -401,13 +416,26 @@ export default function KitchenBookingCalendar() {
     
     // Only calculate price if hourly rate is set
     if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
-      // Calculate prices (convert from cents to dollars)
-      const hourlyRateDollars = kitchenPricing.hourlyRate / 100;
+      // hourlyRate should already be in dollars from the API
+      // But handle case where it might still be in cents (defensive)
+      let hourlyRateDollars = kitchenPricing.hourlyRate;
+      if (hourlyRateDollars > 100) {
+        console.warn('⚠️ Hourly rate appears to be in cents, converting:', hourlyRateDollars);
+        hourlyRateDollars = hourlyRateDollars / 100;
+      }
+      
       const basePrice = hourlyRateDollars * durationHours;
       const serviceFee = basePrice * 0.05; // 5% commission
       const totalPrice = basePrice + serviceFee;
       
-      console.log('💰 Price calculated:', { durationHours, hourlyRateDollars, basePrice, serviceFee, totalPrice });
+      console.log('💰 Price calculated:', { 
+        durationHours, 
+        hourlyRateDollars, 
+        basePrice, 
+        serviceFee, 
+        totalPrice,
+        originalHourlyRate: kitchenPricing.hourlyRate
+      });
       
       setEstimatedPrice({
         basePrice,
@@ -683,7 +711,7 @@ export default function KitchenBookingCalendar() {
                           )}
                           {kitchenPricing && kitchenPricing.hourlyRate && (
                             <p className="text-sm font-semibold text-blue-900 mt-2">
-                              ${(kitchenPricing.hourlyRate / 100).toFixed(2)} {kitchenPricing.currency}/hour
+                              ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)} {kitchenPricing.currency}/hour
                             </p>
                           )}
                           {kitchenPricing && !kitchenPricing.hourlyRate && (
@@ -1081,7 +1109,7 @@ export default function KitchenBookingCalendar() {
                     {estimatedPrice && kitchenPricing && kitchenPricing.hourlyRate ? (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Base Price ({estimatedPrice.durationHours.toFixed(1)} hours × ${(kitchenPricing.hourlyRate / 100).toFixed(2)}/hour):</span>
+                          <span className="text-gray-600">Base Price ({estimatedPrice.durationHours.toFixed(1)} hours × ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)}/hour):</span>
                           <span className="font-medium">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
                         </div>
                         <div className="flex justify-between">

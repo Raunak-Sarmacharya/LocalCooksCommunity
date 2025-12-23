@@ -14977,8 +14977,16 @@ app.get("/api/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) =
     }
 
     const row = result.rows[0];
-    const hourlyRateCents = row.hourly_rate ? parseFloat(row.hourly_rate) : 0;
+    const hourlyRateCents = row.hourly_rate ? parseFloat(row.hourly_rate) : null;
+    
+    // Return null if no pricing set, otherwise convert cents to dollars
+    if (hourlyRateCents === null || hourlyRateCents === 0) {
+      return res.status(404).json({ error: "Pricing not found" });
+    }
+    
     const hourlyRateDollars = hourlyRateCents / 100;
+
+    console.log(`[API] Kitchen ${kitchenId} pricing: ${hourlyRateCents} cents = $${hourlyRateDollars}/hour`);
 
     res.json({
       hourlyRate: hourlyRateDollars,

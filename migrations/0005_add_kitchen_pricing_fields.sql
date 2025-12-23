@@ -15,3 +15,4 @@ COMMENT ON COLUMN "kitchens"."currency" IS 'Currency code (ISO 4217), defaults t
 COMMENT ON COLUMN "kitchens"."minimum_booking_hours" IS 'Minimum booking duration in hours';
 COMMENT ON COLUMN "kitchens"."pricing_model" IS 'Pricing structure: hourly, daily, or weekly';
 
+

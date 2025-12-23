@@ -67,3 +67,4 @@ WHERE "currency" != 'CAD' OR "currency" IS NULL;
 COMMENT ON COLUMN "storage_listings"."minimum_booking_duration" IS 'Minimum booking duration (number) - works with booking_duration_unit';
 COMMENT ON COLUMN "storage_listings"."booking_duration_unit" IS 'Unit for minimum booking duration: hourly, daily, or monthly';
 COMMENT ON COLUMN "storage_listings"."currency" IS 'Currency code - locked to CAD';
+
