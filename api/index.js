@@ -328,7 +328,10 @@ async function getUserByUsername(username) {
       const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
       if (result.rows.length > 0) return result.rows[0];
     } catch (error) {
-      console.error('Database query error:', error);
+      console.error('❌ Database query error in getUserByUsername:', error);
+      console.error('Error stack:', error.stack);
+      // Re-throw database errors so they can be caught by callers
+      throw error;
     }
   }
 
@@ -477,7 +480,10 @@ async function getUser(id) {
         if (result.rows.length > 0) return result.rows[0];
       }
     } catch (error) {
-      console.error('Database query error:', error);
+      console.error('❌ Database query error in getUser:', error);
+      console.error('Error stack:', error.stack);
+      // Re-throw database errors so they can be caught by callers
+      throw error;
     }
   }
 
@@ -1002,7 +1008,21 @@ app.post('/api/manager-login', async (req, res) => {
     console.log('Manager login attempt for:', username);
 
     // Get manager user
-    const manager = await getUserByUsername(username);
+    let manager;
+    try {
+      manager = await getUserByUsername(username);
+    } catch (dbError) {
+      console.error('❌ Database error fetching manager:', dbError);
+      console.error('Error stack:', dbError.stack);
+      if (!res.headersSent) {
+        return res.status(500).json({ 
+          error: 'Database error', 
+          message: dbError.message || 'Failed to fetch user from database',
+          ...(process.env.NODE_ENV === 'development' && { stack: dbError.stack })
+        });
+      }
+      return;
+    }
 
     if (!manager) {
       console.log('Manager user not found:', username);
@@ -1082,8 +1102,27 @@ app.post('/api/manager-login', async (req, res) => {
       });
     });
   } catch (error) {
-    console.error('Manager login error:', error);
-    res.status(500).json({ error: 'Manager login failed', message: error.message });
+    console.error('❌ Manager login error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    
+    // Make sure we haven't already sent a response
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        error: 'Manager login failed', 
+        message: error.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { 
+          stack: error.stack,
+          details: error 
+        })
+      });
+    } else {
+      console.error('⚠️ Response already sent, cannot send error response');
+    }
   }
 });
 
@@ -1807,20 +1846,29 @@ app.post('/api/manager/reset-password', async (req, res) => {
 app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
   try {
     if (!req.firebaseUser) {
+      console.error('❌ /api/user - No firebaseUser on request');
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    console.log('🔥 FIREBASE /api/user route hit for UID:', req.firebaseUser.uid);
+    const firebaseUid = req.firebaseUser.uid;
+    console.log('🔥 FIREBASE /api/user route hit for UID:', firebaseUid);
 
     // Get user from database by Firebase UID
     let user = null;
     if (pool) {
-      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [req.firebaseUser.uid]);
-      user = result.rows[0] || null;
+      try {
+        const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
+        user = result.rows[0] || null;
+        console.log('📊 Database query result:', user ? `Found user ${user.id}` : 'No user found');
+      } catch (dbError) {
+        console.error('❌ Database query error:', dbError);
+        throw dbError;
+      }
     } else {
+      console.warn('⚠️ No database pool available, using in-memory fallback');
       // In-memory fallback
       for (const u of users.values()) {
-        if (u.firebase_uid === req.firebaseUser.uid) {
+        if (u.firebase_uid === firebaseUid) {
           user = u;
           break;
         }
@@ -1828,7 +1876,7 @@ app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
     }
     
     if (!user) {
-      console.log('❌ Firebase user not found in database for UID:', req.firebaseUser.uid);
+      console.log('❌ Firebase user not found in database for UID:', firebaseUid);
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -1839,17 +1887,35 @@ app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
       has_seen_welcome: user.has_seen_welcome
     });
 
-    res.json({
+    const response = {
       id: user.id,
       username: user.username,
       role: user.role,
       is_verified: user.is_verified,
       has_seen_welcome: user.has_seen_welcome,
       firebaseUid: user.firebase_uid
-    });
+    };
+
+    return res.json(response);
   } catch (error) {
-    console.error('Error getting Firebase user:', error);
-    res.status(500).json({ error: 'Failed to get user data' });
+    console.error('❌ Error getting Firebase user:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    
+    // Make sure we haven't already sent a response
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        error: 'Failed to get user data',
+        message: error.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      });
+    } else {
+      console.error('⚠️ Response already sent, cannot send error response');
+    }
   }
 });
 // 🔥 Set has_seen_welcome = true for current Firebase user
@@ -2148,10 +2214,27 @@ app.get('/api/user-session', async (req, res) => {
     console.log('Fetching user with ID:', rawUserId);
 
     // Always fetch fresh data from database to ensure has_seen_welcome is up to date
-    const user = await getUser(rawUserId);
+    let user;
+    try {
+      user = await getUser(rawUserId);
+    } catch (dbError) {
+      console.error('❌ Database error fetching user:', dbError);
+      console.error('Error stack:', dbError.stack);
+      if (!res.headersSent) {
+        return res.status(500).json({ 
+          error: 'Database error', 
+          message: dbError.message || 'Failed to fetch user from database',
+          ...(process.env.NODE_ENV === 'development' && { stack: dbError.stack })
+        });
+      }
+      return;
+    }
+
     if (!user) {
       console.log('User not found in database, destroying session');
-      req.session.destroy(() => { });
+      if (req.session) {
+        req.session.destroy(() => { });
+      }
       return res.status(401).json({ error: 'User not found' });
     }
 
@@ -2165,29 +2248,36 @@ app.get('/api/user-session', async (req, res) => {
       req.session.user = userWithoutPassword;
 
       // Save session to ensure user data is cached
-      await new Promise((resolve, reject) => {
-        req.session.save((err) => {
-          if (err) {
-            console.error('Error saving session:', err);
-            reject(err);
-          } else {
-            resolve();
-          }
+      try {
+        await new Promise((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) {
+              console.error('Error saving session:', err);
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
         });
-      });
+      } catch (saveError) {
+        console.error('❌ Error saving session in /api/user-session:', saveError);
+        // Continue even if session save fails - user data is still valid
+      }
     }
 
-    res.status(200).json(userWithoutPassword);
+    return res.status(200).json(userWithoutPassword);
   } catch (error) {
-    console.error('Get user error:', error);
+    console.error('❌ Get user error:', error);
     console.error('Error stack:', error.stack);
     // Ensure we always send a JSON response
     if (!res.headersSent) {
-      res.status(500).json({ 
+      return res.status(500).json({ 
         error: 'Failed to get user data', 
         message: error.message || 'Unknown error',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
       });
+    } else {
+      console.error('⚠️ Response already sent, cannot send error response');
     }
   }
 });
@@ -6096,6 +6186,7 @@ async function verifyFirebaseAuth(req, res, next) {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ verifyFirebaseAuth: No Bearer token in Authorization header');
       return res.status(401).json({ 
         error: 'Unauthorized', 
         message: 'No auth token provided' 
@@ -6103,9 +6194,18 @@ async function verifyFirebaseAuth(req, res, next) {
     }
 
     const token = authHeader.substring(7);
+    if (!token || token.trim() === '') {
+      console.log('❌ verifyFirebaseAuth: Empty token after Bearer prefix');
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token format' 
+      });
+    }
+
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
+      console.log('❌ verifyFirebaseAuth: Token verification returned null');
       return res.status(401).json({ 
         error: 'Unauthorized', 
         message: 'Invalid auth token' 
@@ -6118,13 +6218,22 @@ async function verifyFirebaseAuth(req, res, next) {
       email_verified: decodedToken.email_verified,
     };
 
+    console.log('✅ verifyFirebaseAuth: Token verified for UID:', decodedToken.uid);
     next();
   } catch (error) {
-    console.error('Enhanced Firebase auth verification error:', error);
-    return res.status(401).json({ 
-      error: 'Unauthorized', 
-      message: 'Token verification failed' 
-    });
+    console.error('❌ Enhanced Firebase auth verification error:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Make sure we haven't already sent a response
+    if (!res.headersSent) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Token verification failed',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    } else {
+      console.error('⚠️ Response already sent in verifyFirebaseAuth, cannot send error response');
+    }
   }
 }
 // Enhanced Firebase Auth with User Loading Middleware
@@ -6232,7 +6341,12 @@ function requireAdmin(req, res, next) {
 // Enhanced Get Current User Profile (Firebase + Hybrid Support)
 app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
   try {
-    res.json({
+    if (!req.neonUser || !req.firebaseUser) {
+      console.error('❌ /api/user/profile - Missing neonUser or firebaseUser');
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const response = {
       id: req.neonUser.id,
       username: req.neonUser.username,
       role: req.neonUser.role,
@@ -6243,11 +6357,21 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
       firebaseUid: req.firebaseUser.uid,
       email: req.firebaseUser.email,
       emailVerified: req.firebaseUser.email_verified
-    });
+    };
+
+    console.log('✅ /api/user/profile - Returning profile for user:', req.neonUser.id);
+    return res.json(response);
   } catch (error) {
-    console.error('Error getting enhanced user profile:', error);
+    console.error('❌ Error getting enhanced user profile:', error);
+    console.error('Error stack:', error.stack);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to get user profile' });
+      return res.status(500).json({ 
+        error: 'Failed to get user profile',
+        message: error.message || 'Unknown error',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      });
+    } else {
+      console.error('⚠️ Response already sent, cannot send error response');
     }
   }
 });
