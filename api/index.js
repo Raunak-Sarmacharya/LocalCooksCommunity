@@ -1896,7 +1896,11 @@ app.get('/api/user', verifyFirebaseAuth, async (req, res) => {
       firebaseUid: user.firebase_uid
     };
 
-    return res.json(response);
+    if (!res.headersSent) {
+      return res.json(response);
+    } else {
+      console.error('⚠️ Response already sent in /api/user, cannot send response');
+    }
   } catch (error) {
     console.error('❌ Error getting Firebase user:', error);
     console.error('Error stack:', error.stack);
@@ -6173,9 +6177,21 @@ async function verifyFirebaseToken(token) {
     const { getAuth } = await import('firebase-admin/auth');
     const auth = getAuth(firebaseAdmin);
     const decodedToken = await auth.verifyIdToken(token.trim());
+    
+    if (!decodedToken || !decodedToken.uid) {
+      console.error('❌ verifyFirebaseToken: Invalid decoded token - missing UID');
+      return null;
+    }
+    
     return decodedToken;
   } catch (error) {
-    console.error('Enhanced token verification error:', error);
+    console.error('❌ Enhanced token verification error:', error);
+    console.error('Token verification error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack
+    });
     return null;
   }
 }
@@ -6183,33 +6199,68 @@ async function verifyFirebaseToken(token) {
 // Enhanced Firebase Auth Middleware
 async function verifyFirebaseAuth(req, res, next) {
   try {
+    // Check if Firebase Admin is initialized
+    if (!firebaseAdmin) {
+      console.error('❌ verifyFirebaseAuth: Firebase Admin SDK not initialized');
+      if (!res.headersSent) {
+        return res.status(500).json({ 
+          error: 'Server configuration error', 
+          message: 'Firebase Admin SDK not initialized. Please check server configuration.' 
+        });
+      }
+      return;
+    }
+
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log('❌ verifyFirebaseAuth: No Bearer token in Authorization header');
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'No auth token provided' 
-      });
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'No auth token provided' 
+        });
+      }
+      return;
     }
 
     const token = authHeader.substring(7);
     if (!token || token.trim() === '') {
       console.log('❌ verifyFirebaseAuth: Empty token after Bearer prefix');
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid auth token format' 
-      });
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Invalid auth token format' 
+        });
+      }
+      return;
     }
 
-    const decodedToken = await verifyFirebaseToken(token);
+    let decodedToken;
+    try {
+      decodedToken = await verifyFirebaseToken(token);
+    } catch (tokenError) {
+      console.error('❌ verifyFirebaseAuth: Token verification threw error:', tokenError);
+      console.error('Token error stack:', tokenError.stack);
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Token verification failed',
+          details: process.env.NODE_ENV === 'development' ? tokenError.message : undefined
+        });
+      }
+      return;
+    }
 
     if (!decodedToken) {
       console.log('❌ verifyFirebaseAuth: Token verification returned null');
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid auth token' 
-      });
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Invalid auth token' 
+        });
+      }
+      return;
     }
 
     req.firebaseUser = {
@@ -6219,10 +6270,19 @@ async function verifyFirebaseAuth(req, res, next) {
     };
 
     console.log('✅ verifyFirebaseAuth: Token verified for UID:', decodedToken.uid);
-    next();
+    
+    // Call next() safely
+    if (typeof next === 'function') {
+      next();
+    }
   } catch (error) {
     console.error('❌ Enhanced Firebase auth verification error:', error);
     console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
     
     // Make sure we haven't already sent a response
     if (!res.headersSent) {
@@ -6239,24 +6299,54 @@ async function verifyFirebaseAuth(req, res, next) {
 // Enhanced Firebase Auth with User Loading Middleware
 async function requireFirebaseAuthWithUser(req, res, next) {
   try {
+    // Check if Firebase Admin is initialized
+    if (!firebaseAdmin) {
+      console.error('❌ requireFirebaseAuthWithUser: Firebase Admin SDK not initialized');
+      if (!res.headersSent) {
+        return res.status(500).json({ 
+          error: 'Server configuration error', 
+          message: 'Firebase Admin SDK not initialized. Please check server configuration.' 
+        });
+      }
+      return;
+    }
+
     // Check for auth token
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'No auth token provided' 
-      });
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'No auth token provided' 
+        });
+      }
+      return;
     }
 
     const token = authHeader.substring(7);
-    const decodedToken = await verifyFirebaseToken(token);
+    let decodedToken;
+    try {
+      decodedToken = await verifyFirebaseToken(token);
+    } catch (tokenError) {
+      console.error('❌ requireFirebaseAuthWithUser: Token verification threw error:', tokenError);
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Token verification failed' 
+        });
+      }
+      return;
+    }
 
     if (!decodedToken) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid auth token' 
-      });
+      if (!res.headersSent) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Invalid auth token' 
+        });
+      }
+      return;
     }
 
     req.firebaseUser = {
@@ -6268,12 +6358,25 @@ async function requireFirebaseAuthWithUser(req, res, next) {
     // Load Neon user from Firebase UID
     let neonUser = null;
     if (pool) {
-      const result = await pool.query(
-        'SELECT * FROM users WHERE firebase_uid = $1',
-        [req.firebaseUser.uid]
-      );
-      neonUser = result.rows[0] || null;
+      try {
+        const result = await pool.query(
+          'SELECT * FROM users WHERE firebase_uid = $1',
+          [req.firebaseUser.uid]
+        );
+        neonUser = result.rows[0] || null;
+      } catch (dbError) {
+        console.error('❌ requireFirebaseAuthWithUser: Database query error:', dbError);
+        if (!res.headersSent) {
+          return res.status(500).json({ 
+            error: 'Database error', 
+            message: 'Failed to fetch user from database',
+            ...(process.env.NODE_ENV === 'development' && { stack: dbError.stack })
+          });
+        }
+        return;
+      }
     } else {
+      console.warn('⚠️ No database pool available, using in-memory fallback');
       // In-memory fallback
       for (const user of users.values()) {
         if (user.firebase_uid === req.firebaseUser.uid) {
@@ -6284,10 +6387,13 @@ async function requireFirebaseAuthWithUser(req, res, next) {
     }
     
     if (!neonUser) {
-      return res.status(404).json({ 
-        error: 'User not found', 
-        message: 'No matching user in database. Please complete registration.' 
-      });
+      if (!res.headersSent) {
+        return res.status(404).json({ 
+          error: 'User not found', 
+          message: 'No matching user in database. Please complete registration.' 
+        });
+      }
+      return;
     }
 
     req.neonUser = {
@@ -6302,14 +6408,22 @@ async function requireFirebaseAuthWithUser(req, res, next) {
     };
 
     console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
-    next();
+    
+    // Call next() safely
+    if (typeof next === 'function') {
+      next();
+    }
   } catch (error) {
-    console.error('Enhanced Firebase auth with user verification error:', error);
+    console.error('❌ Enhanced Firebase auth with user verification error:', error);
+    console.error('Error stack:', error.stack);
     if (!res.headersSent) {
       return res.status(500).json({ 
         error: 'Internal server error', 
-        message: 'Authentication verification failed' 
+        message: 'Authentication verification failed',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+    } else {
+      console.error('⚠️ Response already sent in requireFirebaseAuthWithUser, cannot send error response');
     }
   }
 }
