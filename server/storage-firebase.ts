@@ -9,7 +9,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
@@ -1020,6 +1020,11 @@ export class FirebaseStorage {
               COALESCE(minimum_booking_duration, 1) as minimum_booking_duration,
               COALESCE(booking_duration_unit, 'monthly') as booking_duration_unit,
               currency,
+              dimensions_length::text as dimensions_length,
+              dimensions_width::text as dimensions_width,
+              dimensions_height::text as dimensions_height,
+              total_volume::text as total_volume,
+              climate_control, temperature_range,
               status, is_active, created_at, updated_at
             FROM storage_listings 
             WHERE kitchen_id = $1
@@ -1033,12 +1038,19 @@ export class FirebaseStorage {
             storageType: row.storage_type,
             name: row.name,
             description: row.description,
+            // Convert cents to dollars for frontend display
             basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
             pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
             pricingModel: row.pricing_model,
             minimumBookingDuration: row.minimum_booking_duration ?? 1,
             bookingDurationUnit: row.booking_duration_unit ?? 'monthly',
             currency: row.currency || 'CAD',
+            dimensionsLength: row.dimensions_length ? parseFloat(row.dimensions_length) : null,
+            dimensionsWidth: row.dimensions_width ? parseFloat(row.dimensions_width) : null,
+            dimensionsHeight: row.dimensions_height ? parseFloat(row.dimensions_height) : null,
+            totalVolume: row.total_volume ? parseFloat(row.total_volume) : null,
+            climateControl: row.climate_control ?? false,
+            temperatureRange: row.temperature_range,
             status: row.status,
             isActive: row.is_active,
             createdAt: row.created_at,
@@ -1136,7 +1148,7 @@ export class FirebaseStorage {
         prohibitedItems: listing.prohibitedItems || [],
         insuranceRequired: listing.insuranceRequired || false,
         availabilityCalendar: listing.availabilityCalendar || {},
-        status: 'draft',
+        status: 'active', // Skip admin moderation - immediately visible to chefs
         isActive: true,
         updatedAt: new Date(),
       };
@@ -1380,7 +1392,9 @@ export class FirebaseStorage {
               daily_rate::text as daily_rate,
               weekly_rate::text as weekly_rate,
               monthly_rate::text as monthly_rate,
-              minimum_rental_hours, currency,
+              damage_deposit::text as damage_deposit,
+              minimum_rental_hours, minimum_rental_days, currency,
+              training_required, cleaning_responsibility,
               status, is_active, created_at, updated_at
             FROM equipment_listings 
             WHERE kitchen_id = $1
@@ -1397,18 +1411,23 @@ export class FirebaseStorage {
             model: row.model,
             description: row.description,
             condition: row.condition,
-              availabilityType: row.availability_type || 'rental',
-              pricingModel: row.pricing_model,
-              hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
-              dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
-              weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
-              monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
-              minimumRentalHours: row.minimum_rental_hours ?? 4,
-              currency: row.currency || 'CAD',
-              status: row.status,
-              isActive: row.is_active,
-              createdAt: row.created_at,
-              updatedAt: row.updated_at,
+            availabilityType: row.availability_type || 'rental',
+            pricingModel: row.pricing_model,
+            // Convert cents to dollars for frontend display
+            hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+            dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+            weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+            monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+            damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : 0,
+            minimumRentalHours: row.minimum_rental_hours ?? 4,
+            minimumRentalDays: row.minimum_rental_days,
+            trainingRequired: row.training_required ?? false,
+            cleaningResponsibility: row.cleaning_responsibility,
+            currency: row.currency || 'CAD',
+            status: row.status,
+            isActive: row.is_active,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
           }));
         } catch (error) {
           console.error('Error getting equipment listings by kitchen (direct query):', error);
@@ -1422,12 +1441,14 @@ export class FirebaseStorage {
         const dailyRateCents = listing.dailyRate ? parseFloat(listing.dailyRate.toString()) : null;
         const weeklyRateCents = listing.weeklyRate ? parseFloat(listing.weeklyRate.toString()) : null;
         const monthlyRateCents = listing.monthlyRate ? parseFloat(listing.monthlyRate.toString()) : null;
+        const damageDepositCents = listing.damageDeposit ? parseFloat(listing.damageDeposit.toString()) : 0;
         return {
           ...listing,
           hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
           dailyRate: dailyRateCents !== null ? dailyRateCents / 100 : null,
           weeklyRate: weeklyRateCents !== null ? weeklyRateCents / 100 : null,
           monthlyRate: monthlyRateCents !== null ? monthlyRateCents / 100 : null,
+          damageDeposit: damageDepositCents / 100,
         };
       });
     } catch (error) {
@@ -1514,7 +1535,7 @@ export class FirebaseStorage {
         damageDeposit: listing.availabilityType === 'rental' ? damageDepositCents.toString() : '0',
         insuranceRequired: listing.insuranceRequired || false,
         availabilityCalendar: listing.availabilityCalendar || {},
-        status: 'draft',
+        status: 'active', // Skip admin moderation - immediately visible to chefs
         isActive: true,
         updatedAt: new Date(),
       };
@@ -1698,6 +1719,441 @@ export class FirebaseStorage {
       console.log(`✅ Equipment listing ${id} deleted successfully`);
     } catch (error) {
       console.error('Error deleting equipment listing:', error);
+      throw error;
+    }
+  }
+
+  // ==================== STORAGE BOOKING METHODS ====================
+  
+  /**
+   * Create a storage booking
+   * @param data - Storage booking data with prices in CENTS (internal use from booking flow)
+   */
+  async createStorageBooking(data: {
+    storageListingId: number;
+    kitchenBookingId: number;
+    chefId: number | null;
+    startDate: Date;
+    endDate: Date;
+    totalPriceCents: number;
+    pricingModel: string;
+    serviceFeeCents?: number;
+    currency?: string;
+  }): Promise<any> {
+    try {
+      const result = await db.insert(storageBookings).values({
+        storageListingId: data.storageListingId,
+        kitchenBookingId: data.kitchenBookingId,
+        chefId: data.chefId,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        status: 'pending',
+        totalPrice: data.totalPriceCents.toString(),
+        pricingModel: data.pricingModel as any,
+        paymentStatus: 'pending',
+        serviceFee: (data.serviceFeeCents || 0).toString(),
+        currency: data.currency || 'CAD',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+      
+      console.log(`✅ Storage booking created successfully with ID ${result[0].id}`);
+      return result[0];
+    } catch (error) {
+      console.error('Error creating storage booking:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get storage bookings by kitchen booking ID
+   * Returns prices in dollars for API response
+   */
+  async getStorageBookingsByKitchenBooking(kitchenBookingId: number): Promise<any[]> {
+    try {
+      if (pool && 'query' in pool) {
+        const result = await pool.query(
+          `SELECT 
+            sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
+            sb.start_date, sb.end_date, sb.status,
+            sb.total_price::text as total_price,
+            sb.pricing_model, sb.payment_status, sb.payment_intent_id,
+            sb.service_fee::text as service_fee,
+            sb.currency, sb.created_at, sb.updated_at,
+            sl.name as storage_name, sl.storage_type
+          FROM storage_bookings sb
+          JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+          WHERE sb.kitchen_booking_id = $1
+          ORDER BY sb.created_at DESC`,
+          [kitchenBookingId]
+        );
+        
+        return result.rows.map(row => ({
+          id: row.id,
+          storageListingId: row.storage_listing_id,
+          kitchenBookingId: row.kitchen_booking_id,
+          chefId: row.chef_id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          status: row.status,
+          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0, // Convert cents to dollars
+          pricingModel: row.pricing_model,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0, // Convert cents to dollars
+          currency: row.currency,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          storageName: row.storage_name,
+          storageType: row.storage_type,
+        }));
+      }
+      
+      // Fallback to Drizzle ORM
+      const result = await db.select()
+        .from(storageBookings)
+        .where(eq(storageBookings.kitchenBookingId, kitchenBookingId));
+      
+      return result.map(row => ({
+        ...row,
+        totalPrice: row.totalPrice ? parseFloat(row.totalPrice) / 100 : 0,
+        serviceFee: row.serviceFee ? parseFloat(row.serviceFee) / 100 : 0,
+      }));
+    } catch (error) {
+      console.error('Error getting storage bookings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get storage bookings by chef ID
+   * Returns prices in dollars for API response
+   */
+  async getStorageBookingsByChef(chefId: number): Promise<any[]> {
+    try {
+      if (pool && 'query' in pool) {
+        const result = await pool.query(
+          `SELECT 
+            sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
+            sb.start_date, sb.end_date, sb.status,
+            sb.total_price::text as total_price,
+            sb.pricing_model, sb.payment_status, sb.payment_intent_id,
+            sb.service_fee::text as service_fee,
+            sb.currency, sb.created_at, sb.updated_at,
+            sl.name as storage_name, sl.storage_type, sl.kitchen_id,
+            k.name as kitchen_name
+          FROM storage_bookings sb
+          JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+          JOIN kitchens k ON sl.kitchen_id = k.id
+          WHERE sb.chef_id = $1
+          ORDER BY sb.start_date DESC`,
+          [chefId]
+        );
+        
+        return result.rows.map(row => ({
+          id: row.id,
+          storageListingId: row.storage_listing_id,
+          kitchenBookingId: row.kitchen_booking_id,
+          chefId: row.chef_id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          status: row.status,
+          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0,
+          pricingModel: row.pricing_model,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
+          currency: row.currency,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          storageName: row.storage_name,
+          storageType: row.storage_type,
+          kitchenId: row.kitchen_id,
+          kitchenName: row.kitchen_name,
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error getting storage bookings by chef:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update storage booking status
+   */
+  async updateStorageBookingStatus(id: number, status: string, paymentStatus?: string): Promise<any> {
+    try {
+      const updateData: any = {
+        status: status as any,
+        updatedAt: new Date(),
+      };
+      
+      if (paymentStatus) {
+        updateData.paymentStatus = paymentStatus as any;
+      }
+      
+      const result = await db.update(storageBookings)
+        .set(updateData)
+        .where(eq(storageBookings.id, id))
+        .returning();
+      
+      if (result.length === 0) {
+        throw new Error(`Storage booking with id ${id} not found`);
+      }
+      
+      console.log(`✅ Storage booking ${id} status updated to ${status}`);
+      return result[0];
+    } catch (error) {
+      console.error('Error updating storage booking status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete storage booking
+   */
+  async deleteStorageBooking(id: number): Promise<void> {
+    try {
+      const result = await db.delete(storageBookings)
+        .where(eq(storageBookings.id, id))
+        .returning({ id: storageBookings.id });
+      
+      if (result.length === 0) {
+        throw new Error(`Storage booking with id ${id} not found`);
+      }
+      
+      console.log(`✅ Storage booking ${id} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting storage booking:', error);
+      throw error;
+    }
+  }
+
+  // ==================== EQUIPMENT BOOKING METHODS ====================
+  
+  /**
+   * Create an equipment booking
+   * @param data - Equipment booking data with prices in CENTS (internal use from booking flow)
+   */
+  async createEquipmentBooking(data: {
+    equipmentListingId: number;
+    kitchenBookingId: number;
+    chefId: number | null;
+    startDate: Date;
+    endDate: Date;
+    totalPriceCents: number;
+    pricingModel: string | null;
+    damageDepositCents?: number;
+    serviceFeeCents?: number;
+    currency?: string;
+  }): Promise<any> {
+    try {
+      const result = await db.insert(equipmentBookings).values({
+        equipmentListingId: data.equipmentListingId,
+        kitchenBookingId: data.kitchenBookingId,
+        chefId: data.chefId,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        status: 'pending',
+        totalPrice: data.totalPriceCents.toString(),
+        pricingModel: data.pricingModel as any,
+        paymentStatus: data.totalPriceCents > 0 ? 'pending' : 'not_required',
+        damageDeposit: (data.damageDepositCents || 0).toString(),
+        serviceFee: (data.serviceFeeCents || 0).toString(),
+        currency: data.currency || 'CAD',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+      
+      console.log(`✅ Equipment booking created successfully with ID ${result[0].id}`);
+      return result[0];
+    } catch (error) {
+      console.error('Error creating equipment booking:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get equipment bookings by kitchen booking ID
+   * Returns prices in dollars for API response
+   */
+  async getEquipmentBookingsByKitchenBooking(kitchenBookingId: number): Promise<any[]> {
+    try {
+      if (pool && 'query' in pool) {
+        const result = await pool.query(
+          `SELECT 
+            eb.id, eb.equipment_listing_id, eb.kitchen_booking_id, eb.chef_id,
+            eb.start_date, eb.end_date, eb.status,
+            eb.total_price::text as total_price,
+            eb.pricing_model, eb.payment_status, eb.payment_intent_id,
+            eb.damage_deposit::text as damage_deposit,
+            eb.damage_deposit_status,
+            eb.service_fee::text as service_fee,
+            eb.currency, eb.created_at, eb.updated_at,
+            el.equipment_type, el.brand, el.model, el.availability_type
+          FROM equipment_bookings eb
+          JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+          WHERE eb.kitchen_booking_id = $1
+          ORDER BY eb.created_at DESC`,
+          [kitchenBookingId]
+        );
+        
+        return result.rows.map(row => ({
+          id: row.id,
+          equipmentListingId: row.equipment_listing_id,
+          kitchenBookingId: row.kitchen_booking_id,
+          chefId: row.chef_id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          status: row.status,
+          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0, // Convert cents to dollars
+          pricingModel: row.pricing_model,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0, // Convert cents to dollars
+          damageDepositStatus: row.damage_deposit_status,
+          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0, // Convert cents to dollars
+          currency: row.currency,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          equipmentType: row.equipment_type,
+          brand: row.brand,
+          model: row.model,
+          availabilityType: row.availability_type,
+        }));
+      }
+      
+      // Fallback to Drizzle ORM
+      const result = await db.select()
+        .from(equipmentBookings)
+        .where(eq(equipmentBookings.kitchenBookingId, kitchenBookingId));
+      
+      return result.map(row => ({
+        ...row,
+        totalPrice: row.totalPrice ? parseFloat(row.totalPrice) / 100 : 0,
+        damageDeposit: row.damageDeposit ? parseFloat(row.damageDeposit) / 100 : 0,
+        serviceFee: row.serviceFee ? parseFloat(row.serviceFee) / 100 : 0,
+      }));
+    } catch (error) {
+      console.error('Error getting equipment bookings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get equipment bookings by chef ID
+   * Returns prices in dollars for API response
+   */
+  async getEquipmentBookingsByChef(chefId: number): Promise<any[]> {
+    try {
+      if (pool && 'query' in pool) {
+        const result = await pool.query(
+          `SELECT 
+            eb.id, eb.equipment_listing_id, eb.kitchen_booking_id, eb.chef_id,
+            eb.start_date, eb.end_date, eb.status,
+            eb.total_price::text as total_price,
+            eb.pricing_model, eb.payment_status, eb.payment_intent_id,
+            eb.damage_deposit::text as damage_deposit,
+            eb.damage_deposit_status,
+            eb.service_fee::text as service_fee,
+            eb.currency, eb.created_at, eb.updated_at,
+            el.equipment_type, el.brand, el.model, el.availability_type, el.kitchen_id,
+            k.name as kitchen_name
+          FROM equipment_bookings eb
+          JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+          JOIN kitchens k ON el.kitchen_id = k.id
+          WHERE eb.chef_id = $1
+          ORDER BY eb.start_date DESC`,
+          [chefId]
+        );
+        
+        return result.rows.map(row => ({
+          id: row.id,
+          equipmentListingId: row.equipment_listing_id,
+          kitchenBookingId: row.kitchen_booking_id,
+          chefId: row.chef_id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          status: row.status,
+          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0,
+          pricingModel: row.pricing_model,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0,
+          damageDepositStatus: row.damage_deposit_status,
+          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
+          currency: row.currency,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          equipmentType: row.equipment_type,
+          brand: row.brand,
+          model: row.model,
+          availabilityType: row.availability_type,
+          kitchenId: row.kitchen_id,
+          kitchenName: row.kitchen_name,
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error getting equipment bookings by chef:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update equipment booking status
+   */
+  async updateEquipmentBookingStatus(id: number, status: string, paymentStatus?: string, damageDepositStatus?: string): Promise<any> {
+    try {
+      const updateData: any = {
+        status: status as any,
+        updatedAt: new Date(),
+      };
+      
+      if (paymentStatus) {
+        updateData.paymentStatus = paymentStatus as any;
+      }
+      
+      if (damageDepositStatus) {
+        updateData.damageDepositStatus = damageDepositStatus as any;
+      }
+      
+      const result = await db.update(equipmentBookings)
+        .set(updateData)
+        .where(eq(equipmentBookings.id, id))
+        .returning();
+      
+      if (result.length === 0) {
+        throw new Error(`Equipment booking with id ${id} not found`);
+      }
+      
+      console.log(`✅ Equipment booking ${id} status updated to ${status}`);
+      return result[0];
+    } catch (error) {
+      console.error('Error updating equipment booking status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete equipment booking
+   */
+  async deleteEquipmentBooking(id: number): Promise<void> {
+    try {
+      const result = await db.delete(equipmentBookings)
+        .where(eq(equipmentBookings.id, id))
+        .returning({ id: equipmentBookings.id });
+      
+      if (result.length === 0) {
+        throw new Error(`Equipment booking with id ${id} not found`);
+      }
+      
+      console.log(`✅ Equipment booking ${id} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting equipment booking:', error);
       throw error;
     }
   }

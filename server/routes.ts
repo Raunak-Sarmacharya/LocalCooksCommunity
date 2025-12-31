@@ -4852,6 +4852,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get a single booking with add-on details (Manager)
+  app.get("/api/manager/bookings/:id", async (req: Request, res: Response) => {
+    try {
+      // Check authentication - managers use session-based auth
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id) || id <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+      
+      const booking = await firebaseStorage.getBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+      
+      // Verify the booking is for a kitchen in a location managed by this manager
+      const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      
+      const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
+      const location = await firebaseStorage.getLocationById(kitchenLocationId);
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "You don't have permission to view this booking" });
+      }
+      
+      // Get storage and equipment bookings for this kitchen booking
+      const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
+      const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+      
+      // Get chef details
+      const chef = booking.chefId ? await storage.getUser(booking.chefId) : null;
+      
+      res.json({
+        ...booking,
+        kitchen,
+        location,
+        chef: chef ? { 
+          id: chef.id, 
+          fullName: chef.fullName, 
+          email: chef.email, 
+          phone: chef.phone 
+        } : null,
+        storageBookings,
+        equipmentBookings,
+      });
+    } catch (error: any) {
+      console.error("Error fetching booking details:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch booking details" });
+    }
+  });
+
   // Update booking status
   app.put("/api/manager/bookings/:id/status", async (req: Request, res: Response) => {
     try {
@@ -5587,6 +5651,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get storage listings for a kitchen (chef view - only active/approved listings)
+  app.get("/api/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get all storage listings for this kitchen
+      const allListings = await firebaseStorage.getStorageListingsByKitchen(kitchenId);
+      
+      // Filter to only show approved/active listings to chefs
+      // Listings with status 'approved' or 'active' AND isActive=true are visible
+      const visibleListings = allListings.filter((listing: any) => 
+        (listing.status === 'approved' || listing.status === 'active') && 
+        listing.isActive === true
+      );
+
+      console.log(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
+      
+      res.json(visibleListings);
+    } catch (error: any) {
+      console.error("Error getting storage listings for chef:", error);
+      res.status(500).json({ error: error.message || "Failed to get storage listings" });
+    }
+  });
+
+  // Get equipment listings for a kitchen (chef view - only active/approved listings)
+  // Distinguishes between 'included' (free with kitchen) and 'rental' (paid addon) equipment
+  app.get("/api/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get all equipment listings for this kitchen
+      const allListings = await firebaseStorage.getEquipmentListingsByKitchen(kitchenId);
+      
+      // Filter to only show approved/active listings to chefs
+      // Listings with status 'approved' or 'active' AND isActive=true are visible
+      const visibleListings = allListings.filter((listing: any) => 
+        (listing.status === 'approved' || listing.status === 'active') && 
+        listing.isActive === true
+      );
+
+      // Separate into included (free) and rental (paid) for clearer frontend display
+      const includedEquipment = visibleListings.filter((l: any) => l.availabilityType === 'included');
+      const rentalEquipment = visibleListings.filter((l: any) => l.availabilityType === 'rental');
+
+      console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+      
+      // Return both the full list and categorized lists for convenience
+      res.json({
+        all: visibleListings,
+        included: includedEquipment,
+        rental: rentalEquipment
+      });
+    } catch (error: any) {
+      console.error("Error getting equipment listings for chef:", error);
+      res.status(500).json({ error: error.message || "Failed to get equipment listings" });
+    }
+  });
+
   // Get all locations (for chefs to see kitchen locations)
   app.get("/api/chef/locations", requireChef, async (req: Request, res: Response) => {
     try {
@@ -5682,7 +5810,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a booking
   app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
-      const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
+      const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedEquipmentIds } = req.body;
       const chefId = req.user!.id;
       
       // Check if chef has admin-granted access to the location containing this kitchen
@@ -5858,6 +5986,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
         specialNotes
       });
       console.log(`✅ STEP 1 COMPLETE: Booking ${booking.id} created successfully`);
+
+      // Step 1.5: Create storage and equipment bookings if selected
+      const storageBookingsCreated: any[] = [];
+      const equipmentBookingsCreated: any[] = [];
+      
+      if (pool && (selectedStorageIds?.length > 0 || selectedEquipmentIds?.length > 0)) {
+        console.log(`📦 STEP 1.5: Creating add-on bookings...`);
+        
+        // Parse booking dates for add-ons (same as kitchen booking)
+        const bookingStartDateTime = new Date(`${bookingDateStr}T${startTime}`);
+        const bookingEndDateTime = new Date(`${bookingDateStr}T${endTime}`);
+        
+        // Create storage bookings
+        if (selectedStorageIds && Array.isArray(selectedStorageIds)) {
+          for (const storageListingId of selectedStorageIds) {
+            try {
+              // Get storage listing details to get pricing info
+              const storageResult = await pool.query(
+                `SELECT id, pricing_model, base_price, currency FROM storage_listings WHERE id = $1`,
+                [storageListingId]
+              );
+              
+              if (storageResult.rows.length > 0) {
+                const storageListing = storageResult.rows[0];
+                const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
+                
+                // Calculate price based on pricing model and booking duration
+                let totalPrice = basePriceCents;
+                const durationHours = Math.max(1, Math.ceil((bookingEndDateTime.getTime() - bookingStartDateTime.getTime()) / (1000 * 60 * 60)));
+                
+                // For hourly/daily storage, multiply by duration
+                if (storageListing.pricing_model === 'hourly') {
+                  totalPrice = basePriceCents * durationHours;
+                } else if (storageListing.pricing_model === 'daily') {
+                  totalPrice = basePriceCents * Math.ceil(durationHours / 24);
+                }
+                // For monthly-flat, use base price directly (pro-rated storage not implemented)
+                
+                // Calculate service fee (5%)
+                const serviceFee = Math.round(totalPrice * 0.05);
+                
+                const insertResult = await pool.query(
+                  `INSERT INTO storage_bookings 
+                    (storage_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, payment_status, service_fee, currency)
+                   VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, 'pending', $8, $9)
+                   RETURNING id`,
+                  [
+                    storageListingId,
+                    booking.id,
+                    chefId,
+                    bookingStartDateTime,
+                    bookingEndDateTime,
+                    totalPrice.toString(),
+                    storageListing.pricing_model,
+                    serviceFee.toString(),
+                    storageListing.currency || 'CAD'
+                  ]
+                );
+                
+                storageBookingsCreated.push({
+                  id: insertResult.rows[0].id,
+                  storageListingId,
+                  totalPrice: totalPrice / 100 // Return in dollars
+                });
+                console.log(`   ✅ Storage booking created: listing ${storageListingId}, price: $${(totalPrice / 100).toFixed(2)}`);
+              }
+            } catch (storageError) {
+              console.error(`   ⚠️ Failed to create storage booking for listing ${storageListingId}:`, storageError);
+            }
+          }
+        }
+        
+        // Create equipment bookings
+        if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds)) {
+          for (const equipmentListingId of selectedEquipmentIds) {
+            try {
+              // Get equipment listing details
+              const equipmentResult = await pool.query(
+                `SELECT id, availability_type, pricing_model, hourly_rate, daily_rate, weekly_rate, monthly_rate, damage_deposit, currency 
+                 FROM equipment_listings WHERE id = $1`,
+                [equipmentListingId]
+              );
+              
+              if (equipmentResult.rows.length > 0) {
+                const equipmentListing = equipmentResult.rows[0];
+                
+                // Skip if it's included equipment (shouldn't happen, but safety check)
+                if (equipmentListing.availability_type === 'included') {
+                  console.log(`   ℹ️ Skipping equipment ${equipmentListingId} - it's included with kitchen`);
+                  continue;
+                }
+                
+                // Get the rate based on pricing model
+                let rateCents = 0;
+                const pricingModel = equipmentListing.pricing_model || 'hourly';
+                switch (pricingModel) {
+                  case 'hourly':
+                    rateCents = equipmentListing.hourly_rate ? parseInt(equipmentListing.hourly_rate) : 0;
+                    break;
+                  case 'daily':
+                    rateCents = equipmentListing.daily_rate ? parseInt(equipmentListing.daily_rate) : 0;
+                    break;
+                  case 'weekly':
+                    rateCents = equipmentListing.weekly_rate ? parseInt(equipmentListing.weekly_rate) : 0;
+                    break;
+                  case 'monthly':
+                    rateCents = equipmentListing.monthly_rate ? parseInt(equipmentListing.monthly_rate) : 0;
+                    break;
+                }
+                
+                const durationHours = Math.max(1, Math.ceil((bookingEndDateTime.getTime() - bookingStartDateTime.getTime()) / (1000 * 60 * 60)));
+                
+                // Calculate total price based on pricing model
+                let totalPrice = rateCents;
+                if (pricingModel === 'hourly') {
+                  totalPrice = rateCents * durationHours;
+                } else if (pricingModel === 'daily') {
+                  totalPrice = rateCents * Math.ceil(durationHours / 24);
+                }
+                // For weekly/monthly, use rate directly (pro-rated not implemented)
+                
+                const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
+                
+                // Calculate service fee (5%)
+                const serviceFee = Math.round(totalPrice * 0.05);
+                
+                const insertResult = await pool.query(
+                  `INSERT INTO equipment_bookings 
+                    (equipment_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, damage_deposit, payment_status, service_fee, currency)
+                   VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, 'pending', $9, $10)
+                   RETURNING id`,
+                  [
+                    equipmentListingId,
+                    booking.id,
+                    chefId,
+                    bookingStartDateTime,
+                    bookingEndDateTime,
+                    totalPrice.toString(),
+                    pricingModel,
+                    damageDepositCents.toString(),
+                    serviceFee.toString(),
+                    equipmentListing.currency || 'CAD'
+                  ]
+                );
+                
+                equipmentBookingsCreated.push({
+                  id: insertResult.rows[0].id,
+                  equipmentListingId,
+                  totalPrice: totalPrice / 100 // Return in dollars
+                });
+                console.log(`   ✅ Equipment booking created: listing ${equipmentListingId}, price: $${(totalPrice / 100).toFixed(2)}`);
+              }
+            } catch (equipmentError) {
+              console.error(`   ⚠️ Failed to create equipment booking for listing ${equipmentListingId}:`, equipmentError);
+            }
+          }
+        }
+        
+        console.log(`✅ STEP 1.5 COMPLETE: Created ${storageBookingsCreated.length} storage and ${equipmentBookingsCreated.length} equipment bookings`);
+      }
 
       // Step 2: Send email notifications - SEQUENTIAL execution to ensure reliability
       console.log(`📧 STEP 2: Starting sequential email notification process for booking ${booking.id}`);
@@ -6117,7 +6405,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`📝 FINAL: Booking ${booking.id} created. Email status: Chef=${emailResults.chefEmailSent ? 'sent' : 'failed'}, Manager=${emailResults.managerEmailSent ? 'sent' : 'failed'}`);
       
-      res.status(201).json(booking);
+      // Include add-on bookings in the response
+      res.status(201).json({
+        ...booking,
+        storageBookings: storageBookingsCreated,
+        equipmentBookings: equipmentBookingsCreated,
+      });
     } catch (error) {
       console.error("Error creating booking:", error);
       res.status(500).json({ error: "Failed to create booking" });
@@ -6132,6 +6425,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching bookings:", error);
       res.status(500).json({ error: "Failed to fetch bookings" });
+    }
+  });
+
+  // Get a single booking with add-on details
+  app.get("/api/chef/bookings/:id", requireChef, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id) || id <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+      
+      const booking = await firebaseStorage.getBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+      
+      // Verify the booking belongs to this chef
+      if (booking.chefId !== req.user!.id) {
+        return res.status(403).json({ error: "You don't have permission to view this booking" });
+      }
+      
+      // Get storage and equipment bookings for this kitchen booking
+      const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
+      const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+      
+      // Get kitchen details
+      const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+      
+      res.json({
+        ...booking,
+        kitchen,
+        storageBookings,
+        equipmentBookings,
+      });
+    } catch (error: any) {
+      console.error("Error fetching booking details:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch booking details" });
     }
   });
 
