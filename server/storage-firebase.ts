@@ -2446,11 +2446,11 @@ export class FirebaseStorage {
         console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00, capacity: ${capacity}`);
       }
       
-      // Generate 30-minute interval slots
+      // Generate 1-hour slots (consistent with api/index.js for Vercel deployment)
+      // Each slot represents a 1-hour booking block
       const allSlots: string[] = [];
       for (let hour = startHour; hour < endHour; hour++) {
         allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
-        allSlots.push(`${hour.toString().padStart(2, '0')}:30`);
       }
       
       // Count bookings per slot
@@ -2556,11 +2556,11 @@ export class FirebaseStorage {
         console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00`);
       }
       
-      // Generate 30-minute interval slots (like standard booking platforms)
+      // Generate 1-hour slots (consistent with api/index.js for Vercel deployment)
+      // Each slot represents a 1-hour booking block
       const slots: string[] = [];
       for (let hour = startHour; hour < endHour; hour++) {
         slots.push(`${hour.toString().padStart(2, '0')}:00`);
-        slots.push(`${hour.toString().padStart(2, '0')}:30`);
       }
       
       // Filter out already booked slots
