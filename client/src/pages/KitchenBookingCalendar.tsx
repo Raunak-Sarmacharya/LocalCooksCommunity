@@ -616,13 +616,13 @@ export default function KitchenBookingCalendar() {
         endTime,
         specialNotes: notes,
         // Include selected storage and equipment add-ons
-        selectedStorageIds: selectedStorageIds.length > 0 ? selectedStorageIds : undefined,
+        // Storage is booked separately - not included in kitchen booking
         selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
       },
       {
         onSuccess: () => {
-          const addonsCount = selectedStorageIds.length + selectedEquipmentIds.length;
-          const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} add-on${addonsCount > 1 ? 's' : ''}` : '';
+          const addonsCount = selectedEquipmentIds.length;
+          const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
           toast({
             title: "Booking Created!",
             description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
@@ -906,13 +906,8 @@ export default function KitchenBookingCalendar() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {equipmentListings.rental.map((equipment: any) => {
                                 const isSelected = selectedEquipmentIds.includes(equipment.id);
-                                const rate = equipment.pricingModel === 'hourly' ? equipment.hourlyRate :
-                                             equipment.pricingModel === 'daily' ? equipment.dailyRate :
-                                             equipment.pricingModel === 'weekly' ? equipment.weeklyRate :
-                                             equipment.monthlyRate;
-                                const rateLabel = equipment.pricingModel === 'hourly' ? '/hour' :
-                                                  equipment.pricingModel === 'daily' ? '/day' :
-                                                  equipment.pricingModel === 'weekly' ? '/week' : '/month';
+                                // Use sessionRate (flat per-session fee)
+                                const rate = equipment.sessionRate || 0;
                                 
                                 return (
                                   <button
@@ -940,7 +935,7 @@ export default function KitchenBookingCalendar() {
                                       </div>
                                       <div className="text-right">
                                         <p className="font-semibold text-amber-700">
-                                          ${rate?.toFixed(2) || '0.00'}{rateLabel}
+                                          ${rate?.toFixed(2) || '0.00'}/session
                                         </p>
                                         {isSelected && <span className="text-xs text-amber-600">✓ Selected</span>}
                                       </div>
@@ -957,36 +952,30 @@ export default function KitchenBookingCalendar() {
                           </div>
                         )}
                         
-                        {/* Storage Listings */}
+                        {/* Storage Listings - Booked Separately */}
                         {storageListings.length > 0 && (
                           <div>
                             <div className="flex items-center gap-2 mb-3">
                               <Package className="h-4 w-4 text-purple-600" />
-                              <h4 className="font-medium text-gray-800">Storage Space</h4>
-                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Paid add-on</span>
+                              <h4 className="font-medium text-gray-800">Storage Space Available</h4>
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Book separately</span>
+                            </div>
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                              <p className="text-sm text-blue-800">
+                                <strong>💡 Storage is booked independently</strong> from kitchen time. 
+                                You can book storage for as long as you need, starting from the minimum rental period.
+                              </p>
                             </div>
                             <div className="grid grid-cols-1 gap-3">
                               {storageListings.map((storage: any) => {
-                                const isSelected = selectedStorageIds.includes(storage.id);
-                                const rateLabel = storage.pricingModel === 'hourly' ? '/hour' :
-                                                  storage.pricingModel === 'daily' ? '/day' :
-                                                  storage.pricingModel === 'monthly-flat' ? '/month' : '/unit';
+                                // Storage is now a separate booking - show info only
+                                const dailyRate = storage.basePrice || 0;
+                                const minDays = storage.minimumBookingDuration || 1;
                                 
                                 return (
-                                  <button
+                                  <div
                                     key={storage.id}
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setSelectedStorageIds(prev => prev.filter(id => id !== storage.id));
-                                      } else {
-                                        setSelectedStorageIds(prev => [...prev, storage.id]);
-                                      }
-                                    }}
-                                    className={`p-4 border rounded-lg text-left transition-all ${
-                                      isSelected 
-                                        ? 'bg-purple-50 border-purple-400 ring-2 ring-purple-200' 
-                                        : 'bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50'
-                                    }`}
+                                    className="p-4 bg-gray-50 border border-gray-200 rounded-lg"
                                   >
                                     <div className="flex items-start justify-between">
                                       <div className="flex-1">
@@ -1007,31 +996,28 @@ export default function KitchenBookingCalendar() {
                                         {storage.description && (
                                           <p className="text-sm text-gray-600 mt-2">{storage.description}</p>
                                         )}
-                                        <p className="text-xs text-gray-500 mt-2">
-                                          Min: {storage.minimumBookingDuration} {storage.bookingDurationUnit}
-                                        </p>
                                       </div>
                                       <div className="text-right ml-4">
                                         <p className="font-semibold text-purple-700">
-                                          ${storage.basePrice?.toFixed(2) || '0.00'}{rateLabel}
+                                          ${dailyRate?.toFixed(2) || '0.00'}/day
                                         </p>
-                                        {isSelected && <span className="text-xs text-purple-600">✓ Selected</span>}
+                                        <p className="text-xs text-gray-500">Min: {minDays} days</p>
                                       </div>
                                     </div>
-                                  </button>
+                                  </div>
                                 );
                               })}
                             </div>
                           </div>
                         )}
                         
-                        {/* Selection Summary */}
-                        {(selectedStorageIds.length > 0 || selectedEquipmentIds.length > 0) && (
+                        {/* Equipment Selection Summary */}
+                        {selectedEquipmentIds.length > 0 && (
                           <div className="mt-4 pt-4 border-t border-gray-200">
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <DollarSign className="h-4 w-4" />
+                              <Wrench className="h-4 w-4" />
                               <span>
-                                Selected: {selectedEquipmentIds.length} equipment, {selectedStorageIds.length} storage
+                                Selected: {selectedEquipmentIds.length} equipment add-on{selectedEquipmentIds.length !== 1 ? 's' : ''}
                               </span>
                             </div>
                           </div>
@@ -1490,40 +1476,19 @@ export default function KitchenBookingCalendar() {
                       {selectedEquipmentIds.map(eqId => {
                         const eq = equipmentListings.rental.find((e: any) => e.id === eqId);
                         if (!eq) return null;
-                        const rate = eq.pricingModel === 'hourly' ? eq.hourlyRate :
-                                     eq.pricingModel === 'daily' ? eq.dailyRate :
-                                     eq.pricingModel === 'weekly' ? eq.weeklyRate : eq.monthlyRate;
-                        const rateLabel = eq.pricingModel === 'hourly' ? '/hour' :
-                                          eq.pricingModel === 'daily' ? '/day' :
-                                          eq.pricingModel === 'weekly' ? '/week' : '/month';
+                        // Use sessionRate (flat per-session fee)
+                        const rate = eq.sessionRate || 0;
                         return (
                           <div key={eqId} className="flex justify-between items-center">
                             <span className="text-gray-700 flex items-center gap-1">
                               <Wrench className="h-3 w-3 text-amber-600" />
                               {eq.equipmentType} {eq.brand ? `(${eq.brand})` : ''}
                             </span>
-                            <span className="font-medium text-amber-700">${rate?.toFixed(2) || '0.00'}{rateLabel}</span>
+                            <span className="font-medium text-amber-700">${rate?.toFixed(2) || '0.00'}</span>
                           </div>
                         );
                       })}
                       
-                      {/* Selected Storage */}
-                      {selectedStorageIds.map(stId => {
-                        const st = storageListings.find((s: any) => s.id === stId);
-                        if (!st) return null;
-                        const rateLabel = st.pricingModel === 'hourly' ? '/hour' :
-                                          st.pricingModel === 'daily' ? '/day' :
-                                          st.pricingModel === 'monthly-flat' ? '/month' : '/unit';
-                        return (
-                          <div key={stId} className="flex justify-between items-center">
-                            <span className="text-gray-700 flex items-center gap-1">
-                              <Package className="h-3 w-3 text-purple-600" />
-                              {st.name} ({st.storageType})
-                            </span>
-                            <span className="font-medium text-purple-700">${st.basePrice?.toFixed(2) || '0.00'}{rateLabel}</span>
-                          </div>
-                        );
-                      })}
                     </div>
                     <p className="text-xs text-amber-600 mt-3">
                       ℹ️ Add-on pricing will be calculated based on your booking duration

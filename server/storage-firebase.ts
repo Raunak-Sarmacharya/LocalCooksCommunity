@@ -1388,6 +1388,7 @@ export class FirebaseStorage {
             `SELECT 
               id, kitchen_id, category, equipment_type, brand, model, description,
               condition, availability_type, pricing_model,
+              session_rate::text as session_rate,
               hourly_rate::text as hourly_rate,
               daily_rate::text as daily_rate,
               weekly_rate::text as weekly_rate,
@@ -1413,13 +1414,15 @@ export class FirebaseStorage {
             condition: row.condition,
             availabilityType: row.availability_type || 'rental',
             pricingModel: row.pricing_model,
-            // Convert cents to dollars for frontend display
+            // PRIMARY: Flat session rate (convert cents to dollars)
+            sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : 0,
+            // Legacy rates (kept for backwards compatibility)
             hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
             dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
             weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
             monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
             damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : 0,
-            minimumRentalHours: row.minimum_rental_hours ?? 4,
+            minimumRentalHours: row.minimum_rental_hours,
             minimumRentalDays: row.minimum_rental_days,
             trainingRequired: row.training_required ?? false,
             cleaningResponsibility: row.cleaning_responsibility,
@@ -1437,6 +1440,7 @@ export class FirebaseStorage {
       // Fallback to Drizzle
       const listings = await db.select().from(equipmentListings).where(eq(equipmentListings.kitchenId, kitchenId));
       return listings.map(listing => {
+        const sessionRateCents = listing.sessionRate ? parseFloat(listing.sessionRate.toString()) : 0;
         const hourlyRateCents = listing.hourlyRate ? parseFloat(listing.hourlyRate.toString()) : null;
         const dailyRateCents = listing.dailyRate ? parseFloat(listing.dailyRate.toString()) : null;
         const weeklyRateCents = listing.weeklyRate ? parseFloat(listing.weeklyRate.toString()) : null;
@@ -1444,6 +1448,7 @@ export class FirebaseStorage {
         const damageDepositCents = listing.damageDeposit ? parseFloat(listing.damageDeposit.toString()) : 0;
         return {
           ...listing,
+          sessionRate: sessionRateCents / 100,
           hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
           dailyRate: dailyRateCents !== null ? dailyRateCents / 100 : null,
           weeklyRate: weeklyRateCents !== null ? weeklyRateCents / 100 : null,
@@ -1473,14 +1478,16 @@ export class FirebaseStorage {
     specifications?: Record<string, any>;
     certifications?: string[];
     safetyFeatures?: string[];
-    availabilityType: 'included' | 'rental'; // NEW: included (free) or rental (paid)
-    pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly'; // Optional - only for rental
-    hourlyRate?: number; // in dollars - only for rental
-    dailyRate?: number; // in dollars - only for rental
-    weeklyRate?: number; // in dollars - only for rental
-    monthlyRate?: number; // in dollars - only for rental
-    minimumRentalHours?: number; // only for rental
-    minimumRentalDays?: number; // only for rental
+    availabilityType: 'included' | 'rental'; // included (free) or rental (paid)
+    sessionRate?: number; // FLAT session rate in dollars - only for rental
+    // Legacy fields kept for backwards compatibility
+    pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly';
+    hourlyRate?: number;
+    dailyRate?: number;
+    weeklyRate?: number;
+    monthlyRate?: number;
+    minimumRentalHours?: number;
+    minimumRentalDays?: number;
     usageRestrictions?: string[];
     trainingRequired?: boolean;
     cleaningResponsibility?: 'renter' | 'host' | 'shared';
@@ -1493,12 +1500,15 @@ export class FirebaseStorage {
     availabilityCalendar?: Record<string, any>;
   }): Promise<any> {
     try {
-      // Convert prices from dollars to cents (only for rental equipment)
+      // Convert session rate from dollars to cents (only for rental equipment)
+      const sessionRateCents = listing.sessionRate ? Math.round(listing.sessionRate * 100) : 0;
+      const damageDepositCents = listing.damageDeposit ? Math.round(listing.damageDeposit * 100) : 0;
+      
+      // Legacy: Also convert old rate fields if provided (for backwards compatibility)
       const hourlyRateCents = listing.hourlyRate ? Math.round(listing.hourlyRate * 100) : null;
       const dailyRateCents = listing.dailyRate ? Math.round(listing.dailyRate * 100) : null;
       const weeklyRateCents = listing.weeklyRate ? Math.round(listing.weeklyRate * 100) : null;
       const monthlyRateCents = listing.monthlyRate ? Math.round(listing.monthlyRate * 100) : null;
-      const damageDepositCents = listing.damageDeposit ? Math.round(listing.damageDeposit * 100) : 0;
 
       const insertData: any = {
         kitchenId: listing.kitchenId,
@@ -1516,15 +1526,17 @@ export class FirebaseStorage {
         certifications: listing.certifications || [],
         safetyFeatures: listing.safetyFeatures || [],
         availabilityType: listing.availabilityType || 'rental',
-        // Pricing fields - only set for rental equipment
-        pricingModel: listing.availabilityType === 'rental' ? (listing.pricingModel || null) : null,
+        // NEW: Flat session rate - primary pricing field for rental equipment
+        sessionRate: listing.availabilityType === 'rental' ? sessionRateCents.toString() : '0',
+        // Legacy pricing fields - kept for backwards compatibility
+        pricingModel: listing.availabilityType === 'rental' ? (listing.pricingModel || 'hourly') : null,
         hourlyRate: listing.availabilityType === 'rental' ? (hourlyRateCents ? hourlyRateCents.toString() : null) : null,
         dailyRate: listing.availabilityType === 'rental' ? (dailyRateCents ? dailyRateCents.toString() : null) : null,
         weeklyRate: listing.availabilityType === 'rental' ? (weeklyRateCents ? weeklyRateCents.toString() : null) : null,
         monthlyRate: listing.availabilityType === 'rental' ? (monthlyRateCents ? monthlyRateCents.toString() : null) : null,
-        minimumRentalHours: listing.availabilityType === 'rental' ? (listing.minimumRentalHours || 4) : null,
+        minimumRentalHours: listing.availabilityType === 'rental' ? (listing.minimumRentalHours || null) : null,
         minimumRentalDays: listing.availabilityType === 'rental' ? (listing.minimumRentalDays || null) : null,
-        currency: 'CAD', // Always CAD
+        currency: 'CAD',
         usageRestrictions: listing.usageRestrictions || [],
         trainingRequired: listing.trainingRequired || false,
         cleaningResponsibility: listing.cleaningResponsibility || null,
