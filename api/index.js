@@ -15438,6 +15438,162 @@ app.get("/api/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) =
   }
 });
 
+// Get storage listings for a kitchen (chef view - only active/approved listings)
+app.get("/api/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get all storage listings for this kitchen
+    const result = await pool.query(`
+      SELECT 
+        id, kitchen_id, storage_type, name, description,
+        base_price::text as base_price,
+        price_per_cubic_foot::text as price_per_cubic_foot,
+        pricing_model, 
+        COALESCE(minimum_booking_duration, 1) as minimum_booking_duration,
+        COALESCE(booking_duration_unit, 'monthly') as booking_duration_unit,
+        currency,
+        dimensions_length::text as dimensions_length,
+        dimensions_width::text as dimensions_width,
+        dimensions_height::text as dimensions_height,
+        total_volume::text as total_volume,
+        climate_control, temperature_range,
+        status, is_active, created_at, updated_at
+      FROM storage_listings 
+      WHERE kitchen_id = $1
+      ORDER BY created_at DESC
+    `, [kitchenId]);
+
+    // Filter to only show approved/active listings to chefs
+    const visibleListings = result.rows
+      .filter(row => (row.status === 'approved' || row.status === 'active') && row.is_active === true)
+      .map(row => ({
+        id: row.id,
+        kitchenId: row.kitchen_id,
+        storageType: row.storage_type,
+        name: row.name,
+        description: row.description,
+        // Convert cents to dollars for frontend display
+        basePrice: row.base_price ? parseFloat(row.base_price) / 100 : null,
+        pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(row.price_per_cubic_foot) / 100 : null,
+        pricingModel: row.pricing_model,
+        minimumBookingDuration: row.minimum_booking_duration ?? 1,
+        bookingDurationUnit: row.booking_duration_unit ?? 'monthly',
+        currency: row.currency || 'CAD',
+        dimensionsLength: row.dimensions_length ? parseFloat(row.dimensions_length) : null,
+        dimensionsWidth: row.dimensions_width ? parseFloat(row.dimensions_width) : null,
+        dimensionsHeight: row.dimensions_height ? parseFloat(row.dimensions_height) : null,
+        totalVolume: row.total_volume ? parseFloat(row.total_volume) : null,
+        climateControl: row.climate_control ?? false,
+        temperatureRange: row.temperature_range,
+        status: row.status,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+
+    console.log(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings`);
+    
+    res.json(visibleListings);
+  } catch (error) {
+    console.error("Error getting storage listings for chef:", error);
+    res.status(500).json({ error: error.message || "Failed to get storage listings" });
+  }
+});
+
+// Get equipment listings for a kitchen (chef view - only active/approved listings)
+// Distinguishes between 'included' (free with kitchen) and 'rental' (paid addon) equipment
+app.get("/api/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+  try {
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get all equipment listings for this kitchen
+    const result = await pool.query(`
+      SELECT
+        id, kitchen_id, category, equipment_type, brand, model, description,
+        condition, availability_type, pricing_model,
+        hourly_rate::text as hourly_rate,
+        daily_rate::text as daily_rate,
+        weekly_rate::text as weekly_rate,
+        monthly_rate::text as monthly_rate,
+        minimum_rental_hours, minimum_rental_days, currency,
+        damage_deposit::text as damage_deposit,
+        insurance_required, training_required, cleaning_responsibility,
+        prep_time_hours, photos, manuals, maintenance_log,
+        status, is_active, created_at, updated_at
+      FROM equipment_listings
+      WHERE kitchen_id = $1
+      ORDER BY created_at DESC
+    `, [kitchenId]);
+
+    // Filter to only show approved/active listings to chefs
+    const visibleListings = result.rows
+      .filter(row => (row.status === 'approved' || row.status === 'active') && row.is_active === true)
+      .map(row => ({
+        id: row.id,
+        kitchenId: row.kitchen_id,
+        category: row.category,
+        equipmentType: row.equipment_type,
+        brand: row.brand,
+        model: row.model,
+        description: row.description,
+        condition: row.condition,
+        availabilityType: row.availability_type,
+        pricingModel: row.pricing_model,
+        // Convert cents to dollars for frontend display
+        hourlyRate: row.hourly_rate ? parseFloat(row.hourly_rate) / 100 : null,
+        dailyRate: row.daily_rate ? parseFloat(row.daily_rate) / 100 : null,
+        weeklyRate: row.weekly_rate ? parseFloat(row.weekly_rate) / 100 : null,
+        monthlyRate: row.monthly_rate ? parseFloat(row.monthly_rate) / 100 : null,
+        minimumRentalHours: row.minimum_rental_hours,
+        minimumRentalDays: row.minimum_rental_days,
+        currency: row.currency || 'CAD',
+        damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0,
+        insuranceRequired: row.insurance_required,
+        trainingRequired: row.training_required,
+        cleaningResponsibility: row.cleaning_responsibility,
+        prepTimeHours: row.prep_time_hours,
+        photos: row.photos || [],
+        manuals: row.manuals || [],
+        maintenanceLog: row.maintenance_log || [],
+        status: row.status,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+
+    // Separate into included (free) and rental (paid) for clearer frontend display
+    const includedEquipment = visibleListings.filter(l => l.availabilityType === 'included');
+    const rentalEquipment = visibleListings.filter(l => l.availabilityType === 'rental');
+
+    console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+    
+    // Return both the full list and categorized lists for convenience
+    res.json({
+      all: visibleListings,
+      included: includedEquipment,
+      rental: rentalEquipment
+    });
+  } catch (error) {
+    console.error("Error getting equipment listings for chef:", error);
+    res.status(500).json({ error: error.message || "Failed to get equipment listings" });
+  }
+});
+
 app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
