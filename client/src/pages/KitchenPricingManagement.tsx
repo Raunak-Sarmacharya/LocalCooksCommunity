@@ -377,16 +377,33 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
               <Input
                 id="minimumBookingHours"
                 type="number"
-                min="1"
+                min="0.25"
+                max="24"
+                step="0.25"
                 value={pricing.minimumBookingHours}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value) || 1;
-                  setPricing({ ...pricing, minimumBookingHours: value });
+                  const value = parseFloat(e.target.value);
+                  // Allow empty input while typing, but validate on blur
+                  if (e.target.value === '' || isNaN(value)) {
+                    return; // Don't update state if invalid
+                  }
+                  // Clamp value between 0.25 and 24
+                  const clampedValue = Math.max(0.25, Math.min(24, value));
+                  setPricing({ ...pricing, minimumBookingHours: clampedValue });
+                }}
+                onBlur={(e) => {
+                  // Ensure value is valid on blur
+                  const value = parseFloat(e.target.value);
+                  if (isNaN(value) || value < 0.25) {
+                    setPricing({ ...pricing, minimumBookingHours: 0.5 });
+                  } else if (value > 24) {
+                    setPricing({ ...pricing, minimumBookingHours: 24 });
+                  }
                 }}
                 className="mt-2"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Minimum number of hours required for a booking (e.g., 2 = minimum 2-hour booking)
+                Minimum booking duration in hours. Use decimals for partial hours (e.g., 0.5 = 30 minutes, 0.25 = 15 minutes). Range: 0.25 - 24 hours.
               </p>
             </div>
 
