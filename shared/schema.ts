@@ -892,14 +892,17 @@ export const equipmentListings = pgTable("equipment_listings", {
   // Availability type: included (free with kitchen) or rental (paid addon)
   availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
   
-  // Pricing (all in cents) - only required for rental equipment
+  // Pricing - SIMPLIFIED to flat session rate (in cents)
+  // For rental equipment: charged once per kitchen booking session, regardless of duration
+  sessionRate: numeric("session_rate").default(0), // Flat session rate in cents (e.g., 2500 = $25.00/session)
   pricingModel: equipmentPricingModelEnum("pricing_model"), // Nullable for included equipment
-  hourlyRate: numeric("hourly_rate"), // For hourly model (in cents) - only for rental
-  dailyRate: numeric("daily_rate"), // For daily model (in cents) - only for rental
-  weeklyRate: numeric("weekly_rate"), // For weekly model (in cents) - only for rental
-  monthlyRate: numeric("monthly_rate"), // For monthly model (in cents) - only for rental
-  minimumRentalHours: integer("minimum_rental_hours"), // Only for rental (nullable for included)
-  minimumRentalDays: integer("minimum_rental_days"), // Only for rental
+  // Legacy rate fields - kept for backwards compatibility but session_rate is primary
+  hourlyRate: numeric("hourly_rate"), // @deprecated - use sessionRate
+  dailyRate: numeric("daily_rate"), // @deprecated - use sessionRate
+  weeklyRate: numeric("weekly_rate"), // @deprecated - use sessionRate
+  monthlyRate: numeric("monthly_rate"), // @deprecated - use sessionRate
+  minimumRentalHours: integer("minimum_rental_hours"), // @deprecated
+  minimumRentalDays: integer("minimum_rental_days"), // @deprecated
   currency: text("currency").default("CAD").notNull(),
   
   // Usage terms
@@ -1024,15 +1027,15 @@ export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListing
 export const storageBookings = pgTable("storage_bookings", {
   id: serial("id").primaryKey(),
   storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
-  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(), // REQUIRED - no standalone bookings
-  chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Nullable for external bookings
+  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }), // NULLABLE - storage can be booked independently
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef making the booking
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
-  status: bookingStatusEnum("status").default("pending").notNull(), // Reuse existing enum
-  totalPrice: numeric("total_price").notNull(), // In cents
-  pricingModel: storagePricingModelEnum("pricing_model").notNull(), // Reuse enum
-  paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Reuse enum
-  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  status: bookingStatusEnum("status").default("pending").notNull(),
+  totalPrice: numeric("total_price").notNull(), // In cents (daily_rate × number_of_days)
+  pricingModel: storagePricingModelEnum("pricing_model").notNull(), // Always 'daily' now
+  paymentStatus: paymentStatusEnum("payment_status").default("pending"),
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID
   serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
   currency: text("currency").default("CAD").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1042,7 +1045,7 @@ export const storageBookings = pgTable("storage_bookings", {
 // Zod validation schemas for storage bookings
 export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
   storageListingId: z.number(),
-  kitchenBookingId: z.number(),
+  kitchenBookingId: z.number().optional().nullable(), // Optional - for standalone storage bookings
   chefId: z.number().optional(),
   startDate: z.string().or(z.date()),
   endDate: z.string().or(z.date()),

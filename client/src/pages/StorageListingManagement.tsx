@@ -24,10 +24,12 @@ interface StorageListing {
   storageType: 'dry' | 'cold' | 'freezer';
   name: string;
   description?: string;
-  basePrice: number;
+  // SIMPLIFIED: Daily rate pricing
+  basePrice: number; // Daily rate in dollars
+  minimumBookingDuration: number; // Minimum days required
+  // Legacy fields - kept for backwards compatibility
   pricePerCubicFoot?: number;
-  pricingModel: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
-  minimumBookingDuration?: number;
+  pricingModel?: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
   bookingDurationUnit?: 'hourly' | 'daily' | 'monthly';
   currency: string; // Always CAD
   dimensionsLength?: number;
@@ -79,13 +81,12 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 4;
   
-  // Form state
+  // Form state - simplified to daily pricing
   const [formData, setFormData] = useState<Partial<StorageListing>>({
     storageType: 'dry',
-    pricingModel: 'monthly-flat',
+    basePrice: 0, // Daily rate in dollars
+    minimumBookingDuration: 1, // Minimum days
     currency: 'CAD', // Always CAD
-    minimumBookingDuration: 1,
-    bookingDurationUnit: 'monthly',
     climateControl: false,
     humidityControl: false,
     powerOutlets: 0,
@@ -298,10 +299,9 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
       // Reset form
       setFormData({
         storageType: 'dry',
-        pricingModel: 'monthly-flat',
-        currency: 'CAD', // Always CAD
+        basePrice: 0,
         minimumBookingDuration: 1,
-        bookingDurationUnit: 'monthly',
+        currency: 'CAD',
         climateControl: false,
         humidityControl: false,
         powerOutlets: 0,
@@ -426,7 +426,7 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
                   <div>
                     <h4 className="font-medium">{listing.name}</h4>
                     <p className="text-sm text-gray-500">
-                      {listing.storageType} • {listing.pricingModel} • ${listing.basePrice?.toFixed(2)}/{listing.pricingModel === 'monthly-flat' ? 'month' : listing.pricingModel === 'daily' ? 'day' : listing.pricingModel === 'hourly' ? 'hour' : 'unit'} • Min: {listing.minimumBookingDuration || 1} {listing.bookingDurationUnit || 'monthly'}
+                      {listing.storageType} • ${listing.basePrice?.toFixed(2)}/day • Min: {listing.minimumBookingDuration || 1} days
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -536,51 +536,28 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
               </div>
             )}
 
-            {/* Step 2: Pricing */}
+            {/* Step 2: Pricing - Simplified Daily Rate */}
             {currentStep === 2 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Pricing</h3>
                 
-                <div>
-                  <Label htmlFor="pricingModel">Pricing Model *</Label>
-                  <Select
-                    value={formData.pricingModel}
-                    onValueChange={(value: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily') => {
-                      // Auto-suggest booking duration unit based on pricing model
-                      let suggestedUnit: 'hourly' | 'daily' | 'monthly' = 'monthly';
-                      if (value === 'hourly') suggestedUnit = 'hourly';
-                      else if (value === 'daily') suggestedUnit = 'daily';
-                      else if (value === 'monthly-flat') suggestedUnit = 'monthly';
-                      else if (value === 'per-cubic-foot') suggestedUnit = 'monthly'; // Per cubic foot typically monthly
-                      
-                      setFormData({ 
-                        ...formData, 
-                        pricingModel: value,
-                        bookingDurationUnit: suggestedUnit, // Auto-update booking duration unit
-                      });
-                    }}
-                  >
-                    <SelectTrigger id="pricingModel" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly-flat">Monthly Flat Rate</SelectItem>
-                      <SelectItem value="per-cubic-foot">Per Cubic Foot</SelectItem>
-                      <SelectItem value="daily">Daily Rate</SelectItem>
-                      <SelectItem value="hourly">Hourly Rate</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {formData.pricingModel === 'monthly-flat' && 'Fixed monthly rental price'}
-                    {formData.pricingModel === 'per-cubic-foot' && 'Price based on cubic feet used'}
-                    {formData.pricingModel === 'daily' && 'Daily rental rate (good for short-term storage)'}
-                    {formData.pricingModel === 'hourly' && 'Hourly rate (for very short-term or temporary storage)'}
-                  </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-5 w-5 text-blue-500 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Simple Daily Pricing</p>
+                      <p className="text-sm text-blue-600">
+                        Set a daily rate and minimum rental period. Chefs will be charged the same daily rate 
+                        whether they book for 7 days or 30 days.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="basePrice">Base Price (CAD) *</Label>
-                  <div className="mt-2 relative">
+                  <Label htmlFor="basePrice">Daily Rate (CAD) *</Label>
+                  <p className="text-sm text-gray-500 mb-2">Amount charged per day of storage rental</p>
+                  <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <span className="text-gray-500">$</span>
                     </div>
@@ -591,92 +568,42 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
                       min="0"
                       value={formData.basePrice || ''}
                       onChange={(e) => setFormData({ ...formData, basePrice: parseFloat(e.target.value) || 0 })}
-                      placeholder="0.00"
-                      className="pl-7"
+                      placeholder="15.00"
+                      className="pl-7 text-lg"
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    {formData.pricingModel === 'monthly-flat' 
-                      ? 'Monthly rental price (e.g., 150.00 = $150/month)'
-                      : formData.pricingModel === 'per-cubic-foot'
-                      ? 'Price per cubic foot (e.g., 5.00 = $5/cubic foot)'
-                      : formData.pricingModel === 'daily'
-                      ? 'Daily rental rate (e.g., 25.00 = $25/day)'
-                      : 'Hourly rate (e.g., 5.00 = $5/hour)'}
+                    Example: $15/day × 7 days = $105 total
                   </p>
                 </div>
 
-                {formData.pricingModel === 'per-cubic-foot' && (
-                  <div>
-                    <Label htmlFor="pricePerCubicFoot">Price Per Cubic Foot (CAD)</Label>
-                    <div className="mt-2 relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500">$</span>
-                      </div>
-                      <Input
-                        id="pricePerCubicFoot"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.pricePerCubicFoot || ''}
-                        onChange={(e) => setFormData({ ...formData, pricePerCubicFoot: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                        className="pl-7"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="minimumBookingDuration">Minimum Booking Duration</Label>
-                    <Input
-                      id="minimumBookingDuration"
-                      type="number"
-                      min="1"
-                      value={formData.minimumBookingDuration || 1}
-                      onChange={(e) => setFormData({ ...formData, minimumBookingDuration: parseInt(e.target.value) || 1 })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="bookingDurationUnit">Duration Unit *</Label>
-                    <Select
-                      value={formData.bookingDurationUnit || 'monthly'}
-                      onValueChange={(value: 'hourly' | 'daily' | 'monthly') => 
-                        setFormData({ ...formData, bookingDurationUnit: value })
-                      }
-                    >
-                      <SelectTrigger id="bookingDurationUnit" className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hourly">Hourly</SelectItem>
-                        <SelectItem value="daily">Daily</SelectItem>
-                        <SelectItem value="monthly">Monthly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div>
+                  <Label htmlFor="minimumBookingDuration">Minimum Rental Period (Days) *</Label>
+                  <p className="text-sm text-gray-500 mb-2">Chefs cannot book for less than this many days</p>
+                  <Input
+                    id="minimumBookingDuration"
+                    type="number"
+                    min="1"
+                    value={formData.minimumBookingDuration || 1}
+                    onChange={(e) => setFormData({ ...formData, minimumBookingDuration: parseInt(e.target.value) || 1 })}
+                    className="text-lg"
+                    placeholder="7"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Common minimums: 1 day (flexible), 7 days (weekly), 30 days (monthly)
+                  </p>
                 </div>
-                <p className="text-xs text-gray-500">
-                  {formData.bookingDurationUnit === 'hourly' && '⚠️ Hourly storage is typically for very short-term needs (e.g., event storage)'}
-                  {formData.bookingDurationUnit === 'daily' && 'Daily storage is good for short-term rentals (e.g., moving, temporary overflow)'}
-                  {formData.bookingDurationUnit === 'monthly' && 'Monthly storage is standard for most storage rentals'}
-                </p>
-                
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-xs text-blue-800">
-                      <strong>Pricing & Duration Alignment:</strong> {
-                        formData.pricingModel === 'hourly' && formData.bookingDurationUnit !== 'hourly' 
-                          ? 'Consider using hourly booking duration for hourly pricing'
-                          : formData.pricingModel === 'daily' && formData.bookingDurationUnit !== 'daily'
-                          ? 'Consider using daily booking duration for daily pricing'
-                          : formData.pricingModel === 'monthly-flat' && formData.bookingDurationUnit !== 'monthly'
-                          ? 'Monthly flat pricing typically works best with monthly booking duration'
-                          : 'Pricing model and booking duration are well-aligned'
-                      }
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-green-600" />
+                    <div className="text-sm text-green-800">
+                      <strong>Preview:</strong> ${(formData.basePrice || 0).toFixed(2)}/day with {formData.minimumBookingDuration || 1}-day minimum
+                      {formData.minimumBookingDuration && formData.basePrice && (
+                        <span className="ml-2 text-green-600">
+                          (min booking = ${((formData.basePrice || 0) * (formData.minimumBookingDuration || 1)).toFixed(2)})
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -687,7 +614,7 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
                   </Button>
                   <Button
                     onClick={() => setCurrentStep(3)}
-                    disabled={!formData.basePrice}
+                    disabled={!formData.basePrice || formData.basePrice <= 0}
                     className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     Next <ChevronRight className="h-4 w-4 ml-2" />

@@ -34,14 +34,17 @@ interface EquipmentListing {
   specifications?: Record<string, any>;
   certifications?: string[];
   safetyFeatures?: string[];
-  availabilityType: 'included' | 'rental'; // NEW: included (free with kitchen) or rental (paid addon)
-  pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly'; // Optional - only for rental
-  hourlyRate?: number; // Only for rental
-  dailyRate?: number; // Only for rental
-  weeklyRate?: number; // Only for rental
-  monthlyRate?: number; // Only for rental
-  minimumRentalHours?: number; // Only for rental
-  minimumRentalDays?: number; // Only for rental
+  availabilityType: 'included' | 'rental'; // included (free with kitchen) or rental (paid addon)
+  // SIMPLIFIED: Single flat session rate for rental equipment
+  sessionRate?: number; // Flat rate per kitchen booking session (in dollars)
+  // Legacy fields - kept for backwards compatibility
+  pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly';
+  hourlyRate?: number;
+  dailyRate?: number;
+  weeklyRate?: number;
+  monthlyRate?: number;
+  minimumRentalHours?: number;
+  minimumRentalDays?: number;
   currency: string; // Always CAD
   usageRestrictions?: string[];
   trainingRequired?: boolean;
@@ -88,9 +91,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     category: 'cooking',
     condition: 'good',
     availabilityType: 'rental', // Default to rental
-    pricingModel: 'hourly',
+    sessionRate: 0, // Flat session rate (primary pricing field)
     currency: 'CAD', // Always CAD
-    minimumRentalHours: 4,
     trainingRequired: false,
     prepTimeHours: 4,
     insuranceRequired: false,
@@ -269,46 +271,12 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
       return;
     }
 
-    // For rental equipment, validate pricing fields
+    // For rental equipment, validate session rate
     if (formData.availabilityType === 'rental') {
-      if (!formData.pricingModel) {
+      if (!formData.sessionRate || formData.sessionRate <= 0) {
         toast({
           title: "Validation Error",
-          description: "Pricing model is required for rental equipment",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Validate pricing based on model
-      if (formData.pricingModel === 'hourly' && !formData.hourlyRate) {
-        toast({
-          title: "Validation Error",
-          description: "Hourly rate is required for hourly pricing model",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (formData.pricingModel === 'daily' && !formData.dailyRate) {
-        toast({
-          title: "Validation Error",
-          description: "Daily rate is required for daily pricing model",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (formData.pricingModel === 'weekly' && !formData.weeklyRate) {
-        toast({
-          title: "Validation Error",
-          description: "Weekly rate is required for weekly pricing model",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (formData.pricingModel === 'monthly' && !formData.monthlyRate) {
-        toast({
-          title: "Validation Error",
-          description: "Monthly rate is required for monthly pricing model",
+          description: "Session rate is required for rental equipment",
           variant: "destructive",
         });
         return;
@@ -352,9 +320,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
         category: 'cooking',
         condition: 'good',
         availabilityType: 'rental',
-        pricingModel: 'hourly',
+        sessionRate: 0,
         currency: 'CAD',
-        minimumRentalHours: 4,
         trainingRequired: false,
         prepTimeHours: 4,
         insuranceRequired: false,
@@ -483,12 +450,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       {listing.category} • {listing.condition} • {
                         listing.availabilityType === 'included' 
                           ? 'Included (Free with kitchen)' 
-                          : `${listing.pricingModel} • ${
-                            listing.pricingModel === 'hourly' ? `${listing.hourlyRate?.toFixed(2)}/hour` :
-                            listing.pricingModel === 'daily' ? `${listing.dailyRate?.toFixed(2)}/day` :
-                            listing.pricingModel === 'weekly' ? `${listing.weeklyRate?.toFixed(2)}/week` :
-                            `${listing.monthlyRate?.toFixed(2)}/month`
-                          }`
+                          : `$${(listing.sessionRate || 0).toFixed(2)}/session`
                       }
                     </p>
                   </div>
@@ -553,18 +515,11 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       const updates: any = { availabilityType: value };
                       // If changing to included, clear pricing fields
                       if (value === 'included') {
-                        updates.pricingModel = undefined;
-                        updates.hourlyRate = undefined;
-                        updates.dailyRate = undefined;
-                        updates.weeklyRate = undefined;
-                        updates.monthlyRate = undefined;
-                        updates.minimumRentalHours = undefined;
-                        updates.minimumRentalDays = undefined;
+                        updates.sessionRate = 0;
                         updates.damageDeposit = 0;
                       } else {
                         // If changing to rental, set defaults
-                        updates.pricingModel = updates.pricingModel || 'hourly';
-                        updates.minimumRentalHours = updates.minimumRentalHours || 4;
+                        updates.sessionRate = updates.sessionRate || 0;
                       }
                       setFormData({ ...formData, ...updates });
                     }}
@@ -709,138 +664,60 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Pricing Configuration</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Configure pricing for this rental equipment. Chefs will pay this amount when they add this equipment to their kitchen booking.
+                  Set a flat session rate for this equipment. Chefs pay this amount once per kitchen booking, regardless of booking duration.
                 </p>
                 
-                <div>
-                  <Label htmlFor="pricingModel">Pricing Model *</Label>
-                  <Select
-                    value={formData.pricingModel}
-                    onValueChange={(value: 'hourly' | 'daily' | 'weekly' | 'monthly') => 
-                      setFormData({ ...formData, pricingModel: value })
-                    }
-                  >
-                    <SelectTrigger id="pricingModel" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hourly">Hourly Rate</SelectItem>
-                      <SelectItem value="daily">Daily Rate</SelectItem>
-                      <SelectItem value="weekly">Weekly Rate</SelectItem>
-                      <SelectItem value="monthly">Monthly Rate</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-5 w-5 text-blue-500 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Flat Session Pricing</p>
+                      <p className="text-sm text-blue-600">
+                        Equipment is charged as a one-time fee per kitchen booking session. 
+                        For example, if a chef books the kitchen for 2 hours or 8 hours, they pay the same equipment fee.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-
-                {formData.pricingModel === 'hourly' && (
-                  <div>
-                    <Label htmlFor="hourlyRate">Hourly Rate (CAD) *</Label>
-                    <div className="mt-2 relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500">$</span>
-                      </div>
-                      <Input
-                        id="hourlyRate"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.hourlyRate || ''}
-                        onChange={(e) => setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                        className="pl-7"
-                      />
+                
+                <div>
+                  <Label htmlFor="sessionRate">Session Rate (CAD) *</Label>
+                  <p className="text-sm text-gray-500 mb-2">Flat fee charged per kitchen booking session</p>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500">$</span>
                     </div>
-                  </div>
-                )}
-
-                {formData.pricingModel === 'daily' && (
-                  <div>
-                    <Label htmlFor="dailyRate">Daily Rate (CAD) *</Label>
-                    <div className="mt-2 relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500">$</span>
-                      </div>
-                      <Input
-                        id="dailyRate"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.dailyRate || ''}
-                        onChange={(e) => setFormData({ ...formData, dailyRate: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                        className="pl-7"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {formData.pricingModel === 'weekly' && (
-                  <div>
-                    <Label htmlFor="weeklyRate">Weekly Rate (CAD) *</Label>
-                    <div className="mt-2 relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500">$</span>
-                      </div>
-                      <Input
-                        id="weeklyRate"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.weeklyRate || ''}
-                        onChange={(e) => setFormData({ ...formData, weeklyRate: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                        className="pl-7"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {formData.pricingModel === 'monthly' && (
-                  <div>
-                    <Label htmlFor="monthlyRate">Monthly Rate (CAD) *</Label>
-                    <div className="mt-2 relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500">$</span>
-                      </div>
-                      <Input
-                        id="monthlyRate"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.monthlyRate || ''}
-                        onChange={(e) => setFormData({ ...formData, monthlyRate: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                        className="pl-7"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="minimumRentalHours">Minimum Rental Hours</Label>
                     <Input
-                      id="minimumRentalHours"
+                      id="sessionRate"
                       type="number"
-                      min="1"
-                      value={formData.minimumRentalHours || 4}
-                      onChange={(e) => setFormData({ ...formData, minimumRentalHours: parseInt(e.target.value) || 4 })}
-                      className="mt-2"
+                      step="0.01"
+                      min="0"
+                      value={formData.sessionRate || ''}
+                      onChange={(e) => setFormData({ ...formData, sessionRate: parseFloat(e.target.value) || 0 })}
+                      placeholder="25.00"
+                      className="pl-7 text-lg"
                     />
                   </div>
-                  {formData.pricingModel === 'daily' && (
-                    <div>
-                      <Label htmlFor="minimumRentalDays">Minimum Rental Days</Label>
-                      <Input
-                        id="minimumRentalDays"
-                        type="number"
-                        min="1"
-                        value={formData.minimumRentalDays || ''}
-                        onChange={(e) => setFormData({ ...formData, minimumRentalDays: parseInt(e.target.value) || undefined })}
-                        className="mt-2"
-                      />
+                </div>
+
+                <div>
+                  <Label htmlFor="damageDeposit">Damage Deposit (CAD)</Label>
+                  <p className="text-sm text-gray-500 mb-2">Refundable deposit to cover potential damage (optional)</p>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500">$</span>
                     </div>
-                  )}
+                    <Input
+                      id="damageDeposit"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.damageDeposit || ''}
+                      onChange={(e) => setFormData({ ...formData, damageDeposit: parseFloat(e.target.value) || 0 })}
+                      placeholder="0.00"
+                      className="pl-7"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex justify-between gap-3 pt-4">
@@ -849,12 +726,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   </Button>
                   <Button
                     onClick={() => setCurrentStep(3)}
-                    disabled={
-                      (formData.pricingModel === 'hourly' && !formData.hourlyRate) ||
-                      (formData.pricingModel === 'daily' && !formData.dailyRate) ||
-                      (formData.pricingModel === 'weekly' && !formData.weeklyRate) ||
-                      (formData.pricingModel === 'monthly' && !formData.monthlyRate)
-                    }
+                    disabled={!formData.sessionRate || formData.sessionRate <= 0}
                     className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     Next <ChevronRight className="h-4 w-4 ml-2" />

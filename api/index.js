@@ -15526,6 +15526,7 @@ app.get("/api/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (
       SELECT
         id, kitchen_id, category, equipment_type, brand, model, description,
         condition, availability_type, pricing_model,
+        session_rate::text as session_rate,
         hourly_rate::text as hourly_rate,
         daily_rate::text as daily_rate,
         weekly_rate::text as weekly_rate,
@@ -15554,7 +15555,9 @@ app.get("/api/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (
         condition: row.condition,
         availabilityType: row.availability_type,
         pricingModel: row.pricing_model,
-        // Convert cents to dollars for frontend display
+        // PRIMARY: Flat session rate (convert cents to dollars)
+        sessionRate: row.session_rate ? parseFloat(row.session_rate) / 100 : 0,
+        // Legacy rates (kept for backwards compatibility)
         hourlyRate: row.hourly_rate ? parseFloat(row.hourly_rate) / 100 : null,
         dailyRate: row.daily_rate ? parseFloat(row.daily_rate) / 100 : null,
         weeklyRate: row.weekly_rate ? parseFloat(row.weekly_rate) / 100 : null,
@@ -15661,7 +15664,7 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
 // Create a booking (enforce per-chef daily slot limit)
 app.post("/api/chef/bookings", requireChef, async (req, res) => {
   try {
-    const { kitchenId, bookingDate, startTime, endTime, specialNotes } = req.body;
+    const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedEquipmentIds } = req.body;
     
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
@@ -15895,6 +15898,79 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     
     const booking = result.rows[0];
     
+    // Create equipment bookings (add-ons)
+    const equipmentBookingsCreated = [];
+    if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
+      console.log(`📦 Processing ${selectedEquipmentIds.length} equipment add-ons for booking ${booking.id}`);
+      
+      // Parse booking times for equipment booking
+      const [sH, sM] = String(startTime).split(':').map(Number);
+      const [eH, eM] = String(endTime).split(':').map(Number);
+      const bookingStartDateTime = new Date(bookingDate);
+      bookingStartDateTime.setHours(sH, sM, 0, 0);
+      const bookingEndDateTime = new Date(bookingDate);
+      bookingEndDateTime.setHours(eH, eM, 0, 0);
+      
+      for (const equipmentListingId of selectedEquipmentIds) {
+        try {
+          // Get equipment listing details
+          const equipmentResult = await pool.query(
+            `SELECT id, availability_type, session_rate, damage_deposit, currency 
+             FROM equipment_listings WHERE id = $1`,
+            [equipmentListingId]
+          );
+          
+          if (equipmentResult.rows.length > 0) {
+            const equipmentListing = equipmentResult.rows[0];
+            
+            // Skip if it's included equipment (free with kitchen)
+            if (equipmentListing.availability_type === 'included') {
+              console.log(`   ℹ️ Skipping equipment ${equipmentListingId} - it's included with kitchen`);
+              continue;
+            }
+            
+            // Use sessionRate - flat fee per session (not hourly/duration-based)
+            const sessionRateCents = equipmentListing.session_rate ? parseInt(equipmentListing.session_rate) : 0;
+            const totalPrice = sessionRateCents;
+            const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
+            
+            // Calculate service fee (5%)
+            const serviceFee = Math.round(totalPrice * 0.05);
+            
+            const insertResult = await pool.query(
+              `INSERT INTO equipment_bookings 
+                (equipment_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, damage_deposit, payment_status, service_fee, currency)
+               VALUES ($1, $2, $3, $4, $5, 'pending', $6, 'hourly', $7, 'pending', $8, $9)
+               RETURNING id`,
+              [
+                equipmentListingId,
+                booking.id,
+                req.user.id,
+                bookingStartDateTime,
+                bookingEndDateTime,
+                totalPrice.toString(),
+                damageDepositCents.toString(),
+                serviceFee.toString(),
+                equipmentListing.currency || 'CAD'
+              ]
+            );
+            
+            equipmentBookingsCreated.push({
+              id: insertResult.rows[0].id,
+              equipmentListingId,
+              totalPrice: totalPrice / 100, // Return in dollars for frontend
+              damageDeposit: damageDepositCents / 100,
+              serviceFee: serviceFee / 100
+            });
+            
+            console.log(`   ✅ Equipment booking created: listing ${equipmentListingId}, price: $${(totalPrice / 100).toFixed(2)}/session`);
+          }
+        } catch (equipmentError) {
+          console.error(`   ⚠️ Failed to create equipment booking for listing ${equipmentListingId}:`, equipmentError);
+        }
+      }
+    }
+    
     // Send email notifications to chef and manager
     try {
       // Get kitchen details
@@ -16004,6 +16080,8 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       specialNotes: booking.special_notes,
       createdAt: booking.created_at,
       updatedAt: booking.updated_at,
+      // Equipment add-ons
+      equipmentBookings: equipmentBookingsCreated,
     });
   } catch (error) {
     console.error("Error creating booking:", error);

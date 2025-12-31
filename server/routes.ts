@@ -4235,22 +4235,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // For rental equipment, validate pricing fields
       if (listingData.availabilityType === 'rental') {
-        if (!listingData.pricingModel) {
-          return res.status(400).json({ error: "Pricing model is required for rental equipment" });
-        }
-
-        // Validate that at least one rate is provided based on pricing model
-        if (listingData.pricingModel === 'hourly' && !listingData.hourlyRate) {
-          return res.status(400).json({ error: "Hourly rate is required for hourly pricing model" });
-        }
-        if (listingData.pricingModel === 'daily' && !listingData.dailyRate) {
-          return res.status(400).json({ error: "Daily rate is required for daily pricing model" });
-        }
-        if (listingData.pricingModel === 'weekly' && !listingData.weeklyRate) {
-          return res.status(400).json({ error: "Weekly rate is required for weekly pricing model" });
-        }
-        if (listingData.pricingModel === 'monthly' && !listingData.monthlyRate) {
-          return res.status(400).json({ error: "Monthly rate is required for monthly pricing model" });
+        // Validate that session rate is provided for rental equipment
+        if (!listingData.sessionRate || listingData.sessionRate <= 0) {
+          return res.status(400).json({ error: "Session rate is required for rental equipment" });
         }
       }
 
@@ -6064,7 +6051,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             try {
               // Get equipment listing details
               const equipmentResult = await pool.query(
-                `SELECT id, availability_type, pricing_model, hourly_rate, daily_rate, weekly_rate, monthly_rate, damage_deposit, currency 
+                `SELECT id, availability_type, session_rate, damage_deposit, currency 
                  FROM equipment_listings WHERE id = $1`,
                 [equipmentListingId]
               );
@@ -6078,34 +6065,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   continue;
                 }
                 
-                // Get the rate based on pricing model
-                let rateCents = 0;
-                const pricingModel = equipmentListing.pricing_model || 'hourly';
-                switch (pricingModel) {
-                  case 'hourly':
-                    rateCents = equipmentListing.hourly_rate ? parseInt(equipmentListing.hourly_rate) : 0;
-                    break;
-                  case 'daily':
-                    rateCents = equipmentListing.daily_rate ? parseInt(equipmentListing.daily_rate) : 0;
-                    break;
-                  case 'weekly':
-                    rateCents = equipmentListing.weekly_rate ? parseInt(equipmentListing.weekly_rate) : 0;
-                    break;
-                  case 'monthly':
-                    rateCents = equipmentListing.monthly_rate ? parseInt(equipmentListing.monthly_rate) : 0;
-                    break;
-                }
+                // Use sessionRate - flat fee per session (not hourly/duration-based)
+                const sessionRateCents = equipmentListing.session_rate ? parseInt(equipmentListing.session_rate) : 0;
                 
-                const durationHours = Math.max(1, Math.ceil((bookingEndDateTime.getTime() - bookingStartDateTime.getTime()) / (1000 * 60 * 60)));
-                
-                // Calculate total price based on pricing model
-                let totalPrice = rateCents;
-                if (pricingModel === 'hourly') {
-                  totalPrice = rateCents * durationHours;
-                } else if (pricingModel === 'daily') {
-                  totalPrice = rateCents * Math.ceil(durationHours / 24);
-                }
-                // For weekly/monthly, use rate directly (pro-rated not implemented)
+                // Flat session rate - same price regardless of booking duration
+                const totalPrice = sessionRateCents;
                 
                 const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
                 
