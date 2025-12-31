@@ -3843,8 +3843,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Currency must be a string" });
       }
 
-      if (minimumBookingHours !== undefined && (typeof minimumBookingHours !== 'number' || minimumBookingHours < 1)) {
-        return res.status(400).json({ error: "Minimum booking hours must be at least 1" });
+      if (minimumBookingHours !== undefined && (typeof minimumBookingHours !== 'number' || minimumBookingHours < 0.25 || minimumBookingHours > 24)) {
+        return res.status(400).json({ error: "Minimum booking hours must be between 0.25 (15 minutes) and 24 hours" });
       }
 
       if (pricingModel !== undefined && !['hourly', 'daily', 'weekly'].includes(pricingModel)) {
