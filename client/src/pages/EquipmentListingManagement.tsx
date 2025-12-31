@@ -735,6 +735,27 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
               </div>
             )}
 
+            {/* Step 2 fallback: If on step 2 but equipment is 'included', skip to step 3 */}
+            {currentStep === 2 && formData.availabilityType === 'included' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Included Equipment - No Pricing Required</h3>
+                <p className="text-sm text-gray-600">
+                  This equipment is included with the kitchen booking at no extra charge.
+                </p>
+                <div className="flex justify-between gap-3 pt-4">
+                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
+                  </Button>
+                  <Button
+                    onClick={() => setCurrentStep(3)}
+                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
+                  >
+                    Next <ChevronRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Step 3: Specifications & Features */}
             {currentStep === 3 && (
               <div className="space-y-4">
@@ -914,7 +935,14 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                 </div>
 
                 <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                  <Button variant="outline" onClick={() => {
+                    // Go back to step 2 for rental, step 1 for included
+                    if (formData.availabilityType === 'included') {
+                      setCurrentStep(1);
+                    } else {
+                      setCurrentStep(2);
+                    }
+                  }}>
                     <ChevronLeft className="h-4 w-4 mr-2" /> Previous
                   </Button>
                   <Button

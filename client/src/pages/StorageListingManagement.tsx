@@ -254,11 +254,20 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
       return;
     }
 
-    // Validation
-    if (!formData.name || !formData.storageType || !formData.pricingModel || !formData.basePrice) {
+    // Validation - simplified to daily rate pricing
+    if (!formData.name || !formData.storageType || !formData.basePrice || formData.basePrice <= 0) {
       toast({
         title: "Validation Error",
-        description: "Please fill in all required fields (name, storage type, pricing model, base price)",
+        description: "Please fill in all required fields (name, storage type, daily rate)",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!formData.minimumBookingDuration || formData.minimumBookingDuration < 1) {
+      toast({
+        title: "Validation Error", 
+        description: "Minimum rental period must be at least 1 day",
         variant: "destructive",
       });
       return;
@@ -272,9 +281,13 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
         : '/api/manager/storage-listings';
       
       const method = editingListingId ? 'PUT' : 'POST';
+      // Build payload with daily rate pricing model
       const payload = {
         kitchenId: selectedKitchenId,
         ...formData,
+        // Set daily pricing model for backend compatibility
+        pricingModel: 'daily',
+        bookingDurationUnit: 'daily',
       };
 
       const response = await fetch(url, {

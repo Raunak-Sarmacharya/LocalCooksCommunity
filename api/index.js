@@ -12887,7 +12887,7 @@ app.post("/api/manager/storage-listings", async (req, res) => {
       JSON.stringify(listingData.prohibitedItems || []),
       listingData.insuranceRequired || false,
       JSON.stringify(listingData.availabilityCalendar || {}),
-      'draft',
+      'active', // Set to active immediately (no admin moderation)
       true,
     ];
 
@@ -13410,49 +13410,29 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       return res.status(400).json({ error: "Availability type must be 'included' or 'rental'" });
     }
 
-    // For rental equipment, validate pricing fields
-    let hourlyRateCents = null;
-    let dailyRateCents = null;
-    let weeklyRateCents = null;
-    let monthlyRateCents = null;
+    // For rental equipment, validate session rate (flat per-session pricing)
+    let sessionRateCents = 0;
     let damageDepositCents = 0;
 
     if (listingData.availabilityType === 'rental') {
-      if (!listingData.pricingModel) {
-        return res.status(400).json({ error: "Pricing model is required for rental equipment" });
+      // Validate that session rate is provided for rental equipment
+      if (!listingData.sessionRate || listingData.sessionRate <= 0) {
+        return res.status(400).json({ error: "Session rate is required for rental equipment" });
       }
 
-      // Validate that at least one rate is provided based on pricing model
-      if (listingData.pricingModel === 'hourly' && !listingData.hourlyRate) {
-        return res.status(400).json({ error: "Hourly rate is required for hourly pricing model" });
-      }
-      if (listingData.pricingModel === 'daily' && !listingData.dailyRate) {
-        return res.status(400).json({ error: "Daily rate is required for daily pricing model" });
-      }
-      if (listingData.pricingModel === 'weekly' && !listingData.weeklyRate) {
-        return res.status(400).json({ error: "Weekly rate is required for weekly pricing model" });
-      }
-      if (listingData.pricingModel === 'monthly' && !listingData.monthlyRate) {
-        return res.status(400).json({ error: "Monthly rate is required for monthly pricing model" });
-      }
-
-      // Convert prices from dollars to cents (only for rental)
-      hourlyRateCents = listingData.hourlyRate ? Math.round(listingData.hourlyRate * 100) : null;
-      dailyRateCents = listingData.dailyRate ? Math.round(listingData.dailyRate * 100) : null;
-      weeklyRateCents = listingData.weeklyRate ? Math.round(listingData.weeklyRate * 100) : null;
-      monthlyRateCents = listingData.monthlyRate ? Math.round(listingData.monthlyRate * 100) : null;
+      // Convert prices from dollars to cents
+      sessionRateCents = Math.round(listingData.sessionRate * 100);
       damageDepositCents = listingData.damageDeposit ? Math.round(listingData.damageDeposit * 100) : 0;
     }
 
-    // Insert equipment listing
+    // Insert equipment listing with simplified session_rate pricing
     const insertResult = await pool.query(`
       INSERT INTO equipment_listings (
         kitchen_id, category, equipment_type, brand, model, description,
         condition, age, service_history, dimensions, power_requirements,
         specifications, certifications, safety_features,
         availability_type,
-        pricing_model, hourly_rate, daily_rate, weekly_rate, monthly_rate,
-        minimum_rental_hours, minimum_rental_days, currency,
+        session_rate, pricing_model, currency,
         usage_restrictions, training_required, cleaning_responsibility,
         prep_time_hours, photos, manuals, maintenance_log,
         damage_deposit, insurance_required, availability_calendar,
@@ -13460,7 +13440,7 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, $34, $35
+        $27, $28, $29
       ) RETURNING id
     `, [
       parseInt(kitchenId),
@@ -13478,13 +13458,8 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       JSON.stringify(listingData.certifications || []),
       JSON.stringify(listingData.safetyFeatures || []),
       listingData.availabilityType || 'rental',
-      listingData.availabilityType === 'rental' ? listingData.pricingModel : null,
-      listingData.availabilityType === 'rental' ? (hourlyRateCents ? hourlyRateCents.toString() : null) : null,
-      listingData.availabilityType === 'rental' ? (dailyRateCents ? dailyRateCents.toString() : null) : null,
-      listingData.availabilityType === 'rental' ? (weeklyRateCents ? weeklyRateCents.toString() : null) : null,
-      listingData.availabilityType === 'rental' ? (monthlyRateCents ? monthlyRateCents.toString() : null) : null,
-      listingData.availabilityType === 'rental' ? (listingData.minimumRentalHours || 4) : null, // null for included equipment
-      listingData.availabilityType === 'rental' ? (listingData.minimumRentalDays || null) : null,
+      listingData.availabilityType === 'rental' ? sessionRateCents.toString() : '0', // session_rate in cents
+      listingData.availabilityType === 'rental' ? 'hourly' : null, // Keep pricing_model for backwards compatibility
       'CAD',
       JSON.stringify(listingData.usageRestrictions || []),
       listingData.trainingRequired || false,
@@ -13496,7 +13471,7 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       listingData.availabilityType === 'rental' ? (damageDepositCents.toString()) : '0',
       listingData.insuranceRequired || false,
       JSON.stringify(listingData.availabilityCalendar || {}),
-      'draft',
+      'active', // Set to active immediately (no admin moderation)
       true,
     ]);
 
