@@ -426,18 +426,10 @@ export default function KitchenBookingCalendar() {
       return;
     }
     
-    // Calculate duration from selected slots
-    const sortedSlots = [...selectedSlots].sort();
-    const startTime = sortedSlots[0];
-    const endTime = sortedSlots[sortedSlots.length - 1];
-    
-    // Calculate hours (assuming 30-minute slots)
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    const startTotalMinutes = startH * 60 + startM;
-    const endTotalMinutes = endH * 60 + endM;
-    const durationMinutes = endTotalMinutes - startTotalMinutes + 30; // Add 30 min for last slot
-    const durationHours = Math.max(durationMinutes / 60, kitchenPricing.minimumBookingHours || 1);
+    // Each selected slot represents a 1-hour block
+    // Duration = number of slots selected (in hours)
+    // This is consistent with booking submission which uses: selectedSlots.length * 60 minutes
+    const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours || 1);
     
     // Only calculate price if hourly rate is set
     if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
@@ -589,6 +581,29 @@ export default function KitchenBookingCalendar() {
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Format a slot as a time range (e.g., "7:00 PM - 8:00 PM")
+  // Each slot represents a 1-hour block
+  const formatSlotRange = (slotStartTime: string) => {
+    const [hours, minutes] = slotStartTime.split(':').map(Number);
+    // Calculate end time (add 1 hour)
+    const endHour = hours + 1;
+    const endTimeStr = `${endHour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    return `${formatTime(slotStartTime)} - ${formatTime(endTimeStr)}`;
+  };
+
+  // Get the overall booking time range from selected slots
+  const getBookingTimeRange = () => {
+    if (selectedSlots.length === 0) return '';
+    const sortedSlots = [...selectedSlots].sort();
+    const startTime = sortedSlots[0];
+    const lastSlotStart = sortedSlots[sortedSlots.length - 1];
+    // End time is 1 hour after the last slot's start time
+    const [lastHours, lastMinutes] = lastSlotStart.split(':').map(Number);
+    const endHour = lastHours + 1;
+    const endTimeStr = `${endHour.toString().padStart(2, '0')}:${lastMinutes.toString().padStart(2, '0')}`;
+    return `${formatTime(startTime)} - ${formatTime(endTimeStr)}`;
   };
 
   const formatDate = (date: Date) => {
@@ -953,9 +968,12 @@ export default function KitchenBookingCalendar() {
                                     `}
                                   >
                                     <div className="flex flex-col items-center gap-1">
-                                      <div className="flex items-center gap-1">
-                                        <Clock className="h-4 w-4" />
-                                        <span className="text-lg font-semibold">{formatTime(slot.time)}</span>
+                                      <div className="flex flex-col items-center">
+                                        <div className="flex items-center gap-1">
+                                          <Clock className="h-4 w-4" />
+                                          <span className="text-sm font-semibold">{formatSlotRange(slot.time)}</span>
+                                        </div>
+                                        <span className="text-xs opacity-75">(1 hour)</span>
                                       </div>
                                       
                                       {/* Capacity indicator */}
@@ -1100,27 +1118,35 @@ export default function KitchenBookingCalendar() {
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs text-gray-600 mb-1">Duration</p>
                     <p className="font-medium text-gray-900">
-                      {estimatedPrice 
-                        ? `${estimatedPrice.durationHours.toFixed(1)} hour${estimatedPrice.durationHours !== 1 ? 's' : ''}`
-                        : selectedSlots.length === 1 
-                          ? '30 min' 
-                          : `${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''}`
-                      }
+                      {/* Each slot = 1 hour, so duration = number of slots */}
+                      {selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
 
                 {/* Time Range */}
                 <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-xs text-gray-600 mb-2">Selected Time Slots</p>
-                  <div className="flex items-center justify-center gap-2">
-                    {selectedSlots.map((slot, idx) => (
-                      <div key={slot} className="flex items-center gap-2">
-                        <span className="px-3 py-1.5 bg-white border border-green-300 rounded-lg font-semibold text-green-800">
-                          {formatTime(slot)}
+                  <p className="text-xs text-gray-600 mb-2">Booking Time</p>
+                  {/* Show overall booking time range */}
+                  <div className="text-center mb-3">
+                    <span className="text-lg font-bold text-green-800">
+                      {getBookingTimeRange()}
+                    </span>
+                    <span className="text-sm text-green-600 ml-2">
+                      ({selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''})
+                    </span>
+                  </div>
+                  
+                  {/* Show individual slot ranges */}
+                  <p className="text-xs text-gray-500 mb-2 text-center">Time Blocks:</p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {[...selectedSlots].sort().map((slot, idx) => (
+                      <div key={slot} className="flex items-center gap-1">
+                        <span className="px-2 py-1 bg-white border border-green-300 rounded text-sm font-medium text-green-800">
+                          {formatSlotRange(slot)}
                         </span>
                         {idx < selectedSlots.length - 1 && (
-                          <span className="text-green-600">→</span>
+                          <span className="text-green-400 text-xs">+</span>
                         )}
                       </div>
                     ))}
@@ -1134,7 +1160,7 @@ export default function KitchenBookingCalendar() {
                     {estimatedPrice && kitchenPricing && kitchenPricing.hourlyRate ? (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Base Price ({estimatedPrice.durationHours.toFixed(1)} hours × ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)}/hour):</span>
+                          <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)}/hour):</span>
                           <span className="font-medium">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
                         </div>
                         <div className="flex justify-between">
@@ -1158,11 +1184,9 @@ export default function KitchenBookingCalendar() {
                               The manager needs to set an hourly rate in the Manager Dashboard → Pricing tab. 
                               This booking will be free until pricing is configured.
                             </p>
-                            {estimatedPrice && (
-                              <p className="text-xs text-gray-600 mt-2">
-                                Duration: {estimatedPrice.durationHours.toFixed(1)} hour{estimatedPrice.durationHours !== 1 ? 's' : ''}
-                              </p>
-                            )}
+                            <p className="text-xs text-gray-600 mt-2">
+                              Duration: {selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''}
+                            </p>
                           </div>
                         ) : (
                           <p>Calculating price...</p>
