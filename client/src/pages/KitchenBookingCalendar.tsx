@@ -326,13 +326,38 @@ export default function KitchenBookingCalendar() {
     
     // Fetch kitchen pricing
     try {
-      const token = localStorage.getItem('firebaseToken');
+      // Use same robust auth pattern as loadAvailableSlots - prefer fresh Firebase token
+      let authHeader: string | undefined;
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth?.currentUser;
+        if (currentUser) {
+          const token = await currentUser.getIdToken();
+          authHeader = `Bearer ${token}`;
+          console.log('🔑 Using fresh Firebase token for pricing fetch');
+        }
+      } catch (e) {
+        // ignore, will fallback to localStorage token
+        console.log('⚠️ Failed to get fresh token, falling back to localStorage');
+      }
+
+      if (!authHeader) {
+        const token = localStorage.getItem('firebaseToken');
+        if (token) {
+          authHeader = `Bearer ${token}`;
+          console.log('🔑 Using localStorage token for pricing fetch');
+        }
+      }
+
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (authHeader) headers['Authorization'] = authHeader;
+      
+      console.log('🔍 Fetching pricing for kitchen:', kitchen.id, 'Auth header present:', !!authHeader);
       
       const response = await fetch(`/api/chef/kitchens/${kitchen.id}/pricing`, {
         credentials: "include",
         headers,
+        cache: 'no-store',
       });
       
       if (response.ok) {
