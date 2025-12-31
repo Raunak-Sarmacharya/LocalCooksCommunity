@@ -1902,11 +1902,18 @@ export class FirebaseStorage {
 
   async getKitchenDateOverrideForDate(kitchenId: number, date: Date): Promise<any | undefined> {
     try {
-      // Normalize the date to midnight
-      const targetDate = new Date(date);
-      targetDate.setHours(0, 0, 0, 0);
+      // Extract date string in YYYY-MM-DD format for timezone-safe comparison
+      // Handle both Date objects and ISO strings
+      let targetDateStr: string;
+      if (typeof date === 'string') {
+        // If it's a string like "2025-12-23" or "2025-12-23T00:00:00.000Z"
+        targetDateStr = date.split('T')[0];
+      } else {
+        // If it's a Date object, extract the UTC date
+        targetDateStr = date.toISOString().split('T')[0];
+      }
       
-      console.log(`🔍 Looking for date override - kitchen: ${kitchenId}, target date: ${targetDate.toISOString()}`);
+      console.log(`🔍 Looking for date override - kitchen: ${kitchenId}, target date: ${targetDateStr}`);
       
       const allOverrides = await db
         .select()
@@ -1915,11 +1922,11 @@ export class FirebaseStorage {
       
       console.log(`   Found ${allOverrides.length} total overrides for kitchen ${kitchenId}`);
       
-      // Find all overrides for the specific date
+      // Find all overrides for the specific date using string comparison (timezone-safe)
       const dateOverrides = allOverrides.filter(o => {
-        const overrideDate = new Date(o.specificDate);
-        overrideDate.setHours(0, 0, 0, 0);
-        const matches = overrideDate.getTime() === targetDate.getTime();
+        // Convert override date to YYYY-MM-DD string
+        const overrideDateStr = new Date(o.specificDate).toISOString().split('T')[0];
+        const matches = overrideDateStr === targetDateStr;
         if (matches) {
           console.log(`   Found override ID ${o.id}: isAvailable=${o.isAvailable}, startTime=${o.startTime}, endTime=${o.endTime}`);
         }
