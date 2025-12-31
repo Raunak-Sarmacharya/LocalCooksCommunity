@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
@@ -176,6 +176,19 @@ export default function KitchenBookingCalendar() {
     totalPrice: number;
     durationHours: number;
   } | null>(null);
+  
+  // Storage and Equipment listings state
+  const [storageListings, setStorageListings] = useState<any[]>([]);
+  const [equipmentListings, setEquipmentListings] = useState<{
+    all: any[];
+    included: any[];
+    rental: any[];
+  }>({ all: [], included: [], rental: [] });
+  const [isLoadingAddons, setIsLoadingAddons] = useState(false);
+  
+  // Selected add-ons for the booking
+  const [selectedStorageIds, setSelectedStorageIds] = useState<number[]>([]);
+  const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([]);
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -316,6 +329,56 @@ export default function KitchenBookingCalendar() {
     }
   };
 
+  // Fetch storage and equipment listings for a kitchen
+  const fetchKitchenAddons = async (kitchenId: number, authHeader?: string) => {
+    setIsLoadingAddons(true);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authHeader) headers['Authorization'] = authHeader;
+      
+      // Fetch storage listings
+      const storageRes = await fetch(`/api/chef/kitchens/${kitchenId}/storage-listings`, {
+        credentials: "include",
+        headers,
+        cache: 'no-store',
+      });
+      
+      if (storageRes.ok) {
+        const storageData = await storageRes.json();
+        setStorageListings(storageData);
+        console.log(`✅ Loaded ${storageData.length} storage listings for kitchen ${kitchenId}`);
+      } else {
+        console.log(`ℹ️ No storage listings available (status: ${storageRes.status})`);
+        setStorageListings([]);
+      }
+      
+      // Fetch equipment listings
+      const equipmentRes = await fetch(`/api/chef/kitchens/${kitchenId}/equipment-listings`, {
+        credentials: "include",
+        headers,
+        cache: 'no-store',
+      });
+      
+      if (equipmentRes.ok) {
+        const equipmentData = await equipmentRes.json();
+        setEquipmentListings(equipmentData);
+        console.log(`✅ Loaded equipment listings for kitchen ${kitchenId}:`, {
+          included: equipmentData.included?.length || 0,
+          rental: equipmentData.rental?.length || 0,
+        });
+      } else {
+        console.log(`ℹ️ No equipment listings available (status: ${equipmentRes.status})`);
+        setEquipmentListings({ all: [], included: [], rental: [] });
+      }
+    } catch (error) {
+      console.error('Error fetching kitchen addons:', error);
+      setStorageListings([]);
+      setEquipmentListings({ all: [], included: [], rental: [] });
+    } finally {
+      setIsLoadingAddons(false);
+    }
+  };
+
   const handleKitchenSelect = async (kitchen: any) => {
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
@@ -323,6 +386,10 @@ export default function KitchenBookingCalendar() {
     setAllSlots([]);
     setShowBookingModal(false);
     setEstimatedPrice(null);
+    setSelectedStorageIds([]);
+    setSelectedEquipmentIds([]);
+    setStorageListings([]);
+    setEquipmentListings({ all: [], included: [], rental: [] });
     
     // Fetch kitchen pricing
     try {
@@ -407,6 +474,25 @@ export default function KitchenBookingCalendar() {
         currency: 'CAD',
         minimumBookingHours: 1,
       });
+    }
+    
+    // Also fetch storage and equipment listings
+    if (kitchen) {
+      // Get auth header for the addons fetch
+      let authHeader: string | undefined;
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth?.currentUser;
+        if (currentUser) {
+          const token = await currentUser.getIdToken();
+          authHeader = `Bearer ${token}`;
+        }
+      } catch (e) {
+        const token = localStorage.getItem('firebaseToken');
+        if (token) authHeader = `Bearer ${token}`;
+      }
+      
+      await fetchKitchenAddons(kitchen.id, authHeader);
     }
   };
 
@@ -529,16 +615,23 @@ export default function KitchenBookingCalendar() {
         startTime,
         endTime,
         specialNotes: notes,
+        // Include selected storage and equipment add-ons
+        selectedStorageIds: selectedStorageIds.length > 0 ? selectedStorageIds : undefined,
+        selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
       },
       {
         onSuccess: () => {
+          const addonsCount = selectedStorageIds.length + selectedEquipmentIds.length;
+          const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} add-on${addonsCount > 1 ? 's' : ''}` : '';
           toast({
             title: "Booking Created!",
-            description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking has been submitted successfully.`,
+            description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
           });
           setShowBookingModal(false);
           setSelectedSlots([]);
           setNotes("");
+          setSelectedStorageIds([]);
+          setSelectedEquipmentIds([]);
           // Reload available slots
           if (selectedDate) {
             loadAvailableSlots(selectedKitchen.id, toLocalDateString(selectedDate));
@@ -766,6 +859,195 @@ export default function KitchenBookingCalendar() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Storage & Equipment Add-ons Section */}
+                    {(storageListings.length > 0 || equipmentListings.all.length > 0) && (
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Package className="h-5 w-5 text-emerald-600" />
+                          <h3 className="text-lg font-semibold text-gray-900">Available Add-ons</h3>
+                        </div>
+                        
+                        {/* Equipment - Included (Free with Kitchen) */}
+                        {equipmentListings.included.length > 0 && (
+                          <div className="mb-6">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Wrench className="h-4 w-4 text-green-600" />
+                              <h4 className="font-medium text-gray-800">Included Equipment</h4>
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Free with booking</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {equipmentListings.included.map((equipment: any) => (
+                                <div key={equipment.id} className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                  <div className="flex items-start justify-between">
+                                    <div>
+                                      <p className="font-medium text-gray-900">{equipment.equipmentType}</p>
+                                      {equipment.brand && (
+                                        <p className="text-sm text-gray-600">{equipment.brand} {equipment.model || ''}</p>
+                                      )}
+                                      <p className="text-xs text-gray-500 mt-1 capitalize">{equipment.category} • {equipment.condition}</p>
+                                    </div>
+                                    <span className="text-green-600 text-sm font-medium">✓ Included</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Equipment - Rental (Paid Add-on) */}
+                        {equipmentListings.rental.length > 0 && (
+                          <div className="mb-6">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Wrench className="h-4 w-4 text-amber-600" />
+                              <h4 className="font-medium text-gray-800">Rental Equipment</h4>
+                              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Paid add-on</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {equipmentListings.rental.map((equipment: any) => {
+                                const isSelected = selectedEquipmentIds.includes(equipment.id);
+                                const rate = equipment.pricingModel === 'hourly' ? equipment.hourlyRate :
+                                             equipment.pricingModel === 'daily' ? equipment.dailyRate :
+                                             equipment.pricingModel === 'weekly' ? equipment.weeklyRate :
+                                             equipment.monthlyRate;
+                                const rateLabel = equipment.pricingModel === 'hourly' ? '/hour' :
+                                                  equipment.pricingModel === 'daily' ? '/day' :
+                                                  equipment.pricingModel === 'weekly' ? '/week' : '/month';
+                                
+                                return (
+                                  <button
+                                    key={equipment.id}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedEquipmentIds(prev => prev.filter(id => id !== equipment.id));
+                                      } else {
+                                        setSelectedEquipmentIds(prev => [...prev, equipment.id]);
+                                      }
+                                    }}
+                                    className={`p-3 border rounded-lg text-left transition-all ${
+                                      isSelected 
+                                        ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-200' 
+                                        : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between">
+                                      <div>
+                                        <p className="font-medium text-gray-900">{equipment.equipmentType}</p>
+                                        {equipment.brand && (
+                                          <p className="text-sm text-gray-600">{equipment.brand} {equipment.model || ''}</p>
+                                        )}
+                                        <p className="text-xs text-gray-500 mt-1 capitalize">{equipment.category} • {equipment.condition}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-semibold text-amber-700">
+                                          ${rate?.toFixed(2) || '0.00'}{rateLabel}
+                                        </p>
+                                        {isSelected && <span className="text-xs text-amber-600">✓ Selected</span>}
+                                      </div>
+                                    </div>
+                                    {equipment.damageDeposit > 0 && (
+                                      <p className="text-xs text-gray-500 mt-2">
+                                        Deposit: ${equipment.damageDeposit.toFixed(2)}
+                                      </p>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Storage Listings */}
+                        {storageListings.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <Package className="h-4 w-4 text-purple-600" />
+                              <h4 className="font-medium text-gray-800">Storage Space</h4>
+                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Paid add-on</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                              {storageListings.map((storage: any) => {
+                                const isSelected = selectedStorageIds.includes(storage.id);
+                                const rateLabel = storage.pricingModel === 'hourly' ? '/hour' :
+                                                  storage.pricingModel === 'daily' ? '/day' :
+                                                  storage.pricingModel === 'monthly-flat' ? '/month' : '/unit';
+                                
+                                return (
+                                  <button
+                                    key={storage.id}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedStorageIds(prev => prev.filter(id => id !== storage.id));
+                                      } else {
+                                        setSelectedStorageIds(prev => [...prev, storage.id]);
+                                      }
+                                    }}
+                                    className={`p-4 border rounded-lg text-left transition-all ${
+                                      isSelected 
+                                        ? 'bg-purple-50 border-purple-400 ring-2 ring-purple-200' 
+                                        : 'bg-white border-gray-200 hover:border-purple-300 hover:bg-purple-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <p className="font-medium text-gray-900">{storage.name}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                            storage.storageType === 'freezer' ? 'bg-blue-100 text-blue-700' :
+                                            storage.storageType === 'cold' ? 'bg-cyan-100 text-cyan-700' :
+                                            'bg-gray-100 text-gray-700'
+                                          }`}>
+                                            {storage.storageType === 'freezer' ? '❄️ Freezer' :
+                                             storage.storageType === 'cold' ? '🧊 Cold' : '📦 Dry'}
+                                          </span>
+                                          {storage.climateControl && (
+                                            <span className="text-xs text-gray-500">Climate controlled</span>
+                                          )}
+                                        </div>
+                                        {storage.description && (
+                                          <p className="text-sm text-gray-600 mt-2">{storage.description}</p>
+                                        )}
+                                        <p className="text-xs text-gray-500 mt-2">
+                                          Min: {storage.minimumBookingDuration} {storage.bookingDurationUnit}
+                                        </p>
+                                      </div>
+                                      <div className="text-right ml-4">
+                                        <p className="font-semibold text-purple-700">
+                                          ${storage.basePrice?.toFixed(2) || '0.00'}{rateLabel}
+                                        </p>
+                                        {isSelected && <span className="text-xs text-purple-600">✓ Selected</span>}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Selection Summary */}
+                        {(selectedStorageIds.length > 0 || selectedEquipmentIds.length > 0) && (
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <DollarSign className="h-4 w-4" />
+                              <span>
+                                Selected: {selectedEquipmentIds.length} equipment, {selectedStorageIds.length} storage
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Loading state for add-ons */}
+                    {isLoadingAddons && (
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                        <div className="flex items-center gap-3">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                          <span className="text-gray-600">Loading available add-ons...</span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Step 2: Date Selection (Calendar) */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -1193,6 +1475,59 @@ export default function KitchenBookingCalendar() {
                         )}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Selected Add-ons Summary */}
+                {(selectedStorageIds.length > 0 || selectedEquipmentIds.length > 0) && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <h3 className="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Selected Add-ons
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      {/* Selected Equipment */}
+                      {selectedEquipmentIds.map(eqId => {
+                        const eq = equipmentListings.rental.find((e: any) => e.id === eqId);
+                        if (!eq) return null;
+                        const rate = eq.pricingModel === 'hourly' ? eq.hourlyRate :
+                                     eq.pricingModel === 'daily' ? eq.dailyRate :
+                                     eq.pricingModel === 'weekly' ? eq.weeklyRate : eq.monthlyRate;
+                        const rateLabel = eq.pricingModel === 'hourly' ? '/hour' :
+                                          eq.pricingModel === 'daily' ? '/day' :
+                                          eq.pricingModel === 'weekly' ? '/week' : '/month';
+                        return (
+                          <div key={eqId} className="flex justify-between items-center">
+                            <span className="text-gray-700 flex items-center gap-1">
+                              <Wrench className="h-3 w-3 text-amber-600" />
+                              {eq.equipmentType} {eq.brand ? `(${eq.brand})` : ''}
+                            </span>
+                            <span className="font-medium text-amber-700">${rate?.toFixed(2) || '0.00'}{rateLabel}</span>
+                          </div>
+                        );
+                      })}
+                      
+                      {/* Selected Storage */}
+                      {selectedStorageIds.map(stId => {
+                        const st = storageListings.find((s: any) => s.id === stId);
+                        if (!st) return null;
+                        const rateLabel = st.pricingModel === 'hourly' ? '/hour' :
+                                          st.pricingModel === 'daily' ? '/day' :
+                                          st.pricingModel === 'monthly-flat' ? '/month' : '/unit';
+                        return (
+                          <div key={stId} className="flex justify-between items-center">
+                            <span className="text-gray-700 flex items-center gap-1">
+                              <Package className="h-3 w-3 text-purple-600" />
+                              {st.name} ({st.storageType})
+                            </span>
+                            <span className="font-medium text-purple-700">${st.basePrice?.toFixed(2) || '0.00'}{rateLabel}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-amber-600 mt-3">
+                      ℹ️ Add-on pricing will be calculated based on your booking duration
+                    </p>
                   </div>
                 )}
 

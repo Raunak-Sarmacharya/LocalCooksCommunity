@@ -1016,3 +1016,130 @@ export type EquipmentListing = typeof equipmentListings.$inferSelect;
 export type InsertEquipmentListing = z.infer<typeof insertEquipmentListingSchema>;
 export type UpdateEquipmentListing = z.infer<typeof updateEquipmentListingSchema>;
 export type UpdateEquipmentListingStatus = z.infer<typeof updateEquipmentListingStatusSchema>;
+
+// ===== STORAGE BOOKINGS TABLE =====
+// CRITICAL: Storage can ONLY be booked as part of a kitchen booking (not standalone)
+// Must include kitchen_booking_id foreign key - no standalone storage booking endpoints
+
+export const storageBookings = pgTable("storage_bookings", {
+  id: serial("id").primaryKey(),
+  storageListingId: integer("storage_listing_id").references(() => storageListings.id, { onDelete: "cascade" }).notNull(),
+  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(), // REQUIRED - no standalone bookings
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Nullable for external bookings
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: bookingStatusEnum("status").default("pending").notNull(), // Reuse existing enum
+  totalPrice: numeric("total_price").notNull(), // In cents
+  pricingModel: storagePricingModelEnum("pricing_model").notNull(), // Reuse enum
+  paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Reuse enum
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
+  currency: text("currency").default("CAD").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for storage bookings
+export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
+  storageListingId: z.number(),
+  kitchenBookingId: z.number(),
+  chefId: z.number().optional(),
+  startDate: z.string().or(z.date()),
+  endDate: z.string().or(z.date()),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  totalPrice: z.number().int().positive("Total price must be positive"),
+  pricingModel: z.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
+  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentIntentId: z.string().optional(),
+  serviceFee: z.number().int().min(0).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  currency: true, // Always CAD, not user-selectable
+});
+
+export const updateStorageBookingSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentIntentId: z.string().optional(),
+  serviceFee: z.number().int().min(0).optional(),
+});
+
+export const updateStorageBookingStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "confirmed", "cancelled"]),
+});
+
+// Type exports for storage bookings
+export type StorageBooking = typeof storageBookings.$inferSelect;
+export type InsertStorageBooking = z.infer<typeof insertStorageBookingSchema>;
+export type UpdateStorageBooking = z.infer<typeof updateStorageBookingSchema>;
+export type UpdateStorageBookingStatus = z.infer<typeof updateStorageBookingStatusSchema>;
+
+// ===== EQUIPMENT BOOKINGS TABLE =====
+// CRITICAL: Equipment can ONLY be booked as part of a kitchen booking (not standalone)
+// Only rental equipment (availability_type='rental') can be booked - included equipment is automatically available
+// No delivery/pickup fields - equipment stays in kitchen
+
+export const equipmentBookings = pgTable("equipment_bookings", {
+  id: serial("id").primaryKey(),
+  equipmentListingId: integer("equipment_listing_id").references(() => equipmentListings.id, { onDelete: "cascade" }).notNull(),
+  kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(), // REQUIRED - no standalone bookings
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Nullable for external bookings
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: bookingStatusEnum("status").default("pending").notNull(), // Reuse existing enum
+  totalPrice: numeric("total_price").notNull(), // In cents
+  pricingModel: equipmentPricingModelEnum("pricing_model").notNull(), // Reuse enum
+  damageDeposit: numeric("damage_deposit").default("0"), // In cents (only for rental)
+  paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Reuse enum
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
+  serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
+  currency: text("currency").default("CAD").notNull(),
+  // NOTE: No delivery/pickup fields - equipment stays in kitchen
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for equipment bookings
+export const insertEquipmentBookingSchema = createInsertSchema(equipmentBookings, {
+  equipmentListingId: z.number(),
+  kitchenBookingId: z.number(),
+  chefId: z.number().optional(),
+  startDate: z.string().or(z.date()),
+  endDate: z.string().or(z.date()),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  totalPrice: z.number().int().positive("Total price must be positive"),
+  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]),
+  damageDeposit: z.number().int().min(0).optional(),
+  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentIntentId: z.string().optional(),
+  serviceFee: z.number().int().min(0).optional(),
+}).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  currency: true, // Always CAD, not user-selectable
+});
+
+export const updateEquipmentBookingSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentIntentId: z.string().optional(),
+  damageDeposit: z.number().int().min(0).optional(),
+  serviceFee: z.number().int().min(0).optional(),
+});
+
+export const updateEquipmentBookingStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["pending", "confirmed", "cancelled"]),
+});
+
+// Type exports for equipment bookings
+export type EquipmentBooking = typeof equipmentBookings.$inferSelect;
+export type InsertEquipmentBooking = z.infer<typeof insertEquipmentBookingSchema>;
+export type UpdateEquipmentBooking = z.infer<typeof updateEquipmentBookingSchema>;
+export type UpdateEquipmentBookingStatus = z.infer<typeof updateEquipmentBookingStatusSchema>;
