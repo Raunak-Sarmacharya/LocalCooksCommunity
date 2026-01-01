@@ -5797,7 +5797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a booking
   app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
-      const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedEquipmentIds } = req.body;
+      const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds } = req.body;
       const chefId = req.user!.id;
       
       // Check if chef has admin-granted access to the location containing this kitchen
@@ -5978,15 +5978,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const storageBookingsCreated: any[] = [];
       const equipmentBookingsCreated: any[] = [];
       
-      if (pool && (selectedStorageIds?.length > 0 || selectedEquipmentIds?.length > 0)) {
+      if (pool && ((selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) || selectedStorageIds?.length > 0 || selectedEquipmentIds?.length > 0)) {
         console.log(`📦 STEP 1.5: Creating add-on bookings...`);
         
-        // Parse booking dates for add-ons (same as kitchen booking)
+        // Parse booking dates for equipment (same as kitchen booking)
         const bookingStartDateTime = new Date(`${bookingDateStr}T${startTime}`);
         const bookingEndDateTime = new Date(`${bookingDateStr}T${endTime}`);
         
-        // Create storage bookings
-        if (selectedStorageIds && Array.isArray(selectedStorageIds)) {
+        // Create storage bookings with custom date ranges (NEW FORMAT)
+        if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
+          for (const storage of selectedStorage) {
+            try {
+              const storageListingId = storage.storageListingId;
+              const startDate = new Date(storage.startDate);
+              const endDate = new Date(storage.endDate);
+              
+              // Validate dates
+              if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.error(`   ⚠️ Invalid dates for storage booking ${storageListingId}`);
+                continue;
+              }
+              
+              if (startDate >= endDate) {
+                console.error(`   ⚠️ Storage booking ${storageListingId}: End date must be after start date`);
+                continue;
+              }
+              
+              // Get storage listing details to get pricing info
+              const storageResult = await pool.query(
+                `SELECT id, pricing_model, base_price, minimum_booking_duration, currency FROM storage_listings WHERE id = $1`,
+                [storageListingId]
+              );
+              
+              if (storageResult.rows.length > 0) {
+                const storageListing = storageResult.rows[0];
+                const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
+                const minDays = storageListing.minimum_booking_duration || 1;
+                
+                // Calculate number of days
+                const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                const effectiveDays = Math.max(days, minDays);
+                
+                // Validate minimum duration
+                if (days < minDays) {
+                  console.error(`   ⚠️ Storage booking ${storageListingId}: Requires minimum ${minDays} days, got ${days}`);
+                  continue;
+                }
+                
+                // Calculate price based on daily pricing model
+                // For daily pricing, multiply base price by number of days
+                let totalPrice = basePriceCents * effectiveDays;
+                
+                // For other pricing models (legacy support)
+                if (storageListing.pricing_model === 'hourly') {
+                  const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
+                  totalPrice = basePriceCents * durationHours;
+                } else if (storageListing.pricing_model === 'monthly-flat') {
+                  // For monthly-flat, use base price directly (pro-rated not implemented)
+                  totalPrice = basePriceCents;
+                }
+                
+                // Calculate service fee (5%)
+                const serviceFee = Math.round(totalPrice * 0.05);
+                
+                const insertResult = await pool.query(
+                  `INSERT INTO storage_bookings 
+                    (storage_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, payment_status, service_fee, currency)
+                   VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, 'pending', $8, $9)
+                   RETURNING id`,
+                  [
+                    storageListingId,
+                    booking.id,
+                    chefId,
+                    startDate,
+                    endDate,
+                    totalPrice.toString(),
+                    storageListing.pricing_model,
+                    serviceFee.toString(),
+                    storageListing.currency || 'CAD'
+                  ]
+                );
+                
+                storageBookingsCreated.push({
+                  id: insertResult.rows[0].id,
+                  storageListingId,
+                  totalPrice: totalPrice / 100 // Return in dollars
+                });
+                console.log(`   ✅ Storage booking created: listing ${storageListingId}, ${effectiveDays} days, price: $${(totalPrice / 100).toFixed(2)}`);
+              }
+            } catch (storageError) {
+              console.error(`   ⚠️ Failed to create storage booking:`, storageError);
+            }
+          }
+        }
+        
+        // Legacy support: Create storage bookings from IDs (using kitchen booking dates)
+        // This is kept for backwards compatibility but should be removed in future
+        if (selectedStorageIds && Array.isArray(selectedStorageIds) && selectedStorageIds.length > 0) {
           for (const storageListingId of selectedStorageIds) {
             try {
               // Get storage listing details to get pricing info

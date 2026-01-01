@@ -19,6 +19,12 @@ interface CreateBookingData {
   startTime: string;
   endTime: string;
   specialNotes?: string;
+  selectedStorage?: Array<{
+    storageListingId: number;
+    startDate: string; // ISO date string
+    endDate: string;   // ISO date string
+  }>;
+  selectedEquipmentIds?: number[];
 }
 
 interface Kitchen {
