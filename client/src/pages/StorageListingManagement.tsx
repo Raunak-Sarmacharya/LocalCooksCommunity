@@ -58,16 +58,56 @@ interface StorageListingManagementProps {
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  if (token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  }
-  return {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const currentUser = auth.currentUser;
+    
+    if (currentUser?.uid) {
+      // Include X-User-ID header as fallback
+      headers['X-User-ID'] = currentUser.uid;
+      
+      // Get fresh Firebase token
+      try {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (tokenError) {
+        console.error('Failed to get Firebase token:', tokenError);
+      }
+    } else {
+      // Fallback to localStorage if Firebase auth not ready
+      const storedUserId = localStorage.getItem('userId');
+      const storedToken = localStorage.getItem('firebaseToken');
+      
+      if (storedUserId) {
+        headers['X-User-ID'] = storedUserId;
+      }
+      
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+    }
+  } catch (error) {
+    console.error('Error getting auth headers:', error);
+    // Fallback to localStorage
+    const storedUserId = localStorage.getItem('userId');
+    const storedToken = localStorage.getItem('firebaseToken');
+    
+    if (storedUserId) {
+      headers['X-User-ID'] = storedUserId;
+    }
+    
+    if (storedToken) {
+      headers['Authorization'] = `Bearer ${storedToken}`;
+    }
+  }
+  
+  return headers;
 }
 
 export default function StorageListingManagement({ embedded = false }: StorageListingManagementProps = {}) {

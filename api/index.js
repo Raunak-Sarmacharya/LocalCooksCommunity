@@ -6325,6 +6325,80 @@ async function verifyFirebaseToken(token) {
   }
 }
 
+// Helper function to get authenticated user from Firebase token or session/x-user-id
+// This ensures compatibility with both localhost (session) and Vercel (Firebase token) deployments
+async function getAuthenticatedUser(req) {
+  // First, try Firebase Bearer token authentication
+  const authHeader = req.headers.authorization;
+  const hasBearerToken = authHeader && authHeader.startsWith('Bearer ');
+  
+  if (hasBearerToken) {
+    const token = authHeader.substring(7)?.trim();
+    
+    if (token && firebaseAdmin) {
+      try {
+        const decodedToken = await verifyFirebaseToken(token);
+        
+        if (decodedToken && decodedToken.uid) {
+          const firebaseUid = decodedToken.uid;
+          console.log('🔥 getAuthenticatedUser - Verified Firebase token for UID:', firebaseUid);
+          
+          // Get user from database by Firebase UID
+          if (!pool) {
+            console.error('❌ getAuthenticatedUser: Database pool not available');
+            return null;
+          }
+          
+          try {
+            const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
+            const user = result.rows[0] || null;
+            
+            if (user) {
+              console.log('✅ getAuthenticatedUser - Found user:', { id: user.id, username: user.username, role: user.role });
+              return user;
+            } else {
+              console.warn('⚠️ getAuthenticatedUser - User not found in database for Firebase UID:', firebaseUid);
+              return null;
+            }
+          } catch (dbError) {
+            console.error('❌ getAuthenticatedUser - Database error:', dbError);
+            return null;
+          }
+        }
+      } catch (tokenError) {
+        console.error('❌ getAuthenticatedUser - Token verification error:', tokenError);
+        // Fall through to session auth
+      }
+    }
+  }
+  
+  // Fallback to session authentication (for localhost/managers/admins)
+  const rawUserId = req.session?.userId || req.headers['x-user-id'];
+  if (rawUserId) {
+    console.log('📋 getAuthenticatedUser - Using session/x-user-id auth for user ID:', rawUserId);
+    
+    if (!pool) {
+      console.error('❌ getAuthenticatedUser: Database pool not available');
+      return null;
+    }
+    
+    try {
+      const user = await getUser(rawUserId);
+      if (user) {
+        console.log('✅ getAuthenticatedUser - Found user via session:', { id: user.id, username: user.username, role: user.role });
+        return user;
+      }
+    } catch (dbError) {
+      console.error('❌ getAuthenticatedUser - Database error fetching user:', dbError);
+      return null;
+    }
+  }
+  
+  // No authentication provided
+  console.warn('⚠️ getAuthenticatedUser - No authentication provided');
+  return null;
+}
+
 // Enhanced Firebase Auth Middleware
 async function verifyFirebaseAuth(req, res, next) {
   try {
@@ -12497,13 +12571,12 @@ app.put("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
 // Get storage listings for a kitchen
 app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -12581,13 +12654,12 @@ app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req, res) =>
 // Get equipment listings by kitchen ID
 app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -12666,13 +12738,12 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
 // Get single storage listing
 app.get("/api/manager/storage-listings/:listingId", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -12787,13 +12858,12 @@ app.get("/api/manager/storage-listings/:listingId", async (req, res) => {
 // Create storage listing
 app.post("/api/manager/storage-listings", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -12937,13 +13007,12 @@ app.post("/api/manager/storage-listings", async (req, res) => {
 // Update storage listing
 app.put("/api/manager/storage-listings/:listingId", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -13168,13 +13237,12 @@ app.put("/api/manager/storage-listings/:listingId", async (req, res) => {
 // Delete storage listing
 app.delete("/api/manager/storage-listings/:listingId", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -13235,13 +13303,12 @@ app.delete("/api/manager/storage-listings/:listingId", async (req, res) => {
 // Get equipment listing by ID
 app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -13363,13 +13430,12 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
 // Create equipment listing
 app.post("/api/manager/equipment-listings", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -13560,13 +13626,12 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
 // Update equipment listing
 app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
@@ -13843,13 +13908,12 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
 // Delete equipment listing
 app.delete("/api/manager/equipment-listings/:listingId", async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
       return res.status(403).json({ error: "Manager access required" });
     }
 
