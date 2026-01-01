@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Package, X, Calendar as CalendarIcon, AlertCircle, Check, Info } from "lucide-react";
-import { DateRange } from "react-day-picker";
+import { DateRange, SelectRangeEventHandler } from "react-day-picker";
 import { format, differenceInDays, isBefore, startOfToday } from "date-fns";
 import {
   Dialog,
@@ -100,38 +100,49 @@ export function StorageSelection({
   };
 
   // Handle date range selection for a storage listing
-  const handleDateRangeSelect = (listingId: number, range: DateRange | undefined) => {
-    setDateRanges(prev => ({ ...prev, [listingId]: range }));
-    
-    const listing = activeStorageListings.find(l => l.id === listingId);
-    if (!listing) return;
+  const handleDateRangeSelect = (listingId: number): SelectRangeEventHandler => {
+    return (range: DateRange | undefined, selectedDay: Date | undefined) => {
+      const listing = activeStorageListings.find(l => l.id === listingId);
+      if (!listing) return;
 
-    const error = validateDateRange(listing, range);
-    setValidationErrors(prev => ({ ...prev, [listingId]: error || '' }));
-
-    // If range is complete and valid, add to selected storage
-    if (range?.from && range?.to && !error) {
-      const existingIndex = selectedStorage.findIndex(s => s.storageListingId === listingId);
-      const newSelection: SelectedStorage = {
-        storageListingId: listingId,
-        startDate: range.from,
-        endDate: range.to,
-      };
-
-      if (existingIndex >= 0) {
-        // Update existing selection
-        const updated = [...selectedStorage];
-        updated[existingIndex] = newSelection;
-        onSelectionChange(updated);
-      } else {
-        // Add new selection
-        onSelectionChange([...selectedStorage, newSelection]);
+      // If a complete range already exists and user clicks a new date, start a new range
+      const currentRange = dateRanges[listingId];
+      let newRange: DateRange | undefined = range;
+      
+      if (currentRange?.from && currentRange?.to && selectedDay) {
+        // User is starting a new range - reset to just the selected day
+        newRange = { from: selectedDay, to: undefined };
       }
-    } else if (!range?.from || !range?.to) {
-      // Remove selection if range is incomplete
-      const updated = selectedStorage.filter(s => s.storageListingId !== listingId);
-      onSelectionChange(updated);
-    }
+
+      setDateRanges(prev => ({ ...prev, [listingId]: newRange }));
+      
+      const error = validateDateRange(listing, newRange);
+      setValidationErrors(prev => ({ ...prev, [listingId]: error || '' }));
+
+      // If range is complete and valid, add to selected storage
+      if (newRange?.from && newRange?.to && !error) {
+        const existingIndex = selectedStorage.findIndex(s => s.storageListingId === listingId);
+        const newSelection: SelectedStorage = {
+          storageListingId: listingId,
+          startDate: newRange.from,
+          endDate: newRange.to,
+        };
+
+        if (existingIndex >= 0) {
+          // Update existing selection
+          const updated = [...selectedStorage];
+          updated[existingIndex] = newSelection;
+          onSelectionChange(updated);
+        } else {
+          // Add new selection
+          onSelectionChange([...selectedStorage, newSelection]);
+        }
+      } else if (!newRange?.from || !newRange?.to) {
+        // Remove selection if range is incomplete
+        const updated = selectedStorage.filter(s => s.storageListingId !== listingId);
+        onSelectionChange(updated);
+      }
+    };
   };
 
   // Remove storage selection
@@ -257,7 +268,16 @@ export function StorageSelection({
                   <div>
                     <Button
                       variant="outline"
-                      onClick={() => setOpenDialogId(storage.id)}
+                      onClick={() => {
+                        // Initialize range state when opening dialog
+                        if (!dateRanges[storage.id]) {
+                          setDateRanges(prev => ({
+                            ...prev,
+                            [storage.id]: undefined
+                          }));
+                        }
+                        setOpenDialogId(storage.id);
+                      }}
                       className="w-full"
                     >
                       <CalendarIcon className="h-4 w-4 mr-2" />
@@ -305,7 +325,22 @@ export function StorageSelection({
                     </div>
                     <Button
                       variant="outline"
-                      onClick={() => setOpenDialogId(storage.id)}
+                      onClick={() => {
+                        // Ensure range state is initialized when reopening dialog
+                        if (!dateRanges[storage.id]) {
+                          const existing = selectedStorage.find(s => s.storageListingId === storage.id);
+                          if (existing) {
+                            setDateRanges(prev => ({
+                              ...prev,
+                              [storage.id]: {
+                                from: existing.startDate,
+                                to: existing.endDate,
+                              }
+                            }));
+                          }
+                        }
+                        setOpenDialogId(storage.id);
+                      }}
                       className="w-full"
                     >
                       <CalendarIcon className="h-4 w-4 mr-2" />
@@ -330,14 +365,18 @@ export function StorageSelection({
                           <Calendar
                             mode="range"
                             selected={currentRange}
-                            onSelect={(range) => handleDateRangeSelect(storage.id, range)}
+                            onSelect={handleDateRangeSelect(storage.id)}
                             numberOfMonths={2}
                             defaultMonth={getSuggestedStartDate()}
                             disabled={(date) => isBefore(date, minDate)}
-                            min={minDays}
                             className="rounded-md border"
                           />
                         </div>
+                        {currentRange?.from && !currentRange?.to && (
+                          <p className="text-xs text-gray-500 mt-2 text-center">
+                            Select an end date (minimum {minDays} day{minDays > 1 ? 's' : ''} from start)
+                          </p>
+                        )}
                         {error && (
                           <div className="mt-2 flex items-center gap-2 text-sm text-red-600">
                             <AlertCircle className="h-4 w-4" />
