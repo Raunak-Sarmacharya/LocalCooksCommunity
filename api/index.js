@@ -13388,59 +13388,102 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
     }
 
     // Convert numeric fields from cents to dollars
-    // Match localhost implementation exactly
-    const listing = {
-      id: row.id,
-      kitchenId: row.kitchen_id,
-      category: row.category,
-      equipmentType: row.equipment_type,
-      brand: row.brand,
-      model: row.model,
-      description: row.description,
-      condition: row.condition,
-      age: row.age,
-      serviceHistory: row.service_history,
-      dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
-      powerRequirements: row.power_requirements,
-      specifications: row.specifications ? JSON.parse(row.specifications) : {},
-      certifications: row.certifications || [],
-      safetyFeatures: row.safety_features || [],
-      pricingModel: row.pricing_model,
-      availabilityType: row.availability_type || 'rental',
-      // Convert session_rate from cents to dollars (primary pricing field for rental equipment)
-      sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : null,
-      // Legacy rate fields (for backwards compatibility)
-      hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
-      dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
-      weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
-      monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
-      minimumRentalHours: row.minimum_rental_hours || 4,
-      minimumRentalDays: row.minimum_rental_days,
-      currency: row.currency || 'CAD',
-      deliveryAvailable: row.delivery_available,
-      deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
-      setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
-      pickupRequired: row.pickup_required,
-      usageRestrictions: row.usage_restrictions || [],
-      trainingRequired: row.training_required,
-      cleaningResponsibility: row.cleaning_responsibility,
-      status: row.status,
-      isActive: row.is_active,
-      availabilityCalendar: row.availability_calendar || {},
-      prepTimeHours: row.prep_time_hours || 4,
-      photos: row.photos || [],
-      manuals: row.manuals || [],
-      maintenanceLog: row.maintenance_log || [],
-      damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
-      insuranceRequired: row.insurance_required,
-      approvedBy: row.approved_by,
-      approvedAt: row.approved_at,
-      rejectionReason: row.rejection_reason,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
+    // Match localhost implementation exactly with safe JSON parsing
+    let dimensions = {};
+    let specifications = {};
+    
+    try {
+      if (row.dimensions) {
+        // Handle both string (from ::text cast) and object (if already parsed)
+        if (typeof row.dimensions === 'string') {
+          const trimmed = row.dimensions.trim();
+          if (trimmed && trimmed !== 'null' && trimmed !== '') {
+            dimensions = JSON.parse(trimmed);
+          }
+        } else if (typeof row.dimensions === 'object' && row.dimensions !== null) {
+          dimensions = row.dimensions;
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing dimensions for equipment listing:', listingId, e);
+      dimensions = {};
+    }
+    
+    try {
+      if (row.specifications) {
+        // Handle both string (from ::text cast) and object (if already parsed)
+        if (typeof row.specifications === 'string') {
+          const trimmed = row.specifications.trim();
+          if (trimmed && trimmed !== 'null' && trimmed !== '') {
+            specifications = JSON.parse(trimmed);
+          }
+        } else if (typeof row.specifications === 'object' && row.specifications !== null) {
+          specifications = row.specifications;
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing specifications for equipment listing:', listingId, e);
+      specifications = {};
+    }
+    
+    try {
+      const listing = {
+        id: row.id,
+        kitchenId: row.kitchen_id,
+        category: row.category,
+        equipmentType: row.equipment_type,
+        brand: row.brand,
+        model: row.model,
+        description: row.description,
+        condition: row.condition,
+        age: row.age,
+        serviceHistory: row.service_history,
+        dimensions: dimensions,
+        powerRequirements: row.power_requirements,
+        specifications: specifications,
+        certifications: row.certifications || [],
+        safetyFeatures: row.safety_features || [],
+        pricingModel: row.pricing_model,
+        availabilityType: row.availability_type || 'rental',
+        // Convert session_rate from cents to dollars (primary pricing field for rental equipment)
+        sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : null,
+        // Legacy rate fields (for backwards compatibility)
+        hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
+        dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
+        weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+        monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+        minimumRentalHours: row.minimum_rental_hours || 4,
+        minimumRentalDays: row.minimum_rental_days,
+        currency: row.currency || 'CAD',
+        deliveryAvailable: row.delivery_available,
+        deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
+        setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
+        pickupRequired: row.pickup_required,
+        usageRestrictions: row.usage_restrictions || [],
+        trainingRequired: row.training_required,
+        cleaningResponsibility: row.cleaning_responsibility,
+        status: row.status,
+        isActive: row.is_active,
+        availabilityCalendar: row.availability_calendar || {},
+        prepTimeHours: row.prep_time_hours || 4,
+        photos: row.photos || [],
+        manuals: row.manuals || [],
+        maintenanceLog: row.maintenance_log || [],
+        damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
+        insuranceRequired: row.insurance_required,
+        approvedBy: row.approved_by,
+        approvedAt: row.approved_at,
+        rejectionReason: row.rejection_reason,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
 
-    res.json(listing);
+      res.json(listing);
+    } catch (buildError) {
+      console.error('Error building equipment listing response:', buildError);
+      console.error('Row data:', JSON.stringify(row, null, 2));
+      throw buildError; // Re-throw to be caught by outer catch
+    }
   } catch (error) {
     console.error("Error getting equipment listing:", error);
     res.status(500).json({ error: error.message || "Failed to get equipment listing" });
