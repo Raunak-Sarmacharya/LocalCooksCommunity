@@ -10,6 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Kitchen {
   id: number;
@@ -51,6 +61,7 @@ interface StorageListing {
   houseRules?: string[];
   prohibitedItems?: string[];
   insuranceRequired?: boolean;
+  isActive?: boolean; // Active status toggle
 }
 
 interface StorageListingManagementProps {
@@ -143,6 +154,8 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
   const [isSaving, setIsSaving] = useState(false);
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listings, setListings] = useState<StorageListing[]>([]);
+  const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
+  const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -395,6 +408,62 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
     setFormData({ ...formData, [field]: current.filter((_, i) => i !== index) });
   };
 
+  // Toggle active status mutation
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/storage-listings/${id}`, {
+        method: 'PUT',
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to update status' }));
+        throw new Error(errorData.error || 'Failed to update status');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/storage-listings`] });
+      loadListings(); // Reload listings to get updated status
+      toast({
+        title: "Status Updated",
+        description: `Storage listing is now ${pendingToggle?.isActive ? 'active' : 'inactive'}`,
+      });
+      setToggleDialogOpen(false);
+      setPendingToggle(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update status",
+        variant: "destructive",
+      });
+      setToggleDialogOpen(false);
+      setPendingToggle(null);
+    },
+  });
+
+  const handleToggleActive = (listingId: number, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    
+    // If deactivating, show confirmation dialog
+    if (!newStatus) {
+      setPendingToggle({ id: listingId, isActive: newStatus });
+      setToggleDialogOpen(true);
+    } else {
+      // Activating - proceed immediately
+      toggleActiveMutation.mutate({ id: listingId, isActive: newStatus });
+    }
+  };
+
+  const confirmToggle = () => {
+    if (pendingToggle) {
+      toggleActiveMutation.mutate(pendingToggle);
+    }
+  };
+
   const selectedKitchen = kitchens.find(k => k.id === selectedKitchenId);
 
   return (
@@ -476,19 +545,43 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
             <div className="space-y-3">
               {listings.map((listing) => (
                 <div key={listing.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <h4 className="font-medium">{listing.name}</h4>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-medium">{listing.name}</h4>
+                      <Badge 
+                        variant={listing.isActive !== false ? "default" : "secondary"}
+                        className={listing.isActive !== false 
+                          ? "bg-green-100 text-green-700 border-green-300" 
+                          : "bg-gray-100 text-gray-600 border-gray-300"
+                        }
+                      >
+                        {listing.isActive !== false ? '✓ Active' : '✗ Inactive'}
+                      </Badge>
+                    </div>
                     <p className="text-sm text-gray-500">
                       {listing.storageType} • ${listing.basePrice?.toFixed(2)}/day • Min: {listing.minimumBookingDuration || 1} days
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(listing.id!)}>
-                      Edit
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(listing.id!)}>
-                      Delete
-                    </Button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={`toggle-${listing.id}`} className="text-sm text-gray-600">
+                        {listing.isActive !== false ? 'Active' : 'Inactive'}
+                      </Label>
+                      <Switch
+                        id={`toggle-${listing.id}`}
+                        checked={listing.isActive !== false}
+                        onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)}
+                        disabled={toggleActiveMutation.isPending}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(listing.id!)}>
+                        Edit
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(listing.id!)}>
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -998,6 +1091,46 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
           </CardContent>
         </Card>
       )}
+
+      {/* Confirmation Dialog for Deactivation */}
+      <Dialog open={toggleDialogOpen} onOpenChange={setToggleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deactivate Storage Listing?</DialogTitle>
+            <DialogDescription>
+              This storage listing will no longer be available for booking. Chefs will not be able to see or book this storage space.
+              <br /><br />
+              You can reactivate it at any time using the toggle switch.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setToggleDialogOpen(false);
+                setPendingToggle(null);
+              }}
+              disabled={toggleActiveMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmToggle}
+              disabled={toggleActiveMutation.isPending}
+            >
+              {toggleActiveMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deactivating...
+                </>
+              ) : (
+                'Deactivate'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
