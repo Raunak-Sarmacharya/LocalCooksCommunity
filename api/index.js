@@ -12691,6 +12691,7 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
 
     // Get equipment listings with proper numeric conversion
     // Match localhost implementation - must include session_rate (primary pricing field)
+    // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
     const result = await pool.query(`
       SELECT 
         id, kitchen_id, category, equipment_type, brand, model, description,
@@ -12733,6 +12734,11 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
       trainingRequired: row.training_required ?? false,
       cleaningResponsibility: row.cleaning_responsibility,
       currency: row.currency || 'CAD',
+      // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
+      deliveryAvailable: false,
+      deliveryFee: null,
+      setupFee: null,
+      pickupRequired: false,
       status: row.status,
       isActive: row.is_active,
       createdAt: row.created_at,
@@ -13335,6 +13341,7 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
 
     // Get equipment listing with proper numeric conversion
     // Note: Must include availability_type and session_rate to match localhost implementation
+    // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in actual DB schema
     const result = await pool.query(`
       SELECT 
         id, kitchen_id, category, equipment_type, brand, model, description,
@@ -13351,8 +13358,6 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
         weekly_rate::text as weekly_rate,
         monthly_rate::text as monthly_rate,
         minimum_rental_hours, minimum_rental_days, currency,
-        delivery_available, delivery_fee::text as delivery_fee,
-        setup_fee::text as setup_fee, pickup_required,
         usage_restrictions, training_required, cleaning_responsibility,
         status, approved_by, approved_at, rejection_reason,
         is_active, availability_calendar, prep_time_hours,
@@ -13450,33 +13455,35 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
         // Legacy rate fields (for backwards compatibility)
         hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
         dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
-        weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
-        monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
-        minimumRentalHours: row.minimum_rental_hours || 4,
-        minimumRentalDays: row.minimum_rental_days,
-        currency: row.currency || 'CAD',
-        deliveryAvailable: row.delivery_available,
-        deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
-        setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
-        pickupRequired: row.pickup_required,
-        usageRestrictions: row.usage_restrictions || [],
-        trainingRequired: row.training_required,
-        cleaningResponsibility: row.cleaning_responsibility,
-        status: row.status,
-        isActive: row.is_active,
-        availabilityCalendar: row.availability_calendar || {},
-        prepTimeHours: row.prep_time_hours || 4,
-        photos: row.photos || [],
-        manuals: row.manuals || [],
-        maintenanceLog: row.maintenance_log || [],
-        damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
-        insuranceRequired: row.insurance_required,
-        approvedBy: row.approved_by,
-        approvedAt: row.approved_at,
-        rejectionReason: row.rejection_reason,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      };
+      weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
+      monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+      minimumRentalHours: row.minimum_rental_hours || 4,
+      minimumRentalDays: row.minimum_rental_days,
+      currency: row.currency || 'CAD',
+      // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
+      // Set to null/defaults for backwards compatibility with frontend
+      deliveryAvailable: false,
+      deliveryFee: null,
+      setupFee: null,
+      pickupRequired: false,
+      usageRestrictions: row.usage_restrictions || [],
+      trainingRequired: row.training_required,
+      cleaningResponsibility: row.cleaning_responsibility,
+      status: row.status,
+      isActive: row.is_active,
+      availabilityCalendar: row.availability_calendar || {},
+      prepTimeHours: row.prep_time_hours || 4,
+      photos: row.photos || [],
+      manuals: row.manuals || [],
+      maintenanceLog: row.maintenance_log || [],
+      damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
+      insuranceRequired: row.insurance_required,
+      approvedBy: row.approved_by,
+      approvedAt: row.approved_at,
+      rejectionReason: row.rejection_reason,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
 
       res.json(listing);
     } catch (buildError) {
@@ -13803,22 +13810,8 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
       updates.push(`minimum_rental_days = $${paramCount++}`);
       values.push(req.body.minimumRentalDays);
     }
-    if (req.body.deliveryAvailable !== undefined) {
-      updates.push(`delivery_available = $${paramCount++}`);
-      values.push(req.body.deliveryAvailable);
-    }
-    if (req.body.deliveryFee !== undefined) {
-      updates.push(`delivery_fee = $${paramCount++}`);
-      values.push(req.body.deliveryFee ? Math.round(req.body.deliveryFee * 100) : null);
-    }
-    if (req.body.setupFee !== undefined) {
-      updates.push(`setup_fee = $${paramCount++}`);
-      values.push(req.body.setupFee ? Math.round(req.body.setupFee * 100) : null);
-    }
-    if (req.body.pickupRequired !== undefined) {
-      updates.push(`pickup_required = $${paramCount++}`);
-      values.push(req.body.pickupRequired);
-    }
+    // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
+    // These fields are ignored if sent in the request
     if (req.body.usageRestrictions !== undefined) {
       updates.push(`usage_restrictions = $${paramCount++}`);
       values.push(JSON.stringify(req.body.usageRestrictions));
@@ -13890,6 +13883,7 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
     await pool.query(updateQuery, values);
 
     // Fetch updated listing
+    // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
     const getResult = await pool.query(`
       SELECT 
         id, kitchen_id, category, equipment_type, brand, model, description,
@@ -13899,13 +13893,13 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
         specifications::text as specifications,
         certifications, safety_features,
         pricing_model,
+        availability_type,
+        session_rate::text as session_rate,
         hourly_rate::text as hourly_rate,
         daily_rate::text as daily_rate,
         weekly_rate::text as weekly_rate,
         monthly_rate::text as monthly_rate,
         minimum_rental_hours, minimum_rental_days, currency,
-        delivery_available, delivery_fee::text as delivery_fee,
-        setup_fee::text as setup_fee, pickup_required,
         usage_restrictions, training_required, cleaning_responsibility,
         status, is_active, availability_calendar, prep_time_hours,
         photos, manuals, maintenance_log,
@@ -13917,6 +13911,39 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
     `, [listingId]);
 
     const row = getResult.rows[0];
+    
+    // Safe JSON parsing for dimensions and specifications
+    let dimensions = {};
+    let specifications = {};
+    
+    try {
+      if (row.dimensions && typeof row.dimensions === 'string') {
+        const trimmed = row.dimensions.trim();
+        if (trimmed && trimmed !== 'null' && trimmed !== '') {
+          dimensions = JSON.parse(trimmed);
+        }
+      } else if (row.dimensions && typeof row.dimensions === 'object' && row.dimensions !== null) {
+        dimensions = row.dimensions;
+      }
+    } catch (e) {
+      console.warn('Error parsing dimensions in update response:', listingId, e);
+      dimensions = {};
+    }
+    
+    try {
+      if (row.specifications && typeof row.specifications === 'string') {
+        const trimmed = row.specifications.trim();
+        if (trimmed && trimmed !== 'null' && trimmed !== '') {
+          specifications = JSON.parse(trimmed);
+        }
+      } else if (row.specifications && typeof row.specifications === 'object' && row.specifications !== null) {
+        specifications = row.specifications;
+      }
+    } catch (e) {
+      console.warn('Error parsing specifications in update response:', listingId, e);
+      specifications = {};
+    }
+    
     const updated = {
       id: row.id,
       kitchenId: row.kitchen_id,
@@ -13928,12 +13955,14 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
       condition: row.condition,
       age: row.age,
       serviceHistory: row.service_history,
-      dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
+      dimensions: dimensions,
       powerRequirements: row.power_requirements,
-      specifications: row.specifications ? JSON.parse(row.specifications) : {},
+      specifications: specifications,
       certifications: row.certifications || [],
       safetyFeatures: row.safety_features || [],
       pricingModel: row.pricing_model,
+      availabilityType: row.availability_type || 'rental',
+      sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : null,
       hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
       dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
       weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
@@ -13941,10 +13970,11 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
       minimumRentalHours: row.minimum_rental_hours || 4,
       minimumRentalDays: row.minimum_rental_days,
       currency: row.currency || 'CAD',
-      deliveryAvailable: row.delivery_available,
-      deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
-      setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
-      pickupRequired: row.pickup_required,
+      // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
+      deliveryAvailable: false,
+      deliveryFee: null,
+      setupFee: null,
+      pickupRequired: false,
       usageRestrictions: row.usage_restrictions || [],
       trainingRequired: row.training_required,
       cleaningResponsibility: row.cleaning_responsibility,
