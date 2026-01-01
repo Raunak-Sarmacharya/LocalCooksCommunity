@@ -1,7 +1,10 @@
 import { useState, useMemo } from "react";
-import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
+import { useQuery } from "@tanstack/react-query";
+import { StorageExtensionDialog } from "./StorageExtensionDialog";
+import { format, differenceInDays, startOfToday } from "date-fns";
 
 interface Booking {
   id: number;
@@ -35,6 +38,14 @@ interface BookingControlPanelProps {
 type FilterType = "all" | "pending" | "confirmed" | "cancelled";
 type ViewType = "upcoming" | "past" | "all";
 
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const token = localStorage.getItem('firebaseToken');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
+}
+
 export default function BookingControlPanel({
   bookings,
   isLoading,
@@ -45,6 +56,22 @@ export default function BookingControlPanel({
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
+  const [expandedStorageBookings, setExpandedStorageBookings] = useState<Set<number>>(new Set());
+  const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null);
+
+  // Fetch storage bookings
+  const { data: storageBookings = [], isLoading: isLoadingStorage } = useQuery({
+    queryKey: ['/api/chef/storage-bookings'],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/chef/storage-bookings', {
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch storage bookings');
+      return response.json();
+    },
+  });
 
   // Separate bookings into past, upcoming, and all using timezone-aware categorization
   // Timeline is PRIMARY - status does NOT override timeline
@@ -593,6 +620,196 @@ export default function BookingControlPanel({
             );
           })}
         </div>
+      )}
+
+      {/* Storage Bookings Section */}
+      {!isLoadingStorage && storageBookings.length > 0 && (
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="h-5 w-5 text-purple-600" />
+              Storage Bookings
+            </h3>
+            <span className="text-sm text-gray-500">{storageBookings.length} active</span>
+          </div>
+
+          <div className="space-y-3">
+            {storageBookings
+              .filter((sb: any) => sb.status !== 'cancelled')
+              .map((storageBooking: any) => {
+                const endDate = new Date(storageBooking.endDate);
+                const daysUntilExpiry = differenceInDays(endDate, startOfToday());
+                const isExpiringSoon = daysUntilExpiry <= 2 && daysUntilExpiry >= 0;
+                const isExpired = daysUntilExpiry < 0;
+                const isExpanded = expandedStorageBookings.has(storageBooking.id);
+
+                return (
+                  <div
+                    key={storageBooking.id}
+                    className={`border rounded-lg transition-all ${
+                      isExpiringSoon
+                        ? 'border-amber-300 bg-amber-50/50'
+                        : isExpired
+                        ? 'border-red-300 bg-red-50/50'
+                        : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div
+                      className="p-4 cursor-pointer"
+                      onClick={() => {
+                        setExpandedStorageBookings((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(storageBooking.id)) {
+                            next.delete(storageBooking.id);
+                          } else {
+                            next.add(storageBooking.id);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            {getStatusBadge(storageBooking.status)}
+                            {isExpiringSoon && (
+                              <span className="text-xs text-amber-700 font-medium bg-amber-100 px-2 py-0.5 rounded">
+                                Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {isExpired && (
+                              <span className="text-xs text-red-700 font-medium bg-red-100 px-2 py-0.5 rounded">
+                                Expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Package className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {storageBooking.storageName}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-4 text-xs text-gray-600">
+                            <div className="flex items-center gap-1">
+                              <Building className="h-3 w-3" />
+                              <span>{storageBooking.kitchenName}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              <span>
+                                {format(new Date(storageBooking.startDate), "MMM d")} - {format(endDate, "MMM d, yyyy")}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {!isExpired && storageBooking.status !== 'cancelled' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-purple-600 border-purple-300 hover:bg-purple-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExtendDialogOpen(storageBooking.id);
+                              }}
+                            >
+                              <CalendarPlus className="h-3 w-3 mr-1" />
+                              Extend
+                            </Button>
+                          )}
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-gray-400" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="px-4 pb-4 border-t border-gray-100 pt-4 space-y-3">
+                        <div className="grid grid-cols-1 gap-2 text-sm">
+                          <div className="flex items-start gap-2">
+                            <Package className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Storage Type</p>
+                              <p className="text-gray-900 capitalize">{storageBooking.storageType}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <Calendar className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Period</p>
+                              <p className="text-gray-900">
+                                {format(new Date(storageBooking.startDate), "PPP")} - {format(endDate, "PPP")}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <Building className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Kitchen</p>
+                              <p className="text-gray-900">{storageBooking.kitchenName}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-2">
+                            <CheckCircle className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">Total Cost</p>
+                              <p className="text-gray-900">
+                                ${storageBooking.totalPrice.toFixed(2)} CAD
+                                {storageBooking.serviceFee > 0 && (
+                                  <span className="text-xs text-gray-500 ml-1">
+                                    (includes ${storageBooking.serviceFee.toFixed(2)} service fee)
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {isExpiringSoon && (
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <p className="text-xs text-amber-800">
+                              <strong>⚠️ Expiring Soon:</strong> Your storage expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}. 
+                              Extend now to avoid interruption.
+                            </p>
+                          </div>
+                        )}
+
+                        {isExpired && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                            <p className="text-xs text-red-800">
+                              <strong>⚠️ Expired:</strong> Your storage expired {Math.abs(daysUntilExpiry)} day{Math.abs(daysUntilExpiry) !== 1 ? 's' : ''} ago. 
+                              Please extend immediately or contact support.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Extension Dialog */}
+      {extendDialogOpen && (
+        <StorageExtensionDialog
+          booking={storageBookings.find((sb: any) => sb.id === extendDialogOpen)}
+          open={extendDialogOpen !== null}
+          onOpenChange={(open) => !open && setExtendDialogOpen(null)}
+          onSuccess={() => {
+            setExtendDialogOpen(null);
+          }}
+        />
       )}
     </div>
   );
