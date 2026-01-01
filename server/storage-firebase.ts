@@ -1943,6 +1943,253 @@ export class FirebaseStorage {
     }
   }
 
+  /**
+   * Get storage booking by ID
+   * Returns price in dollars for API response
+   */
+  async getStorageBookingById(id: number): Promise<any | undefined> {
+    try {
+      if (pool && 'query' in pool) {
+        const result = await pool.query(
+          `SELECT 
+            sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
+            sb.start_date, sb.end_date, sb.status,
+            sb.total_price::text as total_price,
+            sb.pricing_model, sb.payment_status, sb.payment_intent_id,
+            sb.service_fee::text as service_fee,
+            sb.currency, sb.created_at, sb.updated_at,
+            sl.name as storage_name, sl.storage_type, sl.kitchen_id,
+            sl.base_price::text as base_price,
+            sl.minimum_booking_duration,
+            k.name as kitchen_name
+          FROM storage_bookings sb
+          JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+          JOIN kitchens k ON sl.kitchen_id = k.id
+          WHERE sb.id = $1`,
+          [id]
+        );
+        
+        if (result.rows.length === 0) {
+          return undefined;
+        }
+        
+        const row = result.rows[0];
+        return {
+          id: row.id,
+          storageListingId: row.storage_listing_id,
+          kitchenBookingId: row.kitchen_booking_id,
+          chefId: row.chef_id,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          status: row.status,
+          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0,
+          pricingModel: row.pricing_model,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
+          currency: row.currency,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          storageName: row.storage_name,
+          storageType: row.storage_type,
+          kitchenId: row.kitchen_id,
+          kitchenName: row.kitchen_name,
+          basePrice: row.base_price ? parseFloat(row.base_price) / 100 : 0,
+          minimumBookingDuration: row.minimum_booking_duration,
+        };
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.error('Error getting storage booking by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Extend storage booking to a new end date
+   * Calculates additional cost based on the extension period
+   * @param id - Storage booking ID
+   * @param newEndDate - New end date for the booking
+   * @returns Updated storage booking with new pricing
+   */
+  async extendStorageBooking(id: number, newEndDate: Date): Promise<any> {
+    try {
+      // Get current storage booking
+      const booking = await this.getStorageBookingById(id);
+      if (!booking) {
+        throw new Error(`Storage booking with id ${id} not found`);
+      }
+
+      // Validate new end date is after current end date
+      const currentEndDate = new Date(booking.endDate);
+      if (newEndDate <= currentEndDate) {
+        throw new Error('New end date must be after the current end date');
+      }
+
+      // Get storage listing to get pricing info
+      const storageListing = await this.getStorageListingById(booking.storageListingId);
+      if (!storageListing) {
+        throw new Error(`Storage listing ${booking.storageListingId} not found`);
+      }
+
+      // Calculate extension period in days
+      const extensionDays = Math.ceil((newEndDate.getTime() - currentEndDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Ensure minimum booking duration is met
+      const minDays = storageListing.minimumBookingDuration || 1;
+      if (extensionDays < minDays) {
+        throw new Error(`Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}`);
+      }
+
+      // Calculate additional cost (daily rate × extension days)
+      const basePricePerDay = storageListing.basePrice || 0; // in dollars
+      const extensionBasePrice = basePricePerDay * extensionDays;
+      const extensionServiceFee = extensionBasePrice * 0.05; // 5% service fee
+      const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
+
+      // Convert to cents for database
+      const extensionTotalPriceCents = Math.round(extensionTotalPrice * 100);
+      const extensionServiceFeeCents = Math.round(extensionServiceFee * 100);
+
+      // Calculate new total price (existing + extension)
+      const existingTotalPriceCents = Math.round(booking.totalPrice * 100);
+      const existingServiceFeeCents = Math.round(booking.serviceFee * 100);
+      const newTotalPriceCents = existingTotalPriceCents + extensionTotalPriceCents;
+      const newServiceFeeCents = existingServiceFeeCents + extensionServiceFeeCents;
+
+      // Update storage booking
+      const result = await db.update(storageBookings)
+        .set({
+          endDate: newEndDate,
+          totalPrice: newTotalPriceCents.toString(),
+          serviceFee: newServiceFeeCents.toString(),
+          updatedAt: new Date(),
+        })
+        .where(eq(storageBookings.id, id))
+        .returning();
+
+      if (result.length === 0) {
+        throw new Error(`Failed to update storage booking ${id}`);
+      }
+
+      console.log(`✅ Storage booking ${id} extended to ${newEndDate.toISOString()}`);
+      
+      // Return updated booking with extension details
+      const updatedBooking = await this.getStorageBookingById(id);
+      return {
+        ...updatedBooking,
+        extensionDetails: {
+          extensionDays,
+          extensionBasePrice,
+          extensionServiceFee,
+          extensionTotalPrice,
+          newEndDate: newEndDate.toISOString(),
+        },
+      };
+    } catch (error) {
+      console.error('Error extending storage booking:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process overstayer penalties for expired storage bookings
+   * Charges 2x daily rate for each day past expiry
+   * @param maxDaysToCharge - Maximum days to charge (default: 7 days)
+   * @returns Array of processed bookings with penalty charges
+   */
+  async processOverstayerPenalties(maxDaysToCharge: number = 7): Promise<any[]> {
+    try {
+      if (!pool || !('query' in pool)) {
+        console.warn('Database pool not available for overstayer penalty processing');
+        return [];
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Find expired storage bookings that haven't been cancelled
+      const result = await pool.query(
+        `SELECT 
+          sb.id, sb.storage_listing_id, sb.chef_id, sb.end_date, sb.total_price::text as total_price,
+          sb.service_fee::text as service_fee, sb.payment_status, sb.payment_intent_id,
+          sl.base_price::text as base_price, sl.minimum_booking_duration
+        FROM storage_bookings sb
+        JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+        WHERE sb.end_date < $1
+          AND sb.status != 'cancelled'
+          AND sb.payment_status != 'failed'
+        ORDER BY sb.end_date ASC`,
+        [today]
+      );
+
+      const processedBookings: any[] = [];
+
+      for (const row of result.rows) {
+        try {
+          const bookingId = row.id;
+          const endDate = new Date(row.end_date);
+          const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Only charge up to maxDaysToCharge
+          const daysToCharge = Math.min(daysOverdue, maxDaysToCharge);
+          
+          if (daysToCharge <= 0) continue;
+
+          // Calculate penalty (2x daily rate)
+          const basePricePerDay = parseFloat(row.base_price) / 100; // Convert from cents to dollars
+          const penaltyRatePerDay = basePricePerDay * 2; // 2x penalty rate
+          const penaltyBasePrice = penaltyRatePerDay * daysToCharge;
+          const penaltyServiceFee = penaltyBasePrice * 0.05; // 5% service fee
+          const penaltyTotalPrice = penaltyBasePrice + penaltyServiceFee;
+
+          // Convert to cents
+          const penaltyTotalPriceCents = Math.round(penaltyTotalPrice * 100);
+          const penaltyServiceFeeCents = Math.round(penaltyServiceFee * 100);
+
+          // Get current totals
+          const currentTotalPriceCents = Math.round(parseFloat(row.total_price));
+          const currentServiceFeeCents = Math.round(parseFloat(row.service_fee) || 0);
+
+          // Calculate new totals
+          const newTotalPriceCents = currentTotalPriceCents + penaltyTotalPriceCents;
+          const newServiceFeeCents = currentServiceFeeCents + penaltyServiceFeeCents;
+          const newEndDate = new Date(endDate);
+          newEndDate.setDate(newEndDate.getDate() + daysToCharge);
+
+          // Update storage booking
+          await db.update(storageBookings)
+            .set({
+              endDate: newEndDate,
+              totalPrice: newTotalPriceCents.toString(),
+              serviceFee: newServiceFeeCents.toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(storageBookings.id, bookingId));
+
+          processedBookings.push({
+            bookingId,
+            chefId: row.chef_id,
+            daysOverdue,
+            daysCharged: daysToCharge,
+            penaltyAmount: penaltyTotalPrice,
+            newEndDate: newEndDate.toISOString(),
+          });
+
+          console.log(`✅ Overstayer penalty applied to storage booking ${bookingId}: ${daysToCharge} days @ 2x rate = $${penaltyTotalPrice.toFixed(2)}`);
+        } catch (error) {
+          console.error(`Error processing overstayer penalty for booking ${row.id}:`, error);
+        }
+      }
+
+      return processedBookings;
+    } catch (error) {
+      console.error('Error processing overstayer penalties:', error);
+      throw error;
+    }
+  }
+
   // ==================== EQUIPMENT BOOKING METHODS ====================
   
   /**

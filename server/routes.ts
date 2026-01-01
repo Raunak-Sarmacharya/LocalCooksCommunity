@@ -6480,6 +6480,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get chef's storage bookings
+  app.get("/api/chef/storage-bookings", requireChef, async (req: Request, res: Response) => {
+    try {
+      const storageBookings = await firebaseStorage.getStorageBookingsByChef(req.user!.id);
+      res.json(storageBookings);
+    } catch (error) {
+      console.error("Error fetching storage bookings:", error);
+      res.status(500).json({ error: "Failed to fetch storage bookings" });
+    }
+  });
+
+  // Get a single storage booking
+  app.get("/api/chef/storage-bookings/:id", requireChef, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id) || id <= 0) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+      
+      const booking = await firebaseStorage.getStorageBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Storage booking not found" });
+      }
+      
+      // Verify the booking belongs to this chef
+      if (booking.chefId !== req.user!.id) {
+        return res.status(403).json({ error: "You don't have permission to view this booking" });
+      }
+      
+      res.json(booking);
+    } catch (error: any) {
+      console.error("Error fetching storage booking:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
+    }
+  });
+
+  // Process overstayer penalties (can be called by scheduled task)
+  app.post("/api/admin/storage-bookings/process-overstayer-penalties", async (req: Request, res: Response) => {
+    try {
+      // TODO: Add admin authentication here
+      // For now, this endpoint is open - secure it in production!
+      
+      const { maxDaysToCharge } = req.body;
+      const processed = await firebaseStorage.processOverstayerPenalties(maxDaysToCharge || 7);
+      
+      res.json({
+        success: true,
+        processed: processed.length,
+        bookings: processed,
+        message: `Processed ${processed.length} overstayer penalty charges`,
+      });
+    } catch (error: any) {
+      console.error("Error processing overstayer penalties:", error);
+      res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
+    }
+  });
+
+  // Extend storage booking
+  app.put("/api/chef/storage-bookings/:id/extend", requireChef, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id) || id <= 0) {
+        return res.status(400).json({ error: "Invalid storage booking ID" });
+      }
+
+      const { newEndDate } = req.body;
+      if (!newEndDate) {
+        return res.status(400).json({ error: "newEndDate is required" });
+      }
+
+      // Verify the booking belongs to this chef
+      const booking = await firebaseStorage.getStorageBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Storage booking not found" });
+      }
+      
+      if (booking.chefId !== req.user!.id) {
+        return res.status(403).json({ error: "You don't have permission to extend this booking" });
+      }
+
+      // Validate booking is not cancelled
+      if (booking.status === 'cancelled') {
+        return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+      }
+
+      // Parse and validate new end date
+      const newEndDateObj = new Date(newEndDate);
+      if (isNaN(newEndDateObj.getTime())) {
+        return res.status(400).json({ error: "Invalid date format for newEndDate" });
+      }
+
+      // Extend the booking
+      const extendedBooking = await firebaseStorage.extendStorageBooking(id, newEndDateObj);
+
+      // TODO: Process payment for the extension
+      // For now, we'll just update the booking and return it
+      // Payment processing should be integrated with Stripe here
+
+      res.json({
+        success: true,
+        booking: extendedBooking,
+        message: `Storage booking extended successfully. Additional cost: $${extendedBooking.extensionDetails.extensionTotalPrice.toFixed(2)} CAD`,
+      });
+    } catch (error: any) {
+      console.error("Error extending storage booking:", error);
+      res.status(500).json({ error: error.message || "Failed to extend storage booking" });
+    }
+  });
+
   // Get a single booking with add-on details
   app.get("/api/chef/bookings/:id", requireChef, async (req: Request, res: Response) => {
     try {
