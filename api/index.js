@@ -12690,15 +12690,19 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
     }
 
     // Get equipment listings with proper numeric conversion
+    // Match localhost implementation - must include session_rate (primary pricing field)
     const result = await pool.query(`
       SELECT 
         id, kitchen_id, category, equipment_type, brand, model, description,
         condition, availability_type, pricing_model,
+        session_rate::text as session_rate,
         hourly_rate::text as hourly_rate,
         daily_rate::text as daily_rate,
         weekly_rate::text as weekly_rate,
         monthly_rate::text as monthly_rate,
-        minimum_rental_hours, currency,
+        damage_deposit::text as damage_deposit,
+        minimum_rental_hours, minimum_rental_days, currency,
+        training_required, cleaning_responsibility,
         status, is_active, created_at, updated_at
       FROM equipment_listings 
       WHERE kitchen_id = $1
@@ -12716,11 +12720,18 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
       condition: row.condition,
       availabilityType: row.availability_type || 'rental',
       pricingModel: row.pricing_model,
+      // PRIMARY: Flat session rate (convert cents to dollars)
+      sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : 0,
+      // Legacy rates (kept for backwards compatibility)
       hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
       dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
       weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
       monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
+      damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : 0,
       minimumRentalHours: row.minimum_rental_hours ?? 4,
+      minimumRentalDays: row.minimum_rental_days,
+      trainingRequired: row.training_required ?? false,
+      cleaningResponsibility: row.cleaning_responsibility,
       currency: row.currency || 'CAD',
       status: row.status,
       isActive: row.is_active,
@@ -13323,6 +13334,7 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
     }
 
     // Get equipment listing with proper numeric conversion
+    // Note: Must include availability_type and session_rate to match localhost implementation
     const result = await pool.query(`
       SELECT 
         id, kitchen_id, category, equipment_type, brand, model, description,
@@ -13332,6 +13344,8 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
         specifications::text as specifications,
         certifications, safety_features,
         pricing_model,
+        availability_type,
+        session_rate::text as session_rate,
         hourly_rate::text as hourly_rate,
         daily_rate::text as daily_rate,
         weekly_rate::text as weekly_rate,
@@ -13374,6 +13388,7 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
     }
 
     // Convert numeric fields from cents to dollars
+    // Match localhost implementation exactly
     const listing = {
       id: row.id,
       kitchenId: row.kitchen_id,
@@ -13391,6 +13406,10 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
       certifications: row.certifications || [],
       safetyFeatures: row.safety_features || [],
       pricingModel: row.pricing_model,
+      availabilityType: row.availability_type || 'rental',
+      // Convert session_rate from cents to dollars (primary pricing field for rental equipment)
+      sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : null,
+      // Legacy rate fields (for backwards compatibility)
       hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
       dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
       weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
