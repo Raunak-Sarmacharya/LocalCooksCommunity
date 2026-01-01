@@ -12909,6 +12909,7 @@ app.post("/api/manager/storage-listings", async (req, res) => {
     const bookingDurationUnit = listingData.bookingDurationUnit || 'monthly';
 
     // Build insert query
+    // Note: created_at and updated_at have DEFAULT now() in the schema, so we omit them
     const insertQuery = `
       INSERT INTO storage_listings (
         kitchen_id, storage_type, name, description,
@@ -12920,9 +12921,9 @@ app.post("/api/manager/storage-listings", async (req, res) => {
         features, security_features, certifications, photos, documents,
         house_rules, prohibited_items, insurance_required,
         availability_calendar,
-        status, is_active, created_at, updated_at
+        status, is_active
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW(), NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
       ) RETURNING id
     `;
 
@@ -13492,6 +13493,7 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
     }
 
     // Insert equipment listing with simplified session_rate pricing
+    // Note: created_at and updated_at have DEFAULT now() in the schema, so we omit them
     const insertResult = await pool.query(`
       INSERT INTO equipment_listings (
         kitchen_id, category, equipment_type, brand, model, description,
@@ -13506,7 +13508,7 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29
+        $27, $28, $29, $30
       ) RETURNING id
     `, [
       parseInt(kitchenId),
