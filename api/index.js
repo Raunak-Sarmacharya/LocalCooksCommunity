@@ -12734,11 +12734,6 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
       trainingRequired: row.training_required ?? false,
       cleaningResponsibility: row.cleaning_responsibility,
       currency: row.currency || 'CAD',
-      // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
-      deliveryAvailable: false,
-      deliveryFee: null,
-      setupFee: null,
-      pickupRequired: false,
       status: row.status,
       isActive: row.is_active,
       createdAt: row.created_at,
@@ -13460,12 +13455,6 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
       minimumRentalHours: row.minimum_rental_hours || 4,
       minimumRentalDays: row.minimum_rental_days,
       currency: row.currency || 'CAD',
-      // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
-      // Set to null/defaults for backwards compatibility with frontend
-      deliveryAvailable: false,
-      deliveryFee: null,
-      setupFee: null,
-      pickupRequired: false,
       usageRestrictions: row.usage_restrictions || [],
       trainingRequired: row.training_required,
       cleaningResponsibility: row.cleaning_responsibility,
@@ -13615,6 +13604,7 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
     const createdId = insertResult.rows[0].id;
 
     // Fetch the created listing
+    // Only select columns that actually exist in the database schema
     const getResult = await pool.query(`
       SELECT 
         id, kitchen_id, category, equipment_type, brand, model, description,
@@ -13624,13 +13614,13 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
         specifications::text as specifications,
         certifications, safety_features,
         pricing_model,
+        availability_type,
+        session_rate::text as session_rate,
         hourly_rate::text as hourly_rate,
         daily_rate::text as daily_rate,
         weekly_rate::text as weekly_rate,
         monthly_rate::text as monthly_rate,
         minimum_rental_hours, minimum_rental_days, currency,
-        delivery_available, delivery_fee::text as delivery_fee,
-        setup_fee::text as setup_fee, pickup_required,
         usage_restrictions, training_required, cleaning_responsibility,
         status, is_active, availability_calendar, prep_time_hours,
         photos, manuals, maintenance_log,
@@ -13642,6 +13632,39 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
     `, [createdId]);
 
     const row = getResult.rows[0];
+    
+    // Safe JSON parsing
+    let dimensions = {};
+    let specifications = {};
+    
+    try {
+      if (row.dimensions && typeof row.dimensions === 'string') {
+        const trimmed = row.dimensions.trim();
+        if (trimmed && trimmed !== 'null' && trimmed !== '') {
+          dimensions = JSON.parse(trimmed);
+        }
+      } else if (row.dimensions && typeof row.dimensions === 'object' && row.dimensions !== null) {
+        dimensions = row.dimensions;
+      }
+    } catch (e) {
+      console.warn('Error parsing dimensions in create response:', createdId, e);
+      dimensions = {};
+    }
+    
+    try {
+      if (row.specifications && typeof row.specifications === 'string') {
+        const trimmed = row.specifications.trim();
+        if (trimmed && trimmed !== 'null' && trimmed !== '') {
+          specifications = JSON.parse(trimmed);
+        }
+      } else if (row.specifications && typeof row.specifications === 'object' && row.specifications !== null) {
+        specifications = row.specifications;
+      }
+    } catch (e) {
+      console.warn('Error parsing specifications in create response:', createdId, e);
+      specifications = {};
+    }
+    
     const created = {
       id: row.id,
       kitchenId: row.kitchen_id,
@@ -13653,12 +13676,14 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       condition: row.condition,
       age: row.age,
       serviceHistory: row.service_history,
-      dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
+      dimensions: dimensions,
       powerRequirements: row.power_requirements,
-      specifications: row.specifications ? JSON.parse(row.specifications) : {},
+      specifications: specifications,
       certifications: row.certifications || [],
       safetyFeatures: row.safety_features || [],
       pricingModel: row.pricing_model,
+      availabilityType: row.availability_type || 'rental',
+      sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : null,
       hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
       dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
       weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
@@ -13666,10 +13691,6 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
       minimumRentalHours: row.minimum_rental_hours || 4,
       minimumRentalDays: row.minimum_rental_days,
       currency: row.currency || 'CAD',
-      deliveryAvailable: row.delivery_available,
-      deliveryFee: row.delivery_fee ? parseFloat(String(row.delivery_fee)) / 100 : null,
-      setupFee: row.setup_fee ? parseFloat(String(row.setup_fee)) / 100 : null,
-      pickupRequired: row.pickup_required,
       usageRestrictions: row.usage_restrictions || [],
       trainingRequired: row.training_required,
       cleaningResponsibility: row.cleaning_responsibility,
@@ -13970,11 +13991,6 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
       minimumRentalHours: row.minimum_rental_hours || 4,
       minimumRentalDays: row.minimum_rental_days,
       currency: row.currency || 'CAD',
-      // Note: delivery_available, delivery_fee, setup_fee, pickup_required columns don't exist in DB
-      deliveryAvailable: false,
-      deliveryFee: null,
-      setupFee: null,
-      pickupRequired: false,
       usageRestrictions: row.usage_restrictions || [],
       trainingRequired: row.training_required,
       cleaningResponsibility: row.cleaning_responsibility,
