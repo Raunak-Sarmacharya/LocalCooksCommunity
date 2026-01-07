@@ -375,9 +375,9 @@ export default function BookingConfirmationPage() {
               <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                 <p className="text-xs text-gray-600 mb-1">Kitchen</p>
                 <p className="font-semibold text-gray-900 text-lg">{selectedKitchen.name}</p>
-                {(selectedKitchen.location?.name || (selectedKitchen as any).locationName) && (
+                {((selectedKitchen as any).locationName) && (
                   <p className="text-xs text-gray-600 mt-1">
-                    📍 {(selectedKitchen.location?.name || (selectedKitchen as any).locationName)}
+                    📍 {(selectedKitchen as any).locationName}
                   </p>
                 )}
               </div>

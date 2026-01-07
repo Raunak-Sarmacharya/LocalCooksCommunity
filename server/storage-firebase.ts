@@ -2255,7 +2255,7 @@ export class FirebaseStorage {
         currency: data.currency || 'CAD',
         createdAt: new Date(),
         updatedAt: new Date(),
-      }).returning();
+      } as any).returning();
       
       console.log(`✅ Equipment booking created successfully with ID ${result[0].id}`);
       return result[0];
@@ -2646,7 +2646,7 @@ export class FirebaseStorage {
     }
   }
 
-  async getKitchenDateOverrideForDate(kitchenId: number, date: Date): Promise<any | undefined> {
+  async getKitchenDateOverrideForDate(kitchenId: number, date: Date | string): Promise<any | undefined> {
     try {
       // Extract date string in YYYY-MM-DD format for timezone-safe comparison
       // Handle both Date objects and ISO strings
@@ -2654,9 +2654,11 @@ export class FirebaseStorage {
       if (typeof date === 'string') {
         // If it's a string like "2025-12-23" or "2025-12-23T00:00:00.000Z"
         targetDateStr = date.split('T')[0];
-      } else {
+      } else if (date instanceof Date) {
         // If it's a Date object, extract the UTC date
         targetDateStr = date.toISOString().split('T')[0];
+      } else {
+        throw new Error('Invalid date type');
       }
       
       console.log(`🔍 Looking for date override - kitchen: ${kitchenId}, target date: ${targetDateStr}`);

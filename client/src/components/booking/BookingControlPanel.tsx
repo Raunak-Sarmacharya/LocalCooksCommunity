@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
@@ -722,7 +723,7 @@ export default function BookingControlPanel({
                               size="sm"
                               variant="outline"
                               className="text-purple-600 border-purple-300 hover:bg-purple-50"
-                              onClick={(e) => {
+                              onClick={(e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 setExtendDialogOpen(storageBooking.id);
                               }}

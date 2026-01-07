@@ -1555,7 +1555,8 @@ function AdminDashboard() {
                   <ChangePassword role="admin" />
                 </div>
               </TabsContent>
-            </Tabs>
+              </Tabs>
+            </div>
           </motion.div>
 
           <div className="text-center">
