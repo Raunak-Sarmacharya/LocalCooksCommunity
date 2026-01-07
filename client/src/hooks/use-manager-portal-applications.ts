@@ -27,7 +27,7 @@ interface PortalApplicationForManager {
 export function useManagerPortalApplications() {
   const queryClient = useQueryClient();
 
-  const applicationsQuery = useQuery<PortalApplicationForManager[], Error>({
+  const applicationsQuery = useQuery<{ applications: PortalApplicationForManager[]; accessCount: number }, Error>({
     queryKey: ["/api/manager/portal-applications"],
     queryFn: async () => {
       const response = await fetch("/api/manager/portal-applications", {
@@ -39,7 +39,12 @@ export function useManagerPortalApplications() {
         throw new Error(errorData.error || "Failed to fetch portal applications");
       }
       
-      return await response.json();
+      const data = await response.json();
+      // Handle both old format (array) and new format (object with applications and accessCount)
+      if (Array.isArray(data)) {
+        return { applications: data, accessCount: data.filter((app: PortalApplicationForManager) => app.status === 'approved').length };
+      }
+      return data;
     },
     refetchInterval: 10000, // Poll every 10 seconds for new applications
   });
@@ -76,7 +81,8 @@ export function useManagerPortalApplications() {
   });
 
   return {
-    applications: applicationsQuery.data ?? [],
+    applications: applicationsQuery.data?.applications ?? [],
+    accessCount: applicationsQuery.data?.accessCount ?? 0,
     isLoading: applicationsQuery.isLoading,
     updateApplicationStatus,
     refetch: applicationsQuery.refetch,

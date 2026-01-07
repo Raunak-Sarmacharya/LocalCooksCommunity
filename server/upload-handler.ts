@@ -8,6 +8,7 @@
 import { Request, Response } from 'express';
 import { uploadToBlob, getFileUrl } from './fileUpload';
 import { isR2Configured } from './r2-storage';
+import fs from 'fs';
 
 /**
  * Unified file upload handler
@@ -22,7 +23,6 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
       // Clean up uploaded file (development only)
       if (req.file && (req.file as any).path) {
         try {
-          const fs = await import('fs');
           fs.unlinkSync((req.file as any).path);
         } catch (e) {
           console.error('Error cleaning up file:', e);
@@ -57,7 +57,6 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
         // Clean up uploaded file on error
         if ((req.file as any).path) {
           try {
-            const fs = await import('fs');
             fs.unlinkSync((req.file as any).path);
           } catch (e) {
             console.error('Error cleaning up file:', e);
@@ -89,7 +88,6 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
     // Clean up uploaded file on error (development only)
     if (req.file && (req.file as any).path) {
       try {
-        const fs = await import('fs');
         fs.unlinkSync((req.file as any).path);
       } catch (e) {
         console.error('Error cleaning up file:', e);
@@ -117,7 +115,6 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
         Object.values(files).flat().forEach(file => {
           if ((file as any).path) {
             try {
-              const fs = await import('fs');
               fs.unlinkSync((file as any).path);
             } catch (e) {
               console.error('Error cleaning up file:', e);
@@ -158,7 +155,6 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
           Object.values(files).flat().forEach(f => {
             if ((f as any).path) {
               try {
-                const fs = await import('fs');
                 fs.unlinkSync((f as any).path);
               } catch (e) {
                 console.error('Error cleaning up file:', e);
@@ -187,7 +183,6 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
       Object.values(files).flat().forEach(file => {
         if ((file as any).path) {
           try {
-            const fs = await import('fs');
             fs.unlinkSync((file as any).path);
           } catch (e) {
             console.error('Error cleaning up file:', e);

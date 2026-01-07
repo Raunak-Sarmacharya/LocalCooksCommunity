@@ -17,7 +17,7 @@ import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { pool, db } from "./db";
-import { chefKitchenAccess, chefLocationAccess, users, locations, applications, kitchens } from "@shared/schema";
+import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
 
@@ -4588,7 +4588,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
       
-      res.json(formatted);
+      // Get count of actual access records (users who have access)
+      const accessRecords = await db.select()
+        .from(portalUserLocationAccess)
+        .where(inArray(portalUserLocationAccess.locationId, locationIds));
+      
+      console.log(`[Manager Portal Applications] Found ${accessRecords.length} access records`);
+      
+      // Return applications with access count
+      res.json({
+        applications: formatted,
+        accessCount: accessRecords.length, // Actual number of users with access
+      });
     } catch (error: any) {
       console.error("Error getting portal applications for manager:", error);
       res.status(500).json({ error: error.message || "Failed to get applications" });
@@ -4807,6 +4818,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error updating chef profile status:", error);
       res.status(500).json({ error: error.message || "Failed to update profile status" });
+    }
+  });
+
+  // Manager: Revoke chef location access
+  app.delete("/api/manager/chef-location-access", async (req: Request, res: Response) => {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "manager") {
+        return res.status(403).json({ error: "Manager access required" });
+      }
+
+      const { chefId, locationId } = req.body;
+      
+      if (!chefId || !locationId) {
+        return res.status(400).json({ error: "chefId and locationId are required" });
+      }
+
+      // Verify this location is managed by this manager
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      if (location.managerId !== user.id) {
+        return res.status(403).json({ error: "You don't have permission to manage this location" });
+      }
+
+      // Revoke access
+      await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
+
+      // Also update the chef profile status to rejected if it exists
+      try {
+        const profiles = await db
+          .select()
+          .from(chefLocationProfiles)
+          .where(
+            and(
+              eq(chefLocationProfiles.chefId, chefId),
+              eq(chefLocationProfiles.locationId, locationId)
+            )
+          );
+        
+        if (profiles.length > 0) {
+          await db
+            .update(chefLocationProfiles)
+            .set({
+              status: 'rejected',
+              reviewedBy: user.id,
+              reviewedAt: new Date(),
+              reviewFeedback: 'Access revoked by manager',
+            })
+            .where(
+              and(
+                eq(chefLocationProfiles.chefId, chefId),
+                eq(chefLocationProfiles.locationId, locationId)
+              )
+            );
+        }
+      } catch (error) {
+        // Ignore if update fails - access revocation is the main goal
+        console.log('Note: Could not update chef profile status:', error instanceof Error ? error.message : error);
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error revoking chef location access:", error);
+      res.status(500).json({ error: error.message || "Failed to revoke access" });
     }
   });
 

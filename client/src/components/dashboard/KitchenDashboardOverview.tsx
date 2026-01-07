@@ -112,21 +112,36 @@ export default function KitchenDashboardOverview({
 
   // Calculate dashboard metrics
   const dashboardMetrics = useMemo(() => {
+    // Helper function to normalize date to YYYY-MM-DD in local timezone
+    const normalizeDate = (date: Date | string): string => {
+      const d = typeof date === 'string' ? new Date(date) : date;
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    today.setHours(0, 0, 0, 0);
+    const todayStr = normalizeDate(today);
+    const weekFromNow = new Date(today);
+    weekFromNow.setDate(weekFromNow.getDate() + 7);
+    weekFromNow.setHours(23, 59, 59, 999);
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
 
     // Filter bookings by date
     const todayBookings = bookings.filter((b: any) => {
-      const bookingDate = b.bookingDate?.split('T')[0];
-      return bookingDate === todayStr && b.status !== 'cancelled';
+      if (!b.bookingDate) return false;
+      const bookingDateStr = normalizeDate(b.bookingDate);
+      return bookingDateStr === todayStr && b.status !== 'cancelled';
     });
 
     const weekBookings = bookings.filter((b: any) => {
+      if (!b.bookingDate) return false;
       const bookingDate = new Date(b.bookingDate);
+      bookingDate.setHours(0, 0, 0, 0);
       return bookingDate >= today && bookingDate <= weekFromNow && b.status !== 'cancelled';
     });
 
@@ -136,13 +151,17 @@ export default function KitchenDashboardOverview({
 
     // This month's bookings
     const thisMonthBookings = bookings.filter((b: any) => {
+      if (!b.bookingDate) return false;
       const bookingDate = new Date(b.bookingDate);
+      bookingDate.setHours(0, 0, 0, 0);
       return bookingDate >= startOfMonth && b.status === 'confirmed';
     });
 
     // Last month's bookings (for comparison)
     const lastMonthBookings = bookings.filter((b: any) => {
+      if (!b.bookingDate) return false;
       const bookingDate = new Date(b.bookingDate);
+      bookingDate.setHours(0, 0, 0, 0);
       return bookingDate >= lastMonthStart && bookingDate <= lastMonthEnd && b.status === 'confirmed';
     });
 
@@ -180,18 +199,33 @@ export default function KitchenDashboardOverview({
     };
   }, [bookings]);
 
-  // Generate chart data for weekly bookings
+  // Generate chart data for weekly bookings (next 7 days including today)
   const weeklyChartData = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const today = new Date();
+    // Set to start of day in local timezone to avoid timezone issues
+    today.setHours(0, 0, 0, 0);
     const data = [];
 
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-      const dateStr = date.toISOString().split('T')[0];
+    // Helper function to normalize date to YYYY-MM-DD in local timezone
+    const normalizeDate = (date: Date | string): string => {
+      const d = typeof date === 'string' ? new Date(date) : date;
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    // Get next 7 days (including today) to match "This Week" metric
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() + i);
+      const dateStr = normalizeDate(date);
+      
       const dayBookings = bookings.filter((b: any) => {
-        const bookingDate = b.bookingDate?.split('T')[0];
-        return bookingDate === dateStr;
+        if (!b.bookingDate) return false;
+        const bookingDateStr = normalizeDate(b.bookingDate);
+        return bookingDateStr === dateStr;
       });
 
       data.push({
@@ -361,7 +395,7 @@ export default function KitchenDashboardOverview({
                   </div>
                   <div>
                     <p className="text-gray-700 text-sm font-semibold">Weekly Activity</p>
-                    <p className="text-xs text-gray-500">Last 7 days</p>
+                    <p className="text-xs text-gray-500">Next 7 days</p>
                   </div>
                 </div>
                 <div className="text-right">

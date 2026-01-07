@@ -31,7 +31,7 @@ interface ManagerPortalApplicationsProps {
 }
 
 export default function ManagerPortalApplications({ embedded = false }: ManagerPortalApplicationsProps) {
-  const { applications, isLoading, updateApplicationStatus } = useManagerPortalApplications();
+  const { applications, accessCount, isLoading, updateApplicationStatus } = useManagerPortalApplications();
   const { toast } = useToast();
   const [selectedApplication, setSelectedApplication] = useState<any | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
@@ -138,7 +138,8 @@ export default function ManagerPortalApplications({ embedded = false }: ManagerP
             <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600">{approvedApplications.length}</div>
+            <div className="text-3xl font-bold text-green-600">{accessCount}</div>
+            <p className="text-xs text-gray-500 mt-1">Users with access</p>
           </CardContent>
         </Card>
         <Card>
