@@ -882,6 +882,7 @@ export default function ManagerOnboardingWizard() {
                                 currency: "CAD",
                                 isActive: true,
                               }),
+                            });
                             if (!response.ok) {
                               const error = await response.json();
                               throw new Error(error.error || "Failed to create storage listing");
@@ -1166,6 +1167,7 @@ export default function ManagerOnboardingWizard() {
                                 isActive: true,
                                 status: 'draft',
                               }),
+                            });
                             if (!response.ok) {
                               const error = await response.json();
                               throw new Error(error.error || "Failed to create equipment listing");
