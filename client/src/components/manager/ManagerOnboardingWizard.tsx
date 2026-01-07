@@ -137,7 +137,7 @@ export default function ManagerOnboardingWizard() {
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await fetch("/api/upload", {
+        const response = await fetch("/api/upload-file", {
           method: "POST",
           credentials: "include",
           body: formData,
