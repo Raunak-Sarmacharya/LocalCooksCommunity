@@ -359,7 +359,16 @@ export default function KitchenDashboardOverview({
                   <div className="p-1.5 bg-blue-100 rounded-lg">
                     <BarChart3 className="h-4 w-4 text-blue-600" />
                   </div>
-                  <p className="text-gray-700 text-sm font-semibold">Weekly Activity</p>
+                  <div>
+                    <p className="text-gray-700 text-sm font-semibold">Weekly Activity</p>
+                    <p className="text-xs text-gray-500">Last 7 days</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-gray-900">
+                    {weeklyChartData.reduce((sum, day) => sum + day.total, 0)}
+                  </p>
+                  <p className="text-[10px] text-gray-500">Total bookings</p>
                 </div>
               </div>
               <div className="h-[120px]">
@@ -367,14 +376,27 @@ export default function KitchenDashboardOverview({
                   <div className="flex items-center justify-center h-full">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
                   </div>
+                ) : weeklyChartData.every(day => day.total === 0) ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <BarChart3 className="h-8 w-8 text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-500">No bookings this week</p>
+                    <p className="text-xs text-gray-400 mt-1">Bookings will appear here</p>
+                  </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={weeklyChartData} barCategoryGap="15%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                       <XAxis 
                         dataKey="day" 
                         axisLine={false} 
                         tickLine={false} 
                         tick={{ fill: '#9ca3af', fontSize: 10 }}
+                      />
+                      <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        width={30}
                       />
                       <Tooltip 
                         contentStyle={{ 
@@ -382,9 +404,12 @@ export default function KitchenDashboardOverview({
                           border: 'none', 
                           boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                           padding: '8px 12px',
-                          fontSize: '12px'
+                          fontSize: '12px',
+                          backgroundColor: 'white'
                         }}
                         cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                        formatter={(value: any, name: string) => [value, name]}
+                        labelFormatter={(label) => `Day: ${label}`}
                       />
                       <Bar dataKey="confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} name="Confirmed" />
                       <Bar dataKey="pending" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Pending" />
