@@ -522,6 +522,7 @@ function getR2Client() {
         accessKeyId: R2_ACCESS_KEY_ID,
         secretAccessKey: R2_SECRET_ACCESS_KEY,
       },
+      forcePathStyle: false, // Use virtual-hosted style for R2
     });
   }
   return r2Client;
@@ -3700,6 +3701,179 @@ app.get("/api/files/documents/:filename", async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// Proxy endpoint for admins to access kitchen license files from R2
+app.get("/api/files/kitchen-license/:locationId", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    // Convert Firebase UID to integer user ID
+    const user = await getUser(rawUserId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // Only admins can access kitchen licenses
+    if (user.role !== 'admin') {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const locationId = parseInt(req.params.locationId);
+    if (isNaN(locationId)) {
+      return res.status(400).json({ message: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    // Get kitchen license URL from locations table
+    const result = await pool.query(
+      'SELECT kitchen_license_url FROM locations WHERE id = $1',
+      [locationId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Location not found" });
+    }
+
+    const location = result.rows[0];
+    if (!location.kitchen_license_url) {
+      return res.status(404).json({ message: "Kitchen license not found for this location" });
+    }
+
+    const licenseUrl = location.kitchen_license_url;
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    // Check if this is an R2 URL
+    const isR2Url = licenseUrl.includes('r2.cloudflarestorage.com') || 
+                   (process.env.CLOUDFLARE_R2_PUBLIC_URL && licenseUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
+                   (process.env.CLOUDFLARE_R2_BUCKET_NAME && licenseUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
+
+    // If it's an R2 URL in production, fetch and proxy it
+    if (isProduction && isR2Configured() && isR2Url) {
+      try {
+        // Extract key from R2 URL
+        // URL format can be:
+        // 1. https://account.r2.cloudflarestorage.com/bucket_name/documents/filename
+        // 2. https://custom-domain.com/bucket_name/documents/filename
+        // 3. https://custom-domain.com/documents/filename (if bucket is in domain)
+        const urlObj = new URL(licenseUrl);
+        let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+        const pathParts = pathname.split('/').filter(p => p);
+        
+        // Find the bucket name index
+        const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+        const bucketIndex = pathParts.indexOf(bucketName);
+        
+        let key;
+        if (bucketIndex >= 0) {
+          // Bucket name is in the path, key is everything after it
+          // e.g., [bucket_name, documents, filename] -> documents/filename
+          key = pathParts.slice(bucketIndex + 1).join('/');
+        } else {
+          // Bucket name not in path (custom domain), use entire pathname
+          // e.g., documents/filename
+          key = pathname;
+        }
+        
+        // Remove leading/trailing slashes
+        key = key.replace(/^\/+|\/+$/g, '');
+        
+        // Ensure key starts with documents/ if it's a document file
+        // (files are stored as documents/filename in R2)
+        if (!key.startsWith('documents/') && !key.includes('/')) {
+          // If key is just a filename, prepend documents/
+          key = `documents/${key}`;
+        }
+        
+        // Final validation: key should not be empty
+        if (!key || key.length === 0) {
+          throw new Error(`Invalid key extracted from URL: ${licenseUrl}`);
+        }
+
+        console.log('🔍 R2 File Access Debug:', {
+          licenseUrl,
+          extractedKey: key,
+          bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+          pathname: urlObj.pathname,
+          pathParts
+        });
+
+        // Use presigned URL for R2 access (more reliable for private files)
+        const client = getR2Client();
+        const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+        const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+        
+        const command = new GetObjectCommand({
+          Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+          Key: key,
+        });
+
+        try {
+          // Generate presigned URL (valid for 1 hour)
+          const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+          console.log('✅ Generated presigned URL for R2 file');
+          
+          // Redirect to presigned URL
+          return res.redirect(presignedUrl);
+        } catch (presignError) {
+          console.error('❌ Presigned URL generation failed:', {
+            error: presignError.message,
+            key,
+            bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME
+          });
+          
+          // Fallback: try direct access
+          try {
+            const response = await client.send(command);
+            
+            // Determine content type from file extension or response
+            let contentType = response.ContentType || 'application/pdf';
+            if (licenseUrl.match(/\.(jpg|jpeg)$/i)) contentType = 'image/jpeg';
+            else if (licenseUrl.match(/\.png$/i)) contentType = 'image/png';
+            else if (licenseUrl.match(/\.webp$/i)) contentType = 'image/webp';
+            
+            // Set appropriate headers
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `inline; filename="kitchen-license-${locationId}${path.extname(licenseUrl) || '.pdf'}"`);
+            
+            if (response.ContentLength) {
+              res.setHeader('Content-Length', response.ContentLength);
+            }
+
+            // Stream the file to the response
+            if (response.Body) {
+              // @ts-ignore - Body is a stream
+              response.Body.pipe(res);
+            } else {
+              return res.status(500).json({ message: "Failed to retrieve file from storage" });
+            }
+          } catch (directError) {
+            console.error('❌ Direct R2 access also failed:', directError);
+            // Final fallback: redirect to original URL
+            return res.redirect(licenseUrl);
+          }
+        }
+      } catch (r2Error) {
+        console.error('Error fetching file from R2:', r2Error);
+        // Fallback: redirect to the URL (in case it's publicly accessible)
+        return res.redirect(licenseUrl);
+      }
+    } else {
+      // For local files or if R2 is not configured, redirect to the URL
+      return res.redirect(licenseUrl);
+    }
+  } catch (error) {
+    console.error("Error serving kitchen license file:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // ===============================
 // APPLICATION DOCUMENT ROUTES
 // ===============================
