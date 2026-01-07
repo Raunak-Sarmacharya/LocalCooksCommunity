@@ -86,7 +86,10 @@ import {
     User as UserIcon,
     XCircle,
     Save,
-    DollarSign
+    DollarSign,
+    FileText,
+    Check,
+    X
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -1099,7 +1102,7 @@ function AdminDashboard() {
           >
             {/* Main Admin Tabs */}
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-7 rounded-xl bg-gray-100 p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-8 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
                   Chef Applications
@@ -1107,6 +1110,10 @@ function AdminDashboard() {
                 <TabsTrigger value="delivery-applications" className="flex items-center gap-2 rounded-lg">
                   <Truck className="h-4 w-4" />
                   Delivery Applications
+                </TabsTrigger>
+                <TabsTrigger value="kitchen-licenses" className="flex items-center gap-2 rounded-lg">
+                  <FileText className="h-4 w-4" />
+                  Kitchen Licenses
                 </TabsTrigger>
                 <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
                   <Gift className="h-4 w-4" />
@@ -1397,6 +1404,10 @@ function AdminDashboard() {
               </TabsContent>
 
               {/* Promo Codes Tab Content */}
+              <TabsContent value="kitchen-licenses" className="mt-0">
+                <KitchenLicenseApprovalView />
+              </TabsContent>
+
               <TabsContent value="promos" className="mt-0">
                 <PromoCodeSender />
               </TabsContent>
@@ -2520,6 +2531,218 @@ function AdminDashboard() {
       </motion.div>
     );
   }
+}
+
+// Kitchen License Approval Component
+function KitchenLicenseApprovalView() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [feedback, setFeedback] = useState<Record<number, string>>({});
+  const [expandedLicense, setExpandedLicense] = useState<number | null>(null);
+
+  // Fetch pending licenses
+  const { data: pendingLicenses = [], isLoading, refetch } = useQuery({
+    queryKey: ['/api/admin/locations/pending-licenses'],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/locations/pending-licenses', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch pending licenses');
+      }
+      return response.json();
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  // Approve/Reject license mutation
+  const approveLicenseMutation = useMutation({
+    mutationFn: async ({ locationId, status, feedbackText }: { locationId: number; status: 'approved' | 'rejected'; feedbackText?: string }) => {
+      const response = await fetch(`/api/admin/locations/${locationId}/kitchen-license`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status,
+          feedback: feedbackText || null,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to update license status' }));
+        throw new Error(error.error || 'Failed to update license status');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/locations/pending-licenses'] });
+      refetch();
+      toast({
+        title: "License Status Updated",
+        description: "The license status has been updated successfully.",
+      });
+      setFeedback({});
+      setExpandedLicense(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update license status",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleApprove = (locationId: number) => {
+    const feedbackText = feedback[locationId]?.trim();
+    approveLicenseMutation.mutate({ locationId, status: 'approved', feedbackText });
+  };
+
+  const handleReject = (locationId: number) => {
+    const feedbackText = feedback[locationId]?.trim();
+    if (!feedbackText) {
+      toast({
+        title: "Feedback Required",
+        description: "Please provide feedback when rejecting a license.",
+        variant: "destructive",
+      });
+      return;
+    }
+    approveLicenseMutation.mutate({ locationId, status: 'rejected', feedbackText });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading pending licenses...</p>
+      </div>
+    );
+  }
+
+  if (pendingLicenses.length === 0) {
+    return (
+      <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-200">
+        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Licenses</h3>
+        <p className="text-gray-500">All kitchen licenses have been reviewed.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Pending Kitchen Licenses</h3>
+            <p className="text-sm text-gray-500">
+              {pendingLicenses.length} location{pendingLicenses.length !== 1 ? 's' : ''} awaiting review
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          {pendingLicenses.map((license: any) => (
+            <Card key={license.id} className="border-2 border-yellow-200">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-12 h-12 rounded-lg bg-yellow-100 flex items-center justify-center">
+                        <FileText className="h-6 w-6 text-yellow-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-gray-900 text-lg">{license.name}</h4>
+                        <p className="text-sm text-gray-600">{license.address}</p>
+                        {license.managerUsername && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Manager: {license.managerUsername}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* License Document */}
+                    <div className="mb-4">
+                      <a
+                        href={license.kitchenLicenseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        View Kitchen License Document
+                      </a>
+                    </div>
+
+                    {/* Expandable Feedback Section */}
+                    {expandedLicense === license.id && (
+                      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Feedback (Required for rejection, optional for approval)
+                        </label>
+                        <textarea
+                          value={feedback[license.id] || ''}
+                          onChange={(e) => setFeedback({ ...feedback, [license.id]: e.target.value })}
+                          placeholder="Add feedback or notes about this license..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          rows={3}
+                        />
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setExpandedLicense(expandedLicense === license.id ? null : license.id)}
+                      >
+                        {expandedLicense === license.id ? 'Hide Feedback' : 'Add Feedback'}
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleApprove(license.id)}
+                        disabled={approveLicenseMutation.isPending}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Check className="h-4 w-4 mr-2" />
+                        {approveLicenseMutation.isPending ? 'Approving...' : 'Approve'}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleReject(license.id)}
+                        disabled={approveLicenseMutation.isPending}
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        {approveLicenseMutation.isPending ? 'Rejecting...' : 'Reject'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Platform Settings Component
