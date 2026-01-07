@@ -78,7 +78,7 @@ export default function ManagerOnboardingWizard() {
     },
   ];
 
-  // Check if onboarding is needed
+  // Check if user is a manager
   const { data: userData } = useQuery({
     queryKey: ["/api/user-session"],
     queryFn: async () => {
@@ -90,13 +90,15 @@ export default function ManagerOnboardingWizard() {
     },
   });
 
-  const shouldShowOnboarding =
-    userData?.role === "manager" &&
+  const isManager = userData?.role === "manager";
+  const shouldAutoOpen = 
+    isManager &&
     !userData?.manager_onboarding_completed &&
     !userData?.manager_onboarding_skipped;
 
+  // Auto-open for new managers
   useEffect(() => {
-    if (shouldShowOnboarding && !isLoadingLocations) {
+    if (shouldAutoOpen && !isLoadingLocations) {
       setIsOpen(true);
       // Auto-select location if only one exists
       if (locations.length === 1) {
@@ -108,7 +110,30 @@ export default function ManagerOnboardingWizard() {
         setNotificationPhone(loc.notificationPhone || "");
       }
     }
-  }, [shouldShowOnboarding, isLoadingLocations, locations]);
+  }, [shouldAutoOpen, isLoadingLocations, locations]);
+
+  // Listen for manual open events
+  useEffect(() => {
+    const handleOpenOnboarding = () => {
+      if (isManager && !isLoadingLocations) {
+        setIsOpen(true);
+        // Auto-select location if only one exists
+        if (locations.length === 1) {
+          setSelectedLocationId(locations[0].id);
+          const loc = locations[0] as any;
+          setLocationName(loc.name || "");
+          setLocationAddress(loc.address || "");
+          setNotificationEmail(loc.notificationEmail || "");
+          setNotificationPhone(loc.notificationPhone || "");
+        }
+      }
+    };
+
+    window.addEventListener('open-onboarding', handleOpenOnboarding);
+    return () => {
+      window.removeEventListener('open-onboarding', handleOpenOnboarding);
+    };
+  }, [isManager, isLoadingLocations, locations]);
 
   const updateLocationMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -258,7 +283,8 @@ export default function ManagerOnboardingWizard() {
 
   const selectedLocation = locations.find((loc) => loc.id === selectedLocationId) as Location | undefined;
 
-  if (!shouldShowOnboarding) {
+  // Always render for managers, but only show dialog when open
+  if (!isManager) {
     return null;
   }
 

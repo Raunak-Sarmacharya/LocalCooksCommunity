@@ -89,7 +89,10 @@ import {
     DollarSign,
     FileText,
     Check,
-    X
+    X,
+    Users,
+    Building2,
+    Menu
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -104,6 +107,21 @@ function AdminDashboard() {
     recentApplications: false,
     hasDocuments: false
   });
+  const [activeCategory, setActiveCategory] = useState<string>("applications");
+  const [activeTab, setActiveTab] = useState<string>("applications");
+
+  // Update active tab when category changes
+  useEffect(() => {
+    if (activeCategory === "applications" && activeTab !== "applications" && activeTab !== "delivery-applications" && activeTab !== "kitchen-licenses") {
+      setActiveTab("applications");
+    } else if (activeCategory === "management" && activeTab !== "chef-kitchen-access" && activeTab !== "kitchen-management") {
+      setActiveTab("chef-kitchen-access");
+    } else if (activeCategory === "communications" && activeTab !== "promos") {
+      setActiveTab("promos");
+    } else if (activeCategory === "settings" && activeTab !== "platform-settings" && activeTab !== "account-settings") {
+      setActiveTab("platform-settings");
+    }
+  }, [activeCategory, activeTab]);
 
   // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
@@ -153,6 +171,23 @@ function AdminDashboard() {
     isLoggedIn: !!user,
     userRole: user?.role,
     isAdmin
+  });
+
+  // Fetch pending kitchen licenses count
+  const { data: pendingLicensesCount = 0 } = useQuery({
+    queryKey: ['/api/admin/locations/pending-licenses-count'],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/locations/pending-licenses', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) return 0;
+      const data = await response.json();
+      return Array.isArray(data) ? data.length : 0;
+    },
+    refetchInterval: 30000,
   });
 
   // Fetch all applications - session-based auth only
@@ -1100,42 +1135,118 @@ function AdminDashboard() {
             transition={{ delay: 0.6 }}
             className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm"
           >
-            {/* Main Admin Tabs */}
-            <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-8 rounded-xl bg-gray-100 p-1 mb-6">
-                <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
+            {/* Main Admin Navigation - Grouped Categories */}
+            <div className="mb-6">
+              {/* Category Navigation */}
+              <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded-lg border border-gray-200">
+                <Button
+                  variant={activeCategory === "applications" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveCategory("applications");
+                    setActiveTab("applications");
+                  }}
+                  className="flex items-center gap-2 relative"
+                >
                   <Shield className="h-4 w-4" />
-                  Chef Applications
-                </TabsTrigger>
-                <TabsTrigger value="delivery-applications" className="flex items-center gap-2 rounded-lg">
-                  <Truck className="h-4 w-4" />
-                  Delivery Applications
-                </TabsTrigger>
-                <TabsTrigger value="kitchen-licenses" className="flex items-center gap-2 rounded-lg">
-                  <FileText className="h-4 w-4" />
-                  Kitchen Licenses
-                </TabsTrigger>
-                <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
+                  Applications
+                  {(statusCounts.inReview > 0 || pendingLicensesCount > 0) && (
+                    <span className="ml-1 bg-yellow-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                      {statusCounts.inReview + pendingLicensesCount}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  variant={activeCategory === "management" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveCategory("management");
+                    setActiveTab("chef-kitchen-access");
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Management
+                </Button>
+                <Button
+                  variant={activeCategory === "communications" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveCategory("communications");
+                    setActiveTab("promos");
+                  }}
+                  className="flex items-center gap-2"
+                >
                   <Gift className="h-4 w-4" />
-                  Send Promo Codes
-                </TabsTrigger>
-                <TabsTrigger value="chef-kitchen-access" className="flex items-center gap-2 rounded-lg">
-                  <UserIcon className="h-4 w-4" />
-                  Chef Kitchen Access
-                </TabsTrigger>
-                <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
-                  <ExternalLink className="h-4 w-4" />
-                  Manage Kitchens
-                </TabsTrigger>
-                <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
+                  Communications
+                </Button>
+                <Button
+                  variant={activeCategory === "settings" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveCategory("settings");
+                    setActiveTab("platform-settings");
+                  }}
+                  className="flex items-center gap-2"
+                >
                   <Settings className="h-4 w-4" />
-                  Platform Settings
-                </TabsTrigger>
-                <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
-                  <Shield className="h-4 w-4" />
-                  Account Settings
-                </TabsTrigger>
-              </TabsList>
+                  Settings
+                </Button>
+              </div>
+
+              {/* Sub-tabs within category */}
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                {activeCategory === "applications" && (
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                    <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
+                      <Shield className="h-4 w-4" />
+                      Chef Applications
+                    </TabsTrigger>
+                    <TabsTrigger value="delivery-applications" className="flex items-center gap-2 rounded-lg">
+                      <Truck className="h-4 w-4" />
+                      Delivery Applications
+                    </TabsTrigger>
+                    <TabsTrigger value="kitchen-licenses" className="flex items-center gap-2 rounded-lg">
+                      <FileText className="h-4 w-4" />
+                      Kitchen Licenses
+                    </TabsTrigger>
+                  </TabsList>
+                )}
+
+                {activeCategory === "management" && (
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                    <TabsTrigger value="chef-kitchen-access" className="flex items-center gap-2 rounded-lg">
+                      <UserIcon className="h-4 w-4" />
+                      Chef Kitchen Access
+                    </TabsTrigger>
+                    <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
+                      <Building2 className="h-4 w-4" />
+                      Manage Kitchens
+                    </TabsTrigger>
+                  </TabsList>
+                )}
+
+                {activeCategory === "communications" && (
+                  <TabsList className="grid w-full grid-cols-1 rounded-xl bg-gray-100 p-1 mb-6">
+                    <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
+                      <Gift className="h-4 w-4" />
+                      Send Promo Codes
+                    </TabsTrigger>
+                  </TabsList>
+                )}
+
+                {activeCategory === "settings" && (
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                    <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
+                      <Settings className="h-4 w-4" />
+                      Platform Settings
+                    </TabsTrigger>
+                    <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
+                      <Shield className="h-4 w-4" />
+                      Account Settings
+                    </TabsTrigger>
+                  </TabsList>
+                )}
 
               {/* Applications Tab Content */}
               <TabsContent value="applications" className="mt-0">

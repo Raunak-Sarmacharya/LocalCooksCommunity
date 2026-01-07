@@ -336,9 +336,22 @@ export default function ManagerBookingDashboard() {
 
           {/* Header - Only show on non-overview pages */}
           {activeView !== 'overview' && (
-            <div className="mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
-              <p className="text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
+                <p className="text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
+              </div>
+              <Button
+                onClick={() => {
+                  const event = new CustomEvent('open-onboarding');
+                  window.dispatchEvent(event);
+                }}
+                variant="outline"
+                className="flex items-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+              >
+                <FileText className="h-4 w-4" />
+                Setup Wizard
+              </Button>
             </div>
           )}
 
@@ -398,6 +411,24 @@ export default function ManagerBookingDashboard() {
                   );
                 })}
               </nav>
+
+              {/* Quick Actions */}
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 hover:shadow-xl transition-all duration-300">
+                <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                  Quick Actions
+                </h3>
+                <Button
+                  onClick={() => {
+                    const event = new CustomEvent('open-onboarding');
+                    window.dispatchEvent(event);
+                  }}
+                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Setup Wizard</span>
+                </Button>
+              </div>
 
               {/* Quick Stats (when location selected) */}
               {selectedLocation && activeView === 'overview' && (
@@ -1150,6 +1181,37 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Setup & Onboarding Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Setup & Onboarding</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Complete or update your location setup, upload kitchen license, and configure your preferences.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+              <div>
+                <p className="text-sm text-gray-700 mb-4">
+                  Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
+                </p>
+                <Button
+                  onClick={() => {
+                    const event = new CustomEvent('open-onboarding');
+                    window.dispatchEvent(event);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Open Setup Wizard
+                </Button>
+              </div>
+            </div>
+          </div>
+
           {/* Notification Email Section */}
           <div className="space-y-4">
             <div className="flex items-start gap-3">
