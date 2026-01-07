@@ -485,15 +485,34 @@ export default function BookingConfirmationPage() {
                               Equipment Add-ons
                             </h4>
                             <div className="space-y-2 text-sm">
-                              {equipmentPricing.items.map((item) => (
-                                <div key={item.id} className="flex justify-between items-center">
-                                  <span className="text-gray-700 flex items-center gap-1">
-                                    <Wrench className="h-3 w-3 text-amber-600" />
-                                    {item.name}
-                                  </span>
-                                  <span className="font-medium text-amber-700">${item.rate.toFixed(2)}</span>
-                                </div>
-                              ))}
+                              {equipmentPricing.items.map((item) => {
+                                // Find the full equipment object to get photos
+                                const equipment = equipmentListings.rental.find((e: any) => e.id === item.id);
+                                return (
+                                  <div key={item.id} className="flex justify-between items-center gap-3">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      {/* Equipment Image */}
+                                      {equipment?.photos && equipment.photos.length > 0 && (
+                                        <div className="flex-shrink-0">
+                                          <img
+                                            src={equipment.photos[0]}
+                                            alt={item.name}
+                                            className="w-12 h-12 object-cover rounded border border-gray-200"
+                                            onError={(e) => {
+                                              e.currentTarget.style.display = 'none';
+                                            }}
+                                          />
+                                        </div>
+                                      )}
+                                      <span className="text-gray-700 flex items-center gap-1">
+                                        <Wrench className="h-3 w-3 text-amber-600 flex-shrink-0" />
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    <span className="font-medium text-amber-700 flex-shrink-0">${item.rate.toFixed(2)}</span>
+                                  </div>
+                                );
+                              })}
                               <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
                                 <span className="font-semibold text-amber-800">Equipment Subtotal (base price only):</span>
                                 <span className="font-bold text-amber-900">${equipmentPricing.subtotal.toFixed(2)}</span>
@@ -515,12 +534,27 @@ export default function BookingConfirmationPage() {
                           <div className="space-y-2 text-sm">
                             {storagePricing.items.map((item, idx) => (
                               <div key={idx} className="pb-2 border-b border-purple-100 last:border-0 last:pb-0">
-                                <div className="flex justify-between items-start mb-1">
-                                  <span className="text-gray-700 flex items-center gap-1">
-                                    <Package className="h-3 w-3 text-purple-600" />
-                                    {item.listing.name}
-                                  </span>
-                                  <span className="font-medium text-purple-700">${item.basePrice.toFixed(2)}</span>
+                                <div className="flex justify-between items-start mb-1 gap-3">
+                                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                                    {/* Storage Image */}
+                                    {item.listing.photos && item.listing.photos.length > 0 && (
+                                      <div className="flex-shrink-0">
+                                        <img
+                                          src={item.listing.photos[0]}
+                                          alt={item.listing.name}
+                                          className="w-12 h-12 object-cover rounded border border-gray-200"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                          }}
+                                        />
+                                      </div>
+                                    )}
+                                    <span className="text-gray-700 flex items-center gap-1">
+                                      <Package className="h-3 w-3 text-purple-600 flex-shrink-0" />
+                                      {item.listing.name}
+                                    </span>
+                                  </div>
+                                  <span className="font-medium text-purple-700 flex-shrink-0">${item.basePrice.toFixed(2)}</span>
                                 </div>
                                 <div className="text-xs text-gray-600 ml-4">
                                   {item.days} day{item.days > 1 ? 's' : ''} × ${item.listing.basePrice.toFixed(2)}/day

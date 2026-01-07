@@ -25,6 +25,7 @@ interface StorageListing {
   minimumBookingDuration: number; // Minimum days required
   climateControl?: boolean;
   isActive?: boolean;
+  photos?: string[];
 }
 
 interface SelectedStorage {
@@ -216,8 +217,21 @@ export function StorageSelection({
           return (
             <Card key={storage.id} className={isSelected ? "border-purple-500 border-2" : ""}>
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  {/* Storage Image */}
+                  {storage.photos && storage.photos.length > 0 && (
+                    <div className="flex-shrink-0">
+                      <img
+                        src={storage.photos[0]}
+                        alt={storage.name}
+                        className="w-24 h-24 object-cover rounded-lg border border-gray-200"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
                     <CardTitle className="text-base flex items-center gap-2">
                       {storage.name}
                       {isSelected && (
@@ -251,7 +265,7 @@ export function StorageSelection({
                       </div>
                     </CardDescription>
                   </div>
-                  <div className="text-right ml-4">
+                  <div className="text-right ml-4 flex-shrink-0">
                     <p className="font-semibold text-purple-700">
                       ${storage.basePrice.toFixed(2)}/day
                     </p>

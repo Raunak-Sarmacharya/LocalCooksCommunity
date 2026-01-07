@@ -6,6 +6,7 @@ interface StorageListing {
   name: string;
   basePrice: number; // Daily rate in dollars
   minimumBookingDuration: number; // Minimum days required
+  photos?: string[];
 }
 
 interface SelectedStorage {
