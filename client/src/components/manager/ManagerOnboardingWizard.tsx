@@ -484,6 +484,20 @@ export default function ManagerOnboardingWizard() {
                 )}
                 <p>✓ Notification preferences configured</p>
               </div>
+              
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Next Steps</h4>
+                <p className="text-xs text-gray-600 mb-2">
+                  After completing onboarding, you can add storage and equipment listings with photos from your dashboard:
+                </p>
+                <ul className="text-xs text-gray-600 space-y-1 list-disc list-inside">
+                  <li>Storage listings (dry, cold, freezer) with images</li>
+                  <li>Equipment listings (cooking, prep, refrigeration) with images</li>
+                </ul>
+                <p className="text-xs text-gray-500 mt-2">
+                  All listings support multiple photo uploads to help chefs visualize your offerings.
+                </p>
+              </div>
             </div>
           )}
         </div>

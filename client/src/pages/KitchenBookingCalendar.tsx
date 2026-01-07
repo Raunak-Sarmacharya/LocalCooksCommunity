@@ -990,26 +990,39 @@ export default function KitchenBookingCalendar() {
                                         : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50'
                                     }`}
                                   >
-                                    <div className="flex items-start justify-between">
-                                      <div>
+                                    <div className="flex items-start justify-between gap-3">
+                                      {/* Equipment Image */}
+                                      {equipment.photos && equipment.photos.length > 0 && (
+                                        <div className="flex-shrink-0">
+                                          <img
+                                            src={equipment.photos[0]}
+                                            alt={equipment.equipmentType}
+                                            className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                            onError={(e) => {
+                                              e.currentTarget.style.display = 'none';
+                                            }}
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="flex-1 min-w-0">
                                         <p className="font-medium text-gray-900">{equipment.equipmentType}</p>
                                         {equipment.brand && (
                                           <p className="text-sm text-gray-600">{equipment.brand} {equipment.model || ''}</p>
                                         )}
                                         <p className="text-xs text-gray-500 mt-1 capitalize">{equipment.category} • {equipment.condition}</p>
+                                        {equipment.damageDeposit > 0 && (
+                                          <p className="text-xs text-gray-500 mt-1">
+                                            Deposit: ${equipment.damageDeposit.toFixed(2)}
+                                          </p>
+                                        )}
                                       </div>
-                                      <div className="text-right">
+                                      <div className="text-right flex-shrink-0">
                                         <p className="font-semibold text-amber-700">
                                           ${rate?.toFixed(2) || '0.00'}/session
                                         </p>
                                         {isSelected && <span className="text-xs text-amber-600">✓ Selected</span>}
                                       </div>
                                     </div>
-                                    {equipment.damageDeposit > 0 && (
-                                      <p className="text-xs text-gray-500 mt-2">
-                                        Deposit: ${equipment.damageDeposit.toFixed(2)}
-                                      </p>
-                                    )}
                                   </button>
                                 );
                               })}
