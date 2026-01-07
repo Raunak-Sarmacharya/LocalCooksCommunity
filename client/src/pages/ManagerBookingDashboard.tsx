@@ -958,6 +958,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [uploadingKitchenId, setUploadingKitchenId] = useState<number | null>(null);
   const [kitchenDescriptions, setKitchenDescriptions] = useState<Record<number, string>>({});
   const [updatingKitchenId, setUpdatingKitchenId] = useState<number | null>(null);
+  const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  const [isUploadingLicense, setIsUploadingLicense] = useState(false);
   const timezoneOptions = getTimezoneOptions();
 
   // Fetch kitchens for this location
@@ -1172,6 +1174,66 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     }
   };
 
+  // Handle kitchen license upload
+  const handleLicenseUpload = async (file: File) => {
+    setIsUploadingLicense(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload-file', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload license');
+      }
+      
+      const result = await response.json();
+      const licenseUrl = result.url;
+      
+      // Update location with new license URL and reset status to pending
+      const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          kitchenLicenseUrl: licenseUrl,
+          kitchenLicenseStatus: 'pending',
+        }),
+      });
+      
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update license');
+      }
+      
+      // Refresh location data
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+      
+      toast({
+        title: "License Uploaded",
+        description: "Your license has been submitted for admin approval.",
+      });
+      
+      setLicenseFile(null);
+      return licenseUrl;
+    } catch (error: any) {
+      console.error('License upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload license",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsUploadingLicense(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1280,6 +1342,132 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 >
                   Reset
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Kitchen License Section */}
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <FileText className="h-5 w-5 text-orange-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen License</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Upload or update your kitchen license. Bookings will be activated once approved by an admin.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+              {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" ? (
+                <div className={`border rounded-lg p-4 ${
+                  location.kitchenLicenseStatus === "approved" 
+                    ? "bg-green-50 border-green-200" 
+                    : "bg-yellow-50 border-yellow-200"
+                }`}>
+                  <div className={`flex items-center gap-2 ${
+                    location.kitchenLicenseStatus === "approved" 
+                      ? "text-green-800" 
+                      : "text-yellow-800"
+                  }`}>
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="font-medium">License Uploaded</span>
+                  </div>
+                  <p className={`text-sm mt-1 ${
+                    location.kitchenLicenseStatus === "approved" 
+                      ? "text-green-700" 
+                      : "text-yellow-700"
+                  }`}>
+                    Status: {location.kitchenLicenseStatus || "pending"}
+                  </p>
+                  {location.kitchenLicenseStatus === "approved" && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✓ Your license has been approved! Bookings are now active.
+                    </p>
+                  )}
+                  {location.kitchenLicenseStatus === "pending" && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      ⏳ Your license is pending admin approval. Bookings will be activated once approved.
+                    </p>
+                  )}
+                  <a
+                    href={location.kitchenLicenseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block"
+                  >
+                    View Current License →
+                  </a>
+                </div>
+              ) : location.kitchenLicenseStatus === "rejected" ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 text-red-800 mb-2">
+                    <AlertCircle className="h-5 w-5" />
+                    <span className="font-medium">License Rejected</span>
+                  </div>
+                  {location.kitchenLicenseFeedback && (
+                    <p className="text-sm text-red-700 mb-3">
+                      <strong>Admin Feedback:</strong> {location.kitchenLicenseFeedback}
+                    </p>
+                  )}
+                  <p className="text-sm text-red-700 mb-3">
+                    Please upload a new license document to resubmit for approval.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        toast({
+                          title: "File Too Large",
+                          description: "Please upload a file smaller than 10MB",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      setLicenseFile(file);
+                      handleLicenseUpload(file).catch((error) => {
+                        console.error('License upload failed:', error);
+                      });
+                    }
+                  }}
+                  disabled={isUploadingLicense}
+                  className="hidden"
+                  id="license-upload"
+                />
+                <label
+                  htmlFor="license-upload"
+                  className={`cursor-pointer flex flex-col items-center gap-2 ${isUploadingLicense ? 'opacity-50' : ''}`}
+                >
+                  {isUploadingLicense ? (
+                    <>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+                      <span className="text-sm text-gray-600">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-8 w-8 text-gray-400" />
+                      <span className="text-sm font-medium text-orange-600">
+                        {location.kitchenLicenseStatus === "rejected" 
+                          ? "Click to upload new license" 
+                          : "Click to upload license"}
+                      </span>
+                      <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
+                    </>
+                  )}
+                </label>
+                {licenseFile && !isUploadingLicense && (
+                  <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-700">
+                    <FileText className="h-4 w-4" />
+                    <span>{licenseFile.name}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
