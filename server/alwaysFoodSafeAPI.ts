@@ -10,6 +10,7 @@
  * - Certificate generation and management
  */
 
+
 interface AlwaysFoodSafeSubmission {
   userId: number;
   userName: string;
