@@ -14531,6 +14531,9 @@ app.put("/api/manager/locations/:id", async (req, res) => {
       'kitchenLicenseUrl', 'kitchenLicenseStatus'
     ];
 
+    // Check if a new license is being uploaded (status set to pending)
+    const isNewLicenseUpload = req.body.kitchenLicenseUrl && req.body.kitchenLicenseStatus === 'pending';
+
     Object.keys(req.body).forEach((key) => {
       if (allowedFields.includes(key)) {
         const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -14539,6 +14542,13 @@ app.put("/api/manager/locations/:id", async (req, res) => {
         paramIndex++;
       }
     });
+
+    // If uploading a new license, clear previous approval/feedback fields
+    if (isNewLicenseUpload) {
+      updates.push(`kitchen_license_approved_by = NULL`);
+      updates.push(`kitchen_license_approved_at = NULL`);
+      updates.push(`kitchen_license_feedback = NULL`);
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
