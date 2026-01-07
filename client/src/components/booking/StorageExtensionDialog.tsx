@@ -243,22 +243,22 @@ export function StorageExtensionDialog({
                     <div className="flex justify-between">
                       <span className="text-gray-700">Extension Period:</span>
                       <span className="font-medium">
-                        {extensionDetails.extensionDays} day{extensionDetails.extensionDays > 1 ? 's' : ''}
+                        {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-700">
-                        {extensionDetails.extensionDays} day{extensionDetails.extensionDays > 1 ? 's' : ''} × ${booking.basePrice.toFixed(2)}/day:
+                        {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${booking.basePrice.toFixed(2)}/day:
                       </span>
-                      <span className="font-medium">${extensionDetails.extensionBasePrice.toFixed(2)}</span>
+                      <span className="font-medium">${(extensionDetails.extensionBasePrice ?? 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-700">Service Fee ({(serviceFeeRate * 100).toFixed(1)}%):</span>
-                      <span className="font-medium">${extensionDetails.extensionServiceFee.toFixed(2)}</span>
+                      <span className="font-medium">${(extensionDetails.extensionServiceFee ?? 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-green-200 font-semibold text-green-900">
                       <span>Additional Cost:</span>
-                      <span>${extensionDetails.extensionTotalPrice.toFixed(2)} CAD</span>
+                      <span>${(extensionDetails.extensionTotalPrice ?? 0).toFixed(2)} CAD</span>
                     </div>
                   </div>
                 </div>
@@ -299,7 +299,7 @@ export function StorageExtensionDialog({
             disabled={!selectedDate || !extensionDetails || !extensionDetails.valid || isProcessing}
             className="bg-purple-600 hover:bg-purple-700"
           >
-            {isProcessing ? "Processing..." : `Extend & Pay $${extensionDetails?.extensionTotalPrice.toFixed(2) || '0.00'}`}
+            {isProcessing ? "Processing..." : `Extend & Pay $${(extensionDetails?.extensionTotalPrice ?? 0).toFixed(2)}`}
           </Button>
         </DialogFooter>
       </DialogContent>

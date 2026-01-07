@@ -112,6 +112,8 @@ export class MemStorage implements IStorage {
       firebaseUid: null,
       isVerified: true,
       has_seen_welcome: true,
+      managerOnboardingCompleted: false,
+      managerOnboardingSkipped: false,
       isManager: false,
       isChef: false,
       isDeliveryPartner: false,
@@ -187,6 +189,8 @@ export class MemStorage implements IStorage {
       isManager: insertUser.isManager || false,
       isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
       applicationType: (insertUser as any).applicationType || null,
+      managerOnboardingCompleted: (insertUser as any).managerOnboardingCompleted !== undefined ? (insertUser as any).managerOnboardingCompleted : false,
+      managerOnboardingSkipped: (insertUser as any).managerOnboardingSkipped !== undefined ? (insertUser as any).managerOnboardingSkipped : false,
     };
 
     this.users.set(user.id, user);

@@ -4884,15 +4884,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get chef details
       const chef = booking.chefId ? await storage.getUser(booking.chefId) : null;
       
+      // Get chef's full name, email, and phone from applications table
+      let chefFullName: string | null = null;
+      let chefEmail: string | null = null;
+      let chefPhone: string | null = null;
+      
+      if (chef && booking.chefId) {
+        try {
+          const appResult = await pool.query(
+            'SELECT full_name, email, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+            [booking.chefId]
+          );
+          if (appResult.rows.length > 0) {
+            chefFullName = appResult.rows[0].full_name;
+            chefEmail = appResult.rows[0].email;
+            chefPhone = appResult.rows[0].phone;
+          }
+        } catch (error) {
+          console.error('Error fetching chef details from applications:', error);
+        }
+      }
+      
       res.json({
         ...booking,
         kitchen,
         location,
         chef: chef ? { 
-          id: chef.id, 
-          fullName: chef.fullName, 
-          email: chef.email, 
-          phone: chef.phone 
+          id: chef.id,
+          username: chef.username,
+          fullName: chefFullName,
+          email: chefEmail,
+          phone: chefPhone
         } : null,
         storageBookings,
         equipmentBookings,
@@ -9549,7 +9571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const availabilities = await firebaseStorage.getKitchenAvailability(kitchenId);
       
       // Get operating days (days of week that have availability set)
-      const operatingDays = [...new Set(availabilities.map((a: any) => a.dayOfWeek))];
+      const operatingDays = Array.from(new Set(availabilities.map((a: any) => a.dayOfWeek)));
 
       // Generate sample slots for preview (not real-time, just example)
       // These are illustrative and don't reflect actual bookings

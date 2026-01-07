@@ -1369,7 +1369,7 @@ export default function ChefLanding() {
             <div className="grid md:grid-cols-2 gap-6 lg:gap-20 max-w-5xl mx-auto items-center">
               
               {/* CHAOS Phone */}
-              <FadeInSection delay={0.3}>
+              <FadeInSection delay={1}>
                 <div className="relative">
                   {/* iPhone 15 Pro - Compact with Full Fade Effect */}
                   <div 
@@ -1412,7 +1412,7 @@ export default function ChefLanding() {
               </FadeInSection>
               
               {/* LOCALCOOKS Phone */}
-              <FadeInSection delay={0.5}>
+              <FadeInSection delay={2}>
                 <div className="relative">
                   {/* iPhone 15 Pro - Compact with Full Fade Effect */}
                   <div 
@@ -1790,7 +1790,7 @@ export default function ChefLanding() {
             {!kitchensLoading && uniqueLocations.length > 0 ? (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
                 {uniqueLocations.slice(0, 6).map((loc: any, i: number) => (
-                  <FadeInSection key={loc.id} delay={i * 0.1 + 0.2}>
+                  <FadeInSection key={loc.id} delay={Math.min(i % 4, 3) as 0 | 1 | 2 | 3}>
                     <motion.div 
                       className="group h-full"
                       initial={{ opacity: 0, y: 30 }}
@@ -1911,7 +1911,7 @@ export default function ChefLanding() {
               </div>
             ) : !kitchensLoading ? (
               /* Placeholder - Coming Soon Cards */
-              <FadeInSection delay={0.3}>
+              <FadeInSection delay={1}>
                 <div className="grid md:grid-cols-3 gap-6 mb-16">
                   {[
                     { title: "Downtown Kitchen", area: "St. John's Downtown" },
@@ -1950,7 +1950,7 @@ export default function ChefLanding() {
             ) : null}
 
             {/* Partner CTA - Container Card with Bento Grid Inside */}
-            <FadeInSection delay={0.4}>
+              <FadeInSection delay={1}>
               <motion.div 
                 className="bg-white rounded-2xl shadow-xl overflow-hidden"
                 initial={{ opacity: 0, y: 20 }}

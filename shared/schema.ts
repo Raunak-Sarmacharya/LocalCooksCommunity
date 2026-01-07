@@ -903,7 +903,7 @@ export const equipmentListings = pgTable("equipment_listings", {
   
   // Pricing - SIMPLIFIED to flat session rate (in cents)
   // For rental equipment: charged once per kitchen booking session, regardless of duration
-  sessionRate: numeric("session_rate").default(0), // Flat session rate in cents (e.g., 2500 = $25.00/session)
+  sessionRate: numeric("session_rate").default("0"), // Flat session rate in cents (e.g., 2500 = $25.00/session)
   pricingModel: equipmentPricingModelEnum("pricing_model"), // Nullable for included equipment
   // Legacy rate fields - kept for backwards compatibility but session_rate is primary
   hourlyRate: numeric("hourly_rate"), // @deprecated - use sessionRate
@@ -936,7 +936,7 @@ export const equipmentListings = pgTable("equipment_listings", {
   maintenanceLog: jsonb("maintenance_log").default([]),
   
   // Damage & liability (deposits in cents)
-  damageDeposit: numeric("damage_deposit").default(0), // Refundable deposit (in cents)
+  damageDeposit: numeric("damage_deposit").default("0"), // Refundable deposit (in cents)
   insuranceRequired: boolean("insurance_required").default(false),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
