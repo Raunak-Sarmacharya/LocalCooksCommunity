@@ -5962,6 +5962,7 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
             };
           }
           
+          
           // Link this user to the Firebase UID if not already linked
           if (!user.firebase_uid) {
             console.log(`🔗 Linking existing user ${user.id} to Firebase UID ${uid}`);
