@@ -14903,19 +14903,40 @@ app.put("/api/manager/locations/:id", async (req, res) => {
 });
 
 // Manager: Revoke chef location access
+// Handle OPTIONS for CORS preflight
+app.options("/api/manager/chef-location-access", (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.status(200).end();
+});
+
 app.delete("/api/manager/chef-location-access", async (req, res) => {
+  console.log('[DELETE] /api/manager/chef-location-access - Request received', {
+    method: req.method,
+    path: req.path,
+    body: req.body,
+    hasSession: !!req.session?.userId,
+    hasHeader: !!req.headers['x-user-id']
+  });
+
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
+    // Use getAuthenticatedUser for better Firebase auth support
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      console.log('[DELETE] /api/manager/chef-location-access - Not authenticated');
       return res.status(401).json({ error: "Not authenticated" });
     }
     
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
+    if (user.role !== "manager") {
+      console.log('[DELETE] /api/manager/chef-location-access - Not a manager', { role: user.role });
       return res.status(403).json({ error: "Manager access required" });
     }
 
     const { chefId, locationId } = req.body;
+    
+    console.log('[DELETE] /api/manager/chef-location-access - Request body', { chefId, locationId });
     
     if (!chefId || !locationId) {
       return res.status(400).json({ error: "chefId and locationId are required" });
@@ -14927,11 +14948,16 @@ app.delete("/api/manager/chef-location-access", async (req, res) => {
 
     // Verify this location is managed by this manager
     const locationCheck = await pool.query(
-      'SELECT id FROM locations WHERE id = $1 AND manager_id = $2',
-      [locationId, user.id]
+      'SELECT id, manager_id FROM locations WHERE id = $1',
+      [locationId]
     );
 
     if (locationCheck.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const location = locationCheck.rows[0];
+    if (location.manager_id !== user.id) {
       return res.status(403).json({ error: "You don't have permission to manage this location" });
     }
 
@@ -14942,17 +14968,27 @@ app.delete("/api/manager/chef-location-access", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      console.log('[DELETE] /api/manager/chef-location-access - Access record not found', { chefId, locationId });
       return res.status(404).json({ error: "Access record not found" });
     }
 
+    console.log('[DELETE] /api/manager/chef-location-access - Access revoked successfully', { chefId, locationId });
+
     // Also update the chef profile status to rejected if it exists
     try {
-      await pool.query(
-        'UPDATE chef_location_profiles SET status = $1, reviewed_by = $2, reviewed_at = now(), review_feedback = $3 WHERE chef_id = $4 AND location_id = $5',
+      const profileUpdate = await pool.query(
+        'UPDATE chef_location_profiles SET status = $1, reviewed_by = $2, reviewed_at = now(), review_feedback = $3 WHERE chef_id = $4 AND location_id = $5 RETURNING id',
         ['rejected', user.id, 'Access revoked by manager', chefId, locationId]
       );
+      
+      if (profileUpdate.rows.length === 0) {
+        // Profile doesn't exist, which is fine - access was still revoked
+        console.log('Note: No chef profile found to update, but access was revoked successfully');
+      } else {
+        console.log('[DELETE] /api/manager/chef-location-access - Profile status updated to rejected');
+      }
     } catch (error) {
-      // Ignore if table doesn't exist or update fails
+      // Ignore if table doesn't exist or update fails - access revocation is the main goal
       console.log('Note: Could not update chef profile status:', error.message);
     }
 
@@ -15191,7 +15227,28 @@ app.get("/api/manager/portal-applications", async (req, res) => {
 
     console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
 
-    res.json(formatted);
+    // Get count of actual access records (users who have access)
+    const accessCheck = await pool.query(`
+      SELECT to_regclass('public.portal_user_location_access') as access_exists;
+    `);
+    
+    let accessCount = 0;
+    if (accessCheck.rows[0].access_exists) {
+      const accessResult = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM portal_user_location_access
+        WHERE location_id = ANY($1::int[])
+      `, [locationIds]);
+      accessCount = parseInt(accessResult.rows[0].count) || 0;
+    }
+    
+    console.log(`[Manager Portal Applications] Found ${accessCount} access records`);
+    
+    // Return applications with access count
+    res.json({
+      applications: formatted,
+      accessCount: accessCount, // Actual number of users with access
+    });
   } catch (error) {
     console.error("Error getting portal applications for manager:", error);
     res.status(500).json({ error: error.message || "Failed to get applications" });
