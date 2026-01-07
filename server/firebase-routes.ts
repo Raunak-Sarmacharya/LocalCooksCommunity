@@ -44,11 +44,17 @@ export function registerFirebaseRoutes(app: Express) {
   }
 
   // Session-based admin middleware (for admin endpoints that use session auth)
+  // IMPORTANT: This middleware ONLY checks session auth and IGNORES any Firebase tokens
   async function requireSessionAdmin(req: Request, res: Response, next: NextFunction) {
     try {
+      // Explicitly ignore any Authorization headers - this endpoint uses session auth only
+      // Delete any Firebase-related request properties to prevent accidental Firebase auth
+      delete (req as any).firebaseUser;
+      
       const user = await getAuthenticatedUserFromSession(req);
       
       if (!user) {
+        console.log('❌ Session admin auth failed: No session found');
         return res.status(401).json({ 
           error: 'Unauthorized', 
           message: 'Session authentication required. Please login as an admin.' 
@@ -56,6 +62,7 @@ export function registerFirebaseRoutes(app: Express) {
       }
 
       if (user.role !== 'admin') {
+        console.log(`❌ Session admin auth failed: User ${user.id} is not an admin (role: ${user.role})`);
         return res.status(403).json({ 
           error: 'Forbidden', 
           message: 'Admin access required',
@@ -67,6 +74,7 @@ export function registerFirebaseRoutes(app: Express) {
       (req as any).sessionUser = user;
       (req as any).neonUser = user; // For backward compatibility with existing code
 
+      console.log(`✅ Session admin auth: User ${user.id} (${user.username}) authenticated as admin`);
       next();
     } catch (error) {
       console.error('Session admin auth error:', error);
