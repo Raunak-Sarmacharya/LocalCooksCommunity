@@ -873,14 +873,14 @@ export default function ManagerBookingPortal() {
         {/* Booking Modal - matches chef booking modal */}
         {showBookingModal && selectedKitchen && selectedDate && selectedSlots.length > 0 && (
           <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setShowBookingModal(false);
               }
             }}
           >
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">Confirm Your Booking</h2>
                 <button
