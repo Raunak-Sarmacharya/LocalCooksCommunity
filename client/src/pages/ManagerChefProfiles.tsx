@@ -14,7 +14,9 @@ import {
   Phone,
   Download,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Ban,
+  ExternalLink
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -31,11 +33,13 @@ interface ManagerChefProfilesProps {
 }
 
 export default function ManagerChefProfiles({ embedded = false }: ManagerChefProfilesProps) {
-  const { profiles, isLoading, updateProfileStatus } = useManagerChefProfiles();
+  const { profiles, isLoading, updateProfileStatus, revokeAccess } = useManagerChefProfiles();
   const { toast } = useToast();
   const [selectedProfile, setSelectedProfile] = useState<any | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [showDocumentsDialog, setShowDocumentsDialog] = useState(false);
+  const [documentsProfile, setDocumentsProfile] = useState<any | null>(null);
 
   const handleApprove = async (profileId: number) => {
     try {
@@ -96,6 +100,34 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
     setSelectedProfile(profile);
     setShowReviewDialog(true);
     setReviewFeedback(profile.reviewFeedback || "");
+  };
+
+  const openDocumentsDialog = (profile: any) => {
+    setDocumentsProfile(profile);
+    setShowDocumentsDialog(true);
+  };
+
+  const handleRevokeAccess = async (profile: any) => {
+    if (!window.confirm(`Are you sure you want to revoke ${profile.application?.fullName || profile.chef?.username}'s access to ${profile.location?.name}? This will prevent them from booking kitchens at this location.`)) {
+      return;
+    }
+
+    try {
+      await revokeAccess.mutateAsync({
+        chefId: profile.chefId,
+        locationId: profile.locationId,
+      });
+      toast({
+        title: "Access Revoked",
+        description: "Chef access has been revoked successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to revoke access",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -182,6 +214,9 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
                     key={profile.id}
                     profile={profile}
                     onReview={() => openReviewDialog(profile)}
+                    onViewDocuments={() => openDocumentsDialog(profile)}
+                    onRevokeAccess={profile.status === 'approved' ? () => handleRevokeAccess(profile) : undefined}
+                    revokeLoading={revokeAccess.isPending}
                   />
                 ))}
               </div>
@@ -200,6 +235,9 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
                     key={profile.id}
                     profile={profile}
                     onReview={() => openReviewDialog(profile)}
+                    onViewDocuments={() => openDocumentsDialog(profile)}
+                    onRevokeAccess={profile.status === 'approved' ? () => handleRevokeAccess(profile) : undefined}
+                    revokeLoading={revokeAccess.isPending}
                   />
                 ))}
               </div>
@@ -392,6 +430,110 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Documents Dialog */}
+      <Dialog open={showDocumentsDialog} onOpenChange={setShowDocumentsDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Chef Documents</DialogTitle>
+            <DialogDescription>
+              View and download chef's uploaded documents
+            </DialogDescription>
+          </DialogHeader>
+
+          {documentsProfile && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-2">
+                  {documentsProfile.application?.fullName || documentsProfile.chef?.username || 'Unknown Chef'}
+                </h3>
+                {documentsProfile.location && (
+                  <p className="text-sm text-gray-600">
+                    <MapPin className="inline h-4 w-4 mr-1" />
+                    {documentsProfile.location.name}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {documentsProfile.application?.foodSafetyLicenseUrl ? (
+                  <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">Food Safety License</p>
+                        <p className="text-xs text-gray-500">Click to view or download</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <a
+                        href={documentsProfile.application.foodSafetyLicenseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="View document"
+                      >
+                        <Eye className="h-5 w-5 text-blue-600" />
+                      </a>
+                      <a
+                        href={documentsProfile.application.foodSafetyLicenseUrl}
+                        download
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Download document"
+                      >
+                        <Download className="h-5 w-5 text-gray-600" />
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-sm text-gray-500 text-center">Food Safety License not uploaded</p>
+                  </div>
+                )}
+
+                {documentsProfile.application?.foodEstablishmentCertUrl ? (
+                  <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">Food Establishment Certificate</p>
+                        <p className="text-xs text-gray-500">Click to view or download</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <a
+                        href={documentsProfile.application.foodEstablishmentCertUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 hover:bg-green-50 rounded-lg transition-colors"
+                        title="View document"
+                      >
+                        <Eye className="h-5 w-5 text-green-600" />
+                      </a>
+                      <a
+                        href={documentsProfile.application.foodEstablishmentCertUrl}
+                        download
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Download document"
+                      >
+                        <Download className="h-5 w-5 text-gray-600" />
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-sm text-gray-500 text-center">Food Establishment Certificate not uploaded</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 
@@ -413,7 +555,19 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
 }
 
 // Profile Card Component
-function ProfileCard({ profile, onReview }: { profile: any; onReview: () => void }) {
+function ProfileCard({ 
+  profile, 
+  onReview,
+  onViewDocuments,
+  onRevokeAccess,
+  revokeLoading = false
+}: { 
+  profile: any; 
+  onReview: () => void;
+  onViewDocuments?: () => void;
+  onRevokeAccess?: () => void;
+  revokeLoading?: boolean;
+}) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
@@ -485,14 +639,69 @@ function ProfileCard({ profile, onReview }: { profile: any; onReview: () => void
         )}
       </div>
 
-      <Button
-        onClick={onReview}
-        variant="outline"
-        className="w-full"
-      >
-        <Eye className="mr-2 h-4 w-4" />
-        {profile.status === 'pending' ? 'Review Profile' : 'View Details'}
-      </Button>
+      {/* Document indicators */}
+      {profile.application && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-gray-600">
+          {profile.application.foodSafetyLicenseUrl && (
+            <span className="flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded">
+              <FileText className="h-3 w-3" />
+              License
+            </span>
+          )}
+          {profile.application.foodEstablishmentCertUrl && (
+            <span className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded">
+              <FileText className="h-3 w-3" />
+              Certificate
+            </span>
+          )}
+          {!profile.application.foodSafetyLicenseUrl && !profile.application.foodEstablishmentCertUrl && (
+            <span className="text-gray-400">No documents</span>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Button
+            onClick={onReview}
+            variant="outline"
+            className="flex-1"
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            {profile.status === 'pending' ? 'Review' : 'View'}
+          </Button>
+          {onViewDocuments && (profile.application?.foodSafetyLicenseUrl || profile.application?.foodEstablishmentCertUrl) && (
+            <Button
+              onClick={onViewDocuments}
+              variant="outline"
+              className="flex-1"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Documents
+            </Button>
+          )}
+        </div>
+        {onRevokeAccess && profile.status === 'approved' && (
+          <Button
+            onClick={onRevokeAccess}
+            variant="outline"
+            disabled={revokeLoading}
+            className="w-full border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+          >
+            {revokeLoading ? (
+              <>
+                <Clock className="mr-2 h-4 w-4 animate-spin" />
+                Revoking...
+              </>
+            ) : (
+              <>
+                <Ban className="mr-2 h-4 w-4" />
+                Revoke Access
+              </>
+            )}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

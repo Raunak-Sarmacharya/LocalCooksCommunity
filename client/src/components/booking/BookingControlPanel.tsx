@@ -328,8 +328,18 @@ export default function BookingControlPanel({
       
       const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
+      // Don't allow cancellation if booking time has passed
+      if (hoursUntilBooking < 0) {
+        toast({
+          title: "Cannot Cancel",
+          description: "This booking has already started or passed. Cancellation is no longer available.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Only apply cancellation policy to future bookings
-      // Past bookings (hoursUntilBooking < 0) should always be allowed to be cancelled
+      // Past bookings cannot be cancelled - only upcoming bookings outside cancellation window can be cancelled
       if (hoursUntilBooking >= 0 && hoursUntilBooking < cancellationHours) {
         toast({
           title: "Cancellation Policy",
@@ -463,11 +473,12 @@ export default function BookingControlPanel({
                 const cancellationHours = booking.location?.cancellationPolicyHours ?? 24;
                 // Allow cancellation if:
                 // 1. Booking is not already cancelled
-                // 2. Either the booking is in the past (hoursUntilBooking < 0) OR
-                //    the booking is upcoming and outside the cancellation window
+                // 2. Booking is upcoming (not in the past)
+                // 3. Booking is outside the cancellation window
                 canCancel =
                   booking.status !== "cancelled" &&
-                  (hoursUntilBooking < 0 || (isUpcoming && hoursUntilBooking >= cancellationHours));
+                  isUpcoming &&
+                  hoursUntilBooking >= cancellationHours;
               }
             } catch (error) {
               console.error('Error processing booking date:', booking, error);
