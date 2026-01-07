@@ -160,56 +160,11 @@ function StoragePhotoUpload({ photos, onPhotosChange }: { photos: string[]; onPh
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const headers: Record<string, string> = {
+  // Managers use session-based authentication (cookies)
+  // No Firebase token needed - session cookie is sent via credentials: "include"
+  return {
     'Content-Type': 'application/json',
   };
-  
-  try {
-    const { auth } = await import('@/lib/firebase');
-    const currentUser = auth.currentUser;
-    
-    if (currentUser?.uid) {
-      // Include X-User-ID header as fallback
-      headers['X-User-ID'] = currentUser.uid;
-      
-      // Get fresh Firebase token
-      try {
-        const token = await currentUser.getIdToken();
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-      } catch (tokenError) {
-        console.error('Failed to get Firebase token:', tokenError);
-      }
-    } else {
-      // Fallback to localStorage if Firebase auth not ready
-      const storedUserId = localStorage.getItem('userId');
-      const storedToken = localStorage.getItem('firebaseToken');
-      
-      if (storedUserId) {
-        headers['X-User-ID'] = storedUserId;
-      }
-      
-      if (storedToken) {
-        headers['Authorization'] = `Bearer ${storedToken}`;
-      }
-    }
-  } catch (error) {
-    console.error('Error getting auth headers:', error);
-    // Fallback to localStorage
-    const storedUserId = localStorage.getItem('userId');
-    const storedToken = localStorage.getItem('firebaseToken');
-    
-    if (storedUserId) {
-      headers['X-User-ID'] = storedUserId;
-    }
-    
-    if (storedToken) {
-      headers['Authorization'] = `Bearer ${storedToken}`;
-    }
-  }
-  
-  return headers;
 }
 
 export default function StorageListingManagement({ embedded = false }: StorageListingManagementProps = {}) {
@@ -333,21 +288,34 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
   const handleEdit = async (listingId: number) => {
     try {
       const headers = await getAuthHeaders();
+      console.log('Loading storage listing for edit:', listingId);
+      
       const response = await fetch(`/api/manager/storage-listings/${listingId}`, {
         headers,
         credentials: "include",
       });
       
       if (!response.ok) {
-        throw new Error('Failed to load listing');
+        const errorText = await response.text();
+        console.error('Error loading listing:', response.status, errorText);
+        throw new Error(`Failed to load listing (${response.status})`);
       }
       
       const data = await response.json();
-      setFormData(data);
+      console.log('Storage listing loaded:', data);
+      
+      // Ensure proper data types - basePrice should already be in dollars from backend
+      setFormData({
+        ...data,
+        basePrice: data.basePrice !== undefined && data.basePrice !== null ? Number(data.basePrice) : 0,
+        minimumBookingDuration: data.minimumBookingDuration || 1,
+        kitchenId: data.kitchenId || data.kitchen_id,
+      });
       setEditingListingId(listingId);
       setCurrentStep(1);
-      setSelectedKitchenId(data.kitchenId);
+      setSelectedKitchenId(data.kitchenId || data.kitchen_id);
     } catch (error: any) {
+      console.error('Error loading storage listing:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to load listing",
@@ -425,15 +393,42 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
         : '/api/manager/storage-listings';
       
       const method = editingListingId ? 'PUT' : 'POST';
-      // Build payload with daily rate pricing model
+      
+      // Build payload with daily rate pricing model - ensure basePrice is a number
       const payload = {
         kitchenId: selectedKitchenId,
-        ...formData,
-        // Set daily pricing model for backend compatibility
+        name: formData.name,
+        description: formData.description || null,
+        storageType: formData.storageType,
+        basePrice: Number(formData.basePrice), // Ensure it's a number
+        minimumBookingDuration: Number(formData.minimumBookingDuration) || 1,
+        currency: 'CAD',
         pricingModel: 'daily',
         bookingDurationUnit: 'daily',
+        // Optional fields
+        dimensionsLength: formData.dimensionsLength ? Number(formData.dimensionsLength) : null,
+        dimensionsWidth: formData.dimensionsWidth ? Number(formData.dimensionsWidth) : null,
+        dimensionsHeight: formData.dimensionsHeight ? Number(formData.dimensionsHeight) : null,
+        totalVolume: formData.totalVolume ? Number(formData.totalVolume) : null,
+        shelfCount: formData.shelfCount ? Number(formData.shelfCount) : null,
+        shelfMaterial: formData.shelfMaterial || null,
+        accessType: formData.accessType || null,
+        temperatureRange: formData.temperatureRange || null,
+        climateControl: formData.climateControl || false,
+        humidityControl: formData.humidityControl || false,
+        powerOutlets: formData.powerOutlets || 0,
+        insuranceRequired: formData.insuranceRequired || false,
+        features: formData.features || [],
+        securityFeatures: formData.securityFeatures || [],
+        certifications: formData.certifications || [],
+        photos: formData.photos || [],
+        documents: formData.documents || [],
+        houseRules: formData.houseRules || [],
+        prohibitedItems: formData.prohibitedItems || [],
       };
 
+      console.log('Saving storage listing:', { listingId: editingListingId, payload });
+      
       const response = await fetch(url, {
         method,
         headers,
@@ -442,11 +437,19 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to save listing' }));
-        throw new Error(errorData.error || 'Failed to save listing');
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Failed to save listing' };
+        }
+        console.error('Error response:', response.status, errorData);
+        throw new Error(errorData.error || `Failed to save listing (${response.status})`);
       }
 
       const saved = await response.json();
+      console.log('Storage listing saved successfully:', saved);
       
       toast({
         title: "Success",

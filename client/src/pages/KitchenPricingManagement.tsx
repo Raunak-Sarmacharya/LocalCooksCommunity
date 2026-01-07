@@ -28,13 +28,8 @@ interface KitchenPricingManagementProps {
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  if (token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  }
+  // Managers use session-based authentication (cookies)
+  // No Firebase token needed - session cookie is sent via credentials: "include"
   return {
     'Content-Type': 'application/json',
   };
@@ -125,6 +120,8 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
     
     try {
       const headers = await getAuthHeaders();
+      console.log('Loading pricing for kitchen:', selectedKitchenId);
+      
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/pricing`, {
         headers,
         credentials: "include",
@@ -133,6 +130,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
       if (!response.ok) {
         if (response.status === 404) {
           // No pricing set yet, use defaults
+          console.log('No pricing found, using defaults');
           setPricing({
             hourlyRate: null,
             currency: 'CAD',
@@ -141,14 +139,24 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
           });
           return;
         }
-        throw new Error('Failed to load pricing');
+        const errorText = await response.text();
+        console.error('Error loading pricing:', response.status, errorText);
+        throw new Error(`Failed to load pricing (${response.status})`);
       }
       
       const data = await response.json();
+      console.log('Pricing loaded:', data);
+      
+      // Ensure proper data types
+      const minHours = data.minimumBookingHours;
+      const validMinHours = (minHours !== undefined && minHours !== null && !isNaN(Number(minHours)) && Number(minHours) >= 1) 
+        ? Math.max(1, Math.floor(Number(minHours))) 
+        : 1;
+      
       setPricing({
-        hourlyRate: data.hourlyRate,
+        hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null ? Number(data.hourlyRate) : null,
         currency: data.currency || 'CAD',
-        minimumBookingHours: data.minimumBookingHours || 1,
+        minimumBookingHours: validMinHours,
         pricingModel: data.pricingModel || 'hourly',
       });
     } catch (error: any) {
@@ -171,23 +179,70 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
       return;
     }
 
+    // Validate pricing data before sending
+    if (pricing.hourlyRate !== null && pricing.hourlyRate !== undefined && (isNaN(pricing.hourlyRate) || pricing.hourlyRate < 0)) {
+      toast({
+        title: "Validation Error",
+        description: "Hourly rate must be a positive number or empty",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate minimumBookingHours - must be at least 1
+    const minBookingHours = Number(pricing.minimumBookingHours);
+    if (isNaN(minBookingHours) || minBookingHours < 1) {
+      toast({
+        title: "Validation Error",
+        description: "Minimum booking hours must be at least 1",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const headers = await getAuthHeaders();
+      
+      // Prepare payload - ensure null values are sent correctly
+      const payload = {
+        hourlyRate: pricing.hourlyRate === null || pricing.hourlyRate === undefined ? null : Number(pricing.hourlyRate),
+        currency: pricing.currency || 'CAD',
+        minimumBookingHours: Math.max(1, Math.floor(minBookingHours)), // Ensure it's at least 1 and an integer
+        pricingModel: pricing.pricingModel || 'hourly',
+      };
+
+      console.log('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
+      
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/pricing`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify(pricing),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to save pricing' }));
-        throw new Error(errorData.error || 'Failed to save pricing');
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Failed to save pricing' };
+        }
+        console.error('Error response:', response.status, errorData);
+        throw new Error(errorData.error || `Failed to save pricing (${response.status})`);
       }
 
       const updated = await response.json();
-      setPricing(updated);
+      console.log('Pricing saved successfully:', updated);
+      
+      // Update state with the response data
+      setPricing({
+        hourlyRate: updated.hourlyRate,
+        currency: updated.currency || 'CAD',
+        minimumBookingHours: updated.minimumBookingHours || 1,
+        pricingModel: updated.pricingModel || 'hourly',
+      });
       
       toast({
         title: "Success",
@@ -378,10 +433,28 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
                 id="minimumBookingHours"
                 type="number"
                 min="1"
+                step="1"
                 value={pricing.minimumBookingHours}
                 onChange={(e) => {
-                  const value = parseInt(e.target.value) || 1;
-                  setPricing({ ...pricing, minimumBookingHours: value });
+                  const inputValue = e.target.value;
+                  if (inputValue === '' || inputValue === null || inputValue === undefined) {
+                    setPricing({ ...pricing, minimumBookingHours: 1 });
+                    return;
+                  }
+                  const parsedValue = parseInt(inputValue, 10);
+                  if (!isNaN(parsedValue) && parsedValue >= 1) {
+                    setPricing({ ...pricing, minimumBookingHours: parsedValue });
+                  } else {
+                    // If invalid, set to 1
+                    setPricing({ ...pricing, minimumBookingHours: 1 });
+                  }
+                }}
+                onBlur={(e) => {
+                  // Ensure value is at least 1 when field loses focus
+                  const value = parseInt(e.target.value, 10);
+                  if (isNaN(value) || value < 1) {
+                    setPricing({ ...pricing, minimumBookingHours: 1 });
+                  }
                 }}
                 className="mt-2"
               />
