@@ -622,15 +622,15 @@ export default function BookingControlPanel({
         </div>
       )}
 
-      {/* Storage Bookings Section */}
+      {/* Storage Bookings Section - Separate Group */}
       {!isLoadingStorage && storageBookings.length > 0 && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
+        <div className="mt-6 pt-6 border-t-2 border-purple-200">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-purple-900 flex items-center gap-2">
               <Package className="h-5 w-5 text-purple-600" />
               Storage Bookings
             </h3>
-            <span className="text-sm text-gray-500">{storageBookings.length} active</span>
+            <span className="text-sm text-purple-600 font-medium">{storageBookings.length} active</span>
           </div>
 
           <div className="space-y-3">

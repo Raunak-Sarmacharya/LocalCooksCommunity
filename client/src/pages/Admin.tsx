@@ -80,10 +80,13 @@ import {
     Phone,
     RefreshCw,
     Search,
+    Settings,
     Shield,
     Truck,
     User as UserIcon,
-    XCircle
+    XCircle,
+    Save,
+    DollarSign
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -1096,7 +1099,7 @@ function AdminDashboard() {
           >
             {/* Main Admin Tabs */}
             <Tabs defaultValue="applications" className="w-full">
-              <TabsList className="grid w-full grid-cols-6 rounded-xl bg-gray-100 p-1 mb-6">
+              <TabsList className="grid w-full grid-cols-7 rounded-xl bg-gray-100 p-1 mb-6">
                 <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
                   Chef Applications
@@ -1116,6 +1119,10 @@ function AdminDashboard() {
                 <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
                   <ExternalLink className="h-4 w-4" />
                   Manage Kitchens
+                </TabsTrigger>
+                <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
+                  <Settings className="h-4 w-4" />
+                  Platform Settings
                 </TabsTrigger>
                 <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
                   <Shield className="h-4 w-4" />
@@ -1409,6 +1416,11 @@ function AdminDashboard() {
                     Open Kitchen Management →
                   </Button>
                 </div>
+              </TabsContent>
+
+              {/* Platform Settings Tab Content */}
+              <TabsContent value="platform-settings" className="mt-0">
+                <PlatformSettingsView />
               </TabsContent>
 
               {/* Account Settings Tab Content */}
@@ -2508,6 +2520,238 @@ function AdminDashboard() {
       </motion.div>
     );
   }
+}
+
+// Platform Settings Component
+function PlatformSettingsView() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [serviceFeeRate, setServiceFeeRate] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch current service fee rate
+  const { data: currentRate, isLoading: isLoadingRate } = useQuery({
+    queryKey: ['/api/admin/platform-settings/service-fee-rate'],
+    queryFn: async () => {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch service fee rate');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Set initial value as percentage for easier editing
+      setServiceFeeRate((data.rate * 100).toFixed(2));
+      setIsLoading(false);
+    },
+    onError: () => {
+      setIsLoading(false);
+      toast({
+        title: "Error",
+        description: "Failed to load service fee rate. Using default 5%.",
+        variant: "destructive",
+      });
+      setServiceFeeRate('5.00');
+    },
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async (rate: number) => {
+      const token = localStorage.getItem('firebaseToken');
+      const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ rate }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update service fee rate');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/platform-settings/service-fee-rate'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/platform-settings/service-fee-rate'] });
+      toast({
+        title: "Success",
+        description: `Service fee rate updated to ${data.percentage}%`,
+      });
+      setIsSaving(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update service fee rate",
+        variant: "destructive",
+      });
+      setIsSaving(false);
+    },
+  });
+
+  const handleSave = () => {
+    const rateValue = parseFloat(serviceFeeRate);
+    
+    if (isNaN(rateValue) || rateValue < 0 || rateValue > 100) {
+      toast({
+        title: "Invalid Input",
+        description: "Service fee rate must be between 0 and 100",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert percentage to decimal
+    const rateDecimal = rateValue / 100;
+    setIsSaving(true);
+    updateMutation.mutate(rateDecimal);
+  };
+
+  const handleReset = () => {
+    if (currentRate) {
+      setServiceFeeRate((currentRate.rate * 100).toFixed(2));
+    } else {
+      setServiceFeeRate('5.00');
+    }
+  };
+
+  if (isLoading || isLoadingRate) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      <div className="mb-6">
+        <h3 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+          <Settings className="h-5 w-5 text-indigo-600" />
+          Platform Settings
+        </h3>
+        <p className="text-gray-600">Configure platform-wide settings that affect all users</p>
+      </div>
+
+      {/* Service Fee Rate Card */}
+      <Card className="border-2 border-gray-200">
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <DollarSign className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">Service Fee Rate</h4>
+                <p className="text-sm text-gray-600 mb-4">
+                  The platform service fee rate applied to storage extensions and bookings. This rate is used when chefs extend their storage bookings.
+                </p>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Service Fee Rate (%)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={serviceFeeRate}
+                        onChange={(e) => setServiceFeeRate(e.target.value)}
+                        className="max-w-xs"
+                        placeholder="5.00"
+                      />
+                      <span className="text-sm text-gray-500">%</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Enter a value between 0 and 100 (e.g., 5.00 for 5%)
+                    </p>
+                  </div>
+
+                  {currentRate && (
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Current Rate</p>
+                          <p className="text-2xl font-bold text-indigo-600 mt-1">
+                            {currentRate.percentage}%
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Last updated: {currentRate.updatedAt ? new Date(currentRate.updatedAt).toLocaleString() : 'Never'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-600">Decimal Value</p>
+                          <p className="text-lg font-semibold text-gray-900">{currentRate.rate}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      onClick={handleSave}
+                      disabled={isSaving || !serviceFeeRate}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      {isSaving ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleReset}
+                      disabled={isSaving}
+                      variant="outline"
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Info Card */}
+      <Card className="border border-blue-200 bg-blue-50">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800">
+              <p className="font-semibold mb-1">Important Notes:</p>
+              <ul className="list-disc list-inside space-y-1 text-blue-700">
+                <li>Changes to the service fee rate will apply to all new storage extensions</li>
+                <li>Existing bookings will retain their original service fee rate</li>
+                <li>The rate is applied as a percentage of the base price</li>
+                <li>This setting affects storage extension payments only</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function Admin() {
