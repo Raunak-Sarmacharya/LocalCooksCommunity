@@ -9,7 +9,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings } from "@shared/schema";
+import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
@@ -2007,6 +2007,34 @@ export class FirebaseStorage {
   }
 
   /**
+   * Get platform service fee rate from settings
+   * @returns Service fee rate as decimal (e.g., 0.05 for 5%)
+   */
+  async getServiceFeeRate(): Promise<number> {
+    try {
+      const [setting] = await db
+        .select()
+        .from(platformSettings)
+        .where(eq(platformSettings.key, 'service_fee_rate'))
+        .limit(1);
+      
+      if (setting) {
+        const rate = parseFloat(setting.value);
+        if (!isNaN(rate) && rate >= 0 && rate <= 1) {
+          return rate;
+        }
+      }
+      
+      // Default to 5% if not set or invalid
+      return 0.05;
+    } catch (error) {
+      console.error('Error getting service fee rate:', error);
+      // Default to 5% on error
+      return 0.05;
+    }
+  }
+
+  /**
    * Extend storage booking to a new end date
    * Calculates additional cost based on the extension period
    * @param id - Storage booking ID
@@ -2042,10 +2070,13 @@ export class FirebaseStorage {
         throw new Error(`Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}`);
       }
 
+      // Get configurable service fee rate
+      const serviceFeeRate = await this.getServiceFeeRate();
+
       // Calculate additional cost (daily rate × extension days)
       const basePricePerDay = storageListing.basePrice || 0; // in dollars
       const extensionBasePrice = basePricePerDay * extensionDays;
-      const extensionServiceFee = extensionBasePrice * 0.05; // 5% service fee
+      const extensionServiceFee = extensionBasePrice * serviceFeeRate; // Configurable service fee
       const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
 
       // Convert to cents for database

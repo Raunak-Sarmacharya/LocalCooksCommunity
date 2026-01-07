@@ -8131,12 +8131,193 @@ app.get('/api/firebase-health', (req, res) => {
   });
 });
 
+  // 🔥 Public Platform Settings Endpoint (for chefs to see service fee rate)
+  app.get('/api/platform-settings/service-fee-rate', async (req, res) => {
+    try {
+      if (!pool) {
+        return res.json({
+          key: 'service_fee_rate',
+          value: '0.05',
+          rate: 0.05,
+          percentage: '5.00',
+          description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
+        });
+      }
+
+      const result = await pool.query(
+        'SELECT key, value, description FROM platform_settings WHERE key = $1 LIMIT 1',
+        ['service_fee_rate']
+      );
+      
+      if (result.rows.length > 0) {
+        const setting = result.rows[0];
+        const rate = parseFloat(setting.value);
+        if (!isNaN(rate) && rate >= 0 && rate <= 1) {
+          return res.json({
+            key: 'service_fee_rate',
+            value: setting.value,
+            rate: rate,
+            percentage: (rate * 100).toFixed(2),
+            description: setting.description,
+          });
+        }
+      }
+      
+      // Return default if not set
+      return res.json({
+        key: 'service_fee_rate',
+        value: '0.05',
+        rate: 0.05,
+        percentage: '5.00',
+        description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
+      });
+    } catch (error) {
+      console.error('Error getting service fee rate:', error);
+      res.status(500).json({
+        error: 'Failed to get service fee rate',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // 🔥 Admin Platform Settings Endpoints
+  // Get service fee rate (admin endpoint with full details)
+  app.get('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try {
+      if (!pool) {
+        return res.json({
+          key: 'service_fee_rate',
+          value: '0.05',
+          rate: 0.05,
+          percentage: '5.00',
+          description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
+        });
+      }
+
+      const result = await pool.query(
+        'SELECT key, value, description, updated_at, updated_by FROM platform_settings WHERE key = $1 LIMIT 1',
+        ['service_fee_rate']
+      );
+      
+      if (result.rows.length > 0) {
+        const setting = result.rows[0];
+        const rate = parseFloat(setting.value);
+        if (!isNaN(rate) && rate >= 0 && rate <= 1) {
+          return res.json({
+            key: 'service_fee_rate',
+            value: setting.value,
+            rate: rate,
+            percentage: (rate * 100).toFixed(2),
+            description: setting.description,
+            updatedAt: setting.updated_at,
+          });
+        }
+      }
+      
+      // Return default if not set
+      return res.json({
+        key: 'service_fee_rate',
+        value: '0.05',
+        rate: 0.05,
+        percentage: '5.00',
+        description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
+      });
+    } catch (error) {
+      console.error('Error getting service fee rate:', error);
+      res.status(500).json({
+        error: 'Failed to get service fee rate',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Update service fee rate
+  app.put('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try {
+      if (!pool) {
+        return res.status(503).json({ error: 'Database not available' });
+      }
+
+      const { rate } = req.body;
+      
+      if (rate === undefined || rate === null) {
+        return res.status(400).json({ error: 'Rate is required' });
+      }
+      
+      const rateValue = typeof rate === 'string' ? parseFloat(rate) : rate;
+      
+      if (isNaN(rateValue) || rateValue < 0 || rateValue > 1) {
+        return res.status(400).json({ error: 'Rate must be a number between 0 and 1 (e.g., 0.05 for 5%)' });
+      }
+      
+      // Get current user ID from middleware
+      const userId = req.neonUser?.id || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+      
+      // Check if setting exists
+      const existingResult = await pool.query(
+        'SELECT * FROM platform_settings WHERE key = $1 LIMIT 1',
+        ['service_fee_rate']
+      );
+      
+      if (existingResult.rows.length > 0) {
+        // Update existing
+        const updateResult = await pool.query(
+          `UPDATE platform_settings 
+           SET value = $1, updated_by = $2, updated_at = now() 
+           WHERE key = 'service_fee_rate' 
+           RETURNING key, value, description, updated_at`,
+          [rateValue.toString(), userId]
+        );
+        
+        const updated = updateResult.rows[0];
+        return res.json({
+          key: 'service_fee_rate',
+          value: updated.value,
+          rate: rateValue,
+          percentage: (rateValue * 100).toFixed(2),
+          description: updated.description,
+          updatedAt: updated.updated_at,
+          message: 'Service fee rate updated successfully',
+        });
+      } else {
+        // Create new
+        const insertResult = await pool.query(
+          `INSERT INTO platform_settings (key, value, description, updated_by) 
+           VALUES ('service_fee_rate', $1, 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.', $2) 
+           RETURNING key, value, description, updated_at`,
+          [rateValue.toString(), userId]
+        );
+        
+        const created = insertResult.rows[0];
+        return res.json({
+          key: 'service_fee_rate',
+          value: created.value,
+          rate: rateValue,
+          percentage: (rateValue * 100).toFixed(2),
+          description: created.description,
+          updatedAt: created.updated_at,
+          message: 'Service fee rate created successfully',
+        });
+      }
+    } catch (error) {
+      console.error('Error updating service fee rate:', error);
+      res.status(500).json({
+        error: 'Failed to update service fee rate',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   console.log('🔥 Enhanced Firebase authentication routes added to existing API');
   console.log('✨ Hybrid architecture: Both session-based and Firebase JWT authentication available');
   console.log('📧 Email-based login now supported alongside username login');
   console.log('🚀 Hybrid endpoints: /api/hybrid/* support both auth methods');
   console.log('👥 Admin support: Both Firebase and session admins fully supported');
   console.log('🐛 Debug endpoints: /api/debug-login, /api/auth-status available for troubleshooting');
+  console.log('⚙️ Admin platform settings endpoints registered successfully');
 
 // Utility function to create admin user in Firebase (run once)
 async function createAdminInFirebase() {

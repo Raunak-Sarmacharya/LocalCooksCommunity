@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import BookingControlPanel from "@/components/booking/BookingControlPanel";
 import { StorageSelection } from "@/components/booking/StorageSelection";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
+import { useLocation } from "wouter";
 
 // Helper functions for calendar
 function getDaysInMonth(year: number, month: number) {
@@ -45,6 +46,7 @@ function getCalendarDays(year: number, month: number) {
 export default function KitchenBookingCalendar() {
   const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking, kitchensQuery } = useKitchenBookings();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   // Memoize enriched bookings to prevent infinite re-renders
   // Only recalculate when bookings or kitchens data actually changes
@@ -164,7 +166,6 @@ export default function KitchenBookingCalendar() {
   
   // Step 4: Booking Details
   const [notes, setNotes] = useState<string>("");
-  const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Pricing state
   const [kitchenPricing, setKitchenPricing] = useState<{
@@ -199,6 +200,57 @@ export default function KitchenBookingCalendar() {
   
   // Calculate storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
+
+  // Calculate equipment pricing (base prices only, no service fees)
+  const equipmentPricing = useMemo(() => {
+    if (!selectedEquipmentIds.length || !equipmentListings.rental.length) {
+      return {
+        items: [],
+        subtotal: 0,
+      };
+    }
+
+    const items = selectedEquipmentIds
+      .map((eqId) => {
+        const eq = equipmentListings.rental.find((e: any) => e.id === eqId);
+        if (!eq) return null;
+        
+        // Use sessionRate (flat per-session fee) - API already returns in dollars
+        const rate = eq.sessionRate || 0;
+
+        return {
+          id: eq.id,
+          name: `${eq.equipmentType}${eq.brand ? ` (${eq.brand})` : ''}`,
+          rate,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const subtotal = items.reduce((sum, item) => sum + item.rate, 0);
+
+    return {
+      items,
+      subtotal,
+    };
+  }, [selectedEquipmentIds, equipmentListings.rental]);
+
+  // Calculate combined subtotal (kitchen base + storage base + equipment base)
+  const combinedSubtotal = useMemo(() => {
+    const kitchenBase = estimatedPrice?.basePrice || 0;
+    const storageBase = storagePricing.subtotal || 0; // Use subtotal (base price without service fee)
+    const equipmentBase = equipmentPricing.subtotal || 0;
+    return kitchenBase + storageBase + equipmentBase;
+  }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
+
+  // Calculate service fee on combined subtotal (5%)
+  const serviceFee = useMemo(() => {
+    return Math.round(combinedSubtotal * 0.05 * 100) / 100; // Round to 2 decimal places
+  }, [combinedSubtotal]);
+
+  // Calculate grand total (subtotal + service fee)
+  const grandTotal = useMemo(() => {
+    return combinedSubtotal + serviceFee;
+  }, [combinedSubtotal, serviceFee]);
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -394,7 +446,6 @@ export default function KitchenBookingCalendar() {
     setSelectedDate(null);
     setSelectedSlots([]);
     setAllSlots([]);
-    setShowBookingModal(false);
     setEstimatedPrice(null);
     setSelectedStorageIds([]);
     setSelectedEquipmentIds([]);
@@ -512,7 +563,6 @@ export default function KitchenBookingCalendar() {
     
     setSelectedDate(date);
     setSelectedSlots([]);
-    setShowBookingModal(false);
   };
 
   // Calculate estimated price when slots change
@@ -642,7 +692,6 @@ export default function KitchenBookingCalendar() {
             title: "Booking Created!",
             description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
           });
-          setShowBookingModal(false);
           setSelectedSlots([]);
           setNotes("");
           setSelectedStorageIds([]); // Legacy cleanup
@@ -876,12 +925,12 @@ export default function KitchenBookingCalendar() {
                       </div>
                     </div>
 
-                    {/* Storage & Equipment Add-ons Section */}
-                    {(storageListings.length > 0 || equipmentListings.all.length > 0) && (
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    {/* GROUP 1: Kitchen Add-ons (Equipment) */}
+                    {equipmentListings.all.length > 0 && (
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border-2 border-blue-200 p-6">
                         <div className="flex items-center gap-2 mb-4">
-                          <Package className="h-5 w-5 text-emerald-600" />
-                          <h3 className="text-lg font-semibold text-gray-900">Available Add-ons</h3>
+                          <ChefHat className="h-5 w-5 text-blue-600" />
+                          <h3 className="text-lg font-semibold text-blue-900">Kitchen Add-ons</h3>
                         </div>
                         
                         {/* Equipment - Included (Free with Kitchen) */}
@@ -894,7 +943,7 @@ export default function KitchenBookingCalendar() {
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {equipmentListings.included.map((equipment: any) => (
-                                <div key={equipment.id} className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <div key={equipment.id} className="p-3 bg-white border border-green-200 rounded-lg">
                                   <div className="flex items-start justify-between">
                                     <div>
                                       <p className="font-medium text-gray-900">{equipment.equipmentType}</p>
@@ -968,35 +1017,44 @@ export default function KitchenBookingCalendar() {
                           </div>
                         )}
                         
-                        {/* Storage Listings - Interactive Selection with Date Range Picker */}
-                        {storageListings.length > 0 && (
-                          <StorageSelection
-                            storageListings={storageListings}
-                            selectedStorage={selectedStorage}
-                            onSelectionChange={setSelectedStorage}
-                            kitchenBookingDate={selectedDate || undefined}
-                          />
-                        )}
-                        
                         {/* Equipment Selection Summary */}
-                        {(selectedEquipmentIds.length > 0 || selectedStorage.length > 0) && (
-                          <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-                            {selectedEquipmentIds.length > 0 && (
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Wrench className="h-4 w-4" />
-                                <span>
-                                  Selected: {selectedEquipmentIds.length} equipment add-on{selectedEquipmentIds.length !== 1 ? 's' : ''}
-                                </span>
-                              </div>
-                            )}
-                            {selectedStorage.length > 0 && (
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Package className="h-4 w-4" />
-                                <span>
-                                  Selected: {selectedStorage.length} storage space{selectedStorage.length !== 1 ? 's' : ''}
-                                </span>
-                              </div>
-                            )}
+                        {selectedEquipmentIds.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-blue-200">
+                            <div className="flex items-center gap-2 text-sm text-blue-700 font-medium">
+                              <Wrench className="h-4 w-4" />
+                              <span>
+                                Selected: {selectedEquipmentIds.length} equipment add-on{selectedEquipmentIds.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* GROUP 2: Storage Spaces (Separate Group) */}
+                    {storageListings.length > 0 && (
+                      <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl shadow-sm border-2 border-purple-200 p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Package className="h-5 w-5 text-purple-600" />
+                          <h3 className="text-lg font-semibold text-purple-900">Storage Spaces</h3>
+                        </div>
+                        
+                        <StorageSelection
+                          storageListings={storageListings}
+                          selectedStorage={selectedStorage}
+                          onSelectionChange={setSelectedStorage}
+                          kitchenBookingDate={selectedDate || undefined}
+                        />
+                        
+                        {/* Storage Selection Summary */}
+                        {selectedStorage.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-purple-200">
+                            <div className="flex items-center gap-2 text-sm text-purple-700 font-medium">
+                              <Package className="h-4 w-4" />
+                              <span>
+                                Selected: {selectedStorage.length} storage space{selectedStorage.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1135,7 +1193,36 @@ export default function KitchenBookingCalendar() {
                           </div>
                           {selectedSlots.length > 0 && (
                             <button
-                              onClick={() => setShowBookingModal(true)}
+                              onClick={() => {
+                                if (!selectedKitchen || !selectedDate) return;
+                                
+                                // Build query parameters
+                                const params = new URLSearchParams();
+                                params.set('kitchenId', selectedKitchen.id.toString());
+                                params.set('date', toLocalDateString(selectedDate));
+                                params.set('slots', selectedSlots.join(','));
+                                
+                                // Add storage if selected
+                                if (selectedStorage.length > 0) {
+                                  params.set('storage', encodeURIComponent(JSON.stringify(selectedStorage.map(s => ({
+                                    storageListingId: s.storageListingId,
+                                    startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
+                                    endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
+                                  })))));
+                                }
+                                
+                                // Add equipment if selected
+                                if (selectedEquipmentIds.length > 0) {
+                                  params.set('equipment', selectedEquipmentIds.join(','));
+                                }
+                                
+                                // Add notes if any
+                                if (notes) {
+                                  params.set('notes', notes);
+                                }
+                                
+                                setLocation(`/book-kitchen/confirm?${params.toString()}`);
+                              }}
                               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center gap-2"
                             >
                               Continue
@@ -1318,239 +1405,6 @@ export default function KitchenBookingCalendar() {
           )}
         </div>
 
-        {/* Booking Modal */}
-        {showBookingModal && selectedKitchen && selectedDate && selectedSlots.length > 0 && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowBookingModal(false);
-              }
-            }}
-          >
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Confirm Your Booking</h2>
-                <button
-                  onClick={() => setShowBookingModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                  aria-label="Close modal"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {/* Kitchen */}
-                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                  <p className="text-xs text-gray-600 mb-1">Kitchen</p>
-                  <p className="font-semibold text-gray-900 text-lg">{selectedKitchen.name}</p>
-                  {(selectedKitchen.location?.name || selectedKitchen.locationName) && (
-                    <p className="text-xs text-gray-600 mt-1">
-                      📍 {selectedKitchen.location?.name || selectedKitchen.locationName}
-                    </p>
-                  )}
-                </div>
-
-                {/* Date & Time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-600 mb-1">Date</p>
-                    <p className="font-medium text-gray-900">
-                      {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-gray-600 mb-1">Duration</p>
-                    <p className="font-medium text-gray-900">
-                      {/* Each slot = 1 hour, so duration = number of slots */}
-                      {selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Time Range */}
-                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-xs text-gray-600 mb-2">Booking Time</p>
-                  {/* Show overall booking time range */}
-                  <div className="text-center mb-3">
-                    <span className="text-lg font-bold text-green-800">
-                      {getBookingTimeRange()}
-                    </span>
-                    <span className="text-sm text-green-600 ml-2">
-                      ({selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''})
-                    </span>
-                  </div>
-                  
-                  {/* Show individual slot ranges */}
-                  <p className="text-xs text-gray-500 mb-2 text-center">Time Blocks:</p>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    {[...selectedSlots].sort().map((slot, idx) => (
-                      <div key={slot} className="flex items-center gap-1">
-                        <span className="px-2 py-1 bg-white border border-green-300 rounded text-sm font-medium text-green-800">
-                          {formatSlotRange(slot)}
-                        </span>
-                        {idx < selectedSlots.length - 1 && (
-                          <span className="text-green-400 text-xs">+</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Pricing Breakdown - Always show when kitchen is selected */}
-                {selectedKitchen && (
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Pricing:</h3>
-                    {estimatedPrice && kitchenPricing && kitchenPricing.hourlyRate ? (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)}/hour):</span>
-                          <span className="font-medium">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Service Fee (5%):</span>
-                          <span className="font-medium">${estimatedPrice.serviceFee.toFixed(2)} {kitchenPricing.currency}</span>
-                        </div>
-                        <div className="pt-2 border-t border-gray-300 flex justify-between">
-                          <span className="font-semibold text-gray-900">Total:</span>
-                          <span className="font-bold text-lg text-blue-600">${estimatedPrice.totalPrice.toFixed(2)} {kitchenPricing.currency}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-600">
-                        {!kitchenPricing || !kitchenPricing.hourlyRate ? (
-                          <div className="space-y-2">
-                            <p className="text-amber-600 font-medium flex items-center gap-2">
-                              <Info className="h-4 w-4" />
-                              Pricing not set for this kitchen
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              The manager needs to set an hourly rate in the Manager Dashboard → Pricing tab. 
-                              This booking will be free until pricing is configured.
-                            </p>
-                            <p className="text-xs text-gray-600 mt-2">
-                              Duration: {selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                        ) : (
-                          <p>Calculating price...</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Selected Add-ons Summary */}
-                {(selectedStorage.length > 0 || selectedEquipmentIds.length > 0) && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <h3 className="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                      <Package className="h-4 w-4" />
-                      Selected Add-ons
-                    </h3>
-                    <div className="space-y-3 text-sm">
-                      {/* Selected Storage */}
-                      {storagePricing.items.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-semibold text-amber-700 mb-2">Storage Bookings:</h4>
-                          {storagePricing.items.map((item, idx) => (
-                            <div key={idx} className="mb-2 pb-2 border-b border-amber-200 last:border-0">
-                              <div className="flex justify-between items-start mb-1">
-                                <span className="text-gray-700 flex items-center gap-1">
-                                  <Package className="h-3 w-3 text-purple-600" />
-                                  {item.listing.name}
-                                </span>
-                                <span className="font-medium text-amber-700">${item.total.toFixed(2)}</span>
-                              </div>
-                              <div className="text-xs text-gray-600 ml-4">
-                                {item.days} day{item.days > 1 ? 's' : ''} × ${item.listing.basePrice.toFixed(2)}/day
-                              </div>
-                            </div>
-                          ))}
-                          {storagePricing.items.length > 1 && (
-                            <div className="mt-2 pt-2 border-t border-amber-200 flex justify-between text-xs">
-                              <span className="text-amber-700">Storage Subtotal:</span>
-                              <span className="font-medium text-amber-800">${storagePricing.subtotal.toFixed(2)}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Selected Equipment */}
-                      {selectedEquipmentIds.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-semibold text-amber-700 mb-2">Equipment Add-ons:</h4>
-                          {selectedEquipmentIds.map(eqId => {
-                            const eq = equipmentListings.rental.find((e: any) => e.id === eqId);
-                            if (!eq) return null;
-                            // Use sessionRate (flat per-session fee)
-                            const rate = eq.sessionRate || 0;
-                            return (
-                              <div key={eqId} className="flex justify-between items-center mb-1">
-                                <span className="text-gray-700 flex items-center gap-1">
-                                  <Wrench className="h-3 w-3 text-amber-600" />
-                                  {eq.equipmentType} {eq.brand ? `(${eq.brand})` : ''}
-                                </span>
-                                <span className="font-medium text-amber-700">${rate?.toFixed(2) || '0.00'}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    {(selectedStorage.length > 0 || selectedEquipmentIds.length > 0) && (
-                      <p className="text-xs text-amber-600 mt-3">
-                        ℹ️ Final pricing will be calculated and confirmed before payment
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Special Notes */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Special Notes (Optional)
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                    maxLength={500}
-                    placeholder="Any special requirements or notes..."
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                  {notes && (
-                    <p className="text-xs text-gray-500 mt-1">{notes.length}/500 characters</p>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowBookingModal(false)}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={handleBookingSubmit}
-                    disabled={createBooking.isPending}
-                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
-                  >
-                    {createBooking.isPending ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Booking...
-                      </span>
-                    ) : (
-                      "Confirm Booking"
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
       <Footer />
     </div>

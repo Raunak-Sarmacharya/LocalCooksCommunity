@@ -1146,3 +1146,27 @@ export type EquipmentBooking = typeof equipmentBookings.$inferSelect;
 export type InsertEquipmentBooking = z.infer<typeof insertEquipmentBookingSchema>;
 export type UpdateEquipmentBooking = z.infer<typeof updateEquipmentBookingSchema>;
 export type UpdateEquipmentBookingStatus = z.infer<typeof updateEquipmentBookingStatusSchema>;
+
+// ===== PLATFORM SETTINGS TABLE =====
+
+export const platformSettings = pgTable("platform_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedBy: integer("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for platform settings
+export const insertPlatformSettingSchema = createInsertSchema(platformSettings);
+export const updatePlatformSettingSchema = z.object({
+  value: z.string().optional(),
+  description: z.string().optional(),
+});
+
+// Type exports for platform settings
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
+export type UpdatePlatformSetting = z.infer<typeof updatePlatformSettingSchema>;

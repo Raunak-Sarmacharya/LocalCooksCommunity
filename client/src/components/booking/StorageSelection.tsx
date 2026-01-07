@@ -309,16 +309,11 @@ export function StorageSelection({
                       {pricePreview && (
                         <div className="mt-2 pt-2 border-t border-green-200">
                           <div className="flex justify-between text-sm">
-                            <span className="text-green-700">Subtotal:</span>
+                            <span className="text-green-700">Price ({pricePreview.days} day{pricePreview.days > 1 ? 's' : ''}):</span>
                             <span className="font-medium text-green-900">${pricePreview.basePrice.toFixed(2)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-green-700">Service Fee (5%):</span>
-                            <span className="font-medium text-green-900">${pricePreview.serviceFee.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between text-sm font-semibold pt-1 border-t border-green-200 mt-1">
-                            <span className="text-green-900">Total:</span>
-                            <span className="text-green-900">${pricePreview.total.toFixed(2)}</span>
+                          <div className="text-xs text-green-600 mt-1">
+                            Service fee will be calculated on the combined booking total
                           </div>
                         </div>
                       )}
