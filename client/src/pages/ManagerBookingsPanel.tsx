@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 
 interface Booking {
   id: number;
@@ -52,9 +53,13 @@ interface ManagerBookingsPanelProps {
 export default function ManagerBookingsPanel({ embedded = false }: ManagerBookingsPanelProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { locations } = useManagerDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+
+  // Check if any location has approved license
+  const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
 
   // Fetch all bookings for this manager with real-time polling
   const { data: bookings = [], isLoading } = useQuery({
@@ -443,9 +448,20 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                   {booking.status === 'pending' && (
                     <div className="flex gap-3 mt-4 pt-4 border-t">
                       <button
-                        onClick={() => handleConfirm(booking.id)}
-                        disabled={updateStatusMutation.isPending}
+                        onClick={() => {
+                          if (!hasApprovedLicense) {
+                            toast({
+                              title: "License Not Approved",
+                              description: "Your kitchen license must be approved by an admin before you can confirm bookings.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          handleConfirm(booking.id);
+                        }}
+                        disabled={updateStatusMutation.isPending || !hasApprovedLicense}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title={!hasApprovedLicense ? "Kitchen license must be approved before confirming bookings" : ""}
                       >
                         <CheckCircle className="h-4 w-4" />
                         Confirm Booking

@@ -7,6 +7,11 @@ interface Location {
   managerId?: number;
   createdAt: string;
   updatedAt: string;
+  kitchenLicenseUrl?: string;
+  kitchenLicenseStatus?: string;
+  kitchenLicenseApprovedBy?: number;
+  kitchenLicenseApprovedAt?: string;
+  kitchenLicenseFeedback?: string;
 }
 
 interface Kitchen {
