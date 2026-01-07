@@ -17722,7 +17722,45 @@ app.put("/api/manager/bookings/:id/status", async (req, res) => {
       SELECT * FROM kitchen_bookings WHERE id = $1
     `, [id]);
     
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    
     const booking = bookingResult.rows[0];
+
+    // If confirming a booking, check if location's kitchen license is approved
+    if (status === 'confirmed') {
+      // Get the kitchen's location
+      const kitchenResult = await pool.query(
+        'SELECT location_id FROM kitchens WHERE id = $1',
+        [booking.kitchen_id]
+      );
+      
+      if (kitchenResult.rows.length > 0) {
+        const locationId = kitchenResult.rows[0].location_id;
+        
+        // Check license status
+        const locationResult = await pool.query(
+          'SELECT kitchen_license_status FROM locations WHERE id = $1',
+          [locationId]
+        );
+        
+        if (locationResult.rows.length > 0) {
+          const licenseStatus = locationResult.rows[0].kitchen_license_status;
+          
+          if (licenseStatus !== 'approved') {
+            return res.status(403).json({ 
+              error: "Cannot confirm booking",
+              message: licenseStatus === 'pending'
+                ? "Your kitchen license is pending admin approval. Bookings cannot be confirmed until your license is approved."
+                : licenseStatus === 'rejected'
+                ? "Your kitchen license has been rejected. Please upload a new license and get it approved before confirming bookings."
+                : "Your kitchen license has not been uploaded or approved. Please complete onboarding and get your license approved before confirming bookings."
+            });
+          }
+        }
+      }
+    }
 
     const result = await pool.query(`
       UPDATE kitchen_bookings
