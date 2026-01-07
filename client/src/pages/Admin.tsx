@@ -2531,13 +2531,13 @@ function PlatformSettingsView() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Fetch current service fee rate
+  // NOTE: Admins use session-based auth, not Firebase tokens
   const { data: currentRate, isLoading: isLoadingRate } = useQuery({
     queryKey: ['/api/admin/platform-settings/service-fee-rate'],
     queryFn: async () => {
-      const token = localStorage.getItem('firebaseToken');
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
+        credentials: 'include', // Essential for session-based admin auth
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
@@ -2563,13 +2563,13 @@ function PlatformSettingsView() {
   });
 
   // Update mutation
+  // NOTE: Admins use session-based auth, not Firebase tokens
   const updateMutation = useMutation({
     mutationFn: async (rate: number) => {
-      const token = localStorage.getItem('firebaseToken');
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
         method: 'PUT',
+        credentials: 'include', // Essential for session-based admin auth
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ rate }),
