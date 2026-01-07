@@ -2,7 +2,7 @@ import { insertApplicationSchema } from '@shared/schema';
 import { platformSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
-import { Express, Request, Response } from 'express';
+import { Express, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import { fromZodError } from 'zod-validation-error';
 import { pool } from './db';
@@ -15,8 +15,67 @@ import {
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
+import { storage } from './storage';
 
 export function registerFirebaseRoutes(app: Express) {
+
+  // Helper function to get authenticated user from session (for admin endpoints)
+  async function getAuthenticatedUserFromSession(req: Request): Promise<{ id: number; username: string; role: string | null } | null> {
+    // Check Passport session first
+    if ((req as any).isAuthenticated?.() && (req as any).user) {
+      return (req as any).user as any;
+    }
+
+    // Check direct session data (for admin login via req.session.userId)
+    if ((req.session as any)?.userId) {
+      const userId = (req.session as any).userId;
+      const user = await storage.getUser(userId);
+      if (user) {
+        return user;
+      }
+    }
+
+    // Check session user object
+    if ((req.session as any)?.user) {
+      return (req.session as any).user;
+    }
+
+    return null;
+  }
+
+  // Session-based admin middleware (for admin endpoints that use session auth)
+  async function requireSessionAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = await getAuthenticatedUserFromSession(req);
+      
+      if (!user) {
+        return res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Session authentication required. Please login as an admin.' 
+        });
+      }
+
+      if (user.role !== 'admin') {
+        return res.status(403).json({ 
+          error: 'Forbidden', 
+          message: 'Admin access required',
+          userRole: user.role || 'none'
+        });
+      }
+
+      // Set user on request for use in handlers
+      (req as any).sessionUser = user;
+      (req as any).neonUser = user; // For backward compatibility with existing code
+
+      next();
+    } catch (error) {
+      console.error('Session admin auth error:', error);
+      return res.status(500).json({ 
+        error: 'Internal server error', 
+        message: 'Authentication verification failed' 
+      });
+    }
+  }
 
   // 🔥 Firebase User Registration Endpoint
   // This is called during registration to create new users
@@ -2038,7 +2097,8 @@ export function registerFirebaseRoutes(app: Express) {
 
   // 🔥 Admin Platform Settings Endpoints
   // Get service fee rate (admin endpoint with full details)
-  app.get('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+  // NOTE: Admins use session-based auth, not Firebase auth
+  app.get('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req: Request, res: Response) => {
     try {
       const [setting] = await db
         .select()
@@ -2078,7 +2138,8 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // Update service fee rate
-  app.put('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+  // NOTE: Admins use session-based auth, not Firebase auth
+  app.put('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req: Request, res: Response) => {
     try {
       const { rate } = req.body;
       
@@ -2090,6 +2151,12 @@ export function registerFirebaseRoutes(app: Express) {
       
       if (isNaN(rateValue) || rateValue < 0 || rateValue > 1) {
         return res.status(400).json({ error: 'Rate must be a number between 0 and 1 (e.g., 0.05 for 5%)' });
+      }
+      
+      // Get user ID from session (set by requireSessionAdmin middleware)
+      const userId = (req as any).sessionUser?.id || (req as any).neonUser?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
       }
       
       // Check if setting exists
@@ -2105,7 +2172,7 @@ export function registerFirebaseRoutes(app: Express) {
           .update(platformSettings)
           .set({
             value: rateValue.toString(),
-            updatedBy: req.neonUser!.id,
+            updatedBy: userId,
             updatedAt: new Date(),
           })
           .where(eq(platformSettings.key, 'service_fee_rate'))
@@ -2128,7 +2195,7 @@ export function registerFirebaseRoutes(app: Express) {
             key: 'service_fee_rate',
             value: rateValue.toString(),
             description: 'Platform service fee rate as decimal (e.g., 0.05 for 5%). Admin configurable.',
-            updatedBy: req.neonUser!.id,
+            updatedBy: userId,
           })
           .returning();
         

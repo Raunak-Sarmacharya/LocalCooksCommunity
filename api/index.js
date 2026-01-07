@@ -6705,6 +6705,72 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Session-based admin middleware (for admin endpoints that use session auth)
+async function requireSessionAdmin(req, res, next) {
+  try {
+    // Check session data (for admin login via req.session.userId)
+    const sessionUserId = req.session.userId;
+    
+    if (!sessionUserId) {
+      // Also check session user object
+      if (req.session.user && req.session.user.id) {
+        const user = req.session.user;
+        if (user.role !== 'admin') {
+          return res.status(403).json({ 
+            error: 'Forbidden', 
+            message: 'Admin access required',
+            userRole: user.role || 'none'
+          });
+        }
+        req.neonUser = {
+          id: user.id,
+          username: user.username,
+          role: user.role
+        };
+        return next();
+      }
+      
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Session authentication required. Please login as an admin.' 
+      });
+    }
+
+    // Get user from database
+    const user = await getUser(sessionUserId);
+    
+    if (!user) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'User not found in session' 
+      });
+    }
+
+    if (user.role !== 'admin') {
+      return res.status(403).json({ 
+        error: 'Forbidden', 
+        message: 'Admin access required',
+        userRole: user.role || 'none'
+      });
+    }
+
+    // Set user on request for use in handlers
+    req.neonUser = {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    };
+
+    next();
+  } catch (error) {
+    console.error('Session admin auth error:', error);
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      message: 'Authentication verification failed' 
+    });
+  }
+}
+
 // ===================================
 // ENHANCED FIREBASE ROUTES
 // ===================================
@@ -8182,7 +8248,8 @@ app.get('/api/firebase-health', (req, res) => {
 
   // 🔥 Admin Platform Settings Endpoints
   // Get service fee rate (admin endpoint with full details)
-  app.get('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  // NOTE: Admins use session-based auth, not Firebase auth
+  app.get('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req, res) => {
     try {
       if (!pool) {
         return res.json({
@@ -8232,7 +8299,8 @@ app.get('/api/firebase-health', (req, res) => {
   });
 
   // Update service fee rate
-  app.put('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  // NOTE: Admins use session-based auth, not Firebase auth
+  app.put('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req, res) => {
     try {
       if (!pool) {
         return res.status(503).json({ error: 'Database not available' });
@@ -8250,8 +8318,8 @@ app.get('/api/firebase-health', (req, res) => {
         return res.status(400).json({ error: 'Rate must be a number between 0 and 1 (e.g., 0.05 for 5%)' });
       }
       
-      // Get current user ID from middleware
-      const userId = req.neonUser?.id || req.user?.id;
+      // Get current user ID from session (set by requireSessionAdmin middleware)
+      const userId = req.neonUser?.id;
       if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
       }
