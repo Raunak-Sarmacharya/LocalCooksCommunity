@@ -79,10 +79,40 @@ export function useManagerChefProfiles() {
     },
   });
 
+  const revokeAccess = useMutation({
+    mutationFn: async ({ 
+      chefId, 
+      locationId 
+    }: { 
+      chefId: number; 
+      locationId: number;
+    }) => {
+      const response = await fetch(`/api/manager/chef-location-access`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ chefId, locationId }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to revoke access");
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/chef-profiles"] });
+    },
+  });
+
   return {
     profiles: profilesQuery.data ?? [],
     isLoading: profilesQuery.isLoading,
     updateProfileStatus,
+    revokeAccess,
     refetch: profilesQuery.refetch,
   };
 }

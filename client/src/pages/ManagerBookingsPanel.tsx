@@ -461,18 +461,29 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                     </div>
                   )}
                   
-                  {booking.status === 'confirmed' && (
-                    <div className="flex gap-3 mt-4 pt-4 border-t">
-                      <button
-                        onClick={() => handleCancelClick(booking)}
-                        disabled={updateStatusMutation.isPending}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <XCircle className="h-4 w-4" />
-                        Cancel Booking
-                      </button>
-                    </div>
-                  )}
+                  {booking.status === 'confirmed' && (() => {
+                    // Check if booking time has passed
+                    const bookingDateTime = new Date(`${booking.bookingDate.split('T')[0]}T${booking.startTime}`);
+                    const isBookingPast = bookingDateTime < new Date();
+                    
+                    // Only show cancel button if booking hasn't started yet
+                    if (isBookingPast) {
+                      return null;
+                    }
+                    
+                    return (
+                      <div className="flex gap-3 mt-4 pt-4 border-t">
+                        <button
+                          onClick={() => handleCancelClick(booking)}
+                          disabled={updateStatusMutation.isPending}
+                          className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <XCircle className="h-4 w-4" />
+                          Cancel Booking
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
                 );
               })}
