@@ -3586,7 +3586,7 @@ app.get('/api/init-db', async (req, res) => {
 // FILE SERVING ROUTES
 // ===============================
 
-// Serve uploaded document files
+// Serve uploaded document files - Works with R2 URLs and local files
 app.get("/api/files/documents/:filename", async (req, res) => {
   try {
     // Check if user is authenticated
@@ -3601,10 +3601,100 @@ app.get("/api/files/documents/:filename", async (req, res) => {
       return res.status(401).json({ message: "User not found" });
     }
 
-    // File serving not supported in serverless environment
-    return res.status(501).json({ 
-      message: "File serving not available in production environment. Please use external URLs for document storage." 
-    });
+    const filename = req.params.filename;
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    // In production, files are in R2 - need to find the file URL from database
+    if (isProduction) {
+      // Try to find the file URL in applications table
+      if (pool) {
+        const result = await pool.query(`
+          SELECT 
+            id, user_id, 
+            food_safety_license_url, 
+            food_establishment_cert_url
+          FROM applications 
+          WHERE food_safety_license_url LIKE $1 
+             OR food_establishment_cert_url LIKE $1
+          LIMIT 1
+        `, [`%${filename}%`]);
+
+        if (result.rows.length > 0) {
+          const application = result.rows[0];
+          const fileUrl = application.food_safety_license_url?.includes(filename) 
+            ? application.food_safety_license_url 
+            : application.food_establishment_cert_url;
+
+          // Access control: Allow if user owns the application, is admin, or is manager
+          const canAccess = 
+            application.user_id === user.id || 
+            user.role === 'admin' || 
+            user.role === 'manager';
+
+          if (!canAccess) {
+            return res.status(403).json({ message: "Access denied" });
+          }
+
+          if (fileUrl) {
+            // Redirect to R2 URL (public URL)
+            return res.redirect(fileUrl);
+          }
+        }
+      }
+
+      // If not found in applications, check if it's a direct R2 URL pattern
+      // Extract userId from filename (format: userId_documentType_timestamp_originalname)
+      const fileUserId = parseInt(filename.split('_')[0]);
+      
+      // Allow access if user owns the file, is admin, or is manager
+      if (user.id !== fileUserId && user.role !== 'admin' && user.role !== 'manager') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Construct R2 URL if we have the bucket configured
+      if (isR2Configured()) {
+        const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
+          `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
+        const fileUrl = R2_PUBLIC_URL.endsWith('/') 
+          ? `${R2_PUBLIC_URL}documents/${filename}`
+          : `${R2_PUBLIC_URL}/documents/${filename}`;
+        return res.redirect(fileUrl);
+      }
+
+      return res.status(404).json({ message: "File not found" });
+    } else {
+      // Development: serve local files
+      const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      // Extract userId from filename
+      const fileUserId = parseInt(filename.split('_')[0]);
+      
+      // Allow access if user owns the file, is admin, or is manager
+      if (user.id !== fileUserId && user.role !== 'admin' && user.role !== 'manager') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get file info and serve
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filename).toLowerCase();
+      
+      let contentType = 'application/octet-stream';
+      if (ext === '.pdf') contentType = 'application/pdf';
+      else if (['.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
+      else if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.webp') contentType = 'image/webp';
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      
+      const readStream = fs.createReadStream(filePath);
+      readStream.pipe(res);
+    }
   } catch (error) {
     console.error("Error serving file:", error);
     return res.status(500).json({ message: "Internal server error" });

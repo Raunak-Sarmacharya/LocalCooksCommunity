@@ -1270,8 +1270,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Extract userId from filename (format: userId_documentType_timestamp_originalname)
       const fileUserId = parseInt(filename.split('_')[0]);
       
-      // Allow access if user owns the file or is admin
-      if (req.user!.id !== fileUserId && req.user!.role !== "admin") {
+      // Allow access if user owns the file, is admin, or is manager
+      // Chefs can view their own files, admins and managers can view all files
+      if (req.user!.id !== fileUserId && req.user!.role !== "admin" && req.user!.role !== "manager") {
         return res.status(403).json({ message: "Access denied" });
       }
 
