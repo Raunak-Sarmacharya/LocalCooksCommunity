@@ -24,6 +24,7 @@ import StorageListingManagement from "./StorageListingManagement";
 import EquipmentListingManagement from "./EquipmentListingManagement";
 import ChangePassword from "@/components/auth/ChangePassword";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
+import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
 
 interface Location {
   id: number;
@@ -37,6 +38,11 @@ interface Location {
   minimumBookingWindowHours?: number;
   logoUrl?: string;
   timezone?: string;
+  kitchenLicenseUrl?: string;
+  kitchenLicenseStatus?: string;
+  kitchenLicenseApprovedBy?: number;
+  kitchenLicenseApprovedAt?: string;
+  kitchenLicenseFeedback?: string;
 }
 
 interface Kitchen {
@@ -69,6 +75,23 @@ export default function ManagerBookingDashboard() {
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('overview');
+
+  // Check onboarding status
+  const { data: userData } = useQuery({
+    queryKey: ["/api/user-session"],
+    queryFn: async () => {
+      const response = await fetch("/api/user-session", {
+        credentials: "include",
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+  });
+
+  const needsOnboarding =
+    userData?.role === "manager" &&
+    !userData?.manager_onboarding_completed &&
+    !userData?.manager_onboarding_skipped;
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -239,8 +262,78 @@ export default function ManagerBookingDashboard() {
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <ManagerHeader />
+      <ManagerOnboardingWizard />
       <main className="flex-1 pt-24 pb-8 relative z-10">
         <div className="container mx-auto px-4 py-6 max-w-7xl">
+          {/* Onboarding Reminder Banner */}
+          {needsOnboarding && (
+            <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                      Complete Your Setup to Activate Bookings
+                    </h3>
+                    <p className="text-sm text-blue-700 mb-3">
+                      Finish your onboarding to start accepting bookings. Upload your kitchen license
+                      and get it approved by an admin to activate bookings.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        // Trigger onboarding wizard
+                        const event = new CustomEvent('open-onboarding');
+                        window.dispatchEvent(event);
+                      }}
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Complete Setup Now
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* License Approval Reminder */}
+          {!needsOnboarding &&
+            selectedLocation &&
+            selectedLocation.kitchenLicenseStatus !== "approved" && (
+              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-yellow-900 mb-1">
+                      {selectedLocation.kitchenLicenseStatus === "pending"
+                        ? "License Pending Approval"
+                        : selectedLocation.kitchenLicenseStatus === "rejected"
+                        ? "License Rejected"
+                        : "License Not Uploaded"}
+                    </h3>
+                    <p className="text-sm text-yellow-700 mb-2">
+                      {selectedLocation.kitchenLicenseStatus === "pending"
+                        ? "Your kitchen license is pending admin approval. Bookings will be activated once approved."
+                        : selectedLocation.kitchenLicenseStatus === "rejected"
+                        ? selectedLocation.kitchenLicenseFeedback ||
+                          "Your license was rejected. Please upload a new one."
+                        : "Upload your kitchen license to activate bookings."}
+                    </p>
+                    {selectedLocation.kitchenLicenseStatus !== "pending" && (
+                      <Button
+                        onClick={() => setActiveView("settings")}
+                        size="sm"
+                        variant="outline"
+                        className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                      >
+                        Upload License
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
           {/* Header - Only show on non-overview pages */}
           {activeView !== 'overview' && (
             <div className="mb-6">
