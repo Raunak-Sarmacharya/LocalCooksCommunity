@@ -1,7 +1,7 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { put } from '@vercel/blob';
+import { uploadToR2, isR2Configured } from './r2-storage';
 
 // Check if we're in production (Vercel)
 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
@@ -30,7 +30,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// Memory storage for production (Vercel Blob)
+// Memory storage for production (Cloudflare R2)
 const memoryStorage = multer.memoryStorage();
 
 // File filter to only allow certain file types
@@ -60,25 +60,19 @@ export const upload = multer({
   fileFilter: fileFilter
 });
 
-// Helper function to upload file to Vercel Blob (production)
-export const uploadToBlob = async (file: Express.Multer.File, userId: number): Promise<string> => {
+// Helper function to upload file to Cloudflare R2 (production) or local storage (development)
+export const uploadToBlob = async (file: Express.Multer.File, userId: number, folder: string = 'documents'): Promise<string> => {
   try {
-    const timestamp = Date.now();
-    const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
-    const ext = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, ext);
-    
-    const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
-    
-    const blob = await put(filename, file.buffer, {
-      access: 'public',
-      contentType: file.mimetype,
-    });
-    
-    console.log(`File uploaded to Vercel Blob: ${filename} -> ${blob.url}`);
-    return blob.url;
+    // In production, use Cloudflare R2 if configured, otherwise fall back to local
+    if (isProduction && isR2Configured()) {
+      return await uploadToR2(file, userId, folder);
+    } else {
+      // Development: return local file path
+      const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
+      return getFileUrl(filename);
+    }
   } catch (error) {
-    console.error('Error uploading to Vercel Blob:', error);
+    console.error('Error uploading file:', error);
     throw new Error('Failed to upload file to cloud storage');
   }
 };
@@ -97,28 +91,33 @@ export const deleteFile = (filePath: string): void => {
 
 // Helper function to get file URL (environment aware)
 export const getFileUrl = (filename: string): string => {
-  if (isProduction) {
-    // In production, this should be the actual Vercel Blob URL
-    // This function is mainly used for development
-    return `/api/files/documents/${filename}`;
-  } else {
-    return `/api/files/documents/${filename}`;
-  }
+  // In production, files are stored in Cloudflare R2 and URLs are returned directly
+  // This function is mainly used for development (local file storage)
+  return `/api/files/documents/${filename}`;
 };
 
 // Helper function to clean up application documents when application is cancelled
-export const cleanupApplicationDocuments = (application: { 
+export const cleanupApplicationDocuments = async (application: { 
   foodSafetyLicenseUrl?: string | null, 
   foodEstablishmentCertUrl?: string | null 
-}): void => {
+}): Promise<void> => {
   try {
-    // Only clean up local files in development
-    if (isProduction) {
-      console.log('Skipping file cleanup in production (Vercel Blob files are managed externally)');
+    const { deleteFromR2 } = await import('./r2-storage');
+    
+    // In production with R2, delete from R2
+    if (isProduction && isR2Configured()) {
+      if (application.foodSafetyLicenseUrl) {
+        await deleteFromR2(application.foodSafetyLicenseUrl);
+        console.log(`Deleted food safety license file from R2: ${application.foodSafetyLicenseUrl}`);
+      }
+      if (application.foodEstablishmentCertUrl) {
+        await deleteFromR2(application.foodEstablishmentCertUrl);
+        console.log(`Deleted food establishment certificate file from R2: ${application.foodEstablishmentCertUrl}`);
+      }
       return;
     }
 
-    // Clean up food safety license file
+    // Development: clean up local files
     if (application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith('/api/files/')) {
       const filename = application.foodSafetyLicenseUrl.split('/').pop();
       if (filename) {
@@ -128,7 +127,6 @@ export const cleanupApplicationDocuments = (application: {
       }
     }
 
-    // Clean up food establishment certificate file
     if (application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith('/api/files/')) {
       const filename = application.foodEstablishmentCertUrl.split('/').pop();
       if (filename) {

@@ -1210,9 +1210,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let fileName: string;
 
         if (isProduction) {
-          // Upload to Vercel Blob in production
+          // Upload to Cloudflare R2 in production
           fileUrl = await uploadToBlob(req.file, req.user!.id);
-          // Extract filename from Vercel Blob URL for response
+          // Extract filename from R2 URL for response
           fileName = fileUrl.split('/').pop() || req.file.originalname;
         } else {
           // Use local storage in development

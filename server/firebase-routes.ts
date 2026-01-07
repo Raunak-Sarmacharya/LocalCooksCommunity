@@ -6,7 +6,8 @@ import { Express, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import { fromZodError } from 'zod-validation-error';
 import { pool } from './db';
-import { getFileUrl, upload, uploadToBlob } from './fileUpload';
+import { upload, uploadToBlob } from './fileUpload';
+import { handleFileUpload } from './upload-handler';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
     requireAdmin,
@@ -707,57 +708,11 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
-  // 🔥 File Upload Endpoint (Firebase Auth, NO SESSIONS)
+  // 🔥 File Upload Endpoint (Firebase Auth, NO SESSIONS) - Uses Cloudflare R2
   app.post('/api/upload', 
     upload.single('file'), 
     requireFirebaseAuthWithUser,
-    async (req: Request, res: Response) => {
-      try {
-        if (!req.file) {
-          return res.status(400).json({ error: "No file uploaded" });
-        }
-
-        const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-        let fileUrl: string;
-        let fileName: string;
-
-        if (isProduction) {
-          // Upload to Vercel Blob in production
-          fileUrl = await uploadToBlob(req.file, req.neonUser!.id);
-          // Extract filename from Vercel Blob URL for response
-          fileName = fileUrl.split('/').pop() || req.file.originalname;
-        } else {
-          // Use local storage in development
-          fileUrl = getFileUrl(req.file.filename);
-          fileName = req.file.filename;
-        }
-
-        // Return success response with file information
-        return res.status(200).json({
-          success: true,
-          url: fileUrl,
-          fileName: fileName,
-          size: req.file.size,
-          type: req.file.mimetype
-        });
-      } catch (error) {
-        console.error("Firebase file upload error:", error);
-        
-        // Clean up uploaded file on error (development only)
-        if (req.file && req.file.path) {
-          try {
-            fs.unlinkSync(req.file.path);
-          } catch (e) {
-            console.error('Error cleaning up file:', e);
-          }
-        }
-        
-        return res.status(500).json({ 
-          error: "File upload failed",
-          details: error instanceof Error ? error.message : "Unknown error"
-        });
-      }
-    }
+    handleFileUpload
   );
 
   // 🔥 Microlearning Progress Endpoint (Firebase Auth, NO SESSIONS)

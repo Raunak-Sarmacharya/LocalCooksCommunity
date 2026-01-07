@@ -9,6 +9,7 @@ import createMemoryStore from 'memorystore';
 import multer from 'multer';
 import path from 'path';
 import { promisify } from 'util';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 // Default timezone constant (available immediately)
 const DEFAULT_TIMEZONE = 'America/St_Johns';
 
@@ -87,7 +88,7 @@ try {
   };
 
   if (uploadIsProduction) {
-    // Production: Use memory storage for Vercel Blob
+    // Production: Use memory storage for Cloudflare R2
     const memoryStorage = multer.memoryStorage();
     upload = multer({
       storage: memoryStorage,
@@ -497,33 +498,147 @@ async function getUser(id) {
   return users.get(parseInt(id));
 }
 
-// Helper function to clean up Vercel blob files
-async function cleanupBlobFiles(urls) {
+// ===============================
+// Cloudflare R2 Helper Functions
+// ===============================
+
+let r2Client = null;
+
+function getR2Client() {
+  if (!r2Client) {
+    const R2_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+
+    if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
+      throw new Error('Cloudflare R2 credentials not configured');
+    }
+
+    r2Client = new S3Client({
+      region: 'auto',
+      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+    });
+  }
+  return r2Client;
+}
+
+function isR2Configured() {
+  return !!(
+    process.env.CLOUDFLARE_ACCOUNT_ID &&
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID &&
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY &&
+    process.env.CLOUDFLARE_R2_BUCKET_NAME
+  );
+}
+
+async function uploadToR2(file, userId, folder = 'documents') {
+  try {
+    const client = getR2Client();
+    const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+    const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
+      `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}`;
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const documentType = file.fieldname || 'file';
+    const ext = file.originalname.split('.').pop() || '';
+    const baseName = file.originalname.replace(/\.[^/.]+$/, '');
+    const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, '_');
+    
+    const filename = `${userId}_${documentType}_${timestamp}_${sanitizedBaseName}.${ext}`;
+    const key = `${folder}/${filename}`;
+
+    // Get file buffer
+    let fileBuffer;
+    if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else if (file.path) {
+      fileBuffer = fs.readFileSync(file.path);
+    } else {
+      throw new Error('File buffer or path not available');
+    }
+
+    // Upload to R2
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      Body: fileBuffer,
+      ContentType: file.mimetype,
+    });
+
+    await client.send(command);
+
+    // Construct public URL
+    const publicUrl = R2_PUBLIC_URL.endsWith('/') 
+      ? `${R2_PUBLIC_URL}${key}`
+      : `${R2_PUBLIC_URL}/${key}`;
+
+    console.log(`✅ File uploaded to R2: ${key} -> ${publicUrl}`);
+    return publicUrl;
+  } catch (error) {
+    console.error('❌ Error uploading to R2:', error);
+    throw new Error(`Failed to upload file to R2: ${error.message}`);
+  }
+}
+
+async function deleteFromR2(fileUrl) {
+  try {
+    const client = getR2Client();
+    const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+    
+    // Extract key from URL
+    const urlObj = new URL(fileUrl);
+    let key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    
+    // Remove bucket name from key if present
+    const keyParts = key.split('/');
+    const bucketIndex = keyParts.indexOf(R2_BUCKET_NAME);
+    const actualKey = bucketIndex >= 0 
+      ? keyParts.slice(bucketIndex + 1).join('/')
+      : key;
+
+    const command = new DeleteObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: actualKey,
+    });
+
+    await client.send(command);
+    console.log(`✅ File deleted from R2: ${actualKey}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error deleting from R2:', error);
+    return false;
+  }
+}
+
+// Helper function to clean up R2 files
+async function cleanupR2Files(urls) {
   if (!urls || !Array.isArray(urls)) return;
   
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
   
-  if (!isProduction) {
-    console.log('Development mode: Skipping blob cleanup for URLs:', urls);
+  if (!isProduction || !isR2Configured()) {
+    console.log('Development mode or R2 not configured: Skipping file cleanup for URLs:', urls);
     return;
   }
 
   try {
-    // Import Vercel Blob delete function
-    const { del } = await import('@vercel/blob');
-    
     for (const url of urls) {
-      if (url && typeof url === 'string' && url.includes('blob.vercel-storage.com')) {
+      if (url && typeof url === 'string') {
         try {
-          await del(url);
-          console.log(`Successfully deleted blob file: ${url}`);
+          await deleteFromR2(url);
         } catch (error) {
-          console.error(`Failed to delete blob file ${url}:`, error);
+          console.error(`Failed to delete R2 file ${url}:`, error);
         }
       }
     }
   } catch (error) {
-    console.error('Error during blob cleanup:', error);
+    console.error('Error during R2 cleanup:', error);
   }
 }
 
@@ -2582,22 +2697,22 @@ app.post('/api/applications', upload.fields([
     if (req.files) {
       console.log('📁 Processing uploaded files...');
       
-      // Import put function for Vercel Blob
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      
       try {
-        const { put } = await import('@vercel/blob');
-        
         // Upload food safety license file
         if (req.files.foodSafetyLicense && req.files.foodSafetyLicense[0]) {
           const file = req.files.foodSafetyLicense[0];
           console.log('⬆️ Uploading food safety license:', file.originalname);
           
-          const blob = await put(`food-safety-license-${userId}-${Date.now()}-${file.originalname}`, file.buffer, {
-            access: 'public',
-            contentType: file.mimetype
-          });
-          
-          uploadedFileUrls.foodSafetyLicenseUrl = blob.url;
-          console.log('✅ Food safety license uploaded:', blob.url);
+          if (isProduction && isR2Configured()) {
+            uploadedFileUrls.foodSafetyLicenseUrl = await uploadToR2(file, userId, 'documents');
+            console.log('✅ Food safety license uploaded to R2:', uploadedFileUrls.foodSafetyLicenseUrl);
+          } else {
+            // Development: use local file path
+            uploadedFileUrls.foodSafetyLicenseUrl = `/api/files/documents/${file.filename}`;
+            console.log('✅ Food safety license saved locally:', uploadedFileUrls.foodSafetyLicenseUrl);
+          }
         }
 
         // Upload food establishment cert file
@@ -2605,13 +2720,14 @@ app.post('/api/applications', upload.fields([
           const file = req.files.foodEstablishmentCert[0];
           console.log('⬆️ Uploading food establishment cert:', file.originalname);
           
-          const blob = await put(`food-establishment-cert-${userId}-${Date.now()}-${file.originalname}`, file.buffer, {
-            access: 'public',
-            contentType: file.mimetype
-          });
-          
-          uploadedFileUrls.foodEstablishmentCertUrl = blob.url;
-          console.log('✅ Food establishment cert uploaded:', blob.url);
+          if (isProduction && isR2Configured()) {
+            uploadedFileUrls.foodEstablishmentCertUrl = await uploadToR2(file, userId, 'documents');
+            console.log('✅ Food establishment cert uploaded to R2:', uploadedFileUrls.foodEstablishmentCertUrl);
+          } else {
+            // Development: use local file path
+            uploadedFileUrls.foodEstablishmentCertUrl = `/api/files/documents/${file.filename}`;
+            console.log('✅ Food establishment cert saved locally:', uploadedFileUrls.foodEstablishmentCertUrl);
+          }
         }
         
         console.log('📄 Final document URLs:', uploadedFileUrls);
@@ -3280,10 +3396,10 @@ app.patch('/api/applications/:id/cancel', async (req, res) => {
           WHERE id = $1
         `, [result.rows[0].id]);
 
-      // Clean up Vercel blob files if they exist
+      // Clean up R2 files if they exist
       if (docResult.rows.length > 0) {
         const docUrls = docResult.rows[0];
-        await cleanupBlobFiles([
+        await cleanupR2Files([
           docUrls.food_safety_license_url,
           docUrls.food_establishment_cert_url
         ]);
@@ -4059,36 +4175,21 @@ app.post("/api/upload",
       let fileUrl;
       let fileName;
 
-      if (isProduction) {
-        // Upload to Vercel Blob in production
+      if (isProduction && isR2Configured()) {
+        // Upload to Cloudflare R2 in production
         try {
-          console.log('☁️ Starting Vercel Blob upload...');
-          // Import Vercel Blob
-          const { put } = await import('@vercel/blob');
+          console.log('☁️ Starting Cloudflare R2 upload...');
           
-          const timestamp = Date.now();
-          const documentType = req.file.fieldname || 'file';
-          const ext = path.extname(req.file.originalname);
-          const baseName = path.basename(req.file.originalname, ext);
+          const folder = req.file.fieldname === 'profileImage' ? 'profiles' : 
+                        req.file.fieldname === 'image' ? 'images' : 
+                        'documents';
           
-          const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+          fileUrl = await uploadToR2(req.file, userId, folder);
+          fileName = fileUrl.split('/').pop() || req.file.originalname;
           
-          console.log('☁️ Uploading to Vercel Blob:', {
-            filename,
-            size: req.file.size,
-            mimetype: req.file.mimetype
-          });
-          
-          const blob = await put(filename, req.file.buffer, {
-            access: 'public',
-            contentType: req.file.mimetype,
-          });
-          
-          console.log(`✅ File uploaded to Vercel Blob successfully: ${filename} -> ${blob.url}`);
-          fileUrl = blob.url;
-          fileName = filename;
+          console.log(`✅ File uploaded to R2 successfully: ${fileName} -> ${fileUrl}`);
         } catch (error) {
-          console.error('❌ Error uploading to Vercel Blob:', error);
+          console.error('❌ Error uploading to R2:', error);
           return res.status(500).json({ 
             error: "File upload failed",
             details: "Failed to upload file to cloud storage"
@@ -4209,36 +4310,21 @@ app.post("/api/upload-file",
       let fileUrl;
       let fileName;
 
-      if (isProduction) {
-        // Upload to Vercel Blob in production
+      if (isProduction && isR2Configured()) {
+        // Upload to Cloudflare R2 in production
         try {
-          console.log('☁️ Starting Vercel Blob upload...');
-          // Import Vercel Blob
-          const { put } = await import('@vercel/blob');
+          console.log('☁️ Starting Cloudflare R2 upload...');
           
-          const timestamp = Date.now();
-          const documentType = req.file.fieldname || 'file';
-          const ext = path.extname(req.file.originalname);
-          const baseName = path.basename(req.file.originalname, ext);
+          const folder = req.file.fieldname === 'profileImage' ? 'profiles' : 
+                        req.file.fieldname === 'image' ? 'images' : 
+                        'documents';
           
-          const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+          fileUrl = await uploadToR2(req.file, userId, folder);
+          fileName = fileUrl.split('/').pop() || req.file.originalname;
           
-          console.log('☁️ Uploading to Vercel Blob:', {
-            filename,
-            size: req.file.size,
-            mimetype: req.file.mimetype
-          });
-          
-          const blob = await put(filename, req.file.buffer, {
-            access: 'public',
-            contentType: req.file.mimetype,
-          });
-          
-          console.log(`✅ File uploaded to Vercel Blob successfully: ${filename} -> ${blob.url}`);
-          fileUrl = blob.url;
-          fileName = filename;
+          console.log(`✅ File uploaded to R2 successfully: ${fileName} -> ${fileUrl}`);
         } catch (error) {
-          console.error('❌ Error uploading to Vercel Blob:', error);
+          console.error('❌ Error uploading to R2:', error);
           return res.status(500).json({ 
             error: "File upload failed",
             details: "Failed to upload file to cloud storage"
@@ -7602,10 +7688,10 @@ app.patch('/api/delivery-partner-applications/:id/cancel', async (req, res) => {
         WHERE id = $1
       `, [result.rows[0].id]);
 
-      // Clean up Vercel blob files if they exist
+      // Clean up R2 files if they exist
       if (docResult.rows.length > 0) {
         const docUrls = docResult.rows[0];
-        await cleanupBlobFiles([
+        await cleanupR2Files([
           docUrls.drivers_license_url,
           docUrls.vehicle_registration_url,
           docUrls.insurance_url
@@ -8111,36 +8197,21 @@ app.post("/api/firebase/upload-file",
       let fileUrl;
       let fileName;
 
-      if (isProduction) {
-        // Upload to Vercel Blob in production
+      if (isProduction && isR2Configured()) {
+        // Upload to Cloudflare R2 in production
         try {
-          console.log('☁️ Starting Vercel Blob upload...');
-          // Import Vercel Blob
-          const { put } = await import('@vercel/blob');
+          console.log('☁️ Starting Cloudflare R2 upload...');
           
-          const timestamp = Date.now();
-          const documentType = req.file.fieldname || 'file';
-          const ext = path.extname(req.file.originalname);
-          const baseName = path.basename(req.file.originalname, ext);
+          const folder = req.file.fieldname === 'profileImage' ? 'profiles' : 
+                        req.file.fieldname === 'image' ? 'images' : 
+                        'documents';
           
-          const filename = `${userId}_${documentType}_${timestamp}_${baseName}${ext}`;
+          fileUrl = await uploadToR2(req.file, userId, folder);
+          fileName = fileUrl.split('/').pop() || req.file.originalname;
           
-          console.log('☁️ Uploading to Vercel Blob:', {
-            filename,
-            size: req.file.size,
-            mimetype: req.file.mimetype
-          });
-          
-          const blob = await put(filename, req.file.buffer, {
-            access: 'public',
-            contentType: req.file.mimetype,
-          });
-          
-          console.log(`✅ File uploaded to Vercel Blob successfully: ${filename} -> ${blob.url}`);
-          fileUrl = blob.url;
-          fileName = filename;
+          console.log(`✅ File uploaded to R2 successfully: ${fileName} -> ${fileUrl}`);
         } catch (error) {
-          console.error('❌ Error uploading to Vercel Blob:', error);
+          console.error('❌ Error uploading to R2:', error);
           return res.status(500).json({ 
             error: "File upload failed",
             details: "Failed to upload file to cloud storage"
