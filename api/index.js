@@ -14522,8 +14522,8 @@ app.put("/api/manager/locations/:id", async (req, res) => {
     }
 
     // Build update query dynamically
-    const updates: string[] = [];
-    const values: any[] = [];
+    const updates = [];
+    const values = [];
     let paramIndex = 1;
 
     const allowedFields = [
