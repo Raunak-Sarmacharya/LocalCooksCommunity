@@ -35,6 +35,7 @@ const serverFiles = [
   'routes.ts',
   'db.ts',
   'email.ts',
+  'phone-utils.ts'
 ];
 
 serverFiles.forEach(file => {

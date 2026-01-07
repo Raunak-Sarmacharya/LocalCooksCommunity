@@ -6176,7 +6176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     bookingStartDateTime,
                     bookingEndDateTime,
                     totalPrice.toString(),
-                    pricingModel,
+                    'hourly', // Equipment uses session_rate (flat fee), but pricing_model field requires a value
                     damageDepositCents.toString(),
                     serviceFee.toString(),
                     equipmentListing.currency || 'CAD'
