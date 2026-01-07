@@ -16052,9 +16052,8 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     const storageBookingsCreated = [];
     const equipmentBookingsCreated = [];
     
-    // Parse booking dates for equipment (same as kitchen booking)
-    const [sH, sM] = String(startTime).split(':').map(Number);
-    const [eH, eM] = String(endTime).split(':').map(Number);
+    // Parse booking dates for equipment (reuse variables already declared above)
+    // sH, sM, eH, eM are already declared at line 15875-15876
     const bookingStartDateTime = new Date(bookingDate);
     bookingStartDateTime.setHours(sH, sM, 0, 0);
     const bookingEndDateTime = new Date(bookingDate);
