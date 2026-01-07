@@ -6706,8 +6706,13 @@ function requireAdmin(req, res, next) {
 }
 
 // Session-based admin middleware (for admin endpoints that use session auth)
+// IMPORTANT: This middleware ONLY checks session auth and IGNORES any Firebase tokens
 async function requireSessionAdmin(req, res, next) {
   try {
+    // Explicitly ignore any Authorization headers - this endpoint uses session auth only
+    // Delete any Firebase-related request properties to prevent accidental Firebase auth
+    delete req.firebaseUser;
+    
     // Check session data (for admin login via req.session.userId)
     const sessionUserId = req.session.userId;
     
@@ -6727,9 +6732,11 @@ async function requireSessionAdmin(req, res, next) {
           username: user.username,
           role: user.role
         };
+        console.log(`📱 Session admin auth: User ${user.id} (${user.username}) authenticated via session`);
         return next();
       }
       
+      console.log('❌ Session admin auth failed: No session found');
       return res.status(401).json({ 
         error: 'Unauthorized', 
         message: 'Session authentication required. Please login as an admin.' 
@@ -6740,6 +6747,7 @@ async function requireSessionAdmin(req, res, next) {
     const user = await getUser(sessionUserId);
     
     if (!user) {
+      console.log(`❌ Session admin auth failed: User ${sessionUserId} not found in database`);
       return res.status(401).json({ 
         error: 'Unauthorized', 
         message: 'User not found in session' 
@@ -6747,6 +6755,7 @@ async function requireSessionAdmin(req, res, next) {
     }
 
     if (user.role !== 'admin') {
+      console.log(`❌ Session admin auth failed: User ${user.id} is not an admin (role: ${user.role})`);
       return res.status(403).json({ 
         error: 'Forbidden', 
         message: 'Admin access required',
@@ -6761,6 +6770,7 @@ async function requireSessionAdmin(req, res, next) {
       role: user.role
     };
 
+    console.log(`✅ Session admin auth: User ${user.id} (${user.username}) authenticated as admin`);
     next();
   } catch (error) {
     console.error('Session admin auth error:', error);
@@ -8249,7 +8259,15 @@ app.get('/api/firebase-health', (req, res) => {
   // 🔥 Admin Platform Settings Endpoints
   // Get service fee rate (admin endpoint with full details)
   // NOTE: Admins use session-based auth, not Firebase auth
-  app.get('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req, res) => {
+  // IMPORTANT: This endpoint MUST use session auth only - no Firebase tokens
+  app.get('/api/admin/platform-settings/service-fee-rate', (req, res, next) => {
+    // Explicitly log that we're using session auth for this endpoint
+    console.log('📱 Platform settings GET: Using session auth only, ignoring any Authorization headers');
+    // Delete any Firebase-related properties before middleware runs
+    delete req.firebaseUser;
+    // Note: Can't delete headers.authorization directly, but requireSessionAdmin ignores it
+    requireSessionAdmin(req, res, next);
+  }, async (req, res) => {
     try {
       if (!pool) {
         return res.json({
@@ -8300,7 +8318,15 @@ app.get('/api/firebase-health', (req, res) => {
 
   // Update service fee rate
   // NOTE: Admins use session-based auth, not Firebase auth
-  app.put('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req, res) => {
+  // IMPORTANT: This endpoint MUST use session auth only - no Firebase tokens
+  app.put('/api/admin/platform-settings/service-fee-rate', (req, res, next) => {
+    // Explicitly log that we're using session auth for this endpoint
+    console.log('📱 Platform settings PUT: Using session auth only, ignoring any Authorization headers');
+    // Delete any Firebase-related properties before middleware runs
+    delete req.firebaseUser;
+    // Note: Can't delete headers.authorization directly, but requireSessionAdmin ignores it
+    requireSessionAdmin(req, res, next);
+  }, async (req, res) => {
     try {
       if (!pool) {
         return res.status(503).json({ error: 'Database not available' });

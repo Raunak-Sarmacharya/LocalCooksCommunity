@@ -9,7 +9,7 @@ import {
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
 // Safe Icon Component to prevent crashes
@@ -2532,26 +2532,39 @@ function PlatformSettingsView() {
 
   // Fetch current service fee rate
   // NOTE: Admins use session-based auth, not Firebase tokens
-  const { data: currentRate, isLoading: isLoadingRate } = useQuery({
+  // IMPORTANT: Do NOT send Authorization header - this endpoint uses session auth only
+  const { data: currentRate, isLoading: isLoadingRate, error: rateError } = useQuery<{
+    key: string;
+    value: string;
+    rate: number;
+    percentage: string;
+    description?: string;
+    updatedAt?: string;
+  }>({
     queryKey: ['/api/admin/platform-settings/service-fee-rate'],
     queryFn: async () => {
+      // Create headers object without Authorization to prevent Firebase auth
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
         credentials: 'include', // Essential for session-based admin auth
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
       if (!response.ok) {
         throw new Error('Failed to fetch service fee rate');
       }
       return response.json();
     },
-    onSuccess: (data) => {
-      // Set initial value as percentage for easier editing
-      setServiceFeeRate((data.rate * 100).toFixed(2));
+  });
+
+  // Handle query success/error with useEffect (React Query v5)
+  useEffect(() => {
+    if (currentRate?.rate) {
+      setServiceFeeRate((currentRate.rate * 100).toFixed(2));
       setIsLoading(false);
-    },
-    onError: () => {
+    } else if (rateError) {
       setIsLoading(false);
       toast({
         title: "Error",
@@ -2559,19 +2572,31 @@ function PlatformSettingsView() {
         variant: "destructive",
       });
       setServiceFeeRate('5.00');
-    },
-  });
+    }
+  }, [currentRate, rateError, toast]);
 
   // Update mutation
   // NOTE: Admins use session-based auth, not Firebase tokens
-  const updateMutation = useMutation({
+  // IMPORTANT: Do NOT send Authorization header - this endpoint uses session auth only
+  const updateMutation = useMutation<{
+    key: string;
+    value: string;
+    rate: number;
+    percentage: string;
+    description?: string;
+    updatedAt?: string;
+    message?: string;
+  }, Error, number>({
     mutationFn: async (rate: number) => {
+      // Create headers object without Authorization to prevent Firebase auth
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
         method: 'PUT',
         credentials: 'include', // Essential for session-based admin auth
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ rate }),
       });
       if (!response.ok) {
@@ -2580,24 +2605,27 @@ function PlatformSettingsView() {
       }
       return response.json();
     },
-    onSuccess: (data) => {
+  });
+
+  // Handle mutation success/error with useEffect (React Query v5)
+  useEffect(() => {
+    if (updateMutation.isSuccess && updateMutation.data) {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/platform-settings/service-fee-rate'] });
       queryClient.invalidateQueries({ queryKey: ['/api/platform-settings/service-fee-rate'] });
       toast({
         title: "Success",
-        description: `Service fee rate updated to ${data.percentage}%`,
+        description: `Service fee rate updated to ${updateMutation.data.percentage}%`,
       });
       setIsSaving(false);
-    },
-    onError: (error: any) => {
+    } else if (updateMutation.isError) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update service fee rate",
+        description: updateMutation.error?.message || "Failed to update service fee rate",
         variant: "destructive",
       });
       setIsSaving(false);
-    },
-  });
+    }
+  }, [updateMutation.isSuccess, updateMutation.isError, updateMutation.data, updateMutation.error, queryClient, toast]);
 
   const handleSave = () => {
     const rateValue = parseFloat(serviceFeeRate);
