@@ -59,6 +59,9 @@ export const users = pgTable("users", {
   isManager: boolean("is_manager").default(false).notNull(),
   isPortalUser: boolean("is_portal_user").default(false).notNull(), // Portal user (third-party kitchen users)
   applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
+  // Manager onboarding fields
+  managerOnboardingCompleted: boolean("manager_onboarding_completed").default(false).notNull(), // Whether manager completed onboarding
+  managerOnboardingSkipped: boolean("manager_onboarding_skipped").default(false).notNull(), // Whether manager skipped onboarding
 });
 
 // Define the applications table (for chefs)
@@ -342,6 +345,12 @@ export const locations = pgTable("locations", {
   logoUrl: text("logo_url"), // Logo URL for the location (for manager header)
   brandImageUrl: text("brand_image_url"), // Brand image URL for the location (displayed on public kitchen listings)
   timezone: text("timezone").default("America/St_Johns").notNull(), // Timezone for this location (default: Newfoundland)
+  // Kitchen license fields for manager onboarding
+  kitchenLicenseUrl: text("kitchen_license_url"), // URL to uploaded kitchen license document
+  kitchenLicenseStatus: text("kitchen_license_status").default("pending"), // pending, approved, rejected
+  kitchenLicenseApprovedBy: integer("kitchen_license_approved_by").references(() => users.id), // Admin who approved/rejected
+  kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
+  kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -12240,7 +12240,13 @@ app.get("/api/manager/locations", async (req, res) => {
              default_daily_booking_limit as "defaultDailyBookingLimit",
              minimum_booking_window_hours as "minimumBookingWindowHours",
              notification_email as "notificationEmail",
+             notification_phone as "notificationPhone",
              logo_url as "logoUrl",
+             kitchen_license_url as "kitchenLicenseUrl",
+             kitchen_license_status as "kitchenLicenseStatus",
+             kitchen_license_approved_by as "kitchenLicenseApprovedBy",
+             kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+             kitchen_license_feedback as "kitchenLicenseFeedback",
              created_at, updated_at 
       FROM locations 
       WHERE manager_id = $1
@@ -14448,6 +14454,109 @@ app.get("/api/manager/chef-profiles", async (req, res) => {
   }
 });
 
+// Manager: Complete onboarding
+app.post("/api/manager/complete-onboarding", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const { skipped } = req.body;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Update user onboarding status
+    await pool.query(
+      `UPDATE users 
+       SET manager_onboarding_completed = $1, 
+           manager_onboarding_skipped = $2 
+       WHERE id = $3`,
+      [!skipped, !!skipped, user.id]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error completing onboarding:", error);
+    res.status(500).json({ error: error.message || "Failed to complete onboarding" });
+  }
+});
+
+// Manager: Update location (for onboarding)
+app.put("/api/manager/locations/:id", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const locationId = parseInt(req.params.id);
+    if (isNaN(locationId)) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify this location is managed by this manager
+    const locationCheck = await pool.query(
+      'SELECT id FROM locations WHERE id = $1 AND manager_id = $2',
+      [locationId, user.id]
+    );
+
+    if (locationCheck.rows.length === 0) {
+      return res.status(403).json({ error: "You don't have permission to manage this location" });
+    }
+
+    // Build update query dynamically
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    const allowedFields = [
+      'name', 'address', 'notificationEmail', 'notificationPhone',
+      'kitchenLicenseUrl', 'kitchenLicenseStatus'
+    ];
+
+    Object.keys(req.body).forEach((key) => {
+      if (allowedFields.includes(key)) {
+        const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        updates.push(`${dbKey} = $${paramIndex}`);
+        values.push(req.body[key]);
+        paramIndex++;
+      }
+    });
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(locationId);
+
+    const query = `UPDATE locations SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+    const result = await pool.query(query, values);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating location:", error);
+    res.status(500).json({ error: error.message || "Failed to update location" });
+  }
+});
+
 // Manager: Revoke chef location access
 app.delete("/api/manager/chef-location-access", async (req, res) => {
   try {
@@ -16176,6 +16285,25 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     
     if (accessCheck.rows.length === 0) {
       return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
+    }
+
+    // Check if location's kitchen license is approved (required for bookings)
+    const locationResult = await pool.query(
+      'SELECT kitchen_license_status FROM locations WHERE id = $1',
+      [kitchenLocationId]
+    );
+    
+    if (locationResult.rows.length > 0) {
+      const licenseStatus = locationResult.rows[0].kitchen_license_status;
+      if (licenseStatus !== 'approved') {
+        return res.status(403).json({ 
+          error: licenseStatus === 'pending'
+            ? "This location's kitchen license is pending admin approval. Bookings are temporarily disabled."
+            : licenseStatus === 'rejected'
+            ? "This location's kitchen license has been rejected. Bookings are disabled. Please contact the location manager."
+            : "This location's kitchen license has not been uploaded or approved. Bookings are disabled."
+        });
+      }
     }
 
     // Check if chef has shared their profile with the location and it's been approved
@@ -18047,6 +18175,119 @@ app.delete("/api/admin/chef-location-access", async (req, res) => {
   } catch (error) {
     console.error("Error revoking chef location access:", error);
     res.status(500).json({ error: error.message || "Failed to revoke access" });
+  }
+});
+
+// Admin: Approve or reject kitchen license
+app.put("/api/admin/locations/:locationId/kitchen-license", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const locationId = parseInt(req.params.locationId);
+    if (isNaN(locationId)) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    const { status, feedback } = req.body;
+    
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify location exists
+    const locationCheck = await pool.query(
+      'SELECT id, name, kitchen_license_url FROM locations WHERE id = $1',
+      [locationId]
+    );
+
+    if (locationCheck.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const location = locationCheck.rows[0];
+
+    if (!location.kitchen_license_url) {
+      return res.status(400).json({ error: "Location does not have a license uploaded" });
+    }
+
+    // Update license status
+    await pool.query(
+      `UPDATE locations 
+       SET kitchen_license_status = $1,
+           kitchen_license_approved_by = $2,
+           kitchen_license_approved_at = NOW(),
+           kitchen_license_feedback = $3,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [status, user.id, feedback || null, locationId]
+    );
+
+    res.json({ 
+      success: true, 
+      message: `License ${status} successfully`,
+      location: {
+        id: locationId,
+        name: location.name,
+        kitchenLicenseStatus: status
+      }
+    });
+  } catch (error) {
+    console.error("Error updating kitchen license status:", error);
+    res.status(500).json({ error: error.message || "Failed to update license status" });
+  }
+});
+
+// Admin: Get all locations with pending licenses
+app.get("/api/admin/locations/pending-licenses", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        l.id,
+        l.name,
+        l.address,
+        l.kitchen_license_url as "kitchenLicenseUrl",
+        l.kitchen_license_status as "kitchenLicenseStatus",
+        l.kitchen_license_feedback as "kitchenLicenseFeedback",
+        l.kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+        u.username as "managerUsername",
+        u.id as "managerId"
+      FROM locations l
+      LEFT JOIN users u ON l.manager_id = u.id
+      WHERE l.kitchen_license_url IS NOT NULL
+        AND (l.kitchen_license_status = 'pending' OR l.kitchen_license_status IS NULL)
+      ORDER BY l.created_at DESC
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching pending licenses:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
   }
 });
 
