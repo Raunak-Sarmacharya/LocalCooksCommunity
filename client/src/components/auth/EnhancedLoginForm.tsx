@@ -1,5 +1,7 @@
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { signInWithCustomToken } from "firebase/auth";
 // SECURITY FIX: Removed email existence check import to prevent enumeration attacks
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
@@ -83,8 +85,55 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       }, 1000);
 
     } catch (e: any) {
-      // Firebase Auth only - no session fallback
+      // If Firebase login fails, try migration login for old managers
       if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
+        console.log('🔄 Firebase login failed, trying migration login for old manager...');
+        
+        try {
+          // Try migration login (for old managers with username/password in Neon DB)
+          const migrateResponse = await fetch('/api/manager-migrate-login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username: data.email, // Try email as username first
+              password: data.password
+            })
+          });
+
+          if (migrateResponse.ok) {
+            const migrateData = await migrateResponse.json();
+            
+            if (migrateData.customToken) {
+              // Sign in with custom token
+              await signInWithCustomToken(auth, migrateData.customToken);
+              console.log('✅ Migration login successful');
+              
+              setAuthState('success');
+              setTimeout(() => {
+                if (onSuccess) onSuccess();
+              }, 1000);
+              return;
+            }
+          } else if (migrateResponse.status === 400) {
+            const errorData = await migrateResponse.json();
+            if (errorData.message && errorData.message.includes('already been migrated')) {
+              // Account already migrated - tell user to use email
+              showAlert({
+                title: "Account Already Migrated",
+                description: "This account has been migrated to Firebase. Please use your email address to sign in instead of username.",
+                type: "info"
+              });
+              setAuthState('error');
+              setTimeout(() => setAuthState('idle'), 2000);
+              return;
+            }
+          }
+        } catch (migrateError) {
+          console.log('Migration login also failed, continuing with Firebase error handling');
+        }
+        
         // Other Firebase errors (not credential-related)
         setShowLoadingOverlay(false);
         setAuthState('error');

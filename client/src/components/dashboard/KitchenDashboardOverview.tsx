@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import {
   Calendar,
   Clock,
@@ -81,14 +82,21 @@ export default function KitchenDashboardOverview({
   selectedLocation, 
   onNavigate 
 }: KitchenDashboardOverviewProps) {
+  // Get Firebase user for authentication
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   // Fetch all bookings for this manager
   const { data: bookings = [], isLoading: isLoadingBookings } = useQuery({
-    queryKey: ['managerBookings'],
+    queryKey: ['managerBookings', firebaseUser?.uid],
     queryFn: async () => {
-      const token = localStorage.getItem('firebaseToken');
+      if (!firebaseUser) {
+        throw new Error('Not authenticated');
+      }
+      
+      const token = await firebaseUser.getIdToken();
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
+        'Authorization': `Bearer ${token}`,
       };
       
       const response = await fetch('/api/manager/bookings', {
@@ -106,6 +114,7 @@ export default function KitchenDashboardOverview({
       }
       return [];
     },
+    enabled: !!firebaseUser,
     refetchInterval: 10000, // Real-time updates
     refetchOnWindowFocus: true,
   });
