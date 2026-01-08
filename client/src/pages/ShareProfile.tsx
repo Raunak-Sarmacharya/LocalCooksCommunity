@@ -4,13 +4,31 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, Share2, CheckCircle, Clock, XCircle, AlertCircle, FileText } from "lucide-react";
-import { Link } from "wouter";
+import { MapPin, Share2, CheckCircle, Clock, XCircle, AlertCircle, FileText, ArrowRight } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { useEffect } from "react";
+import { motion } from "framer-motion";
 
+/**
+ * @deprecated This page is deprecated in favor of the new /explore-kitchens flow.
+ * It now shows a deprecation notice and redirects users to the new flow.
+ * The "Share Profile" workflow has been replaced by direct kitchen applications.
+ */
 export default function ShareProfile() {
+  const [, navigate] = useLocation();
   const { profiles, isLoading, shareProfile, refetch } = useChefProfiles();
   const { accessData } = useAdminChefKitchenAccess(); // This gives us locations the chef has access to
   const { toast } = useToast();
+  
+  // Show deprecation notice and redirect after short delay
+  useEffect(() => {
+    // Redirect to new flow after 5 seconds, or immediately if user clicks
+    const timer = setTimeout(() => {
+      navigate("/explore-kitchens");
+    }, 8000);
+    
+    return () => clearTimeout(timer);
+  }, [navigate]);
 
   // Get locations the chef has access to from profiles
   // Note: profiles have kitchenId, we need to map to locations
@@ -77,6 +95,67 @@ export default function ShareProfile() {
     }
   };
 
+  // Show deprecation notice and redirect
+  return (
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-amber-50 to-orange-50">
+      <Header />
+      <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
+        <div className="container mx-auto px-4 py-8 max-w-2xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-lg p-8 text-center"
+          >
+            {/* Deprecation Icon */}
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+              <ArrowRight className="h-10 w-10 text-white" />
+            </div>
+            
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">
+              We've Made It Easier!
+            </h1>
+            
+            <p className="text-gray-600 mb-6">
+              The "Share Profile" feature has been upgraded. You can now apply directly 
+              to kitchens with a simple application form. No more waiting for admin access first!
+            </p>
+            
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+              <h3 className="font-semibold text-amber-800 mb-2">What's New:</h3>
+              <ul className="text-sm text-amber-700 text-left space-y-1">
+                <li>✅ Apply to any kitchen directly</li>
+                <li>✅ Upload your documents once per kitchen</li>
+                <li>✅ Get approved faster by kitchen managers</li>
+                <li>✅ No admin access required first</li>
+              </ul>
+            </div>
+            
+            <div className="space-y-3">
+              <Link href="/explore-kitchens">
+                <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-lg py-6">
+                  <ArrowRight className="mr-2 h-5 w-5" />
+                  Explore Kitchens
+                </Button>
+              </Link>
+              
+              <Link href="/dashboard">
+                <Button variant="ghost" className="w-full">
+                  Back to Dashboard
+                </Button>
+              </Link>
+            </div>
+            
+            <p className="text-xs text-gray-500 mt-6">
+              Redirecting automatically in a few seconds...
+            </p>
+          </motion.div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+  
+  // Original loading state - keeping for reference during transition
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col bg-gray-50">

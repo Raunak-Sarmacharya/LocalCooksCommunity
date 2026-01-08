@@ -1,16 +1,20 @@
 import type {
     Application,
+    ChefKitchenApplication,
     DeliveryPartnerApplication,
     InsertApplication,
+    InsertChefKitchenApplication,
     InsertDeliveryPartnerApplication,
     InsertUser,
     UpdateApplicationDocuments,
     UpdateApplicationStatus,
+    UpdateChefKitchenApplicationDocuments,
+    UpdateChefKitchenApplicationStatus,
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings } from "@shared/schema";
-import { eq, and, inArray, asc, gte, lte } from "drizzle-orm";
+import { applications, chefKitchenApplications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings } from "@shared/schema";
+import { eq, and, inArray, asc, gte, lte, desc, isNull, or } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
@@ -3876,6 +3880,468 @@ export class FirebaseStorage {
     } catch (error) {
       console.error('Error updating chef location profile status:', error);
       throw error;
+    }
+  }
+
+  // ===== CHEF KITCHEN APPLICATIONS (NEW - Direct Kitchen Applications) =====
+  // This replaces the "Share Profile" workflow with full application per kitchen
+
+  /**
+   * Submit a new kitchen application or update an existing rejected one
+   * Allows re-application after rejection with updated documents
+   */
+  async createChefKitchenApplication(data: InsertChefKitchenApplication): Promise<ChefKitchenApplication> {
+    try {
+      // Check if an application already exists for this chef + location
+      const existing = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(
+          and(
+            eq(chefKitchenApplications.chefId, data.chefId),
+            eq(chefKitchenApplications.locationId, data.locationId)
+          )
+        )
+        .limit(1);
+      
+      const now = new Date();
+      
+      if (existing.length > 0) {
+        // If previously rejected or cancelled, allow re-application with new data
+        if (existing[0].status === 'rejected' || existing[0].status === 'cancelled') {
+          const [updated] = await db
+            .update(chefKitchenApplications)
+            .set({
+              ...data,
+              status: 'inReview', // Reset to pending review
+              feedback: null, // Clear previous feedback
+              reviewedBy: null,
+              reviewedAt: null,
+              updatedAt: now,
+            })
+            .where(eq(chefKitchenApplications.id, existing[0].id))
+            .returning();
+          return updated;
+        }
+        
+        // If pending or approved, return existing application
+        return existing[0];
+      }
+      
+      // Create new application
+      const [application] = await db
+        .insert(chefKitchenApplications)
+        .values({
+          ...data,
+          status: 'inReview',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      
+      return application;
+    } catch (error) {
+      console.error('Error creating chef kitchen application:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific kitchen application by ID
+   */
+  async getChefKitchenApplicationById(applicationId: number): Promise<ChefKitchenApplication | undefined> {
+    try {
+      const [application] = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(eq(chefKitchenApplications.id, applicationId))
+        .limit(1);
+      
+      return application || undefined;
+    } catch (error) {
+      console.error('Error getting chef kitchen application by id:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a chef's application for a specific location
+   */
+  async getChefKitchenApplication(chefId: number, locationId: number): Promise<ChefKitchenApplication | undefined> {
+    try {
+      const [application] = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(
+          and(
+            eq(chefKitchenApplications.chefId, chefId),
+            eq(chefKitchenApplications.locationId, locationId)
+          )
+        )
+        .limit(1);
+      
+      return application || undefined;
+    } catch (error) {
+      console.error('Error getting chef kitchen application:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all kitchen applications for a chef
+   */
+  async getChefKitchenApplicationsByChefId(chefId: number): Promise<ChefKitchenApplication[]> {
+    try {
+      const applications = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(eq(chefKitchenApplications.chefId, chefId))
+        .orderBy(desc(chefKitchenApplications.createdAt));
+      
+      return applications;
+    } catch (error) {
+      console.error('Error getting chef kitchen applications:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all applications for a location with enriched chef details
+   * Used by managers to review applications
+   */
+  async getChefKitchenApplicationsByLocationId(locationId: number): Promise<any[]> {
+    try {
+      const apps = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(eq(chefKitchenApplications.locationId, locationId))
+        .orderBy(desc(chefKitchenApplications.createdAt));
+      
+      // Enrich with chef details
+      const enrichedApplications = await Promise.all(
+        apps.map(async (app) => {
+          const chef = await this.getUser(app.chefId);
+          const location = await this.getLocationById(app.locationId);
+          
+          return {
+            ...app,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username,
+              role: chef.role,
+            } : null,
+            location: location ? {
+              id: (location as any).id,
+              name: (location as any).name,
+              address: (location as any).address,
+            } : null,
+          };
+        })
+      );
+      
+      return enrichedApplications;
+    } catch (error) {
+      console.error('Error getting applications for location:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all applications for locations managed by a specific manager
+   * Returns applications enriched with chef and location details
+   */
+  async getChefKitchenApplicationsForManager(managerId: number): Promise<any[]> {
+    try {
+      // First get all locations this manager manages
+      const managedLocations = await db
+        .select()
+        .from(locations)
+        .where(eq((locations as any).managerId, managerId));
+      
+      if (managedLocations.length === 0) {
+        return [];
+      }
+      
+      const locationIds = managedLocations.map(loc => (loc as any).id);
+      
+      // Get all applications for these locations
+      const apps = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(inArray(chefKitchenApplications.locationId, locationIds))
+        .orderBy(desc(chefKitchenApplications.createdAt));
+      
+      // Enrich with chef and location details
+      const enrichedApplications = await Promise.all(
+        apps.map(async (app) => {
+          const chef = await this.getUser(app.chefId);
+          const location = managedLocations.find(l => (l as any).id === app.locationId);
+          
+          return {
+            ...app,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username,
+              role: chef.role,
+            } : null,
+            location: location ? {
+              id: (location as any).id,
+              name: (location as any).name,
+              address: (location as any).address,
+            } : null,
+          };
+        })
+      );
+      
+      return enrichedApplications;
+    } catch (error) {
+      console.error('Error getting chef kitchen applications for manager:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update application status (approve/reject) by manager
+   */
+  async updateChefKitchenApplicationStatus(
+    update: UpdateChefKitchenApplicationStatus,
+    reviewedBy: number
+  ): Promise<ChefKitchenApplication | undefined> {
+    try {
+      const [updated] = await db
+        .update(chefKitchenApplications)
+        .set({
+          status: update.status,
+          feedback: update.feedback || null,
+          reviewedBy,
+          reviewedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(chefKitchenApplications.id, update.id))
+        .returning();
+      
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error updating chef kitchen application status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update application documents (by chef re-uploading)
+   */
+  async updateChefKitchenApplicationDocuments(
+    update: UpdateChefKitchenApplicationDocuments
+  ): Promise<ChefKitchenApplication | undefined> {
+    try {
+      const setData: any = { updatedAt: new Date() };
+      
+      if (update.foodSafetyLicenseUrl !== undefined) {
+        setData.foodSafetyLicenseUrl = update.foodSafetyLicenseUrl;
+        setData.foodSafetyLicenseStatus = 'pending'; // Reset to pending on new upload
+      }
+      
+      if (update.foodEstablishmentCertUrl !== undefined) {
+        setData.foodEstablishmentCertUrl = update.foodEstablishmentCertUrl;
+        setData.foodEstablishmentCertStatus = 'pending'; // Reset to pending on new upload
+      }
+      
+      if (update.foodSafetyLicenseStatus !== undefined) {
+        setData.foodSafetyLicenseStatus = update.foodSafetyLicenseStatus;
+      }
+      
+      if (update.foodEstablishmentCertStatus !== undefined) {
+        setData.foodEstablishmentCertStatus = update.foodEstablishmentCertStatus;
+      }
+      
+      const [updated] = await db
+        .update(chefKitchenApplications)
+        .set(setData)
+        .where(eq(chefKitchenApplications.id, update.id))
+        .returning();
+      
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error updating chef kitchen application documents:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if chef has an approved application for a specific location
+   * This is used for booking validation
+   */
+  async chefHasApprovedKitchenApplication(chefId: number, locationId: number): Promise<boolean> {
+    try {
+      const [application] = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(
+          and(
+            eq(chefKitchenApplications.chefId, chefId),
+            eq(chefKitchenApplications.locationId, locationId),
+            eq(chefKitchenApplications.status, 'approved')
+          )
+        )
+        .limit(1);
+      
+      return !!application;
+    } catch (error) {
+      console.error('Error checking chef kitchen application approval:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get kitchen application status for booking check
+   * Returns detailed status for better error messages
+   */
+  async getChefKitchenApplicationStatus(chefId: number, locationId: number): Promise<{
+    hasApplication: boolean;
+    status: string | null;
+    canBook: boolean;
+    message: string;
+  }> {
+    try {
+      const application = await this.getChefKitchenApplication(chefId, locationId);
+      
+      if (!application) {
+        return {
+          hasApplication: false,
+          status: null,
+          canBook: false,
+          message: 'You must apply to this kitchen before booking. Please submit an application first.',
+        };
+      }
+      
+      switch (application.status) {
+        case 'approved':
+          return {
+            hasApplication: true,
+            status: 'approved',
+            canBook: true,
+            message: 'Application approved. You can book kitchens at this location.',
+          };
+        case 'inReview':
+          return {
+            hasApplication: true,
+            status: 'inReview',
+            canBook: false,
+            message: 'Your application is pending manager review. Please wait for approval before booking.',
+          };
+        case 'rejected':
+          return {
+            hasApplication: true,
+            status: 'rejected',
+            canBook: false,
+            message: 'Your application was rejected. You can re-apply with updated documents.',
+          };
+        case 'cancelled':
+          return {
+            hasApplication: true,
+            status: 'cancelled',
+            canBook: false,
+            message: 'Your application was cancelled. You can submit a new application.',
+          };
+        default:
+          return {
+            hasApplication: true,
+            status: application.status,
+            canBook: false,
+            message: 'Unknown application status. Please contact support.',
+          };
+      }
+    } catch (error) {
+      console.error('Error getting kitchen application status:', error);
+      return {
+        hasApplication: false,
+        status: null,
+        canBook: false,
+        message: 'Error checking application status. Please try again.',
+      };
+    }
+  }
+
+  /**
+   * Cancel/withdraw an application (by chef)
+   */
+  async cancelChefKitchenApplication(applicationId: number, chefId: number): Promise<ChefKitchenApplication | undefined> {
+    try {
+      // Verify the application belongs to this chef
+      const [existing] = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(
+          and(
+            eq(chefKitchenApplications.id, applicationId),
+            eq(chefKitchenApplications.chefId, chefId)
+          )
+        )
+        .limit(1);
+      
+      if (!existing) {
+        throw new Error('Application not found or access denied');
+      }
+      
+      // Only allow cancellation if pending
+      if (existing.status !== 'inReview') {
+        throw new Error('Can only cancel pending applications');
+      }
+      
+      const [updated] = await db
+        .update(chefKitchenApplications)
+        .set({
+          status: 'cancelled',
+          updatedAt: new Date(),
+        })
+        .where(eq(chefKitchenApplications.id, applicationId))
+        .returning();
+      
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error cancelling chef kitchen application:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chef's kitchen access across all locations
+   * Returns all approved applications with location details
+   */
+  async getChefApprovedKitchens(chefId: number): Promise<any[]> {
+    try {
+      const approvedApps = await db
+        .select()
+        .from(chefKitchenApplications)
+        .where(
+          and(
+            eq(chefKitchenApplications.chefId, chefId),
+            eq(chefKitchenApplications.status, 'approved')
+          )
+        );
+      
+      // Enrich with location details
+      const enrichedApps = await Promise.all(
+        approvedApps.map(async (app) => {
+          const location = await this.getLocationById(app.locationId);
+          return {
+            applicationId: app.id,
+            locationId: app.locationId,
+            location: location ? {
+              id: (location as any).id,
+              name: (location as any).name,
+              address: (location as any).address,
+              city: (location as any).city,
+            } : null,
+            approvedAt: app.reviewedAt,
+          };
+        })
+      );
+      
+      return enrichedApps;
+    } catch (error) {
+      console.error('Error getting chef approved kitchens:', error);
+      return [];
     }
   }
 }

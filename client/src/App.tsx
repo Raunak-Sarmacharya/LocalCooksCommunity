@@ -55,6 +55,8 @@ const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboa
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
+const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
+const ExploreKitchens = lazy(() => import("@/pages/ExploreKitchens"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerBookingPortal = lazy(() => import("@/pages/ManagerBookingPortal"));
 const PortalLanding = lazy(() => import("@/pages/PortalLanding"));
@@ -289,6 +291,10 @@ function Router() {
         <SubdomainRoute path="/book-kitchen" component={KitchenBookingCalendar} subdomain={subdomain} />
         <SubdomainRoute path="/book-kitchen/confirm" component={BookingConfirmationPage} subdomain={subdomain} />
         <ProtectedRoute path="/share-profile" component={ShareProfile} />
+        
+        {/* Kitchen Application Routes (New - Replaces Share Profile) */}
+        <SubdomainRoute path="/explore-kitchens" component={ExploreKitchens} subdomain={subdomain} />
+        <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
         
         <SubdomainRoute path="/admin/login" component={AdminLogin} subdomain={subdomain} />
         <Route path="/admin">

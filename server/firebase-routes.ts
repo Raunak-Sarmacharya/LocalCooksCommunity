@@ -1,4 +1,4 @@
-import { insertApplicationSchema } from '@shared/schema';
+import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema } from '@shared/schema';
 import { platformSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
@@ -2181,8 +2181,543 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
+  // =============================================================================
+  // 🍳 CHEF KITCHEN APPLICATIONS - Direct Kitchen Application Flow
+  // =============================================================================
+  // These endpoints replace the "Share Profile" workflow
+  // Chefs can apply directly to kitchens without requiring platform application approval
+
+  /**
+   * 🔥 Submit Kitchen Application (Firebase Auth)
+   * POST /api/firebase/chef/kitchen-applications
+   * 
+   * Allows a chef to submit an application to a specific kitchen location.
+   * Chefs can apply even without having a platform application approved.
+   * If previously rejected, submitting again will reset the application to inReview.
+   */
+  app.post('/api/firebase/chef/kitchen-applications', 
+    upload.fields([
+      { name: 'foodSafetyLicenseFile', maxCount: 1 },
+      { name: 'foodEstablishmentCertFile', maxCount: 1 }
+    ]),
+    requireFirebaseAuthWithUser, 
+    async (req: Request, res: Response) => {
+      try {
+        console.log(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
+        
+        // Handle file uploads if present
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+        let foodSafetyLicenseUrl: string | undefined;
+        let foodEstablishmentCertUrl: string | undefined;
+
+        if (files) {
+          // Upload food safety license if provided
+          if (files['foodSafetyLicenseFile']?.[0]) {
+            try {
+              foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
+              console.log(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+            } catch (uploadError) {
+              console.error('❌ Failed to upload food safety license:', uploadError);
+            }
+          }
+          
+          // Upload food establishment cert if provided
+          if (files['foodEstablishmentCertFile']?.[0]) {
+            try {
+              foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
+              console.log(`✅ Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+            } catch (uploadError) {
+              console.error('❌ Failed to upload food establishment cert:', uploadError);
+            }
+          }
+        }
+
+        // Parse and validate form data
+        const formData = {
+          chefId: req.neonUser!.id,
+          locationId: parseInt(req.body.locationId),
+          fullName: req.body.fullName,
+          email: req.body.email,
+          phone: req.body.phone,
+          kitchenPreference: req.body.kitchenPreference,
+          businessDescription: req.body.businessDescription || undefined,
+          cookingExperience: req.body.cookingExperience || undefined,
+          foodSafetyLicense: req.body.foodSafetyLicense,
+          foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
+          foodEstablishmentCert: req.body.foodEstablishmentCert,
+          foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
+        };
+
+        // Validate with Zod schema
+        const parsedData = insertChefKitchenApplicationSchema.safeParse(formData);
+
+        if (!parsedData.success) {
+          const validationError = fromZodError(parsedData.error);
+          console.log('❌ Validation failed:', validationError.details);
+          return res.status(400).json({
+            error: 'Validation error',
+            message: validationError.message,
+            details: validationError.details
+          });
+        }
+
+        // Verify the location exists
+        const location = await firebaseStorage.getLocationById(parsedData.data.locationId);
+        if (!location) {
+          return res.status(404).json({ error: 'Kitchen location not found' });
+        }
+
+        // Create/update the application
+        const application = await firebaseStorage.createChefKitchenApplication(parsedData.data);
+
+        console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
+
+        res.status(201).json({
+          success: true,
+          application,
+          message: 'Kitchen application submitted successfully. The kitchen manager will review your application.',
+          isResubmission: application.createdAt < application.updatedAt,
+        });
+      } catch (error) {
+        console.error('Error creating kitchen application:', error);
+        res.status(500).json({
+          error: 'Failed to submit kitchen application',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  );
+
+  /**
+   * 🔥 Get Chef's Kitchen Applications (Firebase Auth)
+   * GET /api/firebase/chef/kitchen-applications
+   * 
+   * Returns all kitchen applications for the authenticated chef.
+   */
+  app.get('/api/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      console.log(`🍳 GET /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id}`);
+      
+      const applications = await firebaseStorage.getChefKitchenApplicationsByChefId(req.neonUser!.id);
+      
+      // Enrich with location details
+      const enrichedApplications = await Promise.all(
+        applications.map(async (app) => {
+          const location = await firebaseStorage.getLocationById(app.locationId);
+          return {
+            ...app,
+            location: location ? {
+              id: (location as any).id,
+              name: (location as any).name,
+              address: (location as any).address,
+              city: (location as any).city,
+            } : null,
+          };
+        })
+      );
+      
+      res.json(enrichedApplications);
+    } catch (error) {
+      console.error('Error getting chef kitchen applications:', error);
+      res.status(500).json({ error: 'Failed to get kitchen applications' });
+    }
+  });
+
+  /**
+   * 🔥 Get Chef's Application for Specific Location (Firebase Auth)
+   * GET /api/firebase/chef/kitchen-applications/location/:locationId
+   * 
+   * Returns the chef's application for a specific location if one exists.
+   * Useful for checking application status before booking.
+   */
+  app.get('/api/firebase/chef/kitchen-applications/location/:locationId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: 'Invalid location ID' });
+      }
+      
+      console.log(`🍳 GET /api/firebase/chef/kitchen-applications/location/${locationId} - Chef ${req.neonUser!.id}`);
+      
+      const application = await firebaseStorage.getChefKitchenApplication(req.neonUser!.id, locationId);
+      
+      if (!application) {
+        return res.status(404).json({ 
+          error: 'No application found',
+          hasApplication: false,
+          canBook: false,
+          message: 'You have not applied to this kitchen yet.',
+        });
+      }
+      
+      // Get location details
+      const location = await firebaseStorage.getLocationById(locationId);
+      
+      res.json({
+        ...application,
+        hasApplication: true,
+        canBook: application.status === 'approved',
+        location: location ? {
+          id: (location as any).id,
+          name: (location as any).name,
+          address: (location as any).address,
+        } : null,
+      });
+    } catch (error) {
+      console.error('Error getting chef kitchen application:', error);
+      res.status(500).json({ error: 'Failed to get kitchen application' });
+    }
+  });
+
+  /**
+   * 🔥 Get Chef's Kitchen Access Status (Firebase Auth)
+   * GET /api/firebase/chef/kitchen-access-status/:locationId
+   * 
+   * Returns detailed booking eligibility status for a location.
+   * Used by frontend to determine what UI to show (apply/wait/book).
+   */
+  app.get('/api/firebase/chef/kitchen-access-status/:locationId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: 'Invalid location ID' });
+      }
+      
+      console.log(`🍳 GET /api/firebase/chef/kitchen-access-status/${locationId} - Chef ${req.neonUser!.id}`);
+      
+      const accessStatus = await firebaseStorage.getChefKitchenApplicationStatus(req.neonUser!.id, locationId);
+      
+      res.json(accessStatus);
+    } catch (error) {
+      console.error('Error getting kitchen access status:', error);
+      res.status(500).json({ error: 'Failed to get kitchen access status' });
+    }
+  });
+
+  /**
+   * 🔥 Get Chef's Approved Kitchens (Firebase Auth)
+   * GET /api/firebase/chef/approved-kitchens
+   * 
+   * Returns all locations where the chef has approved applications.
+   * These are the kitchens where the chef can make bookings.
+   */
+  app.get('/api/firebase/chef/approved-kitchens', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      console.log(`🍳 GET /api/firebase/chef/approved-kitchens - Chef ${req.neonUser!.id}`);
+      
+      const approvedKitchens = await firebaseStorage.getChefApprovedKitchens(req.neonUser!.id);
+      
+      res.json(approvedKitchens);
+    } catch (error) {
+      console.error('Error getting approved kitchens:', error);
+      res.status(500).json({ error: 'Failed to get approved kitchens' });
+    }
+  });
+
+  /**
+   * 🔥 Cancel Kitchen Application (Firebase Auth)
+   * PATCH /api/firebase/chef/kitchen-applications/:id/cancel
+   * 
+   * Allows a chef to withdraw/cancel their pending application.
+   * Only works for applications in 'inReview' status.
+   */
+  app.patch('/api/firebase/chef/kitchen-applications/:id/cancel', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const applicationId = parseInt(req.params.id);
+      
+      if (isNaN(applicationId)) {
+        return res.status(400).json({ error: 'Invalid application ID' });
+      }
+      
+      console.log(`🍳 PATCH /api/firebase/chef/kitchen-applications/${applicationId}/cancel - Chef ${req.neonUser!.id}`);
+      
+      const cancelledApplication = await firebaseStorage.cancelChefKitchenApplication(applicationId, req.neonUser!.id);
+      
+      res.json({
+        success: true,
+        application: cancelledApplication,
+        message: 'Application cancelled successfully',
+      });
+    } catch (error) {
+      console.error('Error cancelling kitchen application:', error);
+      res.status(500).json({
+        error: 'Failed to cancel application',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  /**
+   * 🔥 Update Kitchen Application Documents (Firebase Auth)
+   * PATCH /api/firebase/chef/kitchen-applications/:id/documents
+   * 
+   * Allows a chef to update their documents on an existing application.
+   * Resets document verification status to pending.
+   */
+  app.patch('/api/firebase/chef/kitchen-applications/:id/documents',
+    upload.fields([
+      { name: 'foodSafetyLicenseFile', maxCount: 1 },
+      { name: 'foodEstablishmentCertFile', maxCount: 1 }
+    ]),
+    requireFirebaseAuthWithUser,
+    async (req: Request, res: Response) => {
+      try {
+        const applicationId = parseInt(req.params.id);
+        
+        if (isNaN(applicationId)) {
+          return res.status(400).json({ error: 'Invalid application ID' });
+        }
+        
+        console.log(`🍳 PATCH /api/firebase/chef/kitchen-applications/${applicationId}/documents - Chef ${req.neonUser!.id}`);
+        
+        // Verify the application belongs to this chef
+        const existing = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+        if (!existing || existing.chefId !== req.neonUser!.id) {
+          return res.status(403).json({ error: 'Application not found or access denied' });
+        }
+        
+        // Handle file uploads
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+        const updateData: any = { id: applicationId };
+
+        if (files) {
+          if (files['foodSafetyLicenseFile']?.[0]) {
+            try {
+              updateData.foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
+              console.log(`✅ Uploaded updated food safety license: ${updateData.foodSafetyLicenseUrl}`);
+            } catch (uploadError) {
+              console.error('❌ Failed to upload food safety license:', uploadError);
+            }
+          }
+          
+          if (files['foodEstablishmentCertFile']?.[0]) {
+            try {
+              updateData.foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
+              console.log(`✅ Uploaded updated food establishment cert: ${updateData.foodEstablishmentCertUrl}`);
+            } catch (uploadError) {
+              console.error('❌ Failed to upload food establishment cert:', uploadError);
+            }
+          }
+        }
+        
+        const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
+        
+        res.json({
+          success: true,
+          application: updatedApplication,
+          message: 'Documents updated successfully. They will be reviewed by the manager.',
+        });
+      } catch (error) {
+        console.error('Error updating kitchen application documents:', error);
+        res.status(500).json({
+          error: 'Failed to update documents',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  );
+
+  // =============================================================================
+  // 👨‍🍳 MANAGER KITCHEN APPLICATIONS - Review Chef Applications
+  // =============================================================================
+  // These endpoints are for kitchen managers to review and approve/reject chef applications
+
+  /**
+   * 🔥 Get Kitchen Applications for Manager (Session Auth)
+   * GET /api/manager/kitchen-applications
+   * 
+   * Returns all chef applications for locations managed by the authenticated manager.
+   */
+  app.get('/api/manager/kitchen-applications', requireSessionAdmin, async (req: Request, res: Response) => {
+    try {
+      const sessionUser = (req as any).sessionUser;
+      console.log(`👨‍🍳 GET /api/manager/kitchen-applications - Manager ${sessionUser.id}`);
+      
+      // Check if user is a manager
+      const user = await storage.getUser(sessionUser.id);
+      if (!user || !(user as any).isManager) {
+        return res.status(403).json({ error: 'Manager access required' });
+      }
+      
+      const applications = await firebaseStorage.getChefKitchenApplicationsForManager(sessionUser.id);
+      
+      res.json(applications);
+    } catch (error) {
+      console.error('Error getting kitchen applications for manager:', error);
+      res.status(500).json({ error: 'Failed to get applications' });
+    }
+  });
+
+  /**
+   * 🔥 Get Kitchen Applications by Location (Session Auth)
+   * GET /api/manager/kitchen-applications/location/:locationId
+   * 
+   * Returns all chef applications for a specific location.
+   * Manager must have access to this location.
+   */
+  app.get('/api/manager/kitchen-applications/location/:locationId', requireSessionAdmin, async (req: Request, res: Response) => {
+    try {
+      const sessionUser = (req as any).sessionUser;
+      const locationId = parseInt(req.params.locationId);
+      
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: 'Invalid location ID' });
+      }
+      
+      console.log(`👨‍🍳 GET /api/manager/kitchen-applications/location/${locationId} - Manager ${sessionUser.id}`);
+      
+      // Verify manager has access to this location
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location || (location as any).managerId !== sessionUser.id) {
+        // Check if admin (admins can see all)
+        const user = await storage.getUser(sessionUser.id);
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Access denied to this location' });
+        }
+      }
+      
+      const applications = await firebaseStorage.getChefKitchenApplicationsByLocationId(locationId);
+      
+      res.json(applications);
+    } catch (error) {
+      console.error('Error getting kitchen applications for location:', error);
+      res.status(500).json({ error: 'Failed to get applications' });
+    }
+  });
+
+  /**
+   * 🔥 Review Kitchen Application (Approve/Reject) (Session Auth)
+   * PATCH /api/manager/kitchen-applications/:id/status
+   * 
+   * Allows a manager to approve or reject a chef's kitchen application.
+   */
+  app.patch('/api/manager/kitchen-applications/:id/status', requireSessionAdmin, async (req: Request, res: Response) => {
+    try {
+      const sessionUser = (req as any).sessionUser;
+      const applicationId = parseInt(req.params.id);
+      
+      if (isNaN(applicationId)) {
+        return res.status(400).json({ error: 'Invalid application ID' });
+      }
+      
+      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/status - Manager ${sessionUser.id}`);
+      
+      // Validate request body
+      const { status, feedback } = req.body;
+      
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
+      }
+      
+      // Get the application
+      const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+      
+      // Verify manager has access to this location
+      const location = await firebaseStorage.getLocationById(application.locationId);
+      if (!location || (location as any).managerId !== sessionUser.id) {
+        // Check if admin
+        const user = await storage.getUser(sessionUser.id);
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Access denied to this application' });
+        }
+      }
+      
+      // Update the status
+      const updatedApplication = await firebaseStorage.updateChefKitchenApplicationStatus(
+        { id: applicationId, status, feedback },
+        sessionUser.id
+      );
+      
+      console.log(`✅ Application ${applicationId} ${status} by Manager ${sessionUser.id}`);
+      
+      // TODO: Send email notification to chef about the decision
+      
+      res.json({
+        success: true,
+        application: updatedApplication,
+        message: `Application ${status} successfully`,
+      });
+    } catch (error) {
+      console.error('Error updating kitchen application status:', error);
+      res.status(500).json({
+        error: 'Failed to update application status',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  /**
+   * 🔥 Verify Kitchen Application Documents (Session Auth)
+   * PATCH /api/manager/kitchen-applications/:id/verify-documents
+   * 
+   * Allows a manager to verify the uploaded documents (approve/reject individual docs).
+   */
+  app.patch('/api/manager/kitchen-applications/:id/verify-documents', requireSessionAdmin, async (req: Request, res: Response) => {
+    try {
+      const sessionUser = (req as any).sessionUser;
+      const applicationId = parseInt(req.params.id);
+      
+      if (isNaN(applicationId)) {
+        return res.status(400).json({ error: 'Invalid application ID' });
+      }
+      
+      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/verify-documents - Manager ${sessionUser.id}`);
+      
+      const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
+      
+      // Validate statuses
+      const validStatuses = ['pending', 'approved', 'rejected'];
+      if (foodSafetyLicenseStatus && !validStatuses.includes(foodSafetyLicenseStatus)) {
+        return res.status(400).json({ error: 'Invalid food safety license status' });
+      }
+      if (foodEstablishmentCertStatus && !validStatuses.includes(foodEstablishmentCertStatus)) {
+        return res.status(400).json({ error: 'Invalid food establishment cert status' });
+      }
+      
+      // Get the application
+      const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+      
+      // Verify manager has access
+      const location = await firebaseStorage.getLocationById(application.locationId);
+      if (!location || (location as any).managerId !== sessionUser.id) {
+        const user = await storage.getUser(sessionUser.id);
+        if (!user || user.role !== 'admin') {
+          return res.status(403).json({ error: 'Access denied to this application' });
+        }
+      }
+      
+      // Update document statuses
+      const updateData: any = { id: applicationId };
+      if (foodSafetyLicenseStatus) updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
+      if (foodEstablishmentCertStatus) updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
+      
+      const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
+      
+      res.json({
+        success: true,
+        application: updatedApplication,
+        message: 'Document verification updated',
+      });
+    } catch (error) {
+      console.error('Error verifying kitchen application documents:', error);
+      res.status(500).json({
+        error: 'Failed to verify documents',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   console.log('🔥 Firebase authentication routes registered successfully');
   console.log('✨ Session-free architecture active - JWT tokens only');
   console.log('🚗 NHTSA Vehicle API endpoints registered successfully');
   console.log('⚙️ Admin platform settings endpoints registered successfully');
+  console.log('🍳 Chef kitchen application endpoints registered successfully');
 } 

@@ -1179,3 +1179,104 @@ export const updatePlatformSettingSchema = z.object({
 export type PlatformSetting = typeof platformSettings.$inferSelect;
 export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
 export type UpdatePlatformSetting = z.infer<typeof updatePlatformSettingSchema>;
+
+// ===== CHEF KITCHEN APPLICATIONS TABLE (NEW) =====
+// Direct application to kitchens - replaces "Share Profile" workflow
+// Chefs can apply directly to kitchens without requiring platform application first
+
+export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
+  id: serial("id").primaryKey(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  
+  // Personal Info (collected per application)
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  
+  // Business Info
+  kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
+  businessDescription: text("business_description"),
+  cookingExperience: text("cooking_experience"),
+  
+  // Food Safety License
+  foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
+  foodSafetyLicenseUrl: text("food_safety_license_url"),
+  foodSafetyLicenseStatus: documentVerificationStatusEnum("food_safety_license_status").default("pending"),
+  
+  // Food Establishment Certificate (optional)
+  foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
+  foodEstablishmentCertUrl: text("food_establishment_cert_url"),
+  foodEstablishmentCertStatus: documentVerificationStatusEnum("food_establishment_cert_status").default("pending"),
+  
+  // Application Status
+  status: applicationStatusEnum("status").default("inReview").notNull(),
+  feedback: text("feedback"),
+  
+  // Manager Review
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod validation schemas for chef kitchen applications
+export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchenApplications, {
+  chefId: z.number(),
+  locationId: z.number(),
+  fullName: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  phone: phoneNumberSchema,
+  kitchenPreference: z.enum(["commercial", "home", "notSure"]),
+  businessDescription: z.string().optional(),
+  cookingExperience: z.string().optional(),
+  foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
+  foodSafetyLicenseUrl: z.string().optional(),
+  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
+  foodEstablishmentCertUrl: z.string().optional(),
+}).omit({
+  id: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  feedback: true,
+  foodSafetyLicenseStatus: true,
+  foodEstablishmentCertStatus: true,
+});
+
+export const updateChefKitchenApplicationSchema = z.object({
+  id: z.number(),
+  fullName: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  phone: phoneNumberSchema.optional(),
+  kitchenPreference: z.enum(["commercial", "home", "notSure"]).optional(),
+  businessDescription: z.string().optional(),
+  cookingExperience: z.string().optional(),
+  foodSafetyLicenseUrl: z.string().optional(),
+  foodEstablishmentCertUrl: z.string().optional(),
+});
+
+export const updateChefKitchenApplicationStatusSchema = z.object({
+  id: z.number(),
+  status: z.enum(["inReview", "approved", "rejected", "cancelled"]),
+  feedback: z.string().optional(),
+});
+
+export const updateChefKitchenApplicationDocumentsSchema = z.object({
+  id: z.number(),
+  foodSafetyLicenseUrl: z.string().optional(),
+  foodEstablishmentCertUrl: z.string().optional(),
+  foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+});
+
+// Type exports for chef kitchen applications
+export type ChefKitchenApplication = typeof chefKitchenApplications.$inferSelect;
+export type InsertChefKitchenApplication = z.infer<typeof insertChefKitchenApplicationSchema>;
+export type UpdateChefKitchenApplication = z.infer<typeof updateChefKitchenApplicationSchema>;
+export type UpdateChefKitchenApplicationStatus = z.infer<typeof updateChefKitchenApplicationStatusSchema>;
+export type UpdateChefKitchenApplicationDocuments = z.infer<typeof updateChefKitchenApplicationDocumentsSchema>;
