@@ -8654,13 +8654,20 @@ app.get('/api/firebase-health', (req, res) => {
   // Get service fee rate (admin endpoint with full details)
   // NOTE: Admins use session-based auth, not Firebase auth
   // IMPORTANT: This endpoint MUST use session auth only - no Firebase tokens
-  app.get('/api/admin/platform-settings/service-fee-rate', (req, res, next) => {
-    // Explicitly log that we're using session auth for this endpoint
-    console.log('📱 Platform settings GET: Using session auth only, ignoring any Authorization headers');
-    // Delete any Firebase-related properties before middleware runs
-    delete req.firebaseUser;
-    // Note: Can't delete headers.authorization directly, but requireSessionAdmin ignores it
-    requireSessionAdmin(req, res, next);
+  app.get('/api/admin/platform-settings/service-fee-rate', async (req, res, next) => {
+    // Try Firebase auth first, fallback to session auth
+    const authHeader = req.headers?.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Use Firebase auth
+      console.log('📱 Platform settings GET: Using Firebase auth');
+      return requireFirebaseAuthWithUser(req, res, () => {
+        requireAdmin(req, res, next);
+      });
+    } else {
+      // Fallback to session auth
+      console.log('📱 Platform settings GET: Using session auth');
+      return requireSessionAdmin(req, res, next);
+    }
   }, async (req, res) => {
     try {
       if (!pool) {
@@ -8713,13 +8720,20 @@ app.get('/api/firebase-health', (req, res) => {
   // Update service fee rate
   // NOTE: Admins use session-based auth, not Firebase auth
   // IMPORTANT: This endpoint MUST use session auth only - no Firebase tokens
-  app.put('/api/admin/platform-settings/service-fee-rate', (req, res, next) => {
-    // Explicitly log that we're using session auth for this endpoint
-    console.log('📱 Platform settings PUT: Using session auth only, ignoring any Authorization headers');
-    // Delete any Firebase-related properties before middleware runs
-    delete req.firebaseUser;
-    // Note: Can't delete headers.authorization directly, but requireSessionAdmin ignores it
-    requireSessionAdmin(req, res, next);
+  app.put('/api/admin/platform-settings/service-fee-rate', async (req, res, next) => {
+    // Try Firebase auth first, fallback to session auth
+    const authHeader = req.headers?.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Use Firebase auth
+      console.log('📱 Platform settings PUT: Using Firebase auth');
+      return requireFirebaseAuthWithUser(req, res, () => {
+        requireAdmin(req, res, next);
+      });
+    } else {
+      // Fallback to session auth
+      console.log('📱 Platform settings PUT: Using session auth');
+      return requireSessionAdmin(req, res, next);
+    }
   }, async (req, res) => {
     try {
       if (!pool) {
@@ -8738,7 +8752,7 @@ app.get('/api/firebase-health', (req, res) => {
         return res.status(400).json({ error: 'Rate must be a number between 0 and 1 (e.g., 0.05 for 5%)' });
       }
       
-      // Get current user ID from session (set by requireSessionAdmin middleware)
+      // Get current user ID (set by requireFirebaseAuthWithUser or requireSessionAdmin middleware)
       const userId = req.neonUser?.id;
       if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
