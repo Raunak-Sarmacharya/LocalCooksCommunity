@@ -7,7 +7,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import WelcomeScreen from "@/pages/welcome-screen";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 
 // WelcomeScreen component is now imported from @/pages/welcome-screen
 
@@ -111,13 +111,6 @@ export default function AuthPage() {
               
               setUserMeta(userData);
               
-              // **CRITICAL WELCOME SCREEN LOGIC**
-              // Show welcome screen if user is verified but hasn't seen welcome
-              if (userData.is_verified && !userData.has_seen_welcome) {
-                console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
-                return; // Don't proceed with redirect, let the render logic handle welcome screen
-              }
-              
               // Check if user needs email verification
               if (!userData.is_verified) {
                 console.log('📧 EMAIL VERIFICATION REQUIRED');
@@ -126,8 +119,23 @@ export default function AuthPage() {
                 return;
               }
               
-              // User is verified and has seen welcome - redirect to dashboard
-              const targetPath = userData.role === 'admin' ? '/admin' : '/dashboard';
+              // Skip welcome screen for admins and managers
+              // Admins: Go straight to admin dashboard
+              // Managers: Go to dashboard where ManagerOnboardingWizard will show
+              // Other users: Show welcome screen if needed
+              let targetPath = '/dashboard';
+              if (userData.role === 'admin') {
+                targetPath = '/admin';
+                console.log('👑 Admin user - skipping welcome screen, going to admin dashboard');
+              } else if (userData.role === 'manager') {
+                targetPath = '/manager/dashboard';
+                console.log('🏢 Manager user - skipping welcome screen, going to manager dashboard (wizard will show if needed)');
+              } else if (userData.is_verified && !userData.has_seen_welcome) {
+                // Only show welcome screen for chefs/delivery partners
+                console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
+                return; // Don't proceed with redirect, let the render logic handle welcome screen
+              }
+              
               console.log(`🚀 REDIRECTING TO: ${targetPath}`);
               
               // Use setTimeout to ensure state is properly set before redirect
@@ -226,10 +234,21 @@ export default function AuthPage() {
   }
 
   // **PRIORITY 1: WELCOME SCREEN**
-  // Show welcome screen if user is verified but hasn't seen welcome
+  // Skip welcome screen for admins and managers
+  // Admins: Go straight to admin dashboard
+  // Managers: Go to dashboard where ManagerOnboardingWizard will show
+  // Only show welcome screen for chefs/delivery partners
   if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
-    console.log('🎉 RENDERING WELCOME SCREEN');
-    return <WelcomeScreen onComplete={handleWelcomeContinue} />;
+    if (userMeta.role === 'admin') {
+      console.log('👑 Admin user - skipping welcome screen');
+      return <Redirect to="/admin" />;
+    } else if (userMeta.role === 'manager') {
+      console.log('🏢 Manager user - skipping welcome screen, going to manager dashboard');
+      return <Redirect to="/manager/dashboard" />;
+    } else {
+      console.log('🎉 RENDERING WELCOME SCREEN for chef/delivery partner');
+      return <WelcomeScreen onComplete={handleWelcomeContinue} />;
+    }
   }
 
   // **PRIORITY 2: EMAIL VERIFICATION**
