@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -132,8 +134,29 @@ export default function ManagerOnboardingWizard() {
     },
   ];
 
-  // Check if user is a manager
-  const { data: userData } = useQuery({
+  // Check if user is a manager using Firebase auth (with session fallback for backward compatibility)
+  const { user: firebaseUser } = useFirebaseAuth();
+  
+  // Try Firebase auth first
+  const { data: firebaseUserData } = useQuery({
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) return null;
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch("/api/user/profile", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+  });
+
+  // Fallback to session auth if Firebase is not available (backward compatibility)
+  const { data: sessionUserData } = useQuery({
     queryKey: ["/api/user-session"],
     queryFn: async () => {
       const response = await fetch("/api/user-session", {
@@ -142,7 +165,11 @@ export default function ManagerOnboardingWizard() {
       if (!response.ok) return null;
       return response.json();
     },
+    enabled: !firebaseUser, // Only try session if Firebase is not available
   });
+
+  // Use Firebase user if available, otherwise fall back to session user
+  const userData = firebaseUserData || sessionUserData;
 
   const isManager = userData?.role === "manager";
   const shouldAutoOpen = 

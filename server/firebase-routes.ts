@@ -12,6 +12,7 @@ import { handleFileUpload } from './upload-handler';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
     requireAdmin,
+    requireManager,
     requireFirebaseAuthWithUser,
     verifyFirebaseAuth
 } from './firebase-auth-middleware';
@@ -2526,23 +2527,18 @@ export function registerFirebaseRoutes(app: Express) {
   // These endpoints are for kitchen managers to review and approve/reject chef applications
 
   /**
-   * 🔥 Get Kitchen Applications for Manager (Session Auth)
+   * 🔥 Get Kitchen Applications for Manager (Firebase Auth)
    * GET /api/manager/kitchen-applications
    * 
    * Returns all chef applications for locations managed by the authenticated manager.
    */
-  app.get('/api/manager/kitchen-applications', requireSessionAdmin, async (req: Request, res: Response) => {
+  app.get('/api/manager/kitchen-applications', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = (req as any).sessionUser;
-      console.log(`👨‍🍳 GET /api/manager/kitchen-applications - Manager ${sessionUser.id}`);
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
+      console.log(`👨‍🍳 GET /api/manager/kitchen-applications - Manager ${user.id}`);
       
-      // Check if user is a manager
-      const user = await storage.getUser(sessionUser.id);
-      if (!user || !(user as any).isManager) {
-        return res.status(403).json({ error: 'Manager access required' });
-      }
-      
-      const applications = await firebaseStorage.getChefKitchenApplicationsForManager(sessionUser.id);
+      const applications = await firebaseStorage.getChefKitchenApplicationsForManager(user.id);
       
       res.json(applications);
     } catch (error) {
@@ -2552,31 +2548,28 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   /**
-   * 🔥 Get Kitchen Applications by Location (Session Auth)
+   * 🔥 Get Kitchen Applications by Location (Firebase Auth)
    * GET /api/manager/kitchen-applications/location/:locationId
    * 
    * Returns all chef applications for a specific location.
    * Manager must have access to this location.
    */
-  app.get('/api/manager/kitchen-applications/location/:locationId', requireSessionAdmin, async (req: Request, res: Response) => {
+  app.get('/api/manager/kitchen-applications/location/:locationId', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = (req as any).sessionUser;
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
       const locationId = parseInt(req.params.locationId);
       
       if (isNaN(locationId)) {
         return res.status(400).json({ error: 'Invalid location ID' });
       }
       
-      console.log(`👨‍🍳 GET /api/manager/kitchen-applications/location/${locationId} - Manager ${sessionUser.id}`);
+      console.log(`👨‍🍳 GET /api/manager/kitchen-applications/location/${locationId} - Manager ${user.id}`);
       
       // Verify manager has access to this location
       const location = await firebaseStorage.getLocationById(locationId);
-      if (!location || (location as any).managerId !== sessionUser.id) {
-        // Check if admin (admins can see all)
-        const user = await storage.getUser(sessionUser.id);
-        if (!user || user.role !== 'admin') {
-          return res.status(403).json({ error: 'Access denied to this location' });
-        }
+      if (!location || (location as any).managerId !== user.id) {
+        return res.status(403).json({ error: 'Access denied to this location' });
       }
       
       const applications = await firebaseStorage.getChefKitchenApplicationsByLocationId(locationId);
@@ -2589,21 +2582,22 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   /**
-   * 🔥 Review Kitchen Application (Approve/Reject) (Session Auth)
+   * 🔥 Review Kitchen Application (Approve/Reject) (Firebase Auth)
    * PATCH /api/manager/kitchen-applications/:id/status
    * 
    * Allows a manager to approve or reject a chef's kitchen application.
    */
-  app.patch('/api/manager/kitchen-applications/:id/status', requireSessionAdmin, async (req: Request, res: Response) => {
+  app.patch('/api/manager/kitchen-applications/:id/status', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = (req as any).sessionUser;
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
       const applicationId = parseInt(req.params.id);
       
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
       
-      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/status - Manager ${sessionUser.id}`);
+      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/status - Manager ${user.id}`);
       
       // Validate request body
       const { status, feedback } = req.body;
@@ -2620,21 +2614,17 @@ export function registerFirebaseRoutes(app: Express) {
       
       // Verify manager has access to this location
       const location = await firebaseStorage.getLocationById(application.locationId);
-      if (!location || (location as any).managerId !== sessionUser.id) {
-        // Check if admin
-        const user = await storage.getUser(sessionUser.id);
-        if (!user || user.role !== 'admin') {
-          return res.status(403).json({ error: 'Access denied to this application' });
-        }
+      if (!location || (location as any).managerId !== user.id) {
+        return res.status(403).json({ error: 'Access denied to this application' });
       }
       
       // Update the status
       const updatedApplication = await firebaseStorage.updateChefKitchenApplicationStatus(
         { id: applicationId, status, feedback },
-        sessionUser.id
+        user.id
       );
       
-      console.log(`✅ Application ${applicationId} ${status} by Manager ${sessionUser.id}`);
+      console.log(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
       
       // If approved, grant the chef access to this location
       if (status === 'approved' && updatedApplication) {
@@ -2685,21 +2675,22 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   /**
-   * 🔥 Verify Kitchen Application Documents (Session Auth)
+   * 🔥 Verify Kitchen Application Documents (Firebase Auth)
    * PATCH /api/manager/kitchen-applications/:id/verify-documents
    * 
    * Allows a manager to verify the uploaded documents (approve/reject individual docs).
    */
-  app.patch('/api/manager/kitchen-applications/:id/verify-documents', requireSessionAdmin, async (req: Request, res: Response) => {
+  app.patch('/api/manager/kitchen-applications/:id/verify-documents', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = (req as any).sessionUser;
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
       const applicationId = parseInt(req.params.id);
       
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
       
-      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/verify-documents - Manager ${sessionUser.id}`);
+      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/verify-documents - Manager ${user.id}`);
       
       const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
       
@@ -2720,11 +2711,8 @@ export function registerFirebaseRoutes(app: Express) {
       
       // Verify manager has access
       const location = await firebaseStorage.getLocationById(application.locationId);
-      if (!location || (location as any).managerId !== sessionUser.id) {
-        const user = await storage.getUser(sessionUser.id);
-        if (!user || user.role !== 'admin') {
-          return res.status(403).json({ error: 'Access denied to this application' });
-        }
+      if (!location || (location as any).managerId !== user.id) {
+        return res.status(403).json({ error: 'Access denied to this application' });
       }
       
       // Update document statuses
