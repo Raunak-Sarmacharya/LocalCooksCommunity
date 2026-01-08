@@ -2645,7 +2645,7 @@ export function registerFirebaseRoutes(app: Express) {
             await db.insert(chefLocationAccess).values({
               chefId: application.chefId,
               locationId: application.locationId,
-              grantedBy: sessionUser.id,
+              grantedBy: req.neonUser!.id,
               grantedAt: new Date(),
             });
             console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId}`);

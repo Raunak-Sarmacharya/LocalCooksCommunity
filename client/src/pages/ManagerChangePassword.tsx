@@ -53,7 +53,11 @@ export default function ManagerChangePassword() {
         throw new Error("Not authenticated");
       }
       try {
-        const token = await firebaseUser.getIdToken();
+        const currentFirebaseUser = auth.currentUser;
+        if (!currentFirebaseUser) {
+          throw new Error("Not authenticated");
+        }
+        const token = await currentFirebaseUser.getIdToken();
         const response = await fetch("/api/user/profile", {
           headers: {
             'Authorization': `Bearer ${token}`,

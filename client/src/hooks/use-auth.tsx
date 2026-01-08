@@ -128,7 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         currentPath: window.location.pathname,
         email: firebaseUser.email
       });
-      });
 
       if (response.ok) {
         const result = await response.json();

@@ -151,11 +151,13 @@ export default function AdminRegister() {
             )}
 
             <AnimatedTabs
-              value={activeTab}
-              onValueChange={(value) => setActiveTab(value as "login" | "register")}
               tabs={tabs}
-            >
-              <AnimatedTabContent value="login">
+              activeTab={activeTab}
+              onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
+            />
+            
+            <AnimatedTabContent activeTab={activeTab}>
+              {activeTab === "login" ? (
                 <EnhancedLoginForm
                   onSuccess={() => {
                     console.log('AdminRegister - Login successful, refreshing user data');
@@ -163,9 +165,7 @@ export default function AdminRegister() {
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                 />
-              </AnimatedTabContent>
-              
-              <AnimatedTabContent value="register">
+              ) : (
                 <EnhancedRegisterForm
                   onSuccess={() => {
                     console.log('AdminRegister - Registration successful');
@@ -173,8 +173,8 @@ export default function AdminRegister() {
                   }}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                 />
-              </AnimatedTabContent>
-            </AnimatedTabs>
+              )}
+            </AnimatedTabContent>
           </motion.div>
         </FadeInSection>
       </div>

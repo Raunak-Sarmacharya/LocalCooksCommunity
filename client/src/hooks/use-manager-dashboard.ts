@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "./use-auth";
 import { auth } from "@/lib/firebase";
+import type { User as FirebaseUser } from "firebase/auth";
 
 interface Location {
   id: number;
@@ -57,9 +58,10 @@ export function useManagerDashboard() {
     };
     
     // Get Firebase token if user is authenticated
-    if (firebaseUser) {
+    const currentFirebaseUser: FirebaseUser | null = auth.currentUser;
+    if (currentFirebaseUser) {
       try {
-        const token = await firebaseUser.getIdToken();
+        const token = await currentFirebaseUser.getIdToken();
         headers['Authorization'] = `Bearer ${token}`;
       } catch (error) {
         console.error('Error getting Firebase token:', error);

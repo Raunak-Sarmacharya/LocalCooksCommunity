@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, GraduationCap, LogOut, Menu, User, X } from "lucide-react";
@@ -45,7 +46,9 @@ export default function Header() {
     queryFn: async () => {
       if (!firebaseUser) return null;
       try {
-        const token = await firebaseUser.getIdToken();
+        const currentFirebaseUser = auth.currentUser;
+        if (!currentFirebaseUser) return null;
+        const token = await currentFirebaseUser.getIdToken();
         const response = await fetch("/api/user/profile", {
           headers: {
             'Authorization': `Bearer ${token}`,

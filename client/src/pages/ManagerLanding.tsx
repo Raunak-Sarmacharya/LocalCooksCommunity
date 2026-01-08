@@ -20,7 +20,9 @@ export default function ManagerLanding() {
     queryFn: async () => {
       if (!firebaseUser) return null;
       try {
-        const token = await firebaseUser.getIdToken();
+        const currentFirebaseUser = auth.currentUser;
+        if (!currentFirebaseUser) return null;
+        const token = await currentFirebaseUser.getIdToken();
         const response = await fetch("/api/user/profile", {
           headers: {
             'Authorization': `Bearer ${token}`,
