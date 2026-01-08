@@ -211,6 +211,54 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Manager registration endpoint - allows managers to self-register
+  app.post("/api/manager-register", async (req, res) => {
+    try {
+      const { username, password, email, name } = req.body;
+      
+      // Validate required fields
+      if (!username || !password) {
+        return res.status(400).json({ error: "Username and password are required" });
+      }
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+      
+      // Hash password and create manager user
+      const hashedPassword = await hashPassword(password);
+      const manager = await storage.createUser({
+        username,
+        password: hashedPassword,
+        role: "manager",
+        isChef: false,
+        isDeliveryPartner: false,
+        isManager: true,
+        isPortalUser: false,
+        has_seen_welcome: false  // Manager must change password on first login
+      });
+      
+      // Log the manager in
+      req.login(manager, (err) => {
+        if (err) {
+          return res.status(500).json({ error: "Login failed after registration" });
+        }
+        
+        return res.status(201).json({
+          id: manager.id,
+          username: manager.username,
+          role: manager.role,
+          has_seen_welcome: false
+        });
+      });
+    } catch (error) {
+      console.error("Manager registration error:", error);
+      res.status(500).json({ error: "Manager registration failed" });
+    }
+  });
+
   app.post("/api/login", (req, res, next) => {
     passport.authenticate("local", (err: Error | null, user: User | false, info: { message: string } | undefined) => {
       if (err) {

@@ -75,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (currentPath === '/driver-auth') {
           finalRole = 'delivery_partner';
           console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
+        } else if (currentPath === '/manager-register' || currentPath === '/manager/register') {
+          finalRole = 'manager';
+          console.log('🏢 Auto-setting role to manager based on /manager-register URL');
         } else if (currentPath === '/auth') {
           finalRole = 'chef';
           console.log('👨‍🍳 Auto-setting role to chef based on /auth URL');

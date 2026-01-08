@@ -59,25 +59,39 @@ export async function syncFirebaseUserToNeon(params: {
       return existingUser;
     }
 
-    // Enforce mutually exclusive roles - users can only be chef OR delivery partner, not both
-    // Exception: Admin users have access to both chef and delivery partner data/functionality
-    const finalRole = (role === 'admin' || role === 'chef' || role === 'delivery_partner') ? role : 'chef';
-    const isChef = (finalRole === 'chef' || finalRole === 'admin');
-    const isDeliveryPartner = (finalRole === 'delivery_partner' || finalRole === 'admin');
+    // Handle role assignment - manager role is separate from chef/delivery_partner
+    let finalRole: 'admin' | 'chef' | 'delivery_partner' | 'manager';
+    let isChef = false;
+    let isDeliveryPartner = false;
+    let isManager = false;
     
-    if (finalRole === 'admin') {
+    if (role === 'manager') {
+      finalRole = 'manager';
+      isManager = true;
+      console.log(`🎯 Manager role assignment: role="manager" → isManager=true`);
+    } else if (role === 'admin') {
+      finalRole = 'admin';
+      isChef = true;
+      isDeliveryPartner = true;
       console.log(`🎯 Admin role assignment: role="admin" → isChef=true, isDeliveryPartner=true (admin has full access)`);
+    } else if (role === 'delivery_partner') {
+      finalRole = 'delivery_partner';
+      isDeliveryPartner = true;
+      console.log(`🎯 Delivery partner role assignment: role="delivery_partner" → isDeliveryPartner=true`);
     } else {
-      console.log(`🎯 Exclusive role assignment: role="${finalRole}" → isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner} (mutually exclusive)`);
+      // Default to chef
+      finalRole = 'chef';
+      isChef = true;
+      console.log(`🎯 Chef role assignment: role="chef" → isChef=true`);
     }
     
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
       role: finalRole,
-      isChef: isChef, // Auto-set based on role
-      isDeliveryPartner: isDeliveryPartner, // Auto-set based on role
-      isManager: false,
+      isChef: false,
+      isDeliveryPartner: isDeliveryPartner,
+      isManager: isManager,
       isPortalUser: false,
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
