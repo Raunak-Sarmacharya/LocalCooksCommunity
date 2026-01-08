@@ -39,11 +39,11 @@ export default function ApplyToKitchen() {
 
   // Fetch location details
   const { data: location, isLoading: locationLoading, error: locationError } = useQuery<PublicLocation>({
-    queryKey: ["/api/public/locations", locationId],
+    queryKey: ["/api/public/locations", locationId, "details"],
     queryFn: async () => {
       if (!locationId) throw new Error("No location ID provided");
       
-      const response = await fetch(`/api/public/locations/${locationId}`);
+      const response = await fetch(`/api/public/locations/${locationId}/details`);
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error("Location not found");
