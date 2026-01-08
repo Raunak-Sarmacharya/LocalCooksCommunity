@@ -18187,20 +18187,6 @@ app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, as
     // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
     const user = req.neonUser;
     const userId = user.id;
-    if (req.headers.authorization) {
-      // For now, return empty for Firebase auth (would need to decode token)
-      return res.json([]);
-    } else {
-      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (userResult.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      const user = userResult.rows[0];
-      if (user.role !== 'manager') {
-        return res.status(403).json({ error: "Manager access required" });
-      }
-      userId = user.id;
-    }
 
     // Get all locations for this manager
     const locationsResult = await pool.query(
