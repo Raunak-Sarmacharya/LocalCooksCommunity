@@ -7170,6 +7170,7 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
 
     // Fetch full user data from database to get onboarding fields
     let fullUserData = null;
+    let userFullName = null;
     if (pool) {
       try {
         const userResult = await pool.query(
@@ -7178,6 +7179,25 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
         );
         if (userResult.rows.length > 0) {
           fullUserData = userResult.rows[0];
+        }
+
+        // Fetch user's full name from applications (chef or delivery partner)
+        // Try chef applications first, then delivery partner applications
+        const chefAppResult = await pool.query(
+          'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [req.neonUser.id]
+        );
+        if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
+          userFullName = chefAppResult.rows[0].full_name;
+        } else {
+          // Try delivery partner applications
+          const deliveryAppResult = await pool.query(
+            'SELECT full_name FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+            [req.neonUser.id]
+          );
+          if (deliveryAppResult.rows.length > 0 && deliveryAppResult.rows[0].full_name) {
+            userFullName = deliveryAppResult.rows[0].full_name;
+          }
         }
       } catch (dbError) {
         console.error('Error fetching full user data:', dbError);
@@ -7196,6 +7216,8 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
       firebaseUid: req.firebaseUser.uid || null,
       email: req.firebaseUser.email || null,
       emailVerified: req.firebaseUser.email_verified || false,
+      displayName: userFullName || null, // User's full name from application
+      fullName: userFullName || null, // Alias for compatibility
       // Manager onboarding fields
       manager_onboarding_completed: fullUserData?.manager_onboarding_completed || false,
       manager_onboarding_skipped: fullUserData?.manager_onboarding_skipped || false
@@ -16096,6 +16118,129 @@ app.post("/api/admin/locations", requireFirebaseAuthWithUser, requireAdmin, asyn
       return res.status(400).json({ error: 'The selected manager does not exist or is invalid.' });
     }
     res.status(500).json({ error: error.message || "Failed to create location" });
+  }
+});
+
+// Update location (admin)
+app.put("/api/admin/locations/:id", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
+
+    const locationId = parseInt(req.params.id);
+    if (isNaN(locationId) || locationId <= 0) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    const { name, address, managerId, notificationEmail, notificationPhone } = req.body;
+
+    // Validate managerId if provided
+    let managerIdNum = undefined;
+    if (managerId !== undefined) {
+      if (managerId === null || managerId === '') {
+        // Explicitly allow setting to null
+        managerIdNum = null;
+      } else {
+        managerIdNum = parseInt(managerId.toString());
+        if (isNaN(managerIdNum) || managerIdNum <= 0) {
+          return res.status(400).json({ error: "Invalid manager ID format" });
+        }
+        
+        // Validate that the manager exists and has manager role
+        const manager = await getUser(managerIdNum);
+        if (!manager) {
+          return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
+        }
+        if (manager.role !== 'manager') {
+          return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
+        }
+      }
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (address !== undefined) {
+      updates.push(`address = $${paramIndex++}`);
+      values.push(address);
+    }
+    if (managerIdNum !== undefined) {
+      updates.push(`manager_id = $${paramIndex++}`);
+      values.push(managerIdNum);
+    }
+    if (notificationEmail !== undefined) {
+      updates.push(`notification_email = $${paramIndex++}`);
+      values.push(notificationEmail || null);
+    }
+    if (notificationPhone !== undefined) {
+      if (notificationPhone && notificationPhone.trim() !== '') {
+        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const normalized = normalizePhoneForStorage(notificationPhone);
+        if (!normalized) {
+          return res.status(400).json({
+            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+          });
+        }
+        updates.push(`notification_phone = $${paramIndex++}`);
+        values.push(normalized);
+      } else {
+        updates.push(`notification_phone = $${paramIndex++}`);
+        values.push(null);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(locationId);
+
+    // Update the location
+    const updateQuery = `
+      UPDATE locations 
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `;
+
+    const result = await pool.query(updateQuery, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Location not found" });
+    }
+
+    const updatedLocation = result.rows[0];
+
+    // Map snake_case to camelCase for consistent API response
+    const mappedLocation = {
+      id: updatedLocation.id,
+      name: updatedLocation.name,
+      address: updatedLocation.address,
+      managerId: updatedLocation.manager_id || null,
+      notificationEmail: updatedLocation.notification_email || null,
+      notificationPhone: updatedLocation.notification_phone || null,
+      cancellationPolicyHours: updatedLocation.cancellation_policy_hours || 24,
+      cancellationPolicyMessage: updatedLocation.cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+      defaultDailyBookingLimit: updatedLocation.default_daily_booking_limit || 2,
+      createdAt: updatedLocation.created_at,
+      updatedAt: updatedLocation.updated_at,
+    };
+
+    res.json(mappedLocation);
+  } catch (error) {
+    console.error("Error updating location:", error);
+    res.status(500).json({ error: error.message || "Failed to update location" });
   }
 });
 
