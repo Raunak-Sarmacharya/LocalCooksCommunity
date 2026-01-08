@@ -62,7 +62,7 @@ const ManagerBookingPortal = lazy(() => import("@/pages/ManagerBookingPortal"));
 const PortalLanding = lazy(() => import("@/pages/PortalLanding"));
 const PortalBookingPage = lazy(() => import("@/pages/PortalBookingPage"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
-const ManagerPortalApplications = lazy(() => import("@/pages/ManagerPortalApplications"));
+const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
 const PortalRegister = lazy(() => import("@/pages/PortalRegister"));
 const PortalBookingsPage = lazy(() => import("@/pages/PortalBookingsPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
@@ -344,10 +344,10 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
-        <Route path="/manager/portal-applications">
+        <Route path="/manager/applications">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
-              <ManagerPortalApplications />
+              <ManagerKitchenApplications />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

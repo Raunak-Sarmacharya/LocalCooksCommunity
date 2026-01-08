@@ -50,7 +50,7 @@ import BookingCalendarWidget from "./BookingCalendarWidget";
 // Inspired by Peerspace, Splacer, Airbnb, and top booking platforms
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles' | 'portal-applications';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings';
 
 interface Location {
   id: number;
@@ -815,7 +815,7 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={() => onNavigate('chef-profiles')}
+            onClick={() => onNavigate('applications')}
             className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
           >
             View All
@@ -883,7 +883,7 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
               <div
                 key={chef.id || idx}
                 className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50/80 transition-colors duration-200 cursor-pointer group border border-transparent hover:border-gray-100"
-                onClick={() => onNavigate('chef-profiles')}
+                onClick={() => onNavigate('applications')}
               >
                 {/* Avatar */}
                 <div className={`w-10 h-10 rounded-full ${getAvatarColor(chef.name)} flex items-center justify-center text-white font-semibold text-sm shadow-sm flex-shrink-0`}>
