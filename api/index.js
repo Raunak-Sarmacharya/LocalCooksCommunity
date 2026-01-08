@@ -998,28 +998,46 @@ app.post('/api/admin-migrate-login', async (req, res) => {
     if (admin.firebase_uid) {
       console.log('✅ Admin already has Firebase UID:', admin.firebase_uid);
       // Admin already migrated - generate custom token for immediate login
-      const adminSDK = await import('firebase-admin');
+      // Use the global firebaseAdmin instance if available
+      let adminSDK = null;
       
-      // Initialize Firebase Admin if not already initialized
-      if (!adminSDK.default.apps.length) {
-        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
-        if (projectId) {
-          try {
-            adminSDK.default.initializeApp({
-              projectId: projectId,
-            });
-          } catch (e) {
-            console.error('Firebase Admin initialization error:', e);
+      if (firebaseAdmin) {
+        adminSDK = firebaseAdmin;
+      } else {
+        const admin = await import('firebase-admin');
+        const { getApps } = await import('firebase-admin/app');
+        
+        if (getApps().length > 0) {
+          adminSDK = getApps()[0];
+        } else {
+          const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+          if (projectId) {
+            try {
+              const { initializeApp } = await import('firebase-admin/app');
+              adminSDK = initializeApp({ projectId: projectId });
+            } catch (e) {
+              console.error('Firebase Admin initialization error:', e);
+            }
           }
         }
       }
       
+      if (!adminSDK) {
+        return res.status(500).json({ 
+          error: 'Firebase Admin not available',
+          message: 'Cannot generate login token. Please contact support.' 
+        });
+      }
+      
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth(adminSDK);
+      
       try {
         // Verify the Firebase user still exists
-        const firebaseUser = await adminSDK.default.auth().getUser(admin.firebase_uid);
+        const firebaseUser = await auth.getUser(admin.firebase_uid);
         
         // Generate custom token for login
-        const customToken = await adminSDK.default.auth().createCustomToken(admin.firebase_uid);
+        const customToken = await auth.createCustomToken(admin.firebase_uid);
         
         // Get email for response
         let email = admin.email;
@@ -1057,42 +1075,83 @@ app.post('/api/admin-migrate-login', async (req, res) => {
     }
     
     // Step 5: Create Firebase account using Admin SDK
-    const adminSDK = await import('firebase-admin');
+    // Use the global firebaseAdmin instance if available
+    let adminSDKInstance = null;
     
-    // Initialize Firebase Admin if not already initialized
-    if (!adminSDK.default.apps.length) {
-      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
-      if (projectId) {
-        try {
-          adminSDK.default.initializeApp({
-            projectId: projectId,
+    if (firebaseAdmin) {
+      adminSDKInstance = firebaseAdmin;
+      console.log('✅ Using global Firebase Admin instance');
+    } else {
+      const admin = await import('firebase-admin');
+      const { getApps } = await import('firebase-admin/app');
+      
+      if (getApps().length > 0) {
+        adminSDKInstance = getApps()[0];
+        console.log('✅ Using existing Firebase Admin app');
+      } else {
+        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+        if (projectId) {
+          try {
+            const { initializeApp } = await import('firebase-admin/app');
+            adminSDKInstance = initializeApp({
+              projectId: projectId,
+            });
+            console.log('✅ Initialized new Firebase Admin instance');
+          } catch (e) {
+            console.error('❌ Firebase Admin initialization error:', e);
+            return res.status(500).json({ 
+              error: 'Firebase Admin not configured',
+              message: 'Cannot create Firebase account. Please contact support.' 
+            });
+          }
+        } else {
+          return res.status(500).json({ 
+            error: 'Firebase Admin not configured',
+            message: 'Cannot create Firebase account. Please contact support.' 
           });
-        } catch (e) {
-          console.error('Firebase Admin initialization error:', e);
         }
       }
     }
+    
+    if (!adminSDKInstance) {
+      return res.status(500).json({ 
+        error: 'Firebase Admin not available',
+        message: 'Cannot create Firebase account. Please contact support.' 
+      });
+    }
+    
+    const { getAuth } = await import('firebase-admin/auth');
+    const auth = getAuth(adminSDKInstance);
     
     let firebaseUser;
     try {
       // Check if Firebase user already exists with this email
       try {
-        firebaseUser = await adminSDK.default.auth().getUserByEmail(email);
+        firebaseUser = await auth.getUserByEmail(email);
         console.log('⚠️  Firebase user already exists with email:', email);
       } catch (error) {
         // User doesn't exist, create them
         console.log('➕ Creating Firebase account for admin:', email);
-        firebaseUser = await adminSDK.default.auth().createUser({
-          email: email,
-          password: password,
-          displayName: admin.display_name || admin.username,
-          emailVerified: admin.is_verified || false,
-        });
-        console.log('✅ Firebase account created:', firebaseUser.uid);
+        try {
+          firebaseUser = await auth.createUser({
+            email: email,
+            password: password,
+            displayName: admin.display_name || admin.username,
+            emailVerified: admin.is_verified || false,
+          });
+          console.log('✅ Firebase account created:', firebaseUser.uid);
+        } catch (createError) {
+          console.error('❌ Error creating Firebase user:', createError);
+          console.error('Create error details:', {
+            code: createError.code,
+            message: createError.message
+          });
+          throw createError; // Re-throw to be caught by outer catch
+        }
       }
 
       // Step 6: Set custom claims for admin role
-      await adminSDK.default.auth().setCustomUserClaims(firebaseUser.uid, {
+      await auth.setCustomUserClaims(firebaseUser.uid, {
         role: 'admin',
         isAdmin: true
       });
@@ -1110,7 +1169,7 @@ app.post('/api/admin-migrate-login', async (req, res) => {
       });
 
       // Step 8: Generate Firebase custom token for immediate login
-      const customToken = await adminSDK.default.auth().createCustomToken(firebaseUser.uid);
+      const customToken = await auth.createCustomToken(firebaseUser.uid);
 
       res.json({
         success: true,
@@ -1127,9 +1186,15 @@ app.post('/api/admin-migrate-login', async (req, res) => {
 
     } catch (firebaseError) {
       console.error('❌ Firebase account creation error:', firebaseError);
+      console.error('Firebase error details:', {
+        code: firebaseError.code,
+        message: firebaseError.message,
+        stack: firebaseError.stack
+      });
       return res.status(500).json({ 
         error: 'Failed to create Firebase account',
-        message: firebaseError.message 
+        message: firebaseError.message || 'Unknown error occurred',
+        code: firebaseError.code
       });
     }
 
@@ -1187,28 +1252,46 @@ app.post('/api/manager-migrate-login', async (req, res) => {
     if (manager.firebase_uid) {
       console.log('✅ Manager already has Firebase UID:', manager.firebase_uid);
       // Manager already migrated - generate custom token for immediate login
-      const admin = await import('firebase-admin');
+      // Use the global firebaseAdmin instance if available
+      let adminSDK = null;
       
-      // Initialize Firebase Admin if not already initialized
-      if (!admin.default.apps.length) {
-        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
-        if (projectId) {
-          try {
-            admin.default.initializeApp({
-              projectId: projectId,
-            });
-          } catch (e) {
-            console.error('Firebase Admin initialization error:', e);
+      if (firebaseAdmin) {
+        adminSDK = firebaseAdmin;
+      } else {
+        const admin = await import('firebase-admin');
+        const { getApps } = await import('firebase-admin/app');
+        
+        if (getApps().length > 0) {
+          adminSDK = getApps()[0];
+        } else {
+          const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+          if (projectId) {
+            try {
+              const { initializeApp } = await import('firebase-admin/app');
+              adminSDK = initializeApp({ projectId: projectId });
+            } catch (e) {
+              console.error('Firebase Admin initialization error:', e);
+            }
           }
         }
       }
       
+      if (!adminSDK) {
+        return res.status(500).json({ 
+          error: 'Firebase Admin not available',
+          message: 'Cannot generate login token. Please contact support.' 
+        });
+      }
+      
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth(adminSDK);
+      
       try {
         // Verify the Firebase user still exists
-        const firebaseUser = await admin.default.auth().getUser(manager.firebase_uid);
+        const firebaseUser = await auth.getUser(manager.firebase_uid);
         
         // Generate custom token for login
-        const customToken = await admin.default.auth().createCustomToken(manager.firebase_uid);
+        const customToken = await auth.createCustomToken(manager.firebase_uid);
         
         // Get email for response
         let email = manager.email;
@@ -1250,43 +1333,86 @@ app.post('/api/manager-migrate-login', async (req, res) => {
     }
     
     // Step 5: Create Firebase account using Admin SDK
-    const admin = await import('firebase-admin');
+    // Use the global firebaseAdmin instance if available, otherwise try to initialize
+    let adminSDK = null;
     
-    // Initialize Firebase Admin if not already initialized
-    if (!admin.default.apps.length) {
-      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
-      if (projectId) {
-        try {
-          admin.default.initializeApp({
-            projectId: projectId,
+    if (firebaseAdmin) {
+      // Use the globally initialized Firebase Admin
+      adminSDK = firebaseAdmin;
+      console.log('✅ Using global Firebase Admin instance');
+    } else {
+      // Try to initialize a new instance (fallback)
+      const admin = await import('firebase-admin');
+      const { getApps } = await import('firebase-admin/app');
+      
+      if (getApps().length > 0) {
+        adminSDK = getApps()[0];
+        console.log('✅ Using existing Firebase Admin app');
+      } else {
+        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+        if (projectId) {
+          try {
+            const { initializeApp } = await import('firebase-admin/app');
+            adminSDK = initializeApp({
+              projectId: projectId,
+            });
+            console.log('✅ Initialized new Firebase Admin instance');
+          } catch (e) {
+            console.error('❌ Firebase Admin initialization error:', e);
+            return res.status(500).json({ 
+              error: 'Firebase Admin not configured',
+              message: 'Cannot create Firebase account. Please contact support.' 
+            });
+          }
+        } else {
+          return res.status(500).json({ 
+            error: 'Firebase Admin not configured',
+            message: 'Cannot create Firebase account. Please contact support.' 
           });
-        } catch (e) {
-          console.error('Firebase Admin initialization error:', e);
         }
       }
     }
+    
+    if (!adminSDK) {
+      return res.status(500).json({ 
+        error: 'Firebase Admin not available',
+        message: 'Cannot create Firebase account. Please contact support.' 
+      });
+    }
+    
+    const { getAuth } = await import('firebase-admin/auth');
+    const auth = getAuth(adminSDK);
     
     let firebaseUser;
     try {
       // Check if Firebase user already exists with this email
       try {
-        firebaseUser = await admin.default.auth().getUserByEmail(email);
+        firebaseUser = await auth.getUserByEmail(email);
         console.log('⚠️  Firebase user already exists with email:', email);
         // Link existing Firebase user to Neon DB
       } catch (error) {
         // User doesn't exist, create them
         console.log('➕ Creating Firebase account for manager:', email);
-        firebaseUser = await admin.default.auth().createUser({
-          email: email,
-          password: password, // Use same password
-          displayName: manager.display_name || manager.username,
-          emailVerified: manager.is_verified || false,
-        });
-        console.log('✅ Firebase account created:', firebaseUser.uid);
+        try {
+          firebaseUser = await auth.createUser({
+            email: email,
+            password: password, // Use same password
+            displayName: manager.display_name || manager.username,
+            emailVerified: manager.is_verified || false,
+          });
+          console.log('✅ Firebase account created:', firebaseUser.uid);
+        } catch (createError) {
+          console.error('❌ Error creating Firebase user:', createError);
+          console.error('Create error details:', {
+            code: createError.code,
+            message: createError.message
+          });
+          throw createError; // Re-throw to be caught by outer catch
+        }
       }
 
       // Step 6: Set custom claims for manager role
-      await admin.default.auth().setCustomUserClaims(firebaseUser.uid, {
+      await auth.setCustomUserClaims(firebaseUser.uid, {
         role: 'manager',
         isManager: true
       });
@@ -1304,7 +1430,7 @@ app.post('/api/manager-migrate-login', async (req, res) => {
       });
 
       // Step 8: Generate Firebase custom token for immediate login
-      const customToken = await admin.default.auth().createCustomToken(firebaseUser.uid);
+      const customToken = await auth.createCustomToken(firebaseUser.uid);
 
       res.json({
         success: true,
@@ -1321,9 +1447,15 @@ app.post('/api/manager-migrate-login', async (req, res) => {
 
     } catch (firebaseError) {
       console.error('❌ Firebase account creation error:', firebaseError);
+      console.error('Firebase error details:', {
+        code: firebaseError.code,
+        message: firebaseError.message,
+        stack: firebaseError.stack
+      });
       return res.status(500).json({ 
         error: 'Failed to create Firebase account',
-        message: firebaseError.message 
+        message: firebaseError.message || 'Unknown error occurred',
+        code: firebaseError.code
       });
     }
 
@@ -5980,17 +6112,35 @@ app.post('/api/firebase-register-user', async (req, res) => {
     console.log(`   - Effective emailVerified: ${effectiveEmailVerified}`);
     console.log(`   - Role received from frontend: "${role}" (type: ${typeof role})`);
     console.log(`   - Display Name: ${displayName}`);
+    console.log(`   - Request referer: ${req.headers.referer || 'unknown'}`);
+    console.log(`   - Request origin: ${req.headers.origin || 'unknown'}`);
     
     // CRITICAL: Validate role before proceeding
-    if (!role || role === 'null' || role === 'undefined' || role === '') {
+    if (!role || role === 'null' || role === 'undefined' || role === '' || role === null || role === undefined) {
       console.error(`❌ CRITICAL ERROR: No valid role provided in registration request!`);
       console.error(`   - Role value: ${JSON.stringify(role)}`);
+      console.error(`   - Role type: ${typeof role}`);
+      console.error(`   - Request body: ${JSON.stringify(req.body)}`);
       console.error(`   - This will cause user to be created incorrectly`);
       return res.status(400).json({
         error: 'Role is required',
         message: 'Role is required for user registration. Please register from the appropriate page (admin, manager, chef, or delivery partner).'
       });
     }
+    
+    // Additional validation: ensure role is one of the valid values
+    const validRoles = ['admin', 'manager', 'chef', 'delivery_partner'];
+    if (!validRoles.includes(role)) {
+      console.error(`❌ CRITICAL ERROR: Invalid role value provided!`);
+      console.error(`   - Role value: "${role}"`);
+      console.error(`   - Valid roles: ${validRoles.join(', ')}`);
+      return res.status(400).json({
+        error: 'Invalid role',
+        message: `Invalid role: ${role}. Valid roles are: ${validRoles.join(', ')}`
+      });
+    }
+    
+    console.log(`✅ Role validation passed: "${role}" is a valid role`);
     
     // Call sync logic directly instead of making internal fetch
     const syncResult = await syncFirebaseUser(uid, email, effectiveEmailVerified, displayName, role, password);
@@ -6778,14 +6928,17 @@ function requireFirebaseAuthWithUser(req, res, next) {
       }
       
       if (!neonUser) {
+        console.error(`❌ requireFirebaseAuthWithUser: No user found for Firebase UID: ${req.firebaseUser.uid}`);
         if (!res.headersSent) {
           return res.status(404).json({ 
             error: 'User not found', 
-            message: 'No matching user in database. Please complete registration.' 
+            message: 'No matching user in database. This account may need to be migrated. Please contact support.' 
           });
         }
         return;
       }
+      
+      console.log(`✅ requireFirebaseAuthWithUser: Found user - ID: ${neonUser.id}, Role: ${neonUser.role}, Username: ${neonUser.username}`);
 
       req.neonUser = {
         id: neonUser.id,
@@ -6798,7 +6951,7 @@ function requireFirebaseAuthWithUser(req, res, next) {
         isDeliveryPartner: neonUser.is_delivery_partner || false,
       };
 
-      console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
+      console.log(`🔄 Enhanced auth: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}, Role: ${neonUser.role}`);
       
       // Call next() safely
       if (typeof next === 'function' && !res.headersSent) {
@@ -7061,28 +7214,53 @@ app.post('/api/firebase/user/update-roles', requireFirebaseAuthWithUser, async (
       });
     }
 
+    // CRITICAL: Don't allow changing admin or manager roles via this endpoint
+    if (req.neonUser.role === 'admin' || req.neonUser.role === 'manager') {
+      console.warn(`⚠️ Attempt to update roles for ${req.neonUser.role} user ${req.neonUser.id} - blocked`);
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Cannot update roles for admin or manager users via this endpoint'
+      });
+    }
+
     console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${req.neonUser.id} → Chef: ${isChef}, Delivery: ${isDeliveryPartner}`);
 
     // Update user roles in database
     if (pool) {
-      // Determine the main role based on selected roles
-      let mainRole = 'chef'; // default
-      if (isDeliveryPartner && !isChef) {
-        mainRole = 'delivery_partner';
-      } else if (isChef && isDeliveryPartner) {
-        mainRole = 'chef'; // For dual roles, default to chef
-      } else if (isChef) {
-        mainRole = 'chef';
-      }
+      // Get current user to preserve their role if they're admin/manager
+      const currentUserResult = await pool.query('SELECT role FROM users WHERE id = $1', [req.neonUser.id]);
+      const currentRole = currentUserResult.rows[0]?.role;
+      
+      // Don't change role if user is admin or manager
+      if (currentRole === 'admin' || currentRole === 'manager') {
+        console.warn(`⚠️ User ${req.neonUser.id} is ${currentRole} - preserving role, only updating flags`);
+        await pool.query(
+          `UPDATE users SET 
+            is_chef = $1, 
+            is_delivery_partner = $2
+          WHERE id = $3`,
+          [isChef, isDeliveryPartner, req.neonUser.id]
+        );
+      } else {
+        // Determine the main role based on selected roles (only for chef/delivery_partner)
+        let mainRole = 'chef'; // default
+        if (isDeliveryPartner && !isChef) {
+          mainRole = 'delivery_partner';
+        } else if (isChef && isDeliveryPartner) {
+          mainRole = 'chef'; // For dual roles, default to chef
+        } else if (isChef) {
+          mainRole = 'chef';
+        }
 
-      await pool.query(
-        `UPDATE users SET 
-          is_chef = $1, 
-          is_delivery_partner = $2, 
-          role = $3 
-        WHERE id = $4`,
-        [isChef, isDeliveryPartner, mainRole, req.neonUser.id]
-      );
+        await pool.query(
+          `UPDATE users SET 
+            is_chef = $1, 
+            is_delivery_partner = $2, 
+            role = $3 
+          WHERE id = $4`,
+          [isChef, isDeliveryPartner, mainRole, req.neonUser.id]
+        );
+      }
     } else {
       // In-memory fallback
       const user = Array.from(users.values()).find(u => u.id === req.neonUser.id);

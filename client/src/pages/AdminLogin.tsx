@@ -78,14 +78,38 @@ export default function AdminLogin() {
           
           if (migrateData.customToken) {
             // Sign in with custom token
-            await signInWithCustomToken(auth, migrateData.customToken);
+            const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
             console.log('✅ Migration login successful');
+            
+            // Force token refresh and sync user data
+            if (userCredential.user) {
+              await userCredential.user.getIdToken(true);
+              
+              // Trigger user sync with backend
+              try {
+                const token = await userCredential.user.getIdToken();
+                const syncResponse = await fetch('/api/user/profile', {
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                
+                if (syncResponse.ok) {
+                  console.log('✅ User profile synced after migration login');
+                }
+              } catch (syncError) {
+                console.error('❌ Error syncing user profile after migration:', syncError);
+              }
+            }
             
             // Clear all cached data
             queryClient.clear();
             
-            // Redirect will be handled by the redirect logic below
-            setIsSubmitting(false);
+            // Wait a bit for auth state to update
+            setTimeout(() => {
+              setIsSubmitting(false);
+            }, 2000);
             return;
           }
         } else {
@@ -151,13 +175,38 @@ export default function AdminLogin() {
               
               if (migrateData.customToken) {
                 // Sign in with custom token
-                await signInWithCustomToken(auth, migrateData.customToken);
+                const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
                 console.log('✅ Migration login successful');
+                
+                // Force token refresh and sync user data
+                if (userCredential.user) {
+                  await userCredential.user.getIdToken(true);
+                  
+                  // Trigger user sync with backend
+                  try {
+                    const token = await userCredential.user.getIdToken();
+                    const syncResponse = await fetch('/api/user/profile', {
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                      }
+                    });
+                    
+                    if (syncResponse.ok) {
+                      console.log('✅ User profile synced after migration login');
+                    }
+                  } catch (syncError) {
+                    console.error('❌ Error syncing user profile after migration:', syncError);
+                  }
+                }
                 
                 // Clear all cached data
                 queryClient.clear();
                 
-                setIsSubmitting(false);
+                // Wait a bit for auth state to update
+                setTimeout(() => {
+                  setIsSubmitting(false);
+                }, 2000);
                 return;
               }
             }

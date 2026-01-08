@@ -120,6 +120,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password: password // Include password for email/password registrations
         })
       });
+      
+      console.log('📤 SYNC REQUEST DEBUG:', {
+        endpoint,
+        isRegistration,
+        role: finalRole,
+        currentPath: window.location.pathname,
+        email: firebaseUser.email
+      });
+      });
 
       if (response.ok) {
         const result = await response.json();
@@ -386,23 +395,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Detect role from URL path for registration
       const currentPath = window.location.pathname;
+      const currentUrl = window.location.href;
       let detectedRole: string | undefined = undefined;
       
-      if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+      console.log('🔍 ROLE DETECTION DEBUG:', {
+        pathname: currentPath,
+        fullUrl: currentUrl,
+        hash: window.location.hash,
+        search: window.location.search
+      });
+      
+      // Check for admin paths first (most specific)
+      if (currentPath === '/admin-register' || currentPath === '/admin/register' || 
+          currentPath === '/admin-login' || currentPath === '/admin/login' ||
+          currentPath.startsWith('/admin-register') || currentPath.startsWith('/admin/register') ||
+          currentPath.startsWith('/admin-login') || currentPath.startsWith('/admin/login')) {
         detectedRole = 'admin';
         console.log('👑 Detected admin role from URL path during signup');
-      } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
+      } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || 
+                 currentPath === '/manager-login' || currentPath === '/manager/login' ||
+                 currentPath.startsWith('/manager-register') || currentPath.startsWith('/manager/register') ||
+                 currentPath.startsWith('/manager-login') || currentPath.startsWith('/manager/login')) {
         detectedRole = 'manager';
         console.log('🏢 Detected manager role from URL path during signup');
-      } else if (currentPath === '/driver-auth') {
+      } else if (currentPath === '/driver-auth' || currentPath.startsWith('/driver-auth')) {
         detectedRole = 'delivery_partner';
         console.log('🚚 Detected delivery_partner role from URL path during signup');
-      } else if (currentPath === '/auth') {
+      } else if (currentPath === '/auth' || currentPath.startsWith('/auth')) {
         detectedRole = 'chef';
         console.log('👨‍🍳 Detected chef role from URL path during signup');
       } else {
         console.warn(`⚠️ No role detected from URL path "${currentPath}" during signup - role will be determined by backend`);
+        console.warn(`   Full URL: ${currentUrl}`);
       }
+      
+      console.log(`✅ Final detected role for registration: "${detectedRole || 'undefined'}"`);
       
       const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
       
