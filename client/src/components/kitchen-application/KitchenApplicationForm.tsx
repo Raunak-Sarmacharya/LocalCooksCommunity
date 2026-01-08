@@ -275,6 +275,27 @@ export default function KitchenApplicationForm({
     );
   }
 
+  // Handle form submission - prevent submission unless on final step
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    // Only allow form submission on the final step
+    if (currentStep < totalSteps) {
+      e.preventDefault();
+      // If validation passes, move to next step
+      goToNextStep();
+      return;
+    }
+    // Otherwise let React Hook Form handle it
+    form.handleSubmit(onSubmit)(e);
+  };
+
+  // Prevent Enter key from submitting form except on final step
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && currentStep < totalSteps) {
+      e.preventDefault();
+      goToNextStep();
+    }
+  };
+
   return (
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
@@ -336,7 +357,7 @@ export default function KitchenApplicationForm({
       
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={handleFormSubmit} onKeyDown={handleKeyDown} className="space-y-6">
             <AnimatePresence mode="wait">
               {/* Step 1: Personal Information */}
               {currentStep === 1 && (
