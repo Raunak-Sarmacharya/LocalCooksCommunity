@@ -283,15 +283,20 @@ export function setupAuth(app: Express) {
       // Validate subdomain-role matching
       const subdomain = getSubdomainFromHeaders(req.headers);
       const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user || false;
+      const isChef = (user as any).isChef || (user as any).is_chef || false;
+      const isManager = (user as any).isManager || (user as any).is_manager || false;
+      const isDeliveryPartner = (user as any).isDeliveryPartner || (user as any).is_delivery_partner || false;
       
-      if (!isRoleAllowedForSubdomain(user.role, subdomain, isPortalUser)) {
-        const requiredSubdomain = user.role === 'chef' ? 'chef' :
-                                  user.role === 'manager' ? 'kitchen' :
-                                  user.role === 'admin' ? 'admin' :
-                                  user.role === 'delivery_partner' ? 'driver' : null;
+      if (!isRoleAllowedForSubdomain(user.role, subdomain, isPortalUser, isChef, isManager, isDeliveryPartner)) {
+        // Determine effective role for error message
+        const effectiveRole = user.role || (isManager ? 'manager' : isDeliveryPartner && !isChef ? 'delivery_partner' : isChef ? 'chef' : null);
+        const requiredSubdomain = effectiveRole === 'chef' ? 'chef' :
+                                  effectiveRole === 'manager' ? 'kitchen' :
+                                  effectiveRole === 'admin' ? 'admin' :
+                                  effectiveRole === 'delivery_partner' ? 'driver' : null;
         
         return res.status(403).json({ 
-          error: `Access denied. ${user.role} users must login from the ${requiredSubdomain} subdomain.`,
+          error: `Access denied. ${effectiveRole || 'user'} users must login from the ${requiredSubdomain} subdomain.`,
           requiredSubdomain: requiredSubdomain
         });
       }

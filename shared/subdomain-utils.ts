@@ -178,26 +178,46 @@ export function getRequiredSubdomainForRole(role: string | null | undefined): Su
  * @param role - The user role
  * @param subdomain - The subdomain from the request
  * @param isPortalUser - Whether the user is a portal user (portal users can login from kitchen subdomain)
+ * @param isChef - Whether the user has chef flag (for users with role: null but isChef: true)
+ * @param isManager - Whether the user has manager flag
+ * @param isDeliveryPartner - Whether the user has delivery partner flag
  * @returns Whether the login is allowed
  */
 export function isRoleAllowedForSubdomain(
   role: string | null | undefined,
   subdomain: SubdomainType,
-  isPortalUser: boolean = false
+  isPortalUser: boolean = false,
+  isChef: boolean = false,
+  isManager: boolean = false,
+  isDeliveryPartner: boolean = false
 ): boolean {
   // Portal users can login from kitchen subdomain
   if (isPortalUser && subdomain === 'kitchen') {
     return true;
   }
   
-  const requiredSubdomain = getRequiredSubdomainForRole(role);
+  // Determine effective role from role field or flags
+  let effectiveRole = role;
   
-  // If no required subdomain, allow login from any subdomain (for backward compatibility)
-  if (!requiredSubdomain) {
-    return true;
+  // If role is null/undefined, determine from flags
+  if (!effectiveRole) {
+    if (isManager) {
+      effectiveRole = 'manager';
+    } else if (isDeliveryPartner && !isChef) {
+      effectiveRole = 'delivery_partner';
+    } else if (isChef) {
+      effectiveRole = 'chef';
+    }
   }
   
-  // Must match the required subdomain
+  const requiredSubdomain = getRequiredSubdomainForRole(effectiveRole);
+  
+  // If no required subdomain found, deny access (strict enforcement)
+  if (!requiredSubdomain) {
+    return false;
+  }
+  
+  // Must match the required subdomain exactly
   return subdomain === requiredSubdomain;
 }
 

@@ -116,7 +116,8 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Validate subdomain-role matching for registration
       const subdomain = getSubdomainFromHeaders(req.headers);
-      if (role && !isRoleAllowedForSubdomain(role, subdomain, false)) {
+      // For registration, we only have the role, not the flags yet
+      if (role && !isRoleAllowedForSubdomain(role, subdomain, false, false, false, false)) {
         const requiredSubdomain = role === 'chef' ? 'chef' :
                                   role === 'manager' ? 'kitchen' :
                                   role === 'admin' ? 'admin' :
@@ -390,15 +391,20 @@ export function registerFirebaseRoutes(app: Express) {
       // Validate subdomain-role matching for login
       const subdomain = getSubdomainFromHeaders(req.headers);
       const isPortalUser = (existingUser as any).isPortalUser || (existingUser as any).is_portal_user || false;
+      const isChef = (existingUser as any).isChef || (existingUser as any).is_chef || false;
+      const isManager = (existingUser as any).isManager || (existingUser as any).is_manager || false;
+      const isDeliveryPartner = (existingUser as any).isDeliveryPartner || (existingUser as any).is_delivery_partner || false;
       
-      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser)) {
-        const requiredSubdomain = existingUser.role === 'chef' ? 'chef' :
-                                  existingUser.role === 'manager' ? 'kitchen' :
-                                  existingUser.role === 'admin' ? 'admin' :
-                                  existingUser.role === 'delivery_partner' ? 'driver' : null;
+      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser, isChef, isManager, isDeliveryPartner)) {
+        // Determine effective role for error message
+        const effectiveRole = existingUser.role || (isManager ? 'manager' : isDeliveryPartner && !isChef ? 'delivery_partner' : isChef ? 'chef' : null);
+        const requiredSubdomain = effectiveRole === 'chef' ? 'chef' :
+                                  effectiveRole === 'manager' ? 'kitchen' :
+                                  effectiveRole === 'admin' ? 'admin' :
+                                  effectiveRole === 'delivery_partner' ? 'driver' : null;
         
         return res.status(403).json({
-          error: `Access denied. ${existingUser.role} users must login from the ${requiredSubdomain} subdomain.`,
+          error: `Access denied. ${effectiveRole || 'user'} users must login from the ${requiredSubdomain} subdomain.`,
           requiredSubdomain: requiredSubdomain
         });
       }

@@ -7840,8 +7840,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate subdomain-role matching
       const subdomain = getSubdomainFromHeaders(req.headers);
+      const isChef = (portalUser as any).isChef || (portalUser as any).is_chef || false;
+      const isManager = (portalUser as any).isManager || (portalUser as any).is_manager || false;
+      const isDeliveryPartner = (portalUser as any).isDeliveryPartner || (portalUser as any).is_delivery_partner || false;
       
-      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false)) {
+      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager, isDeliveryPartner)) {
         console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
         return res.status(403).json({ 
           error: 'Access denied. Portal users must login from the kitchen subdomain.',
