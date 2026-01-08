@@ -216,26 +216,40 @@ async function comparePasswords(supplied, stored) {
     console.log('- Supplied password (truncated):', supplied.substring(0, 10) + '...');
     console.log('- Stored password format:', stored.substring(0, 10) + '...');
 
-    const [hashed, salt] = stored.split('.');
-    if (!hashed || !salt) {
-      console.error('Invalid stored password format');
-      return false;
+    // Check if stored password is bcrypt format (starts with $2a$, $2b$, or $2y$)
+    const isBcrypt = stored && (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$') || stored.startsWith('$2$'));
+    
+    if (isBcrypt) {
+      // Use bcrypt for Neon database passwords
+      console.log('- Using bcrypt comparison');
+      const bcrypt = await import('bcryptjs');
+      const match = await bcrypt.compare(supplied, stored);
+      console.log('- Password match:', match);
+      return match;
+    } else {
+      // Use scrypt for legacy format (hashed.salt)
+      console.log('- Using scrypt comparison');
+      const [hashed, salt] = stored.split('.');
+      if (!hashed || !salt) {
+        console.error('Invalid stored password format');
+        return false;
+      }
+
+      // Hash the supplied password with the same salt
+      const suppliedBuf = await scryptAsync(supplied, salt, 64);
+
+      // Convert both to hex strings and compare them directly
+      const suppliedHex = Buffer.from(suppliedBuf).toString('hex');
+
+      console.log('- Original hash (truncated):', hashed.substring(0, 10) + '...');
+      console.log('- Generated hash (truncated):', suppliedHex.substring(0, 10) + '...');
+
+      // Simple string comparison as a fallback in case timing-safe equal fails
+      const match = hashed === suppliedHex;
+      console.log('- Password match:', match);
+
+      return match;
     }
-
-    // Hash the supplied password with the same salt
-    const suppliedBuf = await scryptAsync(supplied, salt, 64);
-
-    // Convert both to hex strings and compare them directly
-    const suppliedHex = Buffer.from(suppliedBuf).toString('hex');
-
-    console.log('- Original hash (truncated):', hashed.substring(0, 10) + '...');
-    console.log('- Generated hash (truncated):', suppliedHex.substring(0, 10) + '...');
-
-    // Simple string comparison as a fallback in case timing-safe equal fails
-    const match = hashed === suppliedHex;
-    console.log('- Password match:', match);
-
-    return match;
   } catch (error) {
     console.error('Password comparison error:', error);
     return false;
@@ -937,6 +951,195 @@ ensureAdminUser().catch((error) => {
 // Use Firebase Auth with admin role
 app.post('/api/admin-login', async (req, res) => {
   res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
+});
+
+// Admin migration login endpoint - for old admins with username/password
+// This endpoint allows old admins to sign in with username/password,
+// creates a Firebase account for them, and links it to their Neon DB record
+app.post('/api/admin-migrate-login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    console.log('🔄 Admin migration login attempt for:', username);
+
+    // Step 1: Find admin in Neon database
+    const userResult = await pool.query(
+      'SELECT * FROM users WHERE username = $1 AND role = $2',
+      [username, 'admin']
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    const admin = userResult.rows[0];
+
+    // Step 2: Verify password
+    if (!admin.password) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    const passwordMatches = await comparePasswords(password, admin.password);
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    console.log('✅ Password verified for admin:', admin.id);
+
+    // Step 3: Check if admin already has Firebase account
+    if (admin.firebase_uid) {
+      console.log('✅ Admin already has Firebase UID:', admin.firebase_uid);
+      // Admin already migrated - generate custom token for immediate login
+      const adminSDK = await import('firebase-admin');
+      
+      // Initialize Firebase Admin if not already initialized
+      if (!adminSDK.default.apps.length) {
+        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+        if (projectId) {
+          try {
+            adminSDK.default.initializeApp({
+              projectId: projectId,
+            });
+          } catch (e) {
+            console.error('Firebase Admin initialization error:', e);
+          }
+        }
+      }
+      
+      try {
+        // Verify the Firebase user still exists
+        const firebaseUser = await adminSDK.default.auth().getUser(admin.firebase_uid);
+        
+        // Generate custom token for login
+        const customToken = await adminSDK.default.auth().createCustomToken(admin.firebase_uid);
+        
+        // Get email for response
+        let email = admin.email;
+        if (!email) {
+          email = firebaseUser.email || `${admin.username}@localcooks.com`;
+        }
+        
+        console.log('✅ Returning custom token for migrated admin');
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          customToken: customToken,
+          user: {
+            id: admin.id,
+            username: admin.username,
+            email: email,
+            firebaseUid: admin.firebase_uid,
+            role: 'admin'
+          }
+        });
+      } catch (firebaseError) {
+        console.error('Error getting Firebase user:', firebaseError);
+        // If Firebase user doesn't exist, continue with migration flow
+      }
+    }
+
+    // Step 4: Get email for Firebase account creation
+    let email = admin.email;
+    if (!email) {
+      if (admin.username && admin.username.includes('@')) {
+        email = admin.username;
+      } else {
+        email = `${admin.username}@localcooks.com`;
+      }
+    }
+    
+    // Step 5: Create Firebase account using Admin SDK
+    const adminSDK = await import('firebase-admin');
+    
+    // Initialize Firebase Admin if not already initialized
+    if (!adminSDK.default.apps.length) {
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+      if (projectId) {
+        try {
+          adminSDK.default.initializeApp({
+            projectId: projectId,
+          });
+        } catch (e) {
+          console.error('Firebase Admin initialization error:', e);
+        }
+      }
+    }
+    
+    let firebaseUser;
+    try {
+      // Check if Firebase user already exists with this email
+      try {
+        firebaseUser = await adminSDK.default.auth().getUserByEmail(email);
+        console.log('⚠️  Firebase user already exists with email:', email);
+      } catch (error) {
+        // User doesn't exist, create them
+        console.log('➕ Creating Firebase account for admin:', email);
+        firebaseUser = await adminSDK.default.auth().createUser({
+          email: email,
+          password: password,
+          displayName: admin.display_name || admin.username,
+          emailVerified: admin.is_verified || false,
+        });
+        console.log('✅ Firebase account created:', firebaseUser.uid);
+      }
+
+      // Step 6: Set custom claims for admin role
+      await adminSDK.default.auth().setCustomUserClaims(firebaseUser.uid, {
+        role: 'admin',
+        isAdmin: true
+      });
+
+      // Step 7: Link Firebase UID to Neon DB record
+      await pool.query(
+        'UPDATE users SET firebase_uid = $1 WHERE id = $2',
+        [firebaseUser.uid, admin.id]
+      );
+
+      console.log('✅ Admin migration complete:', {
+        neonUserId: admin.id,
+        firebaseUid: firebaseUser.uid,
+        email: email
+      });
+
+      // Step 8: Generate Firebase custom token for immediate login
+      const customToken = await adminSDK.default.auth().createCustomToken(firebaseUser.uid);
+
+      res.json({
+        success: true,
+        message: 'Account migrated successfully. You can now use Firebase authentication.',
+        customToken: customToken,
+        user: {
+          id: admin.id,
+          username: admin.username,
+          email: email,
+          firebaseUid: firebaseUser.uid,
+          role: 'admin'
+        }
+      });
+
+    } catch (firebaseError) {
+      console.error('❌ Firebase account creation error:', firebaseError);
+      return res.status(500).json({ 
+        error: 'Failed to create Firebase account',
+        message: firebaseError.message 
+      });
+    }
+
+  } catch (error) {
+    console.error('Admin migration login error:', error);
+    res.status(500).json({ 
+      error: 'Migration login failed',
+      message: error.message 
+    });
+  }
 });
 
 // Manager migration login endpoint - for old managers with username/password

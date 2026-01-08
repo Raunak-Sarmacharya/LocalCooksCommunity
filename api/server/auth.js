@@ -30,10 +30,20 @@ async function hashPassword(password: string) {
 }
 
 async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  // Check if stored password is bcrypt format (starts with $2a$, $2b$, or $2y$)
+  const isBcrypt = stored && (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$') || stored.startsWith('$2$'));
+  
+  if (isBcrypt) {
+    // Use bcrypt for Neon database passwords
+    const bcrypt = await import('bcryptjs');
+    return await bcrypt.default.compare(supplied, stored);
+  } else {
+    // Use scrypt for legacy format (hashed.salt)
+    const [hashed, salt] = stored.split(".");
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  }
 }
 
 // Fix TypeScript error for createOAuthUser interface
