@@ -40,7 +40,7 @@ export default function Header() {
   // Use Firebase auth (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
   
-  const { data: sessionUser } = useQuery({
+  const { data: profileUser } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
       if (!firebaseUser) return null;
@@ -72,43 +72,20 @@ export default function Header() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    // Always enable session check - admins need to be authenticated everywhere
-    enabled: true
   });
 
-  // Properly combine Firebase and session auth - prioritize Firebase for regular users, session for admins
-  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseAuth.user || sessionUser);
+  // Use profileUser (from Firebase auth) as the primary user source
+  const user = profileUser || firebaseAuth.user;
   
   const logout = async () => {
-    if (sessionUser) {
-      // Session logout
-      try {
-        console.log('Performing session logout...');
-        
-        // SECURITY FIX: Clear localStorage and cache for session logout too
-        localStorage.clear();
-        console.log('🧹 SESSION LOGOUT: Cleared all localStorage data');
-        
-        await fetch('/api/logout', {
-          method: 'POST',
-          credentials: 'include'
-        });
-        console.log('Session logout successful, redirecting...');
-        window.location.href = '/';
-      } catch (error) {
-        console.error('Session logout failed:', error);
-        firebaseAuth.logout();
-      }
-    } else {
-      // Firebase logout (firebase logout function already handles clearing)
-      console.log('Performing Firebase logout...');
-      firebaseAuth.logout();
-    }
+    // Firebase logout (session auth removed)
+    console.log('Performing Firebase logout...');
+    firebaseAuth.logout();
   };
   
   // Debug logging for header state
   console.log('Header component state:', {
-    sessionUser,
+    profileUser,
     firebaseUser: firebaseAuth.user,
     finalUser: user,
     userRole: user?.role
