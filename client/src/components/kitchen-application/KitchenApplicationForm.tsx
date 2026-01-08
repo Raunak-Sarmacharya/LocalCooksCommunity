@@ -261,6 +261,12 @@ export default function KitchenApplicationForm({
       formData.append("foodSafetyLicense", "yes");
       formData.append("foodEstablishmentCert", businessLicenseFile ? "yes" : "no");
       
+      // Expiry dates
+      formData.append("foodSafetyLicenseExpiry", data.foodHandlerCertExpiry);
+      if (data.foodEstablishmentCertExpiry) {
+        formData.append("foodEstablishmentCertExpiry", data.foodEstablishmentCertExpiry);
+      }
+      
       // Files
       if (foodHandlerFile) {
         formData.append("foodSafetyLicenseFile", foodHandlerFile);

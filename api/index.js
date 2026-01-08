@@ -21071,9 +21071,11 @@ app.get('/api/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, 
       foodSafetyLicense: row.food_safety_license,
       foodSafetyLicenseUrl: row.food_safety_license_url,
       foodSafetyLicenseStatus: row.food_safety_license_status,
+      foodSafetyLicenseExpiry: row.food_safety_license_expiry,
       foodEstablishmentCert: row.food_establishment_cert,
       foodEstablishmentCertUrl: row.food_establishment_cert_url,
       foodEstablishmentCertStatus: row.food_establishment_cert_status,
+      foodEstablishmentCertExpiry: row.food_establishment_cert_expiry,
       status: row.status,
       feedback: row.feedback,
       reviewedBy: row.reviewed_by,
@@ -21181,9 +21183,11 @@ app.get('/api/firebase/chef/kitchen-applications/location/:locationId', requireF
       foodSafetyLicense: row.food_safety_license,
       foodSafetyLicenseUrl: row.food_safety_license_url,
       foodSafetyLicenseStatus: row.food_safety_license_status,
+      foodSafetyLicenseExpiry: row.food_safety_license_expiry,
       foodEstablishmentCert: row.food_establishment_cert,
       foodEstablishmentCertUrl: row.food_establishment_cert_url,
       foodEstablishmentCertStatus: row.food_establishment_cert_status,
+      foodEstablishmentCertExpiry: row.food_establishment_cert_expiry,
       status: row.status,
       feedback: row.feedback,
       createdAt: row.created_at,
@@ -21226,7 +21230,9 @@ app.post('/api/firebase/chef/kitchen-applications',
         businessDescription,
         cookingExperience,
         foodSafetyLicense,
-        foodEstablishmentCert
+        foodEstablishmentCert,
+        foodSafetyLicenseExpiry,
+        foodEstablishmentCertExpiry
       } = req.body;
       
       // Validate required fields
@@ -21284,6 +21290,10 @@ app.post('/api/firebase/chef/kitchen-applications',
         }
       }
       
+      // Parse expiry dates (can be null)
+      const parsedFoodSafetyExpiry = foodSafetyLicenseExpiry ? new Date(foodSafetyLicenseExpiry) : null;
+      const parsedFoodEstablishmentExpiry = foodEstablishmentCertExpiry ? new Date(foodEstablishmentCertExpiry) : null;
+      
       // Insert new application
       const insertResult = await pool.query(`
         INSERT INTO chef_kitchen_applications (
@@ -21298,13 +21308,15 @@ app.post('/api/firebase/chef/kitchen-applications',
           food_safety_license,
           food_safety_license_url,
           food_safety_license_status,
+          food_safety_license_expiry,
           food_establishment_cert,
           food_establishment_cert_url,
           food_establishment_cert_status,
+          food_establishment_cert_expiry,
           status,
           created_at,
           updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
         ON CONFLICT (chef_id, location_id) 
         DO UPDATE SET
           full_name = EXCLUDED.full_name,
@@ -21316,9 +21328,11 @@ app.post('/api/firebase/chef/kitchen-applications',
           food_safety_license = EXCLUDED.food_safety_license,
           food_safety_license_url = COALESCE(EXCLUDED.food_safety_license_url, chef_kitchen_applications.food_safety_license_url),
           food_safety_license_status = 'pending',
+          food_safety_license_expiry = EXCLUDED.food_safety_license_expiry,
           food_establishment_cert = EXCLUDED.food_establishment_cert,
           food_establishment_cert_url = COALESCE(EXCLUDED.food_establishment_cert_url, chef_kitchen_applications.food_establishment_cert_url),
           food_establishment_cert_status = 'pending',
+          food_establishment_cert_expiry = EXCLUDED.food_establishment_cert_expiry,
           status = 'inReview',
           feedback = NULL,
           reviewed_by = NULL,
@@ -21337,9 +21351,11 @@ app.post('/api/firebase/chef/kitchen-applications',
         foodSafetyLicense || 'notSure',
         foodSafetyLicenseUrl,
         'pending',
+        parsedFoodSafetyExpiry,
         foodEstablishmentCert || 'notSure',
         foodEstablishmentCertUrl,
         'pending',
+        parsedFoodEstablishmentExpiry,
         'inReview'
       ]);
       
