@@ -149,3 +149,49 @@ export function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
   return true;
 }
 
+/**
+ * Get the required subdomain for a user role
+ * @param role - The user role
+ * @returns The required subdomain type for that role
+ */
+export function getRequiredSubdomainForRole(role) {
+  if (!role) return null;
+  
+  switch (role.toLowerCase()) {
+    case 'chef':
+      return 'chef';
+    case 'manager':
+      return 'kitchen';
+    case 'admin':
+      return 'admin';
+    case 'delivery_partner':
+      return 'driver';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a user role is allowed to login from the given subdomain
+ * @param role - The user role
+ * @param subdomain - The subdomain from the request
+ * @param isPortalUser - Whether the user is a portal user (portal users can login from kitchen subdomain)
+ * @returns Whether the login is allowed
+ */
+export function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false) {
+  // Portal users can login from kitchen subdomain
+  if (isPortalUser && subdomain === 'kitchen') {
+    return true;
+  }
+  
+  const requiredSubdomain = getRequiredSubdomainForRole(role);
+  
+  // If no required subdomain, allow login from any subdomain (for backward compatibility)
+  if (!requiredSubdomain) {
+    return true;
+  }
+  
+  // Must match the required subdomain
+  return subdomain === requiredSubdomain;
+}
+

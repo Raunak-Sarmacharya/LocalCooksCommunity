@@ -7,6 +7,7 @@ import { Strategy as FacebookStrategy } from "passport-facebook";
 import { Strategy as LocalStrategy } from "passport-local";
 import { promisify } from "util";
 import { storage } from "./storage";
+import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "../shared/subdomain-utils.js";
 
 
 declare global {
@@ -277,6 +278,22 @@ export function setupAuth(app: Express) {
       
       if (!user) {
         return res.status(401).json({ error: info?.message || "Authentication failed" });
+      }
+      
+      // Validate subdomain-role matching
+      const subdomain = getSubdomainFromHeaders(req.headers);
+      const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user || false;
+      
+      if (!isRoleAllowedForSubdomain(user.role, subdomain, isPortalUser)) {
+        const requiredSubdomain = user.role === 'chef' ? 'chef' :
+                                  user.role === 'manager' ? 'kitchen' :
+                                  user.role === 'admin' ? 'admin' :
+                                  user.role === 'delivery_partner' ? 'driver' : null;
+        
+        return res.status(403).json({ 
+          error: `Access denied. ${user.role} users must login from the ${requiredSubdomain} subdomain.`,
+          requiredSubdomain: requiredSubdomain
+        });
       }
       
       req.login(user, (err: Error | null) => {

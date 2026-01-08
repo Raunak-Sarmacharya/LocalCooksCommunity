@@ -181,7 +181,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 console.log("✅ Session middleware removed - Using Firebase Auth only");
 
 // Import subdomain utilities
-import { getSubdomainFromHeaders } from './shared/subdomain-utils.js';
+import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from './shared/subdomain-utils.js';
 
 // Add subdomain detection middleware
 app.use((req, res, next) => {
@@ -9685,6 +9685,23 @@ app.post('/api/hybrid-login', async (req, res) => {
           identifier: loginIdentifier,
           hasPool: !!pool
         } : undefined
+      });
+    }
+
+    // Validate subdomain-role matching
+    const subdomain = getSubdomainFromHeaders(req.headers);
+    const isPortalUser = neonUser.is_portal_user || neonUser.isPortalUser || false;
+    
+    if (!isRoleAllowedForSubdomain(neonUser.role, subdomain, isPortalUser)) {
+      const requiredSubdomain = neonUser.role === 'chef' ? 'chef' :
+                                neonUser.role === 'manager' ? 'kitchen' :
+                                neonUser.role === 'admin' ? 'admin' :
+                                neonUser.role === 'delivery_partner' ? 'driver' : null;
+      
+      console.log(`❌ Hybrid login blocked: ${neonUser.role} user attempted login from wrong subdomain: ${subdomain}`);
+      return res.status(403).json({ 
+        error: `Access denied. ${neonUser.role} users must login from the ${requiredSubdomain} subdomain.`,
+        requiredSubdomain: requiredSubdomain
       });
     }
 
