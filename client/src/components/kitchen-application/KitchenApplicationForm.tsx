@@ -752,7 +752,7 @@ export default function KitchenApplicationForm({
                 {/* Food Establishment License (Optional) */}
                 <div>
                   <Label className="text-sm font-medium block mb-2">
-                    Food Establishment License/Permit (if applicable)
+                    Food Establishment License/Permit
                   </Label>
                   <p className="text-xs text-gray-500 mb-3">
                     If you operate as a registered food business, upload proof of license.
