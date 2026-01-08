@@ -2078,8 +2078,8 @@ export default function ApplicantDashboard() {
 
             // Use hook values (already called at top level)
 
-            // Show different UI based on access status
-            if (accessLoading) {
+            // Show loading state while checking kitchen application status
+            if (kitchenAppsLoading) {
               return (
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -2089,39 +2089,16 @@ export default function ApplicantDashboard() {
                 >
                   <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <p className="text-gray-600 mt-2">Checking kitchen access...</p>
+                    <p className="text-gray-600 mt-2">Checking kitchen applications...</p>
                   </div>
                 </motion.div>
               );
             }
 
-            // No admin access granted yet
-            if (!hasAccess) {
-              return (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.9 }}
-                  className="bg-gradient-to-br from-yellow-50 to-orange-100 rounded-3xl p-8 shadow-sm border border-yellow-200/60 mb-8"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="h-8 w-8 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-semibold text-gray-900 mb-2">Waiting for Kitchen Access</h3>
-                      <p className="text-gray-700 mb-4">
-                        Your account has been approved! An administrator will grant you access to specific kitchens soon. 
-                        Once you receive access, you'll be able to share your profile with kitchens and start booking.
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            }
-
-            // Has access but no approved profiles yet - show new Kitchen Discovery
-            if (!hasApprovedProfile && !hasApprovedKitchenApplication) {
+            // No approved kitchen applications yet - show Kitchen Discovery
+            // Note: The old "hasAccess" check (admin-granted access) has been removed.
+            // Chefs can now apply directly to kitchens without waiting for admin access.
+            if (!hasApprovedKitchenApplication) {
               return (
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
