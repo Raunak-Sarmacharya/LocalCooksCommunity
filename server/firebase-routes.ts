@@ -19,6 +19,7 @@ import {
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
 import { storage } from './storage';
+import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from '@shared/subdomain-utils';
 
 export function registerFirebaseRoutes(app: Express) {
 
@@ -110,6 +111,20 @@ export function registerFirebaseRoutes(app: Express) {
             role: existingUser.role,
             firebaseUid: existingUser.firebaseUid
           }
+        });
+      }
+
+      // Validate subdomain-role matching for registration
+      const subdomain = getSubdomainFromHeaders(req.headers);
+      if (role && !isRoleAllowedForSubdomain(role, subdomain, false)) {
+        const requiredSubdomain = role === 'chef' ? 'chef' :
+                                  role === 'manager' ? 'kitchen' :
+                                  role === 'admin' ? 'admin' :
+                                  role === 'delivery_partner' ? 'driver' : null;
+        
+        return res.status(403).json({
+          error: `Access denied. ${role} users must register from the ${requiredSubdomain} subdomain.`,
+          requiredSubdomain: requiredSubdomain
         });
       }
 
@@ -369,6 +384,22 @@ export function registerFirebaseRoutes(app: Express) {
         return res.status(404).json({
           error: 'User not found',
           message: 'This account is not registered with Local Cooks. Please create an account first.'
+        });
+      }
+
+      // Validate subdomain-role matching for login
+      const subdomain = getSubdomainFromHeaders(req.headers);
+      const isPortalUser = (existingUser as any).isPortalUser || (existingUser as any).is_portal_user || false;
+      
+      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser)) {
+        const requiredSubdomain = existingUser.role === 'chef' ? 'chef' :
+                                  existingUser.role === 'manager' ? 'kitchen' :
+                                  existingUser.role === 'admin' ? 'admin' :
+                                  existingUser.role === 'delivery_partner' ? 'driver' : null;
+        
+        return res.status(403).json({
+          error: `Access denied. ${existingUser.role} users must login from the ${requiredSubdomain} subdomain.`,
+          requiredSubdomain: requiredSubdomain
         });
       }
 

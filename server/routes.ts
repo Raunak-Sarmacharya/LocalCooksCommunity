@@ -47,6 +47,7 @@ import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
+import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
 
 // Import portal user applications schema
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
@@ -7835,6 +7836,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!passwordMatches) {
         console.log('Password mismatch for portal user:', username);
         return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      // Validate subdomain-role matching
+      const subdomain = getSubdomainFromHeaders(req.headers);
+      
+      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false)) {
+        console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
+        return res.status(403).json({ 
+          error: 'Access denied. Portal users must login from the kitchen subdomain.',
+          requiredSubdomain: 'kitchen'
+        });
       }
 
       // Log in the user
