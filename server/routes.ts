@@ -781,71 +781,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Authentication routes
+  // REMOVED: Session-based registration - Use Firebase Auth /api/firebase-register-user instead
   app.post("/api/register", async (req, res) => {
-    try {
-      // Check if user already exists
-      const existingUser = await storage.getUserByUsername(req.body.username);
-      
-      if (existingUser) {
-        return res.status(400).json({ error: "Username already exists" });
-      }
-      
-      // Hash password and create user
-      const hashedPassword = await hashPassword(req.body.password);
-      
-      const user = await storage.createUser({
-        username: req.body.username,
-        password: hashedPassword,
-        role: req.body.role || "chef", // Base role but don't set flags
-        isChef: false, // No default roles - user must choose
-        isDeliveryPartner: false, // No default roles - user must choose
-        isManager: false,
-        isPortalUser: false
-      });
-      
-      // Log the user in
-      req.login(user, (err) => {
-        if (err) {
-          return res.status(500).json({ error: "Login failed after registration" });
-        }
-        
-        return res.status(201).json({
-          id: user.id,
-          username: user.username,
-          role: user.role
-        });
-      });
-    } catch (error) {
-      console.error("Registration error:", error);
-      res.status(500).json({ error: "Registration failed" });
-    }
+    res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
   });
 
-  app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err: Error | null, user: User | false, info: { message: string } | undefined) => {
-      if (err) {
-        return next(err);
-      }
-      
-      if (!user) {
-        return res.status(401).json({ error: info?.message || "Authentication failed" });
-      }
-      
-      req.login(user, (err: Error | null) => {
-        if (err) {
-          return next(err);
-        }
-        
-        return res.json({
-          id: user.id,
-          username: user.username,
-          role: user.role
-        });
-      });
-    })(req, res, next);
-  });
+  // REMOVED: Session-based login endpoints - All authentication now uses Firebase
+  // Use Firebase Auth endpoints: /api/firebase-register-user, /api/firebase-sync-user
 
-  // Admin login endpoint (for admin dashboard compatibility)
+  // REMOVED: Admin login endpoint - Admins now use Firebase auth
+  // Use Firebase Auth with admin role
   app.post("/api/admin-login", async (req, res) => {
     try {
       const { username, password } = req.body;
@@ -947,103 +892,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // DEPRECATED: Manager login endpoint - Managers now use Firebase auth
-  // This endpoint is kept for backward compatibility but should not be used for new registrations
-  // Managers should use Firebase auth via /manager/login page
-  app.post("/api/manager-login", async (req, res) => {
-    try {
-      const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ error: 'Username and password are required' });
-      }
-
-      console.log('Manager login attempt for:', username);
-      console.log('Storage type:', storage.constructor.name);
-      console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-
-      // Get manager user
-      let manager;
-      try {
-        console.log('Calling storage.getUserByUsername...');
-        manager = await storage.getUserByUsername(username);
-        console.log('Storage call completed, user:', manager ? 'found' : 'not found');
-      } catch (dbError: any) {
-        console.error('Database error fetching user:', dbError);
-        console.error('Error stack:', dbError?.stack);
-        console.error('Error code:', dbError?.code);
-        console.error('Error detail:', dbError?.detail);
-        return res.status(500).json({ 
-          error: 'Database connection failed',
-          message: dbError instanceof Error ? dbError.message : 'Unknown database error',
-          code: dbError?.code
-        });
-      }
-
-      if (!manager) {
-        console.log('Manager user not found:', username);
-        return res.status(401).json({ error: 'Incorrect username or password' });
-      }
-      
-      console.log('User found:', { id: manager.id, username: manager.username, role: manager.role });
-
-      // Verify user is manager (only managers can use this endpoint)
-      if (manager.role !== 'manager') {
-        console.log('User is not a manager:', username, 'role:', manager.role);
-        return res.status(403).json({ error: 'Not authorized - manager access required. Admins should use /api/admin-login' });
-      }
-
-      // Check password - compare with database password hash
-      let passwordMatches = false;
-
-      try {
-        passwordMatches = await comparePasswords(password, manager.password);
-        console.log('Password compared with stored hash:', passwordMatches);
-      } catch (error) {
-        console.error('Error comparing passwords:', error);
-      }
-
-      if (!passwordMatches) {
-        return res.status(401).json({ error: 'Incorrect username or password' });
-      }
-
-      console.log('Manager login successful for:', username);
-
-      // Store session data for manager (both Passport and direct session)
-      (req.session as any).userId = manager.id;
-      (req.session as any).user = { ...manager, password: undefined };
-
-      // Use Passport.js login to set session
-      req.login(manager, (err) => {
-        if (err) {
-          console.error('Error setting session:', err);
-          return res.status(500).json({ error: 'Session creation failed' });
-        }
-
-        // Ensure session data is persisted
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error('Error saving session:', saveErr);
-            return res.status(500).json({ error: 'Session save failed' });
-          }
-
-          // Remove sensitive info
-          const { password: _, ...managerWithoutPassword } = manager;
-
-          // Return user data
-          return res.status(200).json(managerWithoutPassword);
-        });
-      });
-    } catch (error) {
-      console.error('Manager login error:', error);
-      console.error('Error details:', error instanceof Error ? error.stack : error);
-      res.status(500).json({ 
-        error: 'Manager login failed', 
-        message: error instanceof Error ? error.message : 'Unknown error',
-        details: process.env.NODE_ENV === 'development' ? error : undefined
-      });
-    }
-  });
+  // REMOVED: Manager login endpoint - Managers now use Firebase auth exclusively
+  // Use Firebase Auth via /manager/login page
 
   // Check if user exists by username (for Google+password flow)
   app.get("/api/user-exists", async (req, res) => {
@@ -1055,52 +905,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ exists: !!user });
   });
 
-  // Helper function to get authenticated user from session (supports both Passport and direct session)
-  async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string | null } | null> {
-    // Check Passport session first
-    if (req.isAuthenticated?.() && req.user) {
-      return req.user as any;
-    }
-
-    // Check direct session data (for admin login via req.session.userId)
-    if ((req.session as any)?.userId) {
-      const userId = (req.session as any).userId;
-      const user = await storage.getUser(userId);
-      if (user) {
-        return user;
-      }
-    }
-
-    // Check session user object
-    if ((req.session as any)?.user) {
-      return (req.session as any).user;
-    }
-
-    return null;
-  }
-
-  // Admin session check endpoint (for admin dashboard)
-  app.get("/api/user-session", async (req: Request, res: Response) => {
-    try {
-      const user = await getAuthenticatedUser(req);
-      
-      if (!user) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      // Fetch full user data including has_seen_welcome from database
-      const fullUser = await storage.getUser(user.id);
-      const { password: _, ...userWithoutPassword } = (fullUser || user) as any;
-      
-      return res.json({
-        ...userWithoutPassword,
-        authMethod: req.isAuthenticated?.() ? 'passport-session' : 'session'
-      });
-    } catch (error) {
-      console.error("Error checking user session:", error);
-      return res.status(500).json({ error: "Failed to check session" });
-    }
-  });
+  // REMOVED: Session-based authentication helper and endpoint
+  // All authentication now uses Firebase - use /api/user/profile with Firebase token
 
   // Get users endpoint for email studio and user selection
   app.get("/api/get-users", async (req: Request, res: Response) => {

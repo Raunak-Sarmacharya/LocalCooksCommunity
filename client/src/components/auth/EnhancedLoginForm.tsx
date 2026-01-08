@@ -83,54 +83,8 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       }, 1000);
 
     } catch (e: any) {
-      // If Firebase login fails, try session-based login as fallback (for backward compatibility)
+      // Firebase Auth only - no session fallback
       if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
-        console.log('🔄 Firebase login failed, trying session-based login for backward compatibility...');
-        
-        try {
-          // Try session-based login via /api/manager-login (for managers without Firebase UID)
-          const sessionResponse = await fetch('/api/manager-login', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              username: data.email, // Session login uses username, which could be email
-              password: data.password
-            })
-          });
-
-          if (sessionResponse.ok) {
-            const sessionUser = await sessionResponse.json();
-            console.log('✅ Session-based login successful:', sessionUser);
-            
-            // If session login succeeds, reload the page to establish session
-            setAuthState('success');
-            setTimeout(() => {
-              window.location.reload(); // Reload to establish session and redirect
-            }, 500);
-            return;
-          } else {
-            const errorData = await sessionResponse.json().catch(() => ({ error: 'Login failed' }));
-            throw new Error(errorData.error || 'Session login failed');
-          }
-        } catch (sessionError: any) {
-          console.log('❌ Session login also failed:', sessionError);
-          // Both Firebase and session login failed - show error
-          setShowLoadingOverlay(false);
-          setAuthState('error');
-          
-          showAlert({
-            title: "Sign In Failed",
-            description: "Invalid email or password. Please check your credentials and try again.",
-            type: "error"
-          });
-          
-          setTimeout(() => setAuthState('idle'), 2000);
-          return;
-        }
-      } else {
         // Other Firebase errors (not credential-related)
         setShowLoadingOverlay(false);
         setAuthState('error');

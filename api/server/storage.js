@@ -663,7 +663,11 @@ export class DatabaseStorage implements IStorage {
           [
             insertUser.username,
             insertUser.password,
-            insertUser.role || 'chef',
+            insertUser.role || (() => {
+              console.error(`❌ CRITICAL ERROR: No role provided to createUser in storage.js!`);
+              console.error(`   - This should not happen - role should always be provided`);
+              throw new Error('Role is required when creating a user. This is a programming error.');
+            })(),
             insertUser.googleId || null,
             insertUser.facebookId || null,
             insertUser.firebaseUid,

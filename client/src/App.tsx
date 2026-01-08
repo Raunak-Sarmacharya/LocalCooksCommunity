@@ -15,6 +15,7 @@ import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import ManagerProtectedRoute from "@/components/manager/ManagerProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
+import AdminRegister from "@/pages/AdminRegister";
 import AdminLoginTest from "@/pages/AdminLoginTest";
 import ManagerLogin from "@/pages/ManagerLogin";
 import PortalLogin from "@/pages/PortalLogin";
@@ -297,6 +298,8 @@ function Router() {
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
         
         <SubdomainRoute path="/admin/login" component={AdminLogin} subdomain={subdomain} />
+        <SubdomainRoute path="/admin-register" component={AdminRegister} subdomain={subdomain} />
+        <SubdomainRoute path="/admin/register" component={AdminRegister} subdomain={subdomain} />
         <Route path="/admin">
           {subdomain === 'admin' || !subdomain ? (
             <AdminProtectedRoute>

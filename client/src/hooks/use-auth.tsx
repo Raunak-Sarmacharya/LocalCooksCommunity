@@ -72,7 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let finalRole = role;
       if (isRegistration && !finalRole) {
         const currentPath = window.location.pathname;
-        if (currentPath === '/driver-auth') {
+        console.log(`🔍 Role detection for registration - Current path: ${currentPath}, Provided role: ${role}`);
+        
+        // Check for admin paths first (most specific)
+        if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+          finalRole = 'admin';
+          console.log('👑 Auto-setting role to admin based on admin URL path');
+        } else if (currentPath === '/driver-auth') {
           finalRole = 'delivery_partner';
           console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
         } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
@@ -82,8 +88,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           finalRole = 'chef';
           console.log('👨‍🍳 Auto-setting role to chef based on /auth URL');
         } else {
-          finalRole = 'chef'; // Default fallback
+          // CRITICAL: Don't default to chef - this causes admins/managers to be created as chefs
+          // Instead, log a warning and let the backend handle it
+          console.warn(`⚠️ WARNING: No role detected from URL path "${currentPath}" during registration. Role will be determined by backend.`);
+          finalRole = undefined; // Let backend determine or fail
         }
+        
+        console.log(`✅ Final role determined: ${finalRole || 'undefined (will be determined by backend)'}`);
+      } else if (isRegistration && finalRole) {
+        console.log(`✅ Using provided role for registration: ${finalRole}`);
+      } else {
+        console.log(`ℹ️ Not a registration, using provided role: ${finalRole || 'none'}`);
       }
       
       // Use different endpoints based on whether this is registration or sign-in
@@ -100,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
-          role: finalRole, // Use auto-determined role
+          role: finalRole || undefined, // Use auto-determined role (send undefined if not set, not null)
           isRegistration: isRegistration,
           password: password // Include password for email/password registrations
         })
@@ -322,18 +337,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await updateProfile(cred.user, { displayName });
         console.log('📝 Updated Firebase profile with displayName:', displayName);
         
-        // Also update Firestore document with displayName
+        // Also update Firestore document with displayName and role (if detected)
         try {
+          // Detect role from URL path
+          const currentPath = window.location.pathname;
+          let detectedRole: string | null = null;
+          
+          if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+            detectedRole = 'admin';
+          } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
+            detectedRole = 'manager';
+          } else if (currentPath === '/driver-auth') {
+            detectedRole = 'delivery_partner';
+          } else if (currentPath === '/auth') {
+            detectedRole = 'chef';
+          }
+          
           const userDocRef = doc(db, "users", cred.user.uid);
           await setDoc(userDocRef, {
             email: cred.user.email,
             displayName: displayName,
-            role: null, // No default role - user will choose specific roles later
+            role: detectedRole, // Set detected role instead of null
+            isChef: detectedRole === 'chef' || detectedRole === 'admin',
+            isDeliveryPartner: detectedRole === 'delivery_partner' || detectedRole === 'admin',
+            isManager: detectedRole === 'manager',
+            isAdmin: detectedRole === 'admin', // Track admin in Firestore
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
-          console.log('📝 Updated Firestore with displayName:', displayName);
+          console.log('📝 Updated Firestore with displayName and role:', { displayName, role: detectedRole });
         } catch (firestoreError) {
           console.error('❌ Failed to update Firestore:', firestoreError);
           // Don't fail registration if Firestore fails
@@ -351,7 +384,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Wait a moment for profile update to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const syncSuccess = await syncUserWithBackend(updatedUser, undefined, true, password);
+      // Detect role from URL path for registration
+      const currentPath = window.location.pathname;
+      let detectedRole: string | undefined = undefined;
+      
+      if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+        detectedRole = 'admin';
+        console.log('👑 Detected admin role from URL path during signup');
+      } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
+        detectedRole = 'manager';
+        console.log('🏢 Detected manager role from URL path during signup');
+      } else if (currentPath === '/driver-auth') {
+        detectedRole = 'delivery_partner';
+        console.log('🚚 Detected delivery_partner role from URL path during signup');
+      } else if (currentPath === '/auth') {
+        detectedRole = 'chef';
+        console.log('👨‍🍳 Detected chef role from URL path during signup');
+      } else {
+        console.warn(`⚠️ No role detected from URL path "${currentPath}" during signup - role will be determined by backend`);
+      }
+      
+      const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
       
       if (syncSuccess) {
         console.log('✅ User synced successfully during registration');
@@ -448,25 +501,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await signInWithPopup(auth, provider);
         console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
         
-        // Manually trigger sync for registration - NO DEFAULT ROLE, user will choose
-        const syncSuccess = await syncUserWithBackend(result.user, undefined, true);
+        // Auto-determine role from URL path before sync
+        const currentPath = window.location.pathname;
+        let detectedRole: string | undefined = undefined;
+        if (currentPath === '/admin-login' || currentPath === '/admin/login' || currentPath === '/admin-register' || currentPath === '/admin/register') {
+          detectedRole = 'admin';
+          console.log('👑 Detected role: admin from URL path');
+        } else if (currentPath === '/driver-auth') {
+          detectedRole = 'delivery_partner';
+          console.log('🚚 Detected role: delivery_partner from URL path');
+        } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
+          detectedRole = 'manager';
+          console.log('🏢 Detected role: manager from URL path');
+        } else if (currentPath === '/auth') {
+          detectedRole = 'chef';
+          console.log('👨‍🍳 Detected role: chef from URL path');
+        } else {
+          // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
+          // Log warning and let backend handle it or fail
+          console.warn(`⚠️ WARNING: No role detected from URL path "${currentPath}" during Google registration. Role will be determined by backend or registration will fail.`);
+          detectedRole = undefined; // Let backend determine or fail
+        }
         
-        // Also create initial Firestore document for Google users
+        // Manually trigger sync for registration with detected role
+        const syncSuccess = await syncUserWithBackend(result.user, detectedRole, true);
+        
+        // Create/update Firestore document with the correct role
         try {
           const userDocRef = doc(db, "users", result.user.uid);
           await setDoc(userDocRef, {
             email: result.user.email,
             displayName: result.user.displayName,
-            role: null, // No default role - user will choose specific roles later
-            isChef: false, // Will be updated when user selects roles
-            isDeliveryPartner: false, // Will be updated when user selects roles
+            role: detectedRole || null, // Set the detected role (null if undefined)
+            isChef: detectedRole === 'chef' || detectedRole === 'admin',
+            isDeliveryPartner: detectedRole === 'delivery_partner' || detectedRole === 'admin',
+            isManager: detectedRole === 'manager',
+            isAdmin: detectedRole === 'admin', // Track admin in Firestore (not in Neon schema)
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-          });
-          console.log('📝 Created Firestore document for Google user');
+          }, { merge: true }); // Use merge to update if document already exists
+          console.log(`📝 Created/updated Firestore document for Google user with role: ${detectedRole}`);
         } catch (firestoreError) {
-          console.error('❌ Failed to create Firestore document:', firestoreError);
+          console.error('❌ Failed to create/update Firestore document:', firestoreError);
           // Don't fail registration if Firestore fails
         }
         if (syncSuccess) {

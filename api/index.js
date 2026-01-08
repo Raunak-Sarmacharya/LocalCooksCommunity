@@ -1,11 +1,9 @@
 // Minimal Express server for Vercel
 import { Pool } from '@neondatabase/serverless';
-import connectPgSimple from 'connect-pg-simple';
+// REMOVED: Session-related imports - All authentication now uses Firebase Auth
 import { randomBytes, scrypt } from 'crypto';
 import express from 'express';
-import session from 'express-session';
 import fs from 'fs';
-import createMemoryStore from 'memorystore';
 import multer from 'multer';
 import path from 'path';
 import { promisify } from 'util';
@@ -59,8 +57,7 @@ async function getHoursUntilBooking(bookingDate, bookingTime, timezone = DEFAULT
 // Setup
 const app = express();
 const scryptAsync = promisify(scrypt);
-const MemoryStore = createMemoryStore(session);
-const PgStore = connectPgSimple(session);
+// REMOVED: MemoryStore and PgStore - Session stores no longer needed with Firebase Auth
 
 // Configure multer for file uploads
 let upload;
@@ -151,7 +148,6 @@ try {
 
 // Database connection with small pool size for serverless
 let pool;
-let sessionStore;
 
 try {
   if (process.env.DATABASE_URL) {
@@ -160,66 +156,13 @@ try {
       max: 1 // Small pool for serverless
     });
 
-    // Create PG session store
-    sessionStore = new PgStore({
-      pool: pool,
-      createTableIfMissing: true,
-      // Add automatic cleanup configuration
-      pruneSessionInterval: 60 * 15, // Prune every 15 minutes (in seconds)
-      errorLog: console.error,
-      debugLog: console.log
-    });
+    console.log('Connected to database (session store removed - using Firebase Auth)');
 
-    console.log('Connected to database and initialized session store');
-
-    // Create session table
-    (async () => {
-      try {
-        await pool.query(`
-          CREATE TABLE IF NOT EXISTS "session" (
-            "sid" varchar NOT NULL COLLATE "default",
-            "sess" json NOT NULL,
-            "expire" timestamp(6) NOT NULL,
-            CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
-          );
-          CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
-        `);
-        console.log('Session table created or verified');
-      } catch (err) {
-        console.error('Error setting up session table:', err);
-      }
-    })();
-
-    // Run initial session cleanup on startup
-    (async () => {
-      try {
-        console.log('Running startup session cleanup...');
-        const cleanupResult = await cleanupExpiredSessions();
-        console.log(`Startup cleanup: Removed ${cleanupResult.cleaned} expired sessions`);
-        
-        const stats = await getSessionStats();
-        console.log('Session stats after startup cleanup:', {
-          total: stats.total_sessions,
-          active: stats.active_sessions,
-          expired: stats.expired_sessions
-        });
-      } catch (err) {
-        console.error('Error during startup session cleanup:', err);
-      }
-    })();
-
-  } else {
-    console.log('DATABASE_URL not provided, using in-memory storage');
-    sessionStore = new MemoryStore({
-      checkPeriod: 86400000 // prune expired entries every 24h
-    });
+    // REMOVED: Session table creation and cleanup - No longer needed with Firebase Auth
   }
 } catch (error) {
   console.error('Database connection error:', error);
-  // Fallback to memory store
-  sessionStore = new MemoryStore({
-    checkPeriod: 86400000 // prune expired entries every 24h
-  });
+  // REMOVED: Memory store fallback - No longer needed with Firebase Auth
 }
 
 // In-memory fallback for users
@@ -230,32 +173,12 @@ const locations = []; // In-memory storage for locations
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
 
-// Session setup
-const sessionSecret = process.env.SESSION_SECRET || 'local-cooks-dev-secret';
+// REMOVED: Session setup - All authentication now uses Firebase Auth
 const isProduction = process.env.NODE_ENV === 'production';
 
-console.log('Setting up session with', {
-  production: isProduction,
-  storeType: pool ? 'PostgreSQL' : 'Memory',
-  sessionSecret: sessionSecret ? 'Provided' : 'Missing'
-});
-
-app.use(session({
-  secret: sessionSecret,
-  resave: false,
-  saveUninitialized: false,
-  store: sessionStore,
-  cookie: {
-    secure: isProduction, // true in production (HTTPS), false in development
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    path: '/',
-    sameSite: isProduction ? 'lax' : 'lax', // Use 'lax' to allow cross-subdomain access
-    domain: isProduction ? '.localcooks.ca' : undefined // Use dot-prefixed domain for cross-subdomain cookies in production
-  },
-  name: 'connect.sid', // Explicit session name
-  proxy: isProduction // Trust proxy in production (for Vercel)
-}));
+// REMOVED: Session middleware - All authentication now uses Firebase Auth exclusively
+// Session store and middleware have been removed
+console.log("✅ Session middleware removed - Using Firebase Auth only");
 
 // Import subdomain utilities
 import { getSubdomainFromHeaders } from './shared/subdomain-utils.js';
@@ -274,13 +197,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add middleware to log session info on each request
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api/')) {
-    console.log(`${req.method} ${req.path} - Session ID: ${req.session.id}, User ID: ${req.session.userId || 'none'}`);
-  }
-  next();
-});
+// REMOVED: Session logging middleware - No longer needed with Firebase Auth
 
 // Helper functions
 async function hashPassword(password) {
@@ -1013,246 +930,16 @@ ensureAdminUser().catch((error) => {
   console.error('Failed to ensure admin user exists, but continuing with API startup:', error);
 });
 
-// Admin login endpoint
+// REMOVED: Admin login endpoint - Admins now use Firebase auth exclusively
+// Use Firebase Auth with admin role
 app.post('/api/admin-login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    console.log('Admin login attempt for:', username);
-
-    // Get admin user
-    const admin = await getUserByUsername(username);
-
-    if (!admin) {
-      console.log('Admin user not found:', username);
-      return res.status(401).json({ error: 'Incorrect username or password' });
-    }
-
-    // Verify user is admin (only admins can use this endpoint)
-    if (admin.role !== 'admin') {
-      console.log('User is not an admin:', username, 'role:', admin.role);
-      return res.status(403).json({ error: 'Not authorized - admin access required. Managers should use /api/manager-login' });
-    }
-
-    // Check password - first try exact match for 'localcooks' (legacy admin password)
-    let passwordMatches = false;
-    
-    console.log('User found:', {
-      id: admin.id,
-      username: admin.username,
-      role: admin.role,
-      passwordLength: admin.password ? admin.password.length : 0
-    });
-    console.log('Provided password:', password);
-
-    if (password === 'localcooks' && admin.role === 'admin') {
-      passwordMatches = true;
-      console.log('Admin password matched with hardcoded value');
-    } else {
-      // Compare with database password hash
-      try {
-        passwordMatches = await comparePasswords(password, admin.password);
-        console.log('Password compared with database:', passwordMatches);
-      } catch (error) {
-        console.error('Error comparing passwords:', error);
-      }
-    }
-
-    if (!passwordMatches) {
-      return res.status(401).json({ error: 'Incorrect username or password' });
-    }
-
-    console.log('Admin login successful for:', username);
-
-    // Remove sensitive info
-    const { password: _, ...adminWithoutPassword } = admin;
-
-    // Set session with full user data
-    req.session.userId = admin.id;
-    req.session.user = adminWithoutPassword; // Store full user object (without password)
-
-    console.log('Setting session data:', {
-      sessionId: req.session.id,
-      userId: admin.id,
-      userData: { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role }
-    });
-
-    // Force session regeneration to ensure fresh session
-    req.session.regenerate((err) => {
-      if (err) {
-        console.error('Session regeneration error:', err);
-        return res.status(500).json({ error: 'Session creation failed' });
-      }
-      
-      // Set session data again after regeneration
-      req.session.userId = admin.id;
-      req.session.user = adminWithoutPassword;
-      
-      // Save session explicitly
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error('Error saving session:', saveErr);
-          return res.status(500).json({ error: 'Session save failed' });
-        } else {
-          console.log('Session saved successfully with userId:', admin.id);
-          console.log('Final session ID:', req.session.id);
-          console.log('Session user data cached:', { id: adminWithoutPassword.id, username: adminWithoutPassword.username, role: adminWithoutPassword.role });
-        }
-        
-        // Return user data with session info
-        return res.status(200).json({
-          ...adminWithoutPassword,
-          sessionId: req.session.id // Include session ID for debugging
-        });
-      });
-    });
-  } catch (error) {
-    console.error('Admin login error:', error);
-    res.status(500).json({ error: 'Admin login failed', message: error.message });
-  }
+  res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
 });
 
-// Manager login endpoint (for commercial kitchen managers)
+// REMOVED: Manager login endpoint - Managers now use Firebase auth exclusively
+// Use Firebase Auth via /manager/login page
 app.post('/api/manager-login', async (req, res) => {
-  try {
-    // Ensure JSON response
-    res.setHeader('Content-Type', 'application/json');
-    
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-
-    console.log('Manager login attempt for:', username);
-
-    // Check database connection
-    if (!pool) {
-      console.error('❌ Database connection not available');
-      return res.status(500).json({ 
-        error: 'Database error', 
-        message: 'Database connection not available'
-      });
-    }
-
-    // Get manager user
-    let manager;
-    try {
-      manager = await getUserByUsername(username);
-    } catch (dbError) {
-      console.error('❌ Database error fetching manager:', dbError);
-      console.error('Error stack:', dbError?.stack);
-      return res.status(500).json({ 
-        error: 'Database error', 
-        message: dbError?.message || 'Failed to fetch user from database',
-        ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
-      });
-    }
-
-    if (!manager) {
-      console.log('Manager user not found:', username);
-      return res.status(401).json({ error: 'Incorrect username or password' });
-    }
-
-    // Verify user is manager (only managers can use this endpoint)
-    if (manager.role !== 'manager') {
-      console.log('User is not a manager:', username, 'role:', manager.role);
-      return res.status(403).json({ error: 'Not authorized - manager access required. Admins should use /api/admin-login' });
-    }
-
-    // Check password - compare with database password hash
-    let passwordMatches = false;
-    
-    console.log('User found:', {
-      id: manager.id,
-      username: manager.username,
-      role: manager.role,
-      hasPassword: !!manager.password
-    });
-
-    try {
-      if (!manager.password) {
-        console.error('Manager has no password set');
-        return res.status(401).json({ error: 'Incorrect username or password' });
-      }
-      passwordMatches = await comparePasswords(password, manager.password);
-      console.log('Password compared with database:', passwordMatches);
-    } catch (error) {
-      console.error('Error comparing passwords:', error);
-      return res.status(500).json({ 
-        error: 'Authentication error', 
-        message: 'Failed to verify password'
-      });
-    }
-
-    if (!passwordMatches) {
-      return res.status(401).json({ error: 'Incorrect username or password' });
-    }
-
-    console.log('Manager login successful for:', username);
-
-    // Remove sensitive info
-    const { password: _, ...managerWithoutPassword } = manager;
-
-    // Set session with full user data
-    if (!req.session) {
-      console.error('Session not available');
-      return res.status(500).json({ error: 'Session creation failed' });
-    }
-
-    req.session.userId = manager.id;
-    req.session.user = managerWithoutPassword; // Store full user object (without password)
-
-    console.log('Setting session data:', {
-      sessionId: req.session.id,
-      userId: manager.id,
-      userData: { id: managerWithoutPassword.id, username: managerWithoutPassword.username, role: managerWithoutPassword.role }
-    });
-
-    // Save session explicitly
-    try {
-      await new Promise((resolve, reject) => {
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error('Error saving session:', saveErr);
-            reject(saveErr);
-          } else {
-            console.log('Session saved successfully with userId:', manager.id);
-            console.log('Final session ID:', req.session.id);
-            resolve();
-          }
-        });
-      });
-    } catch (saveError) {
-      console.error('Error saving session:', saveError);
-      return res.status(500).json({ error: 'Session save failed' });
-    }
-    
-    // Return user data
-    return res.status(200).json(managerWithoutPassword);
-  } catch (error) {
-    console.error('❌ Manager login error:', error);
-    console.error('Error stack:', error?.stack);
-    console.error('Error details:', {
-      message: error?.message,
-      name: error?.name,
-      code: error?.code
-    });
-    
-    // Make sure we haven't already sent a response
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(500).json({ 
-        error: 'Manager login failed', 
-        message: error?.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { 
-          stack: error?.stack
-        })
-      });
-    } else {
-      console.error('⚠️ Response already sent, cannot send error response');
-    }
-  }
+  res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
 });
 
 // Removed redundant manual sync endpoint - sync is handled automatically by auth system
@@ -1292,134 +979,19 @@ app.get('/api/debug/user-sync/:uid', async (req, res) => {
   }
 });
 // API Routes
+// REMOVED: Session-based registration - Use Firebase Auth /api/firebase-register-user instead
 app.post('/api/register', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    // Validate input
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-
-    // Check if user exists
-    const existingUser = await getUserByUsername(username);
-    if (existingUser) {
-      return res.status(400).json({ error: 'Username already exists' });
-    }
-
-    // Create user with hashed password
-    const hashedPassword = await hashPassword(password);
-    const user = await createUser({
-      username,
-      password: hashedPassword,
-      role: req.body.role || 'applicant',
-    });
-
-    // Remove password before sending to client
-    const { password: _, ...userWithoutPassword } = user;
-
-    // Log in the user
-    req.session.userId = user.id;
-    res.status(201).json(userWithoutPassword);
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed', message: error.message });
-  }
+  res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
 });
 
+// REMOVED: Session-based login - All authentication now uses Firebase Auth
 app.post('/api/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    console.log('Login attempt for user:', username);
-
-    // Validate input
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-
-    // First try to find user by username
-    let user = await getUserByUsername(username);
-    
-    // If not found by username, try to find by email in applications table
-    if (!user && username.includes('@')) {
-      console.log('Username looks like email, searching applications table...');
-      try {
-        const emailResult = await pool.query(`
-          SELECT u.* FROM users u 
-          JOIN applications a ON u.id = a.user_id 
-          WHERE LOWER(a.email) = LOWER($1) 
-          ORDER BY a.created_at DESC 
-          LIMIT 1
-        `, [username]);
-        
-        if (emailResult.rows.length > 0) {
-          user = emailResult.rows[0];
-          console.log('Found user by email in applications table:', user.username);
-        }
-      } catch (emailError) {
-        console.error('Error searching by email:', emailError);
-      }
-    }
-    
-    if (!user) {
-      console.log('Login failed: User not found by username or email');
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const passwordMatch = await comparePasswords(password, user.password);
-    if (!passwordMatch) {
-      console.log('Login failed: Password mismatch');
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Remove password before sending to client
-    const { password: _, ...userWithoutPassword } = user;
-
-    // Log in the user
-    req.session.userId = user.id;
-    req.session.user = userWithoutPassword; // Store full user object (without password)
-
-    console.log('Login successful, session ID:', req.session.id);
-    console.log('User ID in session:', req.session.userId);
-
-    // Save session explicitly
-    req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-      } else {
-        console.log('Session saved successfully');
-      }
-      res.status(200).json(userWithoutPassword);
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed', message: error.message });
-  }
+  res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
 });
 
-app.post('/api/logout', (req, res) => {
-  // Clear passport session if it exists
-  if (req.logout) {
-    req.logout((err) => {
-      if (err) {
-        console.error('Passport logout error:', err);
-      }
-    });
-  }
-  
-  // Clear session data
-  req.session.userId = undefined;
-  req.session.user = undefined;
-  
-  // Destroy the session
-  req.session.destroy((err) => {
-    if (err) {
-      console.error('Session destroy error:', err);
-      return res.status(500).json({ error: 'Logout failed' });
-    }
-    res.status(200).json({ message: 'Logged out successfully' });
-  });
+// REMOVED: Session-based logout - Firebase Auth handles logout on client side
+app.post('/api/logout', async (req, res) => {
+  res.status(410).json({ error: 'Session-based authentication removed. Firebase Auth handles logout on client side.' });
 });
 
 // Get users endpoint for email studio and user selection
@@ -1973,7 +1545,13 @@ app.post('/api/manager/reset-password', async (req, res) => {
 
 // 🔥 Firebase-Compatible Get Current User (for auth page)
 // Supports both Firebase Auth (Bearer token) and Session Auth (fallback)
+// REMOVED: Session-based user endpoint - Use /api/user/profile with Firebase token instead
 app.get('/api/user', async (req, res) => {
+  res.status(410).json({ error: 'Session-based authentication removed. Please use /api/user/profile with Firebase token.' });
+});
+
+// REMOVED: Old session-based user endpoint
+app.get('/api/user-OLD', async (req, res) => {
   // Ensure JSON response from the start
   res.setHeader('Content-Type', 'application/json');
   
@@ -2068,39 +1646,9 @@ app.get('/api/user', async (req, res) => {
       }
     }
 
-    // Fallback to session authentication (for managers/admins)
-    const rawUserId = req.session?.userId || req.headers['x-user-id'];
-    if (rawUserId) {
-      console.log('📋 /api/user - Using session auth for user ID:', rawUserId);
-      
-      if (!pool) {
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: 'Database connection not available'
-        });
-      }
-
-      let user;
-      try {
-        user = await getUser(rawUserId);
-      } catch (dbError) {
-        console.error('❌ Database error fetching user:', dbError);
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: dbError?.message || 'Failed to fetch user from database'
-        });
-      }
-
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      const { password: _, ...userWithoutPassword } = user;
-      return res.json(userWithoutPassword);
-    }
-
+    // REMOVED: Session authentication fallback - All authentication now uses Firebase Auth
     // No authentication provided
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: 'Not authenticated. Please use Firebase Auth token.' });
     
   } catch (error) {
     // Catch-all for any unexpected errors
@@ -2356,134 +1904,9 @@ app.get('/api/debug/welcome-status', verifyFirebaseAuth, async (req, res) => {
 // 📱 SESSION ROUTES (FALLBACK)
 // ===================================
 
+// REMOVED: Session-based user endpoint - Use /api/user/profile with Firebase token instead
 app.get('/api/user-session', async (req, res) => {
-  try {
-    // Ensure JSON response
-    res.setHeader('Content-Type', 'application/json');
-    
-    // Debug session info
-    const sessionId = req.session?.id || null;
-    const sessionUserId = req.session?.userId || null;
-    const sessionUser = req.session?.user ? { 
-      id: req.session.user.id, 
-      username: req.session.user.username, 
-      role: req.session.user.role 
-    } : null;
-    
-    console.log('GET /api/user-session - Request details:', {
-      sessionId: sessionId,
-      userId: sessionUserId,
-      sessionUser: sessionUser,
-      hasCookies: !!req.headers.cookie,
-      hasSession: !!req.session
-    });
-
-    // Get user ID from session or header
-    const rawUserId = (req.session?.userId) || req.headers['x-user-id'];
-
-    if (!rawUserId) {
-      console.log('No userId in session or header, returning 401');
-      return res.status(401).json({ 
-        error: 'Not authenticated',
-        message: 'No active session found'
-      });
-    }
-
-    // Store user ID in session if it's not there and session exists
-    if (req.session && !req.session.userId && rawUserId) {
-      console.log('Storing userId in session from header:', rawUserId);
-      req.session.userId = rawUserId;
-      try {
-        await new Promise((resolve, reject) => {
-          req.session.save((err) => {
-            if (err) {
-              console.error('Error saving session:', err);
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        });
-      } catch (saveErr) {
-        console.error('Error saving session during user-session fetch:', saveErr);
-        // Continue - we can still fetch the user
-      }
-    }
-    
-    console.log('Fetching user with ID:', rawUserId);
-
-    // Always fetch fresh data from database to ensure has_seen_welcome is up to date
-    let user;
-    try {
-      if (!pool) {
-        throw new Error('Database connection not available');
-      }
-      user = await getUser(rawUserId);
-    } catch (dbError) {
-      console.error('❌ Database error fetching user:', dbError);
-      console.error('Error stack:', dbError?.stack);
-      return res.status(500).json({ 
-        error: 'Database error', 
-        message: dbError?.message || 'Failed to fetch user from database',
-        ...(process.env.NODE_ENV === 'development' && { stack: dbError?.stack })
-      });
-    }
-
-    if (!user) {
-      console.log('User not found in database, destroying session');
-      if (req.session) {
-        try {
-          req.session.destroy(() => { });
-        } catch (destroyErr) {
-          console.error('Error destroying session:', destroyErr);
-        }
-      }
-      return res.status(401).json({ error: 'User not found' });
-    }
-
-    console.log('User found in database:', { id: user.id, username: user.username, role: user.role, has_seen_welcome: user.has_seen_welcome });
-
-    // Remove password before sending to client
-    const { password: _, ...userWithoutPassword } = user;
-
-    // Cache user in session for future requests (if session exists)
-    if (req.session) {
-      req.session.user = userWithoutPassword;
-
-      // Save session to ensure user data is cached
-      try {
-        await new Promise((resolve, reject) => {
-          req.session.save((err) => {
-            if (err) {
-              console.error('Error saving session:', err);
-              reject(err);
-            } else {
-              resolve();
-            }
-          });
-        });
-      } catch (saveError) {
-        console.error('❌ Error saving session in /api/user-session:', saveError);
-        // Continue even if session save fails - user data is still valid
-      }
-    }
-
-    return res.status(200).json(userWithoutPassword);
-  } catch (error) {
-    console.error('❌ Get user-session error:', error);
-    console.error('Error stack:', error?.stack);
-    // Ensure we always send a JSON response
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(500).json({ 
-        error: 'Failed to get user data', 
-        message: error?.message || 'Unknown error',
-        ...(process.env.NODE_ENV === 'development' && { stack: error?.stack })
-      });
-    } else {
-      console.error('⚠️ Response already sent, cannot send error response');
-    }
-  }
+  res.status(410).json({ error: 'Session-based authentication removed. Please use /api/user/profile with Firebase token.' });
 });
 
 // Diagnostic endpoint
@@ -4913,199 +4336,22 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Session cleanup functions
-async function cleanupExpiredSessions() {
-  if (!pool) {
-    console.log('No database available for session cleanup');
-    return { cleaned: 0, error: 'No database connection' };
-  }
+// REMOVED: Session cleanup functions - No longer needed with Firebase Auth
 
-  try {
-    const result = await pool.query(`
-      DELETE FROM session 
-      WHERE expire < NOW()
-      RETURNING sid;
-    `);
-    
-    console.log(`Cleaned up ${result.rowCount} expired sessions`);
-    return { cleaned: result.rowCount };
-  } catch (error) {
-    console.error('Error cleaning up expired sessions:', error);
-    return { cleaned: 0, error: error.message };
-  }
-}
-
-async function getSessionStats() {
-  if (!pool) {
-    return { error: 'No database connection' };
-  }
-
-  try {
-    const stats = await pool.query(`
-      SELECT 
-        COUNT(*) as total_sessions,
-        COUNT(CASE WHEN expire > NOW() THEN 1 END) as active_sessions,
-        COUNT(CASE WHEN expire <= NOW() THEN 1 END) as expired_sessions,
-        MIN(expire) as oldest_session,
-        MAX(expire) as newest_session
-      FROM session;
-    `);
-
-    return stats.rows[0];
-  } catch (error) {
-    console.error('Error getting session stats:', error);
-    return { error: error.message };
-  }
-}
-// ===============================
-// SESSION MANAGEMENT ENDPOINTS
-// ===============================
-// Get session statistics (admin only)
+// REMOVED: Session management endpoints - No longer needed with Firebase Auth
+// Get session statistics (admin only) - REMOVED
 app.get("/api/admin/sessions/stats", async (req, res) => {
-  try {
-    // Check if user is authenticated and is an admin
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admin role required." });
-    }
-
-    const stats = await getSessionStats();
-    
-    // Check if stats has an error or is null
-    if (stats.error || !stats) {
-      return res.status(500).json({ 
-        message: "Failed to get session stats", 
-        error: stats?.error || "Unknown error" 
-      });
-    }
-    
-    return res.status(200).json({
-      message: "Session statistics",
-      stats: stats,
-      recommendations: {
-        shouldCleanup: (stats.expired_sessions || 0) > 100,
-        cleanupRecommended: (stats.total_sessions || 0) > 1000,
-        criticalLevel: (stats.total_sessions || 0) > 5000
-      }
-    });
-  } catch (error) {
-    console.error("Error getting session stats:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  res.status(410).json({ error: 'Session management removed. All authentication now uses Firebase Auth.' });
 });
-// Manual session cleanup (admin only)
+
+// REMOVED: Manual session cleanup - No longer needed with Firebase Auth
 app.post("/api/admin/sessions/cleanup", async (req, res) => {
-  try {
-    // Check if user is authenticated and is an admin
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admin role required." });
-    }
-
-    const beforeStats = await getSessionStats();
-    const cleanupResult = await cleanupExpiredSessions();
-    const afterStats = await getSessionStats();
-
-    // Check for errors in cleanup result
-    if (cleanupResult.error) {
-      return res.status(500).json({ 
-        message: "Session cleanup failed", 
-        error: cleanupResult.error,
-        before: beforeStats,
-        after: afterStats
-      });
-    }
-
-    return res.status(200).json({
-      message: "Session cleanup completed",
-      before: beforeStats,
-      after: afterStats,
-      cleaned: cleanupResult.cleaned || 0,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error("Error during session cleanup:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  res.status(410).json({ error: 'Session management removed. All authentication now uses Firebase Auth.' });
 });
 
-// Aggressive session cleanup (admin only) - removes sessions older than X days
+// REMOVED: Aggressive session cleanup - No longer needed with Firebase Auth
 app.post("/api/admin/sessions/cleanup-old", async (req, res) => {
-  try {
-    // Check if user is authenticated and is an admin
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ message: "Access denied. Admin role required." });
-    }
-
-    const { days = 30 } = req.body; // Default to 30 days
-    
-    // Validate and sanitize days parameter to prevent SQL injection
-    const daysNum = parseInt(days, 10);
-    if (isNaN(daysNum) || daysNum < 1 || daysNum > 365) {
-      return res.status(400).json({ message: "Invalid days parameter. Must be between 1 and 365." });
-    }
-    
-    if (!pool) {
-      return res.status(500).json({ message: "Database not available" });
-    }
-
-    const beforeStats = await getSessionStats();
-    
-    // Check if beforeStats has an error
-    if (beforeStats?.error) {
-      return res.status(500).json({ 
-        message: "Failed to get session stats before cleanup", 
-        error: beforeStats.error 
-      });
-    }
-    
-    // Use parameterized query to prevent SQL injection
-    const result = await pool.query(`
-      DELETE FROM session 
-      WHERE expire < NOW() - INTERVAL '1 day' * $1
-      RETURNING sid;
-    `, [daysNum]);
-
-    const afterStats = await getSessionStats();
-    
-    // Check if afterStats has an error
-    if (afterStats?.error) {
-      return res.status(500).json({ 
-        message: "Failed to get session stats after cleanup", 
-        error: afterStats.error,
-        before: beforeStats,
-        cleaned: result.rowCount
-      });
-    }
-
-    return res.status(200).json({
-      message: `Cleaned up sessions older than ${daysNum} days`,
-      before: beforeStats,
-      after: afterStats,
-      cleaned: result.rowCount || 0,
-      days: daysNum,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error("Error during aggressive session cleanup:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+  res.status(410).json({ error: 'Session management removed. All authentication now uses Firebase Auth.' });
 });
 
 // ===============================
@@ -6326,6 +5572,19 @@ app.post('/api/firebase-register-user', async (req, res) => {
     console.log(`   - Original emailVerified: ${emailVerified}`);
     console.log(`   - Is Google Registration: ${isGoogleRegistration}`);
     console.log(`   - Effective emailVerified: ${effectiveEmailVerified}`);
+    console.log(`   - Role received from frontend: "${role}" (type: ${typeof role})`);
+    console.log(`   - Display Name: ${displayName}`);
+    
+    // CRITICAL: Validate role before proceeding
+    if (!role || role === 'null' || role === 'undefined' || role === '') {
+      console.error(`❌ CRITICAL ERROR: No valid role provided in registration request!`);
+      console.error(`   - Role value: ${JSON.stringify(role)}`);
+      console.error(`   - This will cause user to be created incorrectly`);
+      return res.status(400).json({
+        error: 'Role is required',
+        message: 'Role is required for user registration. Please register from the appropriate page (admin, manager, chef, or delivery partner).'
+      });
+    }
     
     // Call sync logic directly instead of making internal fetch
     const syncResult = await syncFirebaseUser(uid, email, effectiveEmailVerified, displayName, role, password);
@@ -6364,8 +5623,17 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
     console.log(`   - Email: ${email}`);
     console.log(`   - Display Name: ${displayName}`);
     console.log(`   - emailVerified (from Firebase): ${emailVerified}`);
-    console.log(`   - Role: ${role}`);
+    console.log(`   - Role: ${JSON.stringify(role)} (type: ${typeof role})`);
     console.log(`   - Password provided: ${password ? 'YES (will be hashed)' : 'NO (OAuth user)'}`);
+    
+    // CRITICAL: Log role validation early
+    if (!role || role === 'null' || role === 'undefined' || role === '' || role === null || role === undefined) {
+      console.error(`❌ CRITICAL: Role is missing or invalid in syncFirebaseUser!`);
+      console.error(`   - Role value: ${JSON.stringify(role)}`);
+      console.error(`   - This will cause registration to fail or user to be created incorrectly`);
+    } else {
+      console.log(`✅ Role validation passed: "${role}"`);
+    }
     
     let user = null;
     let wasCreated = false;
@@ -6456,7 +5724,25 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           
           try {
             // Handle role assignment - manager role is separate from chef/delivery_partner
-            let finalRole = role || 'chef';
+            // Log the role received for debugging
+            console.log(`🔍 Role received in syncFirebaseUser (production): "${role}"`);
+            
+            // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
+            // If no role is provided, we should fail or let the admin handle it
+            // Check for undefined, null, empty string, or the string 'null'/'undefined'
+            if (!role || role === 'null' || role === 'undefined' || role === '' || role === null || role === undefined) {
+              console.error(`❌ ERROR: No role provided in syncFirebaseUser during registration. Cannot create user without role.`);
+              console.error(`   - Received role value: ${JSON.stringify(role)}`);
+              console.error(`   - Role type: ${typeof role}`);
+              console.error(`   - This should not happen - role should be detected from URL path in frontend`);
+              console.error(`   - Current URL path would be: ${req?.headers?.referer || 'unknown'}`);
+              throw new Error('Role is required for user registration. Please register from the appropriate page (admin, manager, chef, or delivery partner).');
+            }
+            
+            let finalRole = role;
+            // Admin has full access (isChef=true, isDeliveryPartner=true)
+            // Manager is separate (isManager=true)
+            // Chef and delivery_partner are mutually exclusive
             const isChef = (finalRole === 'chef' || finalRole === 'admin');
             const isDeliveryPartner = (finalRole === 'delivery_partner' || finalRole === 'admin');
             const isManager = (finalRole === 'manager');
@@ -12474,17 +11760,10 @@ app.get('/api/vehicles/years/:makeId', async (req, res) => {
 // ===================================
 
 // Create manager account
-app.post("/api/admin/managers", async (req, res) => {
+app.post("/api/admin/managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { username, password, email, name } = req.body;
     
@@ -12541,17 +11820,10 @@ app.post("/api/admin/managers", async (req, res) => {
 });
 
 // Get all managers (admin only)
-app.get("/api/admin/managers", async (req, res) => {
+app.get("/api/admin/managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     // Fetch all managers with their locations and notification emails
     if (pool) {
@@ -12623,17 +11895,10 @@ app.get("/api/admin/managers", async (req, res) => {
 });
 
 // Delete manager (admin)
-app.delete("/api/admin/managers/:id", async (req, res) => {
+app.delete("/api/admin/managers/:id", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const managerId = parseInt(req.params.id);
     if (isNaN(managerId) || managerId <= 0) {
@@ -16099,17 +15364,10 @@ app.post("/api/manager/change-password", requireFirebaseAuthWithUser, requireMan
 });
 
 // Admin change password endpoint
-app.post("/api/admin/change-password", async (req, res) => {
+app.post("/api/admin/change-password", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { currentPassword, newPassword } = req.body;
 
@@ -16149,17 +15407,10 @@ app.post("/api/admin/change-password", async (req, res) => {
 });
 
 // Get all locations (admin)
-app.get("/api/admin/locations", async (req, res) => {
+app.get("/api/admin/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const locations = await getAllLocations();
     res.json(locations);
@@ -16170,17 +15421,10 @@ app.get("/api/admin/locations", async (req, res) => {
 });
 
 // Create location (admin)
-app.post("/api/admin/locations", async (req, res) => {
+app.post("/api/admin/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { name, address, managerId } = req.body;
     
@@ -16215,17 +15459,10 @@ app.post("/api/admin/locations", async (req, res) => {
 });
 
 // Delete location (admin)
-app.delete("/api/admin/locations/:id", async (req, res) => {
+app.delete("/api/admin/locations/:id", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const locationId = parseInt(req.params.id);
     if (isNaN(locationId) || locationId <= 0) {
@@ -16266,17 +15503,10 @@ app.delete("/api/admin/locations/:id", async (req, res) => {
 });
 
 // Get kitchens for a location (admin)
-app.get("/api/admin/kitchens/:locationId", async (req, res) => {
+app.get("/api/admin/kitchens/:locationId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const locationId = parseInt(req.params.locationId);
     if (isNaN(locationId) || locationId <= 0) {
@@ -16292,17 +15522,10 @@ app.get("/api/admin/kitchens/:locationId", async (req, res) => {
 });
 
 // Create kitchen (admin)
-app.post("/api/admin/kitchens", async (req, res) => {
+app.post("/api/admin/kitchens", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { locationId, name, description } = req.body;
     
@@ -16337,17 +15560,10 @@ app.post("/api/admin/kitchens", async (req, res) => {
 });
 
 // Delete kitchen (admin)
-app.delete("/api/admin/kitchens/:id", async (req, res) => {
+app.delete("/api/admin/kitchens/:id", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.id);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -18494,17 +17710,10 @@ app.put("/api/manager/bookings/:id/status", requireFirebaseAuthWithUser, require
 // ===================================
 
 // Admin: Grant chef access to a kitchen
-app.post("/api/admin/chef-kitchen-access", async (req, res) => {
+app.post("/api/admin/chef-kitchen-access", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { chefId, kitchenId } = req.body;
     
@@ -18542,17 +17751,10 @@ app.post("/api/admin/chef-kitchen-access", async (req, res) => {
 });
 
 // Admin: Revoke chef access to a kitchen
-app.delete("/api/admin/chef-kitchen-access", async (req, res) => {
+app.delete("/api/admin/chef-kitchen-access", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { chefId, kitchenId } = req.body;
     
@@ -18581,25 +17783,10 @@ app.delete("/api/admin/chef-kitchen-access", async (req, res) => {
 });
 
 // Admin: Get all chefs with their kitchen access
-app.get("/api/admin/chef-kitchen-access", async (req, res) => {
+app.get("/api/admin/chef-kitchen-access", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    console.log("[Admin Chef Access] GET request received");
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    
-    console.log("[Admin Chef Access] Auth check:", { hasSession: !!req.session.userId, hasHeader: !!req.headers['x-user-id'] });
-    
-    if (!rawUserId) {
-      console.log("[Admin Chef Access] Not authenticated");
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    console.log("[Admin Chef Access] User:", user ? { id: user.id, role: user.role } : null);
-    
-    if (!user || user.role !== "admin") {
-      console.log("[Admin Chef Access] Not admin");
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
@@ -18680,17 +17867,10 @@ app.get("/api/admin/chef-kitchen-access", async (req, res) => {
 // ===================================
 
 // Admin: Grant chef access to a location
-app.post("/api/admin/chef-location-access", async (req, res) => {
+app.post("/api/admin/chef-location-access", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { chefId, locationId } = req.body;
     
@@ -18775,17 +17955,10 @@ app.post("/api/admin/chef-location-access", async (req, res) => {
 });
 
 // Admin: Revoke chef access to a location
-app.delete("/api/admin/chef-location-access", async (req, res) => {
+app.delete("/api/admin/chef-location-access", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const { chefId, locationId } = req.body;
     
@@ -18814,17 +17987,10 @@ app.delete("/api/admin/chef-location-access", async (req, res) => {
 });
 
 // Admin: Approve or reject kitchen license
-app.put("/api/admin/locations/:locationId/kitchen-license", async (req, res) => {
+app.put("/api/admin/locations/:locationId/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     const locationId = parseInt(req.params.locationId);
     if (isNaN(locationId)) {
@@ -18885,17 +18051,10 @@ app.put("/api/admin/locations/:locationId/kitchen-license", async (req, res) => 
 });
 
 // Admin: Get all locations with pending licenses
-app.get("/api/admin/locations/pending-licenses", async (req, res) => {
+app.get("/api/admin/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
@@ -18927,25 +18086,10 @@ app.get("/api/admin/locations/pending-licenses", async (req, res) => {
 });
 
 // Admin: Get all chefs with their location access
-app.get("/api/admin/chef-location-access", async (req, res) => {
+app.get("/api/admin/chef-location-access", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    console.log("[Admin Chef Access] GET request received");
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    
-    console.log("[Admin Chef Access] Auth check:", { hasSession: !!req.session.userId, hasHeader: !!req.headers['x-user-id'] });
-    
-    if (!rawUserId) {
-      console.log("[Admin Chef Access] Not authenticated");
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    console.log("[Admin Chef Access] User:", user ? { id: user.id, role: user.role } : null);
-    
-    if (!user || user.role !== "admin") {
-      console.log("[Admin Chef Access] Not admin");
-      return res.status(403).json({ error: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
+    const user = req.neonUser;
 
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
