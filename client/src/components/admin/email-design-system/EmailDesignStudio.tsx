@@ -881,12 +881,21 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
           .map(recipient => ({ email: recipient.email, name: recipient.name }))
       ];
 
+      // Get Firebase token for authentication
+      const { auth } = await import('@/lib/firebase');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        credentials: 'include', // Essential for session-based admin auth
+        credentials: 'include',
         body: JSON.stringify({
           recipients: recipients,
           customEmails: currentDesign.content.customEmails,

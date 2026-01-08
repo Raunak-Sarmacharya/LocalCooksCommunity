@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { auth } from "@/lib/firebase";
 
 interface PortalApplicationForManager {
   id: number;
@@ -27,11 +28,32 @@ interface PortalApplicationForManager {
 export function useManagerPortalApplications() {
   const queryClient = useQueryClient();
 
+  // Helper to get Firebase token
+  const getAuthHeaders = async (): Promise<HeadersInit> => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    const currentFirebaseUser = auth.currentUser;
+    if (currentFirebaseUser) {
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Error getting Firebase token:', error);
+      }
+    }
+    
+    return headers;
+  };
+
   const applicationsQuery = useQuery<{ applications: PortalApplicationForManager[]; accessCount: number }, Error>({
     queryKey: ["/api/manager/portal-applications"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/manager/portal-applications", {
         credentials: "include",
+        headers,
       });
       
       if (!response.ok) {
@@ -59,11 +81,10 @@ export function useManagerPortalApplications() {
       status: 'approved' | 'rejected';
       feedback?: string;
     }) => {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/portal-applications/${id}/status`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify({ status, feedback }),
       });

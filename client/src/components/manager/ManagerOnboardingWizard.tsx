@@ -210,8 +210,20 @@ export default function ManagerOnboardingWizard() {
     if (selectedLocationId) {
       const loadKitchens = async () => {
         try {
+          // Get Firebase token for authentication
+          const { auth } = await import('@/lib/firebase');
+          const currentFirebaseUser = auth.currentUser;
+          if (!currentFirebaseUser) {
+            throw new Error("Firebase user not available");
+          }
+          
+          const token = await currentFirebaseUser.getIdToken();
           const response = await fetch(`/api/manager/kitchens/${selectedLocationId}`, {
             credentials: "include",
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
           });
           if (response.ok) {
             const data = await response.json();
@@ -230,9 +242,20 @@ export default function ManagerOnboardingWizard() {
 
   const updateLocationMutation = useMutation({
     mutationFn: async (data: any) => {
+      // Get Firebase token for authentication
+      const { auth } = await import('@/lib/firebase');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch(`/api/manager/locations/${selectedLocationId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json" 
+        },
         credentials: "include",
         body: JSON.stringify(data),
       });
@@ -276,9 +299,20 @@ export default function ManagerOnboardingWizard() {
 
   const completeOnboardingMutation = useMutation({
     mutationFn: async (skipped: boolean) => {
+      // Get Firebase token for authentication
+      const { auth } = await import('@/lib/firebase');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch("/api/manager/complete-onboarding", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json" 
+        },
         credentials: "include",
         body: JSON.stringify({ skipped }),
       });
@@ -881,9 +915,19 @@ export default function ManagerOnboardingWizard() {
                             return;
                           }
                           try {
+                            // Get Firebase token for authentication
+                            const currentFirebaseUser = auth.currentUser;
+                            if (!currentFirebaseUser) {
+                              throw new Error("Firebase user not available");
+                            }
+                            
+                            const token = await currentFirebaseUser.getIdToken();
                             const response = await fetch(`/api/manager/storage-listings`, {
                               method: "POST",
-                              headers: { "Content-Type": "application/json" },
+                              headers: { 
+                                'Authorization': `Bearer ${token}`,
+                                "Content-Type": "application/json" 
+                              },
                               credentials: "include",
                               body: JSON.stringify({
                                 kitchenId: selectedKitchenId,
@@ -1164,9 +1208,19 @@ export default function ManagerOnboardingWizard() {
                             return;
                           }
                           try {
+                            // Get Firebase token for authentication
+                            const currentFirebaseUser = auth.currentUser;
+                            if (!currentFirebaseUser) {
+                              throw new Error("Firebase user not available");
+                            }
+                            
+                            const token = await currentFirebaseUser.getIdToken();
                             const response = await fetch(`/api/manager/equipment-listings`, {
                               method: "POST",
-                              headers: { "Content-Type": "application/json" },
+                              headers: { 
+                                'Authorization': `Bearer ${token}`,
+                                "Content-Type": "application/json" 
+                              },
                               credentials: "include",
                               body: JSON.stringify({
                                 kitchenId: selectedKitchenId,

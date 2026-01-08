@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Building, User, X, Check, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { auth } from "@/lib/firebase";
 
 interface Location {
   id: number;
@@ -22,8 +23,19 @@ export default function ChefKitchenAccessManager() {
     queryKey: ["/api/admin/locations"],
     queryFn: async () => {
       try {
+        // Get Firebase token for authentication
+        const currentFirebaseUser = auth.currentUser;
+        if (!currentFirebaseUser) {
+          throw new Error("Firebase user not available");
+        }
+        
+        const token = await currentFirebaseUser.getIdToken();
         const locationsRes = await fetch("/api/admin/locations", {
           credentials: "include",
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
         });
         if (!locationsRes.ok) {
           throw new Error("Failed to fetch locations");

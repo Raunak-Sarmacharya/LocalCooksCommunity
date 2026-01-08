@@ -2,6 +2,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { useToast } from "@/hooks/use-toast";
 import { Mail } from "lucide-react";
 import React, { useCallback, useState } from 'react';
+import { auth } from "@/lib/firebase";
 
 // Import design components
 import { EmailDesignStudio } from './email-design-system/EmailDesignStudio';
@@ -466,12 +467,20 @@ const PromoCodeSender: React.FC = () => {
     setIsLoading(true);
     
     try {
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch('/api/admin/send-promo-email', {
         method: 'POST',
         headers: { 
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        credentials: 'include', // Essential for session-based admin auth
+        credentials: 'include',
         body: JSON.stringify({
           email: emailDesign.content.email,
           promoCode: emailDesign.content.includePromoSection ? (emailDesign.content.promoCode || '') : '',
