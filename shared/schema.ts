@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { phoneNumberSchema, optionalPhoneNumberSchema } from './phone-validation';
@@ -1203,11 +1203,13 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
   foodSafetyLicenseUrl: text("food_safety_license_url"),
   foodSafetyLicenseStatus: documentVerificationStatusEnum("food_safety_license_status").default("pending"),
+  foodSafetyLicenseExpiry: date("food_safety_license_expiry"),
   
   // Food Establishment Certificate (optional)
   foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
   foodEstablishmentCertUrl: text("food_establishment_cert_url"),
   foodEstablishmentCertStatus: documentVerificationStatusEnum("food_establishment_cert_status").default("pending"),
+  foodEstablishmentCertExpiry: date("food_establishment_cert_expiry"),
   
   // Application Status
   status: applicationStatusEnum("status").default("inReview").notNull(),
@@ -1234,8 +1236,10 @@ export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchen
   cookingExperience: z.string().optional(),
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodSafetyLicenseUrl: z.string().optional(),
+  foodSafetyLicenseExpiry: z.string().optional(),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCertUrl: z.string().optional(),
+  foodEstablishmentCertExpiry: z.string().optional(),
 }).omit({
   id: true,
   status: true,
