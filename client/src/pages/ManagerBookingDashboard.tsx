@@ -575,10 +575,16 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
   const { data: bookings = [], isLoading: isLoadingBookings } = useQuery({
     queryKey: ['managerBookings'],
     queryFn: async () => {
-      const token = localStorage.getItem('firebaseToken');
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
       };
       
       const response = await fetch('/api/manager/bookings', {
@@ -1001,10 +1007,16 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const { data: kitchens = [], isLoading: isLoadingKitchens } = useQuery<Kitchen[]>({
     queryKey: ['managerKitchens', location.id],
     queryFn: async () => {
-      const token = localStorage.getItem('firebaseToken');
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
       };
       const response = await fetch(`/api/manager/kitchens/${location.id}`, {
         headers,
@@ -1076,10 +1088,16 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const handleKitchenDescriptionUpdate = async (kitchenId: number, description: string) => {
     setUpdatingKitchenId(kitchenId);
     try {
-      const token = localStorage.getItem('firebaseToken');
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
       };
       
       const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}`, {
@@ -1135,10 +1153,15 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       const uploadedUrl = uploadResult.url;
       
       // Update the kitchen with the new image URL
-      const token = localStorage.getItem('firebaseToken');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
       };
       
       const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}/image`, {
@@ -1231,9 +1254,18 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       const licenseUrl = result.url;
       
       // Update location with new license URL and reset status to pending
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json' 
+        },
         credentials: 'include',
         body: JSON.stringify({
           kitchenLicenseUrl: licenseUrl,

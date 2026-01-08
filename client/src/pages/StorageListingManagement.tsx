@@ -160,11 +160,23 @@ function StoragePhotoUpload({ photos, onPhotosChange }: { photos: string[]; onPh
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  // Managers use session-based authentication (cookies)
-  // No Firebase token needed - session cookie is sent via credentials: "include"
-  return {
+  const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
+  
+  // Get Firebase token for authentication
+  const { auth } = await import('@/lib/firebase');
+  const currentFirebaseUser = auth.currentUser;
+  if (currentFirebaseUser) {
+    try {
+      const token = await currentFirebaseUser.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    } catch (error) {
+      console.error('Error getting Firebase token:', error);
+    }
+  }
+  
+  return headers;
 }
 
 export default function StorageListingManagement({ embedded = false }: StorageListingManagementProps = {}) {

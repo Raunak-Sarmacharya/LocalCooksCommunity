@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { auth } from "@/lib/firebase";
 
 interface ChefLocationAccess {
   chef: {
@@ -124,11 +125,32 @@ export function useChefKitchenAccessStatus() {
 export function useAdminChefKitchenAccess() {
   const queryClient = useQueryClient();
 
+  // Helper to get Firebase token
+  const getAuthHeaders = async (): Promise<HeadersInit> => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    const currentFirebaseUser = auth.currentUser;
+    if (currentFirebaseUser) {
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Error getting Firebase token:', error);
+      }
+    }
+    
+    return headers;
+  };
+
   const accessQuery = useQuery<ChefLocationAccess[], Error>({
     queryKey: ["/api/admin/chef-location-access"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/admin/chef-location-access", {
         credentials: "include",
+        headers,
       });
       
       if (!response.ok) {
@@ -142,11 +164,10 @@ export function useAdminChefKitchenAccess() {
 
   const grantAccess = useMutation({
     mutationFn: async ({ chefId, locationId }: { chefId: number; locationId: number }) => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/admin/chef-location-access", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify({ chefId, locationId }),
       });
@@ -165,11 +186,10 @@ export function useAdminChefKitchenAccess() {
 
   const revokeAccess = useMutation({
     mutationFn: async ({ chefId, locationId }: { chefId: number; locationId: number }) => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/admin/chef-location-access", {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify({ chefId, locationId }),
       });

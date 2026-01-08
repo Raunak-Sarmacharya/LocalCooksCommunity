@@ -89,9 +89,17 @@ export default function ManagerChangePassword() {
     setIsSubmitting(true);
     
     try {
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch('/api/manager/change-password', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

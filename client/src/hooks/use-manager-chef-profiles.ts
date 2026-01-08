@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { auth } from "@/lib/firebase";
 
 interface ChefProfileForManager {
   id: number;
@@ -31,11 +32,32 @@ interface ChefProfileForManager {
 export function useManagerChefProfiles() {
   const queryClient = useQueryClient();
 
+  // Helper to get Firebase token
+  const getAuthHeaders = async (): Promise<HeadersInit> => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    const currentFirebaseUser = auth.currentUser;
+    if (currentFirebaseUser) {
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Error getting Firebase token:', error);
+      }
+    }
+    
+    return headers;
+  };
+
   const profilesQuery = useQuery<ChefProfileForManager[], Error>({
     queryKey: ["/api/manager/chef-profiles"],
     queryFn: async () => {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/manager/chef-profiles", {
         credentials: "include",
+        headers,
       });
       
       if (!response.ok) {
@@ -58,11 +80,10 @@ export function useManagerChefProfiles() {
       status: 'approved' | 'rejected';
       reviewFeedback?: string;
     }) => {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/chef-profiles/${profileId}/status`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify({ status, reviewFeedback }),
       });
@@ -87,11 +108,10 @@ export function useManagerChefProfiles() {
       chefId: number; 
       locationId: number;
     }) => {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/chef-location-access`, {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         credentials: "include",
         body: JSON.stringify({ chefId, locationId }),
       });

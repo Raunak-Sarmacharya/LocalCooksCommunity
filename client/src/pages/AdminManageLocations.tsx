@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "../hooks/use-toast";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { auth } from "@/lib/firebase";
 
 export default function AdminManageLocations() {
   const [showLocationForm, setShowLocationForm] = useState(false);
@@ -40,10 +41,33 @@ export default function AdminManageLocations() {
     locationNotificationEmails: [] as Array<{ locationId: number; notificationEmail: string }>,
   });
 
+  // Helper to get Firebase token
+  const getAuthHeaders = async (): Promise<HeadersInit> => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    const currentFirebaseUser = auth.currentUser;
+    if (currentFirebaseUser) {
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Error getting Firebase token:', error);
+      }
+    }
+    
+    return headers;
+  };
+
   const loadLocations = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/locations", { credentials: "include" });
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/admin/locations", { 
+        credentials: "include",
+        headers,
+      });
       const data = await response.json();
       setLocations(data);
     } catch (error) {
@@ -55,7 +79,11 @@ export default function AdminManageLocations() {
 
         const loadManagers = async () => {
           try {
-            const response = await fetch("/api/admin/managers", { credentials: "include" });
+            const headers = await getAuthHeaders();
+            const response = await fetch("/api/admin/managers", { 
+              credentials: "include",
+              headers,
+            });
             if (response.ok) {
               // Check response content type
               const contentType = response.headers.get('content-type');
@@ -165,8 +193,10 @@ export default function AdminManageLocations() {
     if (!locationId) return;
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/kitchens/${locationId}`, {
         credentials: "include",
+        headers,
       });
       if (!response.ok) {
         throw new Error(`Failed to fetch kitchens: ${response.status}`);
@@ -185,9 +215,10 @@ export default function AdminManageLocations() {
     e.preventDefault();
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/admin/locations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           name: locationForm.name,
@@ -223,9 +254,10 @@ export default function AdminManageLocations() {
         managerId: locationForm.managerId || null,
       });
       
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/locations/${editingLocation.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           name: locationForm.name,
@@ -262,9 +294,11 @@ export default function AdminManageLocations() {
     
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/locations/${deletingItem.id}`, {
         method: "DELETE",
         credentials: "include",
+        headers,
       });
       if (response.ok) {
         toast({ title: "Success", description: "Location deleted successfully" });
@@ -299,9 +333,10 @@ export default function AdminManageLocations() {
     e.preventDefault();
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/admin/kitchens", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           locationId: parseInt(kitchenForm.locationId),
@@ -333,9 +368,10 @@ export default function AdminManageLocations() {
     
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/kitchens/${editingKitchen.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           name: kitchenForm.name,
@@ -368,9 +404,11 @@ export default function AdminManageLocations() {
     
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/kitchens/${deletingItem.id}`, {
         method: "DELETE",
         credentials: "include",
+        headers,
       });
       if (response.ok) {
         toast({ title: "Success", description: "Kitchen deleted successfully" });
@@ -404,9 +442,10 @@ export default function AdminManageLocations() {
     e.preventDefault();
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/admin/managers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify(managerForm),
       });
@@ -437,9 +476,10 @@ export default function AdminManageLocations() {
         locationNotificationEmails: managerForm.locationNotificationEmails,
       });
       
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/managers/${editingManager.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           username: managerForm.username,
@@ -475,9 +515,11 @@ export default function AdminManageLocations() {
     
     setLoading(true);
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/managers/${deletingItem.id}`, {
         method: "DELETE",
         credentials: "include",
+        headers,
       });
       if (response.ok) {
         toast({ title: "Success", description: "Manager deleted successfully" });
@@ -504,7 +546,11 @@ export default function AdminManageLocations() {
     
     try {
       console.log('🔍 Fetching locations for manager from API...');
-      const locationsResponse = await fetch('/api/admin/locations', { credentials: 'include' });
+      const headers = await getAuthHeaders();
+      const locationsResponse = await fetch('/api/admin/locations', { 
+        credentials: 'include',
+        headers,
+      });
       if (locationsResponse.ok) {
         const allLocations = await locationsResponse.json();
         console.log(`📊 Fetched ${allLocations.length} total locations from API`);

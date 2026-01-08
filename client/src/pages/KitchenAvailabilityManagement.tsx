@@ -31,16 +31,23 @@ interface Booking {
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  if (token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  }
-  return {
+  const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
+  
+  // Get Firebase token for authentication
+  const { auth } = await import('@/lib/firebase');
+  const currentFirebaseUser = auth.currentUser;
+  if (currentFirebaseUser) {
+    try {
+      const token = await currentFirebaseUser.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    } catch (error) {
+      console.error('Error getting Firebase token:', error);
+    }
+  }
+  
+  return headers;
 }
 
 // Helper to get days in month

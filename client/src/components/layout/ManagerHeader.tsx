@@ -51,8 +51,20 @@ export default function ManagerHeader() {
     queryKey: ["/api/manager/locations"],
     queryFn: async () => {
       try {
+        // Get Firebase token for authentication
+        const currentFirebaseUser = auth.currentUser;
+        if (!currentFirebaseUser) {
+          console.error('No Firebase user available');
+          return [];
+        }
+        
+        const token = await currentFirebaseUser.getIdToken();
         const response = await fetch("/api/manager/locations", {
           credentials: "include",
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
         });
         if (!response.ok) {
           console.error('Failed to fetch locations:', response.status);
