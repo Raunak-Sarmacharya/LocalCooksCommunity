@@ -246,7 +246,11 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
     queryKey: ["/api/firebase/chef/kitchen-applications/location", locationId],
     queryFn: async () => {
       if (!locationId) {
-        throw new Error("No location specified");
+        return {
+          hasApplication: false,
+          canBook: false,
+          application: null,
+        } as any;
       }
 
       const headers = await getAuthHeaders();
@@ -258,22 +262,18 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
         }
       );
 
-      // 404 means no application exists - that's okay
-      if (response.status === 404) {
+      if (!response.ok) {
+        // For any error, return no application state
+        console.warn(`Failed to fetch application for location ${locationId}: ${response.status}`);
         return {
           hasApplication: false,
           canBook: false,
+          application: null,
         } as any;
       }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          error: "Failed to get application",
-        }));
-        throw new Error(errorData.error || "Failed to get application");
-      }
-
-      return await response.json();
+      const data = await response.json();
+      return data;
     },
     enabled: !!locationId,
     retry: 1,
@@ -281,7 +281,7 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
   });
 
   return {
-    application: applicationsQuery.data,
+    application: applicationsQuery.data?.hasApplication ? applicationsQuery.data : null,
     hasApplication: applicationsQuery.data?.hasApplication ?? false,
     canBook: applicationsQuery.data?.canBook ?? false,
     isLoading: applicationsQuery.isLoading,

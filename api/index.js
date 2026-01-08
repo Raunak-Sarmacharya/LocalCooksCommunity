@@ -21155,11 +21155,20 @@ app.get('/api/firebase/chef/kitchen-applications/location/:locationId', requireF
     `, [chefId, locationId]);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Application not found' });
+      // Return proper response for no application found (not an error)
+      return res.json({ 
+        hasApplication: false, 
+        canBook: false,
+        application: null
+      });
     }
     
     const row = result.rows[0];
+    const canBook = row.status === 'approved';
+    
     res.json({
+      hasApplication: true,
+      canBook: canBook,
       id: row.id,
       chefId: row.chef_id,
       locationId: row.location_id,
