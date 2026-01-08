@@ -792,24 +792,25 @@ export default function KitchenApplicationForm({
                   )}
                 </div>
 
-                {/* Food Establishment Expiry (only show if file uploaded) */}
-                {businessLicenseFile && (
-                  <FormField
-                    control={form.control}
-                    name="foodEstablishmentCertExpiry"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium">
-                          Food Establishment License Expiry Date
-                        </FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} className="h-11" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
+                {/* Food Establishment Expiry (optional, shown always) */}
+                <FormField
+                  control={form.control}
+                  name="foodEstablishmentCertExpiry"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium">
+                        Food Establishment License Expiry Date
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} className="h-11" />
+                      </FormControl>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Optional - Enter if you have a food establishment license
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
             </CardContent>
           </Card>

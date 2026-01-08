@@ -1432,27 +1432,47 @@ export default function ApplicantDashboard() {
                               <h6 className="font-medium text-gray-800 text-sm mb-3">Document Verification Status</h6>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {defaultApp.foodSafetyLicenseStatus && (
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-gray-600 text-sm">Food Safety License:</span>
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                      defaultApp.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                                      defaultApp.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                      {defaultApp.foodSafetyLicenseStatus.charAt(0).toUpperCase() + defaultApp.foodSafetyLicenseStatus.slice(1)}
-                                    </span>
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-gray-600 text-sm">Food Safety License:</span>
+                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        defaultApp.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                                        defaultApp.foodSafetyLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                        {defaultApp.foodSafetyLicenseStatus.charAt(0).toUpperCase() + defaultApp.foodSafetyLicenseStatus.slice(1)}
+                                      </span>
+                                    </div>
+                                    {defaultApp.foodSafetyLicenseExpiry && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-gray-500 text-xs">Expiry Date:</span>
+                                        <span className="text-xs font-medium text-gray-700">
+                                          {new Date(defaultApp.foodSafetyLicenseExpiry).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                                 {defaultApp.foodEstablishmentCertStatus && (
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-gray-600 text-sm">Establishment Cert:</span>
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                      defaultApp.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                                      defaultApp.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                      {defaultApp.foodEstablishmentCertStatus.charAt(0).toUpperCase() + defaultApp.foodEstablishmentCertStatus.slice(1)}
-                                    </span>
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-gray-600 text-sm">Establishment Cert:</span>
+                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        defaultApp.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                                        defaultApp.foodEstablishmentCertStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                        {defaultApp.foodEstablishmentCertStatus.charAt(0).toUpperCase() + defaultApp.foodEstablishmentCertStatus.slice(1)}
+                                      </span>
+                                    </div>
+                                    {defaultApp.foodEstablishmentCertExpiry && (
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-gray-500 text-xs">Expiry Date:</span>
+                                        <span className="text-xs font-medium text-gray-700">
+                                          {new Date(defaultApp.foodEstablishmentCertExpiry).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
