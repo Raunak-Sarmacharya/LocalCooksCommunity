@@ -98,7 +98,16 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
     }
   };
 
-  const userName = user?.displayName || user?.email?.split('@')[0] || 'User';
+  const userName = (() => {
+    // Get first name only from displayName/fullName
+    const name = user?.displayName || user?.fullName;
+    if (name) return name.split(' ')[0];
+    // Fallback: if username is email, extract part before @, otherwise use username
+    if (user?.username) {
+      return user.username.includes('@') ? user.username.split('@')[0] : user.username;
+    }
+    return 'User';
+  })();
 
   // Determine user's role(s) and customize content accordingly
   const isChef = (user as any)?.isChef || false;

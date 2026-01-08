@@ -396,6 +396,32 @@ export function registerFirebaseRoutes(app: Express) {
       // req.neonUser is now populated by middleware with Neon user data
       // req.firebaseUser contains Firebase auth data
 
+      // Fetch user's full name from applications (chef or delivery partner)
+      let userFullName = null;
+      if (pool) {
+        try {
+          // Try chef applications first, then delivery partner applications
+          const chefAppResult = await pool.query(
+            'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+            [req.neonUser!.id]
+          );
+          if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
+            userFullName = chefAppResult.rows[0].full_name;
+          } else {
+            // Try delivery partner applications
+            const deliveryAppResult = await pool.query(
+              'SELECT full_name FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+              [req.neonUser!.id]
+            );
+            if (deliveryAppResult.rows.length > 0 && deliveryAppResult.rows[0].full_name) {
+              userFullName = deliveryAppResult.rows[0].full_name;
+            }
+          }
+        } catch (dbError) {
+          console.error('Error fetching user full name:', dbError);
+        }
+      }
+
       // Return flat structure expected by frontend
       res.json({
         id: req.neonUser!.id,
@@ -405,6 +431,8 @@ export function registerFirebaseRoutes(app: Express) {
         has_seen_welcome: (req.neonUser as any).has_seen_welcome || false,
         isChef: (req.neonUser as any).isChef || false,
         isDeliveryPartner: (req.neonUser as any).isDeliveryPartner || false,
+        displayName: userFullName || null, // User's full name from application
+        fullName: userFullName || null, // Alias for compatibility
         // Also include original structure for compatibility
         neonUser: {
           id: req.neonUser!.id,

@@ -195,10 +195,11 @@ export default function Header() {
 
   // Helper function to get dashboard link and text
   const getDashboardInfo = () => {
+    const displayName = getUserDisplayName();
     if (user?.role === "admin") {
       return {
         href: "/admin",
-        text: `${user.displayName || user.username || 'Admin'}'s Admin Dashboard`
+        text: `${displayName}'s Admin Dashboard`
       };
     } else if (user?.role === "manager") {
       return {
@@ -208,14 +209,27 @@ export default function Header() {
     } else {
       return {
         href: "/dashboard",
-        text: `${user?.displayName || user.username || 'User'}'s Dashboard`
+        text: `${displayName}'s Dashboard`
       };
     }
   };
 
-  // Helper function to get user display name
+  // Helper function to get user display name (first name only)
   const getUserDisplayName = () => {
-    return user?.displayName || user?.username || 'User';
+    // Prioritize displayName/fullName from API, extract first name only
+    if (user?.displayName || user?.fullName) {
+      const fullName = user.displayName || user.fullName;
+      return fullName.split(' ')[0]; // Return only first name
+    }
+    // If username is an email, extract the part before @, otherwise use username
+    if (user?.username) {
+      const username = user.username;
+      if (username.includes('@')) {
+        return username.split('@')[0];
+      }
+      return username;
+    }
+    return 'User';
   };
 
   return (

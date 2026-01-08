@@ -1175,11 +1175,22 @@ export default function ApplicantDashboard() {
           >
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg flex-shrink-0">
-                {user?.displayName ? user.displayName[0]?.toUpperCase() : user?.email?.[0]?.toUpperCase() || "U"}
+                {(user?.displayName || user?.fullName) ? (user.displayName || user.fullName)[0]?.toUpperCase() : (user?.username && !user.username.includes('@')) ? user.username[0]?.toUpperCase() : "U"}
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
-                  Welcome back, {user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
+                  Welcome back, {(() => {
+                    // Get first name only from displayName/fullName
+                    const name = user?.displayName || user?.fullName;
+                    if (name) {
+                      return name.split(' ')[0];
+                    }
+                    // Fallback: if username is email, extract part before @, otherwise use username
+                    if (user?.username) {
+                      return user.username.includes('@') ? user.username.split('@')[0] : user.username;
+                    }
+                    return 'User';
+                  })()}
                 </h1>
                 <p className="text-sm sm:text-base text-gray-500 truncate">
                   {(() => {

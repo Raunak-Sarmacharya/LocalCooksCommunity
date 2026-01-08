@@ -302,7 +302,16 @@ export default function AuthPage() {
         <Logo className="h-12 mb-6" />
         <h1 className="text-2xl font-bold mb-2">You're already logged in</h1>
         <p className="mb-6 text-gray-600">
-          Welcome back, <span className="font-semibold">{user.displayName || user.email}</span>!
+          Welcome back, <span className="font-semibold">{(() => {
+            // Get first name only from displayName/fullName
+            const name = user.displayName || user.fullName;
+            if (name) return name.split(' ')[0];
+            // Fallback: if username is email, extract part before @, otherwise use username
+            if (user.username) {
+              return user.username.includes('@') ? user.username.split('@')[0] : user.username;
+            }
+            return 'User';
+          })()}</span>!
         </p>
         <div className="flex gap-4">
           <button
