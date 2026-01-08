@@ -19,6 +19,7 @@ import {
     setDoc
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import { getSubdomainFromHostname } from "@shared/subdomain-utils";
 
 interface AuthUser {
   uid: string;
@@ -68,30 +69,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const token = await firebaseUser.getIdToken();
       
-      // Auto-determine role based on current URL path during registration
+      // Auto-determine role based on current URL path AND subdomain during registration
       let finalRole = role;
       if (isRegistration && !finalRole) {
         const currentPath = window.location.pathname;
-        console.log(`🔍 Role detection for registration - Current path: ${currentPath}, Provided role: ${role}`);
+        const hostname = window.location.hostname;
+        const subdomain = getSubdomainFromHostname(hostname);
+        console.log(`🔍 Role detection for registration - Current path: ${currentPath}, Subdomain: ${subdomain}, Provided role: ${role}`);
         
-        // Check for admin paths first (most specific)
-        if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+        // CRITICAL: Check subdomain first (most reliable indicator)
+        if (subdomain === 'admin') {
           finalRole = 'admin';
-          console.log('👑 Auto-setting role to admin based on admin URL path');
-        } else if (currentPath === '/driver-auth') {
+          console.log('👑 Auto-setting role to admin based on admin subdomain');
+        } else if (subdomain === 'driver') {
           finalRole = 'delivery_partner';
-          console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
-        } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
-          finalRole = 'manager';
-          console.log('🏢 Auto-setting role to manager based on manager URL path');
-        } else if (currentPath === '/auth') {
+          console.log('🚚 Auto-setting role to delivery_partner based on driver subdomain');
+        } else if (subdomain === 'kitchen') {
+          // Kitchen subdomain could be manager or chef - check path
+          if (currentPath.includes('/manager') || currentPath.includes('manager')) {
+            finalRole = 'manager';
+            console.log('🏢 Auto-setting role to manager based on kitchen subdomain + manager path');
+          } else {
+            finalRole = 'chef';
+            console.log('👨‍🍳 Auto-setting role to chef based on kitchen subdomain');
+          }
+        } else if (subdomain === 'chef') {
           finalRole = 'chef';
-          console.log('👨‍🍳 Auto-setting role to chef based on /auth URL');
+          console.log('👨‍🍳 Auto-setting role to chef based on chef subdomain');
         } else {
-          // CRITICAL: Don't default to chef - this causes admins/managers to be created as chefs
-          // Instead, log a warning and let the backend handle it
-          console.warn(`⚠️ WARNING: No role detected from URL path "${currentPath}" during registration. Role will be determined by backend.`);
-          finalRole = undefined; // Let backend determine or fail
+          // No subdomain match - check URL path as fallback
+          if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+            finalRole = 'admin';
+            console.log('👑 Auto-setting role to admin based on admin URL path');
+          } else if (currentPath === '/driver-auth') {
+            finalRole = 'delivery_partner';
+            console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
+          } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
+            finalRole = 'manager';
+            console.log('🏢 Auto-setting role to manager based on manager URL path');
+          } else if (currentPath === '/auth') {
+            finalRole = 'chef';
+            console.log('👨‍🍳 Auto-setting role to chef based on /auth URL');
+          } else {
+            // CRITICAL: Don't default to chef - this causes admins/managers to be created as chefs
+            // Instead, log a warning and let the backend handle it
+            console.warn(`⚠️ WARNING: No role detected from subdomain "${subdomain}" or URL path "${currentPath}" during registration. Role will be determined by backend.`);
+            finalRole = undefined; // Let backend determine or fail
+          }
         }
         
         console.log(`✅ Final role determined: ${finalRole || 'undefined (will be determined by backend)'}`);
@@ -535,26 +559,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await signInWithPopup(auth, provider);
         console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
         
-        // Auto-determine role from URL path before sync
+        // Auto-determine role from subdomain AND URL path before sync
         const currentPath = window.location.pathname;
+        const hostname = window.location.hostname;
+        const subdomain = getSubdomainFromHostname(hostname);
         let detectedRole: string | undefined = undefined;
-        if (currentPath === '/admin-login' || currentPath === '/admin/login' || currentPath === '/admin-register' || currentPath === '/admin/register') {
+        
+        console.log(`🔍 Role detection - Path: ${currentPath}, Subdomain: ${subdomain}`);
+        
+        // CRITICAL: Check subdomain first (most reliable indicator)
+        if (subdomain === 'admin') {
           detectedRole = 'admin';
-          console.log('👑 Detected role: admin from URL path');
-        } else if (currentPath === '/driver-auth') {
+          console.log('👑 Detected role: admin from admin subdomain');
+        } else if (subdomain === 'driver') {
           detectedRole = 'delivery_partner';
-          console.log('🚚 Detected role: delivery_partner from URL path');
-        } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
-          detectedRole = 'manager';
-          console.log('🏢 Detected role: manager from URL path');
-        } else if (currentPath === '/auth') {
+          console.log('🚚 Detected role: delivery_partner from driver subdomain');
+        } else if (subdomain === 'kitchen') {
+          // Kitchen subdomain could be manager or chef - check path
+          if (currentPath.includes('/manager') || currentPath.includes('manager')) {
+            detectedRole = 'manager';
+            console.log('🏢 Detected role: manager from kitchen subdomain + manager path');
+          } else {
+            detectedRole = 'chef';
+            console.log('👨‍🍳 Detected role: chef from kitchen subdomain');
+          }
+        } else if (subdomain === 'chef') {
           detectedRole = 'chef';
-          console.log('👨‍🍳 Detected role: chef from URL path');
+          console.log('👨‍🍳 Detected role: chef from chef subdomain');
         } else {
-          // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
-          // Log warning and let backend handle it or fail
-          console.warn(`⚠️ WARNING: No role detected from URL path "${currentPath}" during Google registration. Role will be determined by backend or registration will fail.`);
-          detectedRole = undefined; // Let backend determine or fail
+          // No subdomain match - check URL path as fallback
+          if (currentPath === '/admin-login' || currentPath === '/admin/login' || currentPath === '/admin-register' || currentPath === '/admin/register') {
+            detectedRole = 'admin';
+            console.log('👑 Detected role: admin from URL path');
+          } else if (currentPath === '/driver-auth') {
+            detectedRole = 'delivery_partner';
+            console.log('🚚 Detected role: delivery_partner from URL path');
+          } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
+            detectedRole = 'manager';
+            console.log('🏢 Detected role: manager from URL path');
+          } else if (currentPath === '/auth') {
+            detectedRole = 'chef';
+            console.log('👨‍🍳 Detected role: chef from URL path');
+          } else {
+            // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
+            // Log warning and let backend handle it or fail
+            console.warn(`⚠️ WARNING: No role detected from subdomain "${subdomain}" or URL path "${currentPath}" during Google registration. Role will be determined by backend or registration will fail.`);
+            detectedRole = undefined; // Let backend determine or fail
+          }
         }
         
         // Manually trigger sync for registration with detected role
