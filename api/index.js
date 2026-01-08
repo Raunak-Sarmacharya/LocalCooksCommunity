@@ -15408,6 +15408,382 @@ app.put("/api/manager/portal-applications/:id/status", async (req, res) => {
   }
 });
 
+// ==============================
+// CHEF KITCHEN APPLICATIONS (Direct chef-to-kitchen applications)
+// ==============================
+
+// Manager: Get chef kitchen applications for review
+app.get("/api/manager/kitchen-applications", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    console.log(`[Manager Kitchen Applications] Fetching for manager ID: ${user.id}`);
+
+    if (!pool) {
+      return res.json([]);
+    }
+
+    // Check if table exists
+    const tableCheck = await pool.query(`
+      SELECT to_regclass('public.chef_kitchen_applications') as applications_exists;
+    `);
+
+    if (!tableCheck.rows[0].applications_exists) {
+      console.log(`[Manager Kitchen Applications] chef_kitchen_applications table doesn't exist yet`);
+      return res.json([]);
+    }
+
+    // Get all locations managed by this manager
+    const locationsResult = await pool.query(`
+      SELECT id, name, address 
+      FROM locations 
+      WHERE manager_id = $1
+    `, [user.id]);
+
+    console.log(`[Manager Kitchen Applications] Found ${locationsResult.rows.length} managed locations`);
+
+    if (locationsResult.rows.length === 0) {
+      console.log(`[Manager Kitchen Applications] No locations found for manager ${user.id}`);
+      return res.json([]);
+    }
+
+    const locationIds = locationsResult.rows.map(loc => loc.id);
+
+    // Get ALL chef kitchen applications for these locations
+    const applicationsResult = await pool.query(`
+      SELECT 
+        cka.id,
+        cka.chef_id as "chefId",
+        cka.location_id as "locationId",
+        cka.full_name as "fullName",
+        cka.email,
+        cka.phone,
+        cka.kitchen_preference as "kitchenPreference",
+        cka.business_description as "businessDescription",
+        cka.cooking_experience as "cookingExperience",
+        cka.food_safety_license as "foodSafetyLicense",
+        cka.food_safety_license_url as "foodSafetyLicenseUrl",
+        cka.food_safety_license_status as "foodSafetyLicenseStatus",
+        cka.food_establishment_cert as "foodEstablishmentCert",
+        cka.food_establishment_cert_url as "foodEstablishmentCertUrl",
+        cka.food_establishment_cert_status as "foodEstablishmentCertStatus",
+        cka.status,
+        cka.feedback,
+        cka.reviewed_by as "reviewedBy",
+        cka.reviewed_at as "reviewedAt",
+        cka.created_at as "createdAt",
+        cka.updated_at as "updatedAt",
+        l.id as location_id,
+        l.name as location_name,
+        l.address as location_address,
+        u.id as user_id,
+        u.username as user_username,
+        u.role as user_role
+      FROM chef_kitchen_applications cka
+      INNER JOIN locations l ON l.id = cka.location_id
+      INNER JOIN users u ON u.id = cka.chef_id
+      WHERE cka.location_id = ANY($1::int[])
+      ORDER BY cka.created_at DESC
+    `, [locationIds]);
+
+    console.log(`[Manager Kitchen Applications] Found ${applicationsResult.rows.length} total applications`);
+
+    // Format response
+    const formatted = applicationsResult.rows.map(app => ({
+      id: app.id,
+      chefId: app.chefId,
+      locationId: app.locationId,
+      fullName: app.fullName,
+      email: app.email,
+      phone: app.phone,
+      kitchenPreference: app.kitchenPreference,
+      businessDescription: app.businessDescription,
+      cookingExperience: app.cookingExperience,
+      foodSafetyLicense: app.foodSafetyLicense,
+      foodSafetyLicenseUrl: app.foodSafetyLicenseUrl,
+      foodSafetyLicenseStatus: app.foodSafetyLicenseStatus || 'pending',
+      foodEstablishmentCert: app.foodEstablishmentCert,
+      foodEstablishmentCertUrl: app.foodEstablishmentCertUrl,
+      foodEstablishmentCertStatus: app.foodEstablishmentCertStatus || 'pending',
+      status: app.status,
+      feedback: app.feedback,
+      reviewedBy: app.reviewedBy,
+      reviewedAt: app.reviewedAt,
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt,
+      location: {
+        id: app.location_id,
+        name: app.location_name,
+        address: app.location_address,
+      },
+      chef: {
+        id: app.user_id,
+        username: app.user_username,
+        role: app.user_role,
+      },
+    }));
+
+    console.log(`[Manager Kitchen Applications] Returning ${formatted.length} applications`);
+    res.json(formatted);
+  } catch (error) {
+    console.error("Error getting kitchen applications for manager:", error);
+    res.status(500).json({ error: error.message || "Failed to get applications" });
+  }
+});
+
+// Manager: Approve or reject chef kitchen application
+app.patch("/api/manager/kitchen-applications/:id/status", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const applicationId = parseInt(req.params.id);
+    if (isNaN(applicationId)) {
+      return res.status(400).json({ error: "Invalid application ID" });
+    }
+
+    const { status, feedback } = req.body;
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+    }
+
+    console.log(`[Manager Kitchen Applications] Updating application ${applicationId} to ${status}`);
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the application and verify manager has access
+    const appResult = await pool.query(`
+      SELECT cka.*, l.manager_id
+      FROM chef_kitchen_applications cka
+      INNER JOIN locations l ON l.id = cka.location_id
+      WHERE cka.id = $1
+    `, [applicationId]);
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: "Application not found" });
+    }
+
+    const application = appResult.rows[0];
+    if (application.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied - not your location" });
+    }
+
+    // Update the application status
+    const updateResult = await pool.query(`
+      UPDATE chef_kitchen_applications
+      SET status = $1, feedback = $2, reviewed_by = $3, reviewed_at = NOW(), updated_at = NOW()
+      WHERE id = $4
+      RETURNING *
+    `, [status, feedback || null, user.id, applicationId]);
+
+    const updated = updateResult.rows[0];
+
+    // If approved, grant chef access to the location
+    if (status === 'approved') {
+      // Check if access already exists
+      const accessCheck = await pool.query(`
+        SELECT id FROM chef_location_access 
+        WHERE chef_id = $1 AND location_id = $2
+      `, [updated.chef_id, updated.location_id]);
+
+      if (accessCheck.rows.length === 0) {
+        // Grant access
+        await pool.query(`
+          INSERT INTO chef_location_access (chef_id, location_id, granted_by, granted_at)
+          VALUES ($1, $2, $3, NOW())
+        `, [updated.chef_id, updated.location_id, user.id]);
+        console.log(`[Manager Kitchen Applications] Granted chef ${updated.chef_id} access to location ${updated.location_id}`);
+      }
+    }
+
+    console.log(`[Manager Kitchen Applications] Application ${applicationId} ${status}`);
+
+    res.json({
+      success: true,
+      application: {
+        id: updated.id,
+        chefId: updated.chef_id,
+        locationId: updated.location_id,
+        status: updated.status,
+        feedback: updated.feedback,
+        reviewedBy: updated.reviewed_by,
+        reviewedAt: updated.reviewed_at,
+      },
+      message: `Application ${status} successfully`,
+    });
+  } catch (error) {
+    console.error("Error updating kitchen application status:", error);
+    res.status(500).json({ error: error.message || "Failed to update application status" });
+  }
+});
+
+// Manager: Verify kitchen application documents
+app.patch("/api/manager/kitchen-applications/:id/verify-documents", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const applicationId = parseInt(req.params.id);
+    if (isNaN(applicationId)) {
+      return res.status(400).json({ error: "Invalid application ID" });
+    }
+
+    const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
+    const validStatuses = ['pending', 'approved', 'rejected'];
+
+    if (foodSafetyLicenseStatus && !validStatuses.includes(foodSafetyLicenseStatus)) {
+      return res.status(400).json({ error: "Invalid food safety license status" });
+    }
+    if (foodEstablishmentCertStatus && !validStatuses.includes(foodEstablishmentCertStatus)) {
+      return res.status(400).json({ error: "Invalid food establishment cert status" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the application and verify manager has access
+    const appResult = await pool.query(`
+      SELECT cka.*, l.manager_id
+      FROM chef_kitchen_applications cka
+      INNER JOIN locations l ON l.id = cka.location_id
+      WHERE cka.id = $1
+    `, [applicationId]);
+
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: "Application not found" });
+    }
+
+    const application = appResult.rows[0];
+    if (application.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied - not your location" });
+    }
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (foodSafetyLicenseStatus) {
+      updates.push(`food_safety_license_status = $${paramIndex++}`);
+      values.push(foodSafetyLicenseStatus);
+    }
+    if (foodEstablishmentCertStatus) {
+      updates.push(`food_establishment_cert_status = $${paramIndex++}`);
+      values.push(foodEstablishmentCertStatus);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No document status to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(applicationId);
+
+    const updateResult = await pool.query(`
+      UPDATE chef_kitchen_applications
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, values);
+
+    const updated = updateResult.rows[0];
+
+    console.log(`[Manager Kitchen Applications] Documents verified for application ${applicationId}`);
+
+    res.json({
+      success: true,
+      application: {
+        id: updated.id,
+        foodSafetyLicenseStatus: updated.food_safety_license_status,
+        foodEstablishmentCertStatus: updated.food_establishment_cert_status,
+      },
+    });
+  } catch (error) {
+    console.error("Error verifying kitchen application documents:", error);
+    res.status(500).json({ error: error.message || "Failed to verify documents" });
+  }
+});
+
+// Manager: Revoke chef access to location
+app.delete("/api/manager/chef-location-access/:chefId/:locationId", async (req, res) => {
+  try {
+    const rawUserId = req.session.userId || req.headers['x-user-id'];
+    if (!rawUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    
+    const user = await getUser(rawUserId);
+    if (!user || user.role !== "manager") {
+      return res.status(403).json({ error: "Manager access required" });
+    }
+
+    const chefId = parseInt(req.params.chefId);
+    const locationId = parseInt(req.params.locationId);
+    
+    if (isNaN(chefId) || isNaN(locationId)) {
+      return res.status(400).json({ error: "Invalid chef ID or location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify manager has access to this location
+    const locationResult = await pool.query(`
+      SELECT id FROM locations WHERE id = $1 AND manager_id = $2
+    `, [locationId, user.id]);
+
+    if (locationResult.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied - not your location" });
+    }
+
+    // Revoke access
+    await pool.query(`
+      DELETE FROM chef_location_access 
+      WHERE chef_id = $1 AND location_id = $2
+    `, [chefId, locationId]);
+
+    // Also update the kitchen application status to 'rejected' (revoked)
+    await pool.query(`
+      UPDATE chef_kitchen_applications
+      SET status = 'rejected', feedback = 'Access revoked by manager', reviewed_by = $1, reviewed_at = NOW(), updated_at = NOW()
+      WHERE chef_id = $2 AND location_id = $3 AND status = 'approved'
+    `, [user.id, chefId, locationId]);
+
+    console.log(`[Manager] Revoked chef ${chefId} access to location ${locationId}`);
+
+    res.json({ success: true, message: "Chef access revoked successfully" });
+  } catch (error) {
+    console.error("Error revoking chef access:", error);
+    res.status(500).json({ error: error.message || "Failed to revoke access" });
+  }
+});
+
 app.get("/api/manager/bookings", async (req, res) => {
   try {
     const rawUserId = req.session.userId || req.headers['x-user-id'];
