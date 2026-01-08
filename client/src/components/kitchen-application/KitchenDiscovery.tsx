@@ -320,7 +320,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             </div>
                             
                             <div className="mt-3 flex gap-2">
-                              <Link href={`/kitchen/${location.id}`}>
+                              <Link href={`/kitchen-preview/${location.id}`}>
                                 <Button variant="outline" size="sm">
                                   View Details
                                 </Button>

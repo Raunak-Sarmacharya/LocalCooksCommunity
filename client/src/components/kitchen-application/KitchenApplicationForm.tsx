@@ -250,7 +250,7 @@ export default function KitchenApplicationForm({
               
               {application.status === "approved" && (
                 <Button 
-                  onClick={() => navigate(`/kitchen/${location.id}/book`)} 
+                  onClick={() => navigate(`/book-kitchen?location=${location.id}`)} 
                   className="flex-1 bg-green-600 hover:bg-green-700"
                 >
                   Book a Kitchen
