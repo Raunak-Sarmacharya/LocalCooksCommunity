@@ -171,7 +171,18 @@ export default function KitchenApplicationForm({
     }
   };
 
-  const goToNextStep = async () => {
+  const goToNextStep = async (e?: React.MouseEvent<HTMLButtonElement>) => {
+    // Explicitly prevent any form submission
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // Don't proceed if we're on the final step (should use submit instead)
+    if (currentStep >= totalSteps) {
+      return;
+    }
+    
     // Validate current step fields
     let fieldsToValidate: (keyof KitchenApplicationFormData)[] = [];
     
@@ -275,24 +286,30 @@ export default function KitchenApplicationForm({
     );
   }
 
-  // Handle form submission - prevent submission unless on final step
+  // Handle form submission - ONLY allow on final step
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    // Always prevent default first
+    e.preventDefault();
+    e.stopPropagation();
+    
     // Only allow form submission on the final step
     if (currentStep < totalSteps) {
-      e.preventDefault();
-      // If validation passes, move to next step
-      goToNextStep();
+      console.log(`Form submission blocked - on step ${currentStep}, need step ${totalSteps}`);
       return;
     }
-    // Otherwise let React Hook Form handle it
+    
+    // On final step, trigger the actual submit
     form.handleSubmit(onSubmit)(e);
   };
 
   // Prevent Enter key from submitting form except on final step
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && currentStep < totalSteps) {
+    if (e.key === "Enter") {
       e.preventDefault();
-      goToNextStep();
+      e.stopPropagation();
+      if (currentStep < totalSteps) {
+        goToNextStep();
+      }
     }
   };
 
@@ -651,7 +668,7 @@ export default function KitchenApplicationForm({
               <div className="flex-1" />
               
               {currentStep < totalSteps ? (
-                <Button type="button" onClick={goToNextStep}>
+                <Button type="button" onClick={(e) => goToNextStep(e)}>
                   Continue
                 </Button>
               ) : (
