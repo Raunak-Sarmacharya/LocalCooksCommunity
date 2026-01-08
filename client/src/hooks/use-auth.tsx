@@ -430,6 +430,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log(`✅ Final detected role for registration: "${detectedRole || 'undefined'}"`);
       
+      // CRITICAL: Ensure role is set before syncing
+      if (!detectedRole) {
+        console.error(`❌ CRITICAL: No role detected during registration!`);
+        console.error(`   - Current path: ${currentPath}`);
+        console.error(`   - Full URL: ${currentUrl}`);
+        throw new Error('Role detection failed. Please register from the appropriate page (admin, manager, chef, or delivery partner).');
+      }
+      
       const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
       
       if (syncSuccess) {

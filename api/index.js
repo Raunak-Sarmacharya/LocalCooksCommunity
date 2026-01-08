@@ -6311,6 +6311,14 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
               console.log(`🎯 Exclusive role assignment: role="${finalRole}" → isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner} (mutually exclusive)`);
             }
             
+            // CRITICAL: Double-check role before inserting
+            if (!finalRole || finalRole === 'null' || finalRole === 'undefined' || finalRole === '') {
+              console.error(`❌ CRITICAL: finalRole is invalid before INSERT: "${finalRole}"`);
+              throw new Error(`Invalid role "${finalRole}" - cannot create user without valid role`);
+            }
+            
+            console.log(`🔍 FINAL INSERT VALUES: role="${finalRole}", isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner}, isManager=${isManager}`);
+            
             const insertResult = await pool.query(
               'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
               [email, hashedPassword, finalRole, uid, isUserVerified, false, isChef, isDeliveryPartner, isManager]
@@ -6318,8 +6326,26 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
             user = insertResult.rows[0];
             wasCreated = true;
             console.log(`✨ Successfully created new user: ${user.id} (${user.username})`);
+            console.log(`   - ROLE in DB: ${user.role} (should be "${finalRole}")`);
+            console.log(`   - is_chef in DB: ${user.is_chef} (should be ${isChef})`);
+            console.log(`   - is_delivery_partner in DB: ${user.is_delivery_partner} (should be ${isDeliveryPartner})`);
+            console.log(`   - is_manager in DB: ${user.is_manager} (should be ${isManager})`);
             console.log(`   - is_verified in DB: ${user.is_verified}`);
             console.log(`   - has_seen_welcome in DB: ${user.has_seen_welcome}`);
+            
+            // CRITICAL: Verify the role was set correctly
+            if (user.role !== finalRole) {
+              console.error(`❌ CRITICAL ERROR: Role mismatch! Expected "${finalRole}" but got "${user.role}"`);
+              console.error(`   - This indicates a database constraint or trigger may be overriding the role`);
+              // Try to fix it
+              try {
+                const fixResult = await pool.query('UPDATE users SET role = $1 WHERE id = $2 RETURNING *', [finalRole, user.id]);
+                user = fixResult.rows[0];
+                console.log(`✅ Fixed role mismatch - user ${user.id} now has role "${user.role}"`);
+              } catch (fixError) {
+                console.error(`❌ Failed to fix role mismatch:`, fixError);
+              }
+            }
             
             // Send welcome email for new users (with delay for better deliverability)
             if (isUserVerified) {

@@ -686,12 +686,20 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Fallback to schema-based insert without firebase_uid
+    // CRITICAL: Don't default to 'chef' - role must be explicitly provided
+    if (!insertUser.role) {
+      console.error(`❌ CRITICAL ERROR: No role provided to createUser (fallback) in storage.ts!`);
+      console.error(`   - Username: ${insertUser.username}`);
+      console.error(`   - This should not happen - role should always be provided`);
+      throw new Error('Role is required when creating a user. This is a programming error.');
+    }
+    
     const [user] = await db
       .insert(users)
       .values({
         username: insertUser.username,
         password: insertUser.password,
-        role: insertUser.role || "chef",
+        role: insertUser.role, // No default - must be provided
         googleId: insertUser.googleId || null,
         facebookId: insertUser.facebookId || null,
         isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
