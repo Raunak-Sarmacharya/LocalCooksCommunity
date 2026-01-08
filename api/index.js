@@ -9691,16 +9691,21 @@ app.post('/api/hybrid-login', async (req, res) => {
     // Validate subdomain-role matching
     const subdomain = getSubdomainFromHeaders(req.headers);
     const isPortalUser = neonUser.is_portal_user || neonUser.isPortalUser || false;
+    const isChef = neonUser.is_chef || neonUser.isChef || false;
+    const isManager = neonUser.is_manager || neonUser.isManager || false;
+    const isDeliveryPartner = neonUser.is_delivery_partner || neonUser.isDeliveryPartner || false;
     
-    if (!isRoleAllowedForSubdomain(neonUser.role, subdomain, isPortalUser)) {
-      const requiredSubdomain = neonUser.role === 'chef' ? 'chef' :
-                                neonUser.role === 'manager' ? 'kitchen' :
-                                neonUser.role === 'admin' ? 'admin' :
-                                neonUser.role === 'delivery_partner' ? 'driver' : null;
+    if (!isRoleAllowedForSubdomain(neonUser.role, subdomain, isPortalUser, isChef, isManager, isDeliveryPartner)) {
+      // Determine effective role for error message
+      const effectiveRole = neonUser.role || (isManager ? 'manager' : isDeliveryPartner && !isChef ? 'delivery_partner' : isChef ? 'chef' : null);
+      const requiredSubdomain = effectiveRole === 'chef' ? 'chef' :
+                                effectiveRole === 'manager' ? 'kitchen' :
+                                effectiveRole === 'admin' ? 'admin' :
+                                effectiveRole === 'delivery_partner' ? 'driver' : null;
       
-      console.log(`❌ Hybrid login blocked: ${neonUser.role} user attempted login from wrong subdomain: ${subdomain}`);
+      console.log(`❌ Hybrid login blocked: ${effectiveRole || 'user'} user attempted login from wrong subdomain: ${subdomain}`);
       return res.status(403).json({ 
-        error: `Access denied. ${neonUser.role} users must login from the ${requiredSubdomain} subdomain.`,
+        error: `Access denied. ${effectiveRole || 'user'} users must login from the ${requiredSubdomain} subdomain.`,
         requiredSubdomain: requiredSubdomain
       });
     }
