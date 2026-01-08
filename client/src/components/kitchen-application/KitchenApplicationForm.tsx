@@ -681,8 +681,7 @@ export default function KitchenApplicationForm({
                 <div className="flex gap-2">
                   <Check className="h-4 w-4 text-[#2BA89F] flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-gray-700">
-                    All chefs must have current <strong>Food Handler Certification</strong> to use our kitchens. 
-                    Renewal is your responsibility.
+                    All chefs must have current <strong>Food Handler Certification</strong> to use our kitchens.
                   </p>
                 </div>
               </div>
@@ -756,7 +755,7 @@ export default function KitchenApplicationForm({
                     Food Establishment License/Permit (if applicable)
                   </Label>
                   <p className="text-xs text-gray-500 mb-3">
-                    If you operate as a registered food business, upload proof of license. Skip if operating as freelance cook.
+                    If you operate as a registered food business, upload proof of license.
                   </p>
                   
                   <label 
