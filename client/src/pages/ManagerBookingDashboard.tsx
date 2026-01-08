@@ -17,8 +17,7 @@ import Footer from "@/components/layout/Footer";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
-import ManagerChefProfiles from "./ManagerChefProfiles";
-import ManagerPortalApplications from "./ManagerPortalApplications";
+import ManagerKitchenApplications from "./ManagerKitchenApplications";
 import KitchenPricingManagement from "./KitchenPricingManagement";
 import StorageListingManagement from "./StorageListingManagement";
 import EquipmentListingManagement from "./EquipmentListingManagement";
@@ -67,7 +66,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'chef-profiles' | 'portal-applications' | 'pricing' | 'storage-listings' | 'equipment-listings';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -253,8 +252,7 @@ export default function ManagerBookingDashboard() {
     { id: 'pricing' as ViewType, label: 'Pricing', icon: DollarSign },
     { id: 'storage-listings' as ViewType, label: 'Storage Listings', icon: Package },
     { id: 'equipment-listings' as ViewType, label: 'Equipment Listings', icon: Wrench },
-    { id: 'chef-profiles' as ViewType, label: 'Chef Profiles', icon: Users },
-    { id: 'portal-applications' as ViewType, label: 'Portal Applications', icon: User },
+    { id: 'applications' as ViewType, label: 'Applications', icon: Users },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
   ];
 
@@ -492,12 +490,8 @@ export default function ManagerBookingDashboard() {
                 <EquipmentListingManagement embedded={true} />
               )}
               
-              {activeView === 'chef-profiles' && (
-                <ManagerChefProfiles embedded={true} />
-              )}
-              
-              {activeView === 'portal-applications' && (
-                <ManagerPortalApplications embedded={true} />
+              {activeView === 'applications' && (
+                <ManagerKitchenApplications embedded={true} />
               )}
               
               {activeView === 'settings' && selectedLocation && (

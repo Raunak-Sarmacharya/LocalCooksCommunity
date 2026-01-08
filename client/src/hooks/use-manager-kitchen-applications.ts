@@ -153,6 +153,38 @@ export function useManagerKitchenApplications() {
     },
   });
 
+  // Revoke chef access to a location
+  const revokeAccess = useMutation({
+    mutationFn: async ({
+      chefId,
+      locationId,
+    }: {
+      chefId: number;
+      locationId: number;
+    }) => {
+      const response = await fetch(`/api/manager/chef-location-access`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ chefId, locationId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to revoke access");
+      }
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/manager/kitchen-applications"],
+      });
+    },
+  });
+
   // Compute statistics
   const pendingApplications = (applicationsQuery.data ?? []).filter(
     (a) => a.status === "inReview"
@@ -176,6 +208,7 @@ export function useManagerKitchenApplications() {
     error: applicationsQuery.error,
     updateApplicationStatus,
     verifyDocuments,
+    revokeAccess,
     refetch: applicationsQuery.refetch,
   };
 }

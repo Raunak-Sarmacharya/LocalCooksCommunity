@@ -1,6 +1,7 @@
 import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema } from '@shared/schema';
 import { platformSettings } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { chefLocationAccess } from '@shared/schema';
 import { db } from './db';
 import { Express, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
@@ -2634,6 +2635,38 @@ export function registerFirebaseRoutes(app: Express) {
       );
       
       console.log(`✅ Application ${applicationId} ${status} by Manager ${sessionUser.id}`);
+      
+      // If approved, grant the chef access to this location
+      if (status === 'approved' && updatedApplication) {
+        try {
+          // Check if chef already has access
+          const existingAccess = await db
+            .select()
+            .from(chefLocationAccess)
+            .where(
+              and(
+                eq(chefLocationAccess.chefId, application.chefId),
+                eq(chefLocationAccess.locationId, application.locationId)
+              )
+            );
+          
+          if (existingAccess.length === 0) {
+            // Grant access
+            await db.insert(chefLocationAccess).values({
+              chefId: application.chefId,
+              locationId: application.locationId,
+              grantedBy: sessionUser.id,
+              grantedAt: new Date(),
+            });
+            console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId}`);
+          } else {
+            console.log(`ℹ️ Chef ${application.chefId} already has access to location ${application.locationId}`);
+          }
+        } catch (accessError) {
+          console.error('Error granting chef access:', accessError);
+          // Don't fail the request, just log the error
+        }
+      }
       
       // TODO: Send email notification to chef about the decision
       
