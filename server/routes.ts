@@ -5908,29 +5908,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds } = req.body;
       const chefId = req.user!.id;
       
-      // Check if chef has admin-granted access to the location containing this kitchen
+      // Get the location for this kitchen
       const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
       if (!kitchenLocationId1) {
         return res.status(400).json({ error: "Kitchen location not found" });
       }
       
-      const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, kitchenLocationId1);
+      // Check if chef has an approved kitchen application for this location
+      // This is the new single-step validation that replaces both admin-granted access and profile sharing
+      const applicationStatus = await firebaseStorage.getChefKitchenApplicationStatus(chefId, kitchenLocationId1);
       
-      if (!hasLocationAccess) {
-        return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
-      }
-      
-      // Check if chef has shared their profile with the location and it's been approved by manager
-      const profile = await firebaseStorage.getChefLocationProfile(chefId, kitchenLocationId1);
-      if (!profile) {
-        return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
-      }
-      
-      if (profile.status !== 'approved') {
+      if (!applicationStatus.canBook) {
         return res.status(403).json({ 
-          error: profile.status === 'pending' 
-            ? "Your profile is pending manager approval. Please wait for approval before booking."
-            : "Your profile was rejected. Please contact the location manager for more information."
+          error: applicationStatus.message,
+          hasApplication: applicationStatus.hasApplication,
+          applicationStatus: applicationStatus.status,
         });
       }
       

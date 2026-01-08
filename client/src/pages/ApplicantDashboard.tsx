@@ -46,6 +46,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useChefKitchenAccessStatus } from "@/hooks/use-chef-kitchen-access";
+import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
+import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 
 // Union type for handling both application types
 type AnyApplication = Application | DeliveryPartnerApplication;
@@ -132,7 +134,17 @@ export default function ApplicantDashboard() {
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   
   // Call hook unconditionally at top level (Rules of Hooks)
+  // Old hook - keeping for backwards compatibility during transition
   const { hasAccess, hasApprovedProfile, hasAnyPending, profiles, isLoading: accessLoading } = useChefKitchenAccessStatus();
+  
+  // New hook for direct kitchen applications (replaces share-profile workflow)
+  const { 
+    hasAnyApproved: hasApprovedKitchenApplication, 
+    hasAnyPending: hasPendingKitchenApplication,
+    approvedCount: approvedKitchensCount,
+    pendingCount: pendingKitchensCount,
+    isLoading: kitchenAppsLoading 
+  } = useChefKitchenApplicationsStatus();
   
   // Use localStorage to track if vendor popup has been shown for this user
   const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(() => {
@@ -2108,8 +2120,8 @@ export default function ApplicantDashboard() {
               );
             }
 
-            // Has access but no approved profiles yet
-            if (!hasApprovedProfile) {
+            // Has access but no approved profiles yet - show new Kitchen Discovery
+            if (!hasApprovedProfile && !hasApprovedKitchenApplication) {
               return (
                 <motion.div 
                   initial={{ opacity: 0, y: 20 }}
@@ -2120,21 +2132,31 @@ export default function ApplicantDashboard() {
                   <div className="flex flex-col gap-6">
                     <div className="flex items-start gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                        <Share2 className="h-8 w-8 text-white" />
+                        <Building className="h-8 w-8 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-2xl font-semibold text-gray-900 mb-2">Share Your Profile with Kitchens</h3>
+                        <h3 className="text-2xl font-semibold text-gray-900 mb-2">Apply to Kitchens</h3>
                         <p className="text-gray-700 mb-4">
-                          {hasAnyPending 
-                            ? "Your profile has been shared and is pending manager approval. Once approved, you'll be able to book kitchens."
-                            : "You have access to kitchens! Share your profile with each kitchen to get started. Managers will review your application and documents before approving you for bookings."}
+                          {hasPendingKitchenApplication 
+                            ? `You have ${pendingKitchensCount} pending application${pendingKitchensCount > 1 ? 's' : ''}. Once approved by the kitchen manager, you'll be able to book cooking time.`
+                            : "Explore commercial kitchens in your area and apply directly. Kitchen managers will review your application and documents before approving you for bookings."}
                         </p>
-                        <Link href="/share-profile">
-                          <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 px-6 py-3">
-                            <Share2 className="mr-2 h-5 w-5" />
-                            Manage Kitchen Profiles
-                          </Button>
-                        </Link>
+                        <div className="flex flex-wrap gap-3">
+                          <Link href="/explore-kitchens">
+                            <Button className="rounded-xl bg-blue-600 hover:bg-blue-700 px-6 py-3">
+                              <Building className="mr-2 h-5 w-5" />
+                              Explore Kitchens
+                            </Button>
+                          </Link>
+                          {hasPendingKitchenApplication && (
+                            <Link href="/explore-kitchens">
+                              <Button variant="outline" className="rounded-xl px-6 py-3">
+                                <Clock className="mr-2 h-5 w-5" />
+                                View Applications
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
